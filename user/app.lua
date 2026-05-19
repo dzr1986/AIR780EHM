@@ -1,17 +1,17 @@
 ﻿--- 应用核心编排模块（方案1）
--- 串口：仅通过 uartBridge 统一初始化与收发，见 config.uartid / APP_STACK.uart
+-- 串口：仅通过 lib/uart_bridge；见 config.UART_CFG / APP_STACK.uart
 -- @module app
 -- @release 2026.5.18
 
 require "sys"
 require "sysplus"
 require "config"
-local sntpSync = require "sntpSync"
-local uartBridge = require "uartBridge"
-local pirCtrl = require "pirCtrl"
-local battery = require "battery"
-local charge = require "charge"
-local mobileInfo = require "mobileInfo"
+local sntp_sync = require "sntp_sync"
+local uart_bridge = require "uart_bridge"
+local pir_ctrl = require "pir_ctrl"
+local batAdc = require "bat_adc"
+local usbCharge = require "usb_charge"
+local mobile_info = require "mobile_info"
 local fota = require "fota"
 local usbRndis = require "usb_rndis"
 -- watchdog 在 lib/ 中由工具链自动加载，勿 require（与核心 wdt 库区分）
@@ -45,10 +45,11 @@ local state = {
 
 local function setLowPowerMode(enabled)
     local v = enabled and 1 or 0
-    if _G.lowPowerModeStatus == v then
+    local rt = _G.APP_RUNTIME
+    if rt.low_power_mode == v then
         return false
     end
-    _G.lowPowerModeStatus = v
+    rt.low_power_mode = v
     return true
 end
 
@@ -100,17 +101,17 @@ local function onPowerOff()
 end
 
 -- ============================================================
--- UART（唯一入口：uartBridge）
+-- UART（唯一入口：uart_bridge）
 -- ============================================================
 
 local function setupUartBridge()
-    if _G.APP_STACK and _G.APP_STACK.uart ~= "uartBridge" then
+    if _G.APP_STACK and _G.APP_STACK.uart ~= "uart_bridge" then
         log.warn("app", "未支持的 UART 栈:", _G.APP_STACK.uart)
         return false
     end
-    local ok = uartBridge.start({
-        uartId = _G.uartid or 1,
-        baud = _G.uart_baud,
+    local ok = uart_bridge.start({
+        uartId = (_G.UART_CFG and _G.UART_CFG.id) or 1,
+        baud = _G.UART_CFG and _G.UART_CFG.baud,
         onEnterLowPower = onEnterLowPower,
         onExitLowPower = onExitLowPower,
         onReboot = onReboot,
@@ -126,36 +127,51 @@ local function setupUartBridge()
         end,
     })
     if ok then
-        _G.uartBridge = uartBridge
-        log.info("app", "串口由 uartBridge 管理", _G.uartid or 1)
+        _G.uart_bridge = uart_bridge
+        log.info("app", "串口由 uart_bridge 管理", (_G.UART_CFG and _G.UART_CFG.id) or 1)
     end
     return ok
 end
 
 --- 获取串口桥接模块（其他业务应经此收发，勿直接 uart.*）
 function getUartBridge()
-    return _G.uartBridge or uartBridge
+    return _G.uart_bridge or uart_bridge
 end
 
 -- ============================================================
 -- PMD / USB
 -- ============================================================
 
+local function applyUsbInsertState(inserted, source)
+    local v = inserted and 1 or 0
+    state.last_usb_state = v
+    _G.APP_RUNTIME.power_status = v
+    sys.publish(E.GPIO_VBUS_CHANGED, v)
+
+    if v == 0 then
+        state.flag_usb = false
+        log.info("app", "USB拔出", source or "")
+        if _G.APP_RUNTIME.low_power_mode == 0 then onEnterLowPower() end
+        if not state.mqtt_started then startMqtt() end
+    else
+        state.flag_usb = true
+        log.info("app", "USB插入", source or "")
+        onExitLowPower()
+    end
+end
+
 local function handlePmdMessage(msg)
-    if not msg then return end
+    if not msg or _G.MODULE_FLAGS.charge then
+        return
+    end
     state.last_usb_state = msg.state
-    _G.PowerStatus = msg.charger and 1 or 0
-    sys.publish(E.GPIO_VBUS_CHANGED, _G.PowerStatus)
+    _G.APP_RUNTIME.power_status = msg.charger and 1 or 0
+    sys.publish(E.GPIO_VBUS_CHANGED, _G.APP_RUNTIME.power_status)
 
     if msg.state == 0 then
-        state.flag_usb = false
-        log.info("app", "USB拔出")
-        if _G.lowPowerModeStatus == 0 then onEnterLowPower() end
-        if not state.mqtt_started then startMqtt() end
+        applyUsbInsertState(false, "PMD")
     elseif msg.state == 1 then
-        state.flag_usb = true
-        log.info("app", "USB插入")
-        onExitLowPower()
+        applyUsbInsertState(true, "PMD")
     end
 end
 
@@ -173,7 +189,7 @@ local function setupWatchdog()
         return
     end
     local wdtMod = _G.watchdog
-    if wdtMod and wdtMod.start and wdtMod.start(_G.WDT_CONFIG) then
+    if wdtMod and wdtMod.start and wdtMod.start(_G.WDT_CFG) then
         log.info("app", "已启用 Air780 模组看门狗")
     end
 end
@@ -311,7 +327,7 @@ local function onPirStopRecording(reason, uploadMode, quality)
 end
 
 local function setupEventHandlers()
-    pirCtrl.start()
+    pir_ctrl.start()
     sys.subscribe(E.POWER_ENTER_REST, onEnterLowPower)
     sys.subscribe(E.POWER_EXIT_REST, onExitLowPower)
     sys.subscribe(E.DEVICE_REBOOT_REQUEST, onReboot)
@@ -329,7 +345,7 @@ local function setupEventHandlers()
     sys.subscribe(E.GPIO_PIR_TRIGGERED, function(pirStatus, action, uploadMode, quality)
         log.info("app", "PIR GPIO", pirStatus, action)
         if netModule and netModule.publishPirDetect then
-            local st = pirCtrl.getState()
+            local st = pir_ctrl.getState()
             netModule.publishPirDetect({
                 status = "1",
                 pirStatus = pirStatus or "detected",
@@ -355,12 +371,34 @@ local function setupEventHandlers()
         log.info("app", "BOOT键长按")
         if t3xModule then t3xModule.enterBootMode() end
     end)
-    sys.subscribe(E.GPIO_t3x_STARTED, function()
-        log.info("app", "t3x启动完成")
+    sys.subscribe(E.GPIO_COPROC_READY, function()
+        log.info("app", "协处理器就绪")
         if t3xModule then t3xModule.exitBootMode() end
     end)
     sys.subscribe(E.GPIO_VBUS_CHANGED, function(powerStatus)
         log.info("app", "VBUS", powerStatus)
+    end)
+    sys.subscribe(E.GPIO_USB_DET_CHANGED, function(inserted)
+        applyUsbInsertState(inserted == 1, "GPIO27")
+        if inserted == 1 and state.mqtt_started and netModule and netModule.publishStatus then
+            sys.timerStart(function()
+                if _G.APP_RUNTIME.online_status == 1 then
+                    netModule.publishStatus()
+                end
+            end, 2000)
+        end
+    end)
+    sys.subscribe(E.GPIO_CHG_STATE_CHANGED, function(charging)
+        log.info("app", "CHG_STATE GPIO17", charging == 1 and "充电中" or "未充电/充满",
+            "（充电板：充电=CHG_RED 硬件红灯，充满=CHG_BLUE 硬件蓝灯）")
+        if state.mqtt_started and netModule and netModule.publishStatus and _G.APP_RUNTIME.online_status == 1 then
+            netModule.publishStatus()
+        end
+    end)
+
+    sys.subscribe("BATTERY_UPDATE", function(pct, mv)
+        log.info("app", "电量", pct, "%", mv, "mV",
+            "（模组LED：>70%蓝常亮，20~70%蓝闪，<20%红闪）")
     end)
     sys.subscribe(E.MQTT_OFFLINE, onMqttOffline)
     sys.subscribe(E.MQTT_SERVER_DATA, function(_topic, payload)
@@ -383,29 +421,48 @@ end
 
 local function setupGpio()
     if not gpioModule or not _G.MODULE_FLAGS.gpio then return end
+    local gin, gout = _G.GPIO_IN, _G.GPIO_OUT
     gpioModule.start({
-        pirPin = PIR_io_number,
-        pwrkeyPin = pwrkey_io_number,
-        bootkeyPin = t3x_ota_key_io_number,
-        t3xStartupPin = t3x_startup_io_number,
-        ledRedPin = led_red_io_number,
-        ledBluePin = led_blue_io_number,
+        pwrkeyPin = gin and gin.pwr_key and gin.pwr_key.pin,
+        bootkeyPin = gin and gin.boot_key and gin.boot_key.pin,
+        readyPin = gin and gin.coproc_ready and gin.coproc_ready.pin,
+        ledRedPin = gout and gout.led_red and gout.led_red.pin,
+        ledBluePin = gout and gout.bat_stat_led and gout.bat_stat_led.pin,
     })
 end
 
 local function startBackgroundServices()
-    if _G.MODULE_FLAGS.battery then battery.start() end
-    if _G.MODULE_FLAGS.charge then charge.start() end
-    if _G.MODULE_FLAGS.sntp then sntpSync.start() end
-    if _G.MODULE_FLAGS.mobile_info then mobileInfo.start() end
+    if _G.MODULE_FLAGS.battery then
+        if type(batAdc) == "table" and batAdc.start then
+            batAdc.start()
+        else
+            log.error("app", "bat_adc 模块无效，跳过电量采样")
+        end
+    end
+    if _G.MODULE_FLAGS.charge then
+        if type(usbCharge) == "table" and usbCharge.start then
+            usbCharge.start()
+        else
+            log.error("app", "usb_charge 模块无效，跳过充电检测")
+        end
+    end
+    if _G.MODULE_FLAGS.sntp then sntp_sync.start() end
+    if _G.MODULE_FLAGS.mobile_info then mobile_info.start() end
 end
 
 local function initPowerStatus()
-    _G.PowerStatus = (gpio and gpio.VBUS and gpio.get(gpio.VBUS)) or 0
-    state.flag_usb = _G.PowerStatus == 1
-    sys.publish(E.GPIO_VBUS_CHANGED, _G.PowerStatus)
-    log.info("app", "USB", _G.PowerStatus == 1 and "插入" or "未插入")
-    if _G.PowerStatus == 0 and not _G.MODULE_FLAGS.pmd_runtime then
+    local inserted
+    if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
+        inserted = usbCharge.isUsbInserted()
+        log.info("app", "USB_DET GPIO27", inserted and "插入" or "未插入")
+    else
+        inserted = (gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1) or false
+        log.info("app", "USB VBUS", inserted and "插入" or "未插入")
+    end
+    _G.APP_RUNTIME.power_status = inserted and 1 or 0
+    state.flag_usb = inserted
+    sys.publish(E.GPIO_VBUS_CHANGED, _G.APP_RUNTIME.power_status)
+    if not inserted and not _G.MODULE_FLAGS.pmd_runtime and not _G.MODULE_FLAGS.charge then
         if _G.MODULE_FLAGS.mqtt then
             setLowPowerMode(true)
             if t3xModule and t3xModule.enterSleep then
@@ -423,7 +480,7 @@ local function startHeartbeat()
         state.heartbeat_count = state.heartbeat_count + 1
         local mqttHint = "未启"
         if state.mqtt_started then
-            if _G.OnlineStatus == 1 then
+            if _G.APP_RUNTIME.online_status == 1 then
                 mqttHint = "已连接"
             else
                 local ip = (socket and socket.localIP and socket.localIP()) or "无IP"
@@ -431,8 +488,28 @@ local function startHeartbeat()
                 mqttHint = string.format("已启未连 ip=%s csq=%s", ip, csq)
             end
         end
-        log.info("app", string.format("[ALIVE #%d] USB=%d lowPwr=%d mqtt=%s",
-            state.heartbeat_count, _G.PowerStatus or 0, _G.lowPowerModeStatus or 0, mqttHint))
+        local batPct = _G.APP_RUNTIME.battery_percent
+        local batMv = _G.APP_RUNTIME.battery_mv
+        if (batPct == nil or batPct == "--") and type(batAdc) == "table" and batAdc.getPercent then
+            local p, mv = batAdc.getPercent(), batAdc.getVoltage and batAdc.getVoltage()
+            if p and p > 0 then batPct = p end
+            if (batMv == nil or batMv == "--") and mv and mv > 0 then batMv = mv end
+        end
+        local batPctNum = tonumber(batPct)
+        local batMvNum = tonumber(batMv)
+        local batHint
+        if batPct ~= nil and batPct ~= "--" and batPctNum ~= nil then
+            batHint = string.format("%d%%", batPctNum)
+            if batMv ~= nil and batMv ~= "--" and batMvNum ~= nil and batMvNum > 0 then
+                batHint = batHint .. string.format(" %dmV", batMvNum)
+            end
+        elseif batMv ~= nil and batMv ~= "--" and batMvNum ~= nil and batMvNum > 0 then
+            batHint = string.format("%dmV", batMvNum)
+        else
+            batHint = "--"
+        end
+        log.info("app", string.format("[ALIVE #%d] USB=%d lowPwr=%d bat=%s mqtt=%s",
+            state.heartbeat_count, _G.APP_RUNTIME.power_status or 0, _G.APP_RUNTIME.low_power_mode or 0, batHint, mqttHint))
     end, 10000)
 end
 
@@ -477,7 +554,7 @@ function getState()
         started = started,
         flag_usb = state.flag_usb,
         mqtt_started = state.mqtt_started,
-        lowPowerModeStatus = _G.lowPowerModeStatus,
+        low_power_mode = _G.APP_RUNTIME.low_power_mode,
         last_wake_event = state.last_wake_event,
         heartbeat_count = state.heartbeat_count,
     }

@@ -5,7 +5,7 @@
 
 require "sys"
 require "config"
-local pirCtrl = require "pirCtrl"
+local pir_ctrl = require "pir_ctrl"
 
 local _modname = ...
 module(_modname, package.seeall)
@@ -190,7 +190,9 @@ end
 local function handleDownlink2003(data)
     local interval = tonumber(data.interval)
     if interval then
-        LowPowerInterval = interval
+        if _G.APP_RUNTIME then
+            _G.APP_RUNTIME.low_power_interval_sec = interval
+        end
         log.info("net", "[2003] 低功耗间隔", interval)
     end
     publishStatus()
@@ -233,7 +235,7 @@ local function handleDownlink2005(data)
 end
 
 local function buildPirDetectExtra(pirStatus, action, uploadMode, quality, recording)
-    local st = pirCtrl.getState()
+    local st = pir_ctrl.getState()
     local media = st.mediaConfig or {}
     return {
         status = pirStatus or "detected",
@@ -256,17 +258,17 @@ local function handleDownlink2010(data)
         or data.videoMaxDurationSec or data.maxDurationSec
         or data.stopOnSecondPir ~= nil or data.stopOnCloud ~= nil
     if hasCfg then
-        pirCtrl.setMediaConfig({
+        pir_ctrl.setMediaConfig({
             action = data.action,
             uploadMode = data.uploadMode,
             quality = data.quality,
         })
-        pirCtrl.setRecordPolicy({
+        pir_ctrl.setRecordPolicy({
             maxDurationSec = data.videoMaxDurationSec or data.maxDurationSec,
             stopOnSecondPir = data.stopOnSecondPir,
             stopOnCloud = data.stopOnCloud,
         })
-        local pirState = pirCtrl.getState()
+        local pirState = pir_ctrl.getState()
         log.info("net", "[2010] PIR 配置已更新",
             "media", json.encode(pirState.mediaConfig),
             "policy", json.encode(pirState.recordPolicy))
@@ -281,7 +283,7 @@ local function handleDownlink2011(data)
     else
         log.info("net", "[2011] 云端停录")
     end
-    pirCtrl.requestStopFromCloud()
+    pir_ctrl.requestStopFromCloud()
 end
 
 local DOWNLINK_HANDLERS = {
@@ -338,7 +340,8 @@ local function mqttTask()
 
     log.info("net", "========== MQTT启动 ==========")
     log.info("net", "+++++ imei=" .. tostring(clientId) .. " ++++++")
-    log.info("net", "服务器:", _G.mqtt_host, _G.mqtt_port)
+    local mcfg = _G.MQTT_CFG or {}
+    log.info("net", "服务器:", mcfg.host, mcfg.port)
 
     if socket and socket.adapter and socket.dft then
         local waitIp = 0
@@ -353,8 +356,8 @@ local function mqttTask()
         end
     end
 
-    mqttClient = mqtt.create(nil, _G.mqtt_host, _G.mqtt_port, _G.mqtt_isssl)
-    mqttClient:auth(clientId, _G.mqtt_user_name, _G.mqtt_password)
+    mqttClient = mqtt.create(nil, mcfg.host, mcfg.port, mcfg.ssl)
+    mqttClient:auth(clientId, mcfg.username, mcfg.password)
     mqttClient:autoreconn(true, 3000)
 
     mqttClient:on(function(client, event, data, payload)
@@ -362,7 +365,7 @@ local function mqttTask()
 
         if event == "conack" then
             isConnected = true
-            _G.OnlineStatus = 1
+            _G.APP_RUNTIME.online_status = 1
             state.reconnect_count = 0
             log.info("net", "MQTT连接成功")
             client:subscribe(getSubTopic())
@@ -374,7 +377,7 @@ local function mqttTask()
 
         elseif event == "disconnect" then
             isConnected = false
-            _G.OnlineStatus = 0
+            _G.APP_RUNTIME.online_status = 0
             state.reconnect_count = (state.reconnect_count or 0) + 1
             log.warn("net", "MQTT断开", "重连次数", state.reconnect_count)
             publishAppEvent("MQTT_OFFLINE")
@@ -393,10 +396,14 @@ local function mqttTask()
         log.warn("net", "MQTT 连接超时(90s)，等待 autoreconn...")
     end
 
+    local bcfg = _G.BATTERY_CFG or {}
+    local statusIntervalSec = tonumber(bcfg.mqtt_report_interval_sec) or 60
     sys.taskInit(function()
-        while isConnected do
-            sys.wait(60000)
-            if isConnected then publishStatus() end
+        while true do
+            sys.wait(statusIntervalSec * 1000)
+            if isConnected then
+                publishStatus()
+            end
         end
     end)
 
@@ -448,9 +455,9 @@ function publishStatus()
         '{"deviceNo":"%s","dataType":"%s","powerStatus":"%d","remainPower":"%s","lowPowerMode":"%s","time":"%s"}',
         getDeviceId(),
         DT.UL_STATUS,
-        PowerStatus or 0,
-        electricity or "--",
-        lowPowerModeStatus == 1 and "rest" or "normal",
+        (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status) or 0,
+        (_G.APP_RUNTIME and _G.APP_RUNTIME.battery_percent) or "--",
+        (_G.APP_RUNTIME and _G.APP_RUNTIME.low_power_mode == 1) and "rest" or "normal",
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)

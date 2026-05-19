@@ -1,4 +1,4 @@
-# MQTT 下行命令手册（平台 → 设备）
+﻿# MQTT 下行命令手册（平台 → 设备）
 
 > **本机示例 IMEI**：`862323084068124`  
 > **MQTTX 抄录**：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)  
@@ -146,7 +146,7 @@
 
 | 字段 | 说明 |
 |------|------|
-| `interval` | 可选，写入 `_G.LowPowerInterval` |
+| `interval` | 可选，写入 `APP_RUNTIME.low_power_interval_sec` |
 
 **任意 2003 均立即应答 1003**；另每 60s 周期上报。
 
@@ -321,7 +321,7 @@
 | OTA 字段 | 说明 |
 |----------|------|
 | `version` | 目标版本 `x.y.z` |
-| `product_key` | 合宙项目 key |
+| `product_key` | 合宙项目 key（默认见 `FOTA_CFG.product_key`） |
 | `url` | 固件地址 |
 | `timeout` | 超时 ms |
 | `full_url` | `1` 时 url 前加 `###` |

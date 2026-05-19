@@ -21,7 +21,8 @@ $items = @(
     (Join-Path $root 'README.md'),
     (Join-Path $root 'luatos.json'),
     (Join-Path $root 'user'),
-    (Join-Path $root 'lib')
+    (Join-Path $root 'lib'),
+    (Join-Path $root 'doc')
 )
 
 foreach ($item in $items) {

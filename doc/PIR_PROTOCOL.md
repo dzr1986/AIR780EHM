@@ -1,6 +1,6 @@
-# PIR 媒体与录像停止协议
+﻿# PIR 媒体与录像停止协议
 
-> 适用工程：780EHM_PJ（方案1：`lib/pir.lua` → `pirCtrl.lua` → `app.lua` / `net.lua`）  
+> 适用工程：780EHM_PJ（方案1：`lib/pir.lua` → `pir_ctrl.lua` → `app.lua` / `net.lua`）  
 > 更新日期：2026-05-18
 
 ---
@@ -14,7 +14,7 @@ PIR 人体感应触发后，设备根据 `pirMediaConfig` 决定拍照/录像，
 
 ## 2. 配置项
 
-### 2.1 媒体配置 `pirMediaConfig`（`config.lua` / 云端 2010）
+### 2.1 媒体配置 `pirMediaConfig`（`pir_ctrl.lua` 默认 / 云端 2010 覆盖）
 
 | 字段 | 类型 | 取值 | 说明 |
 |------|------|------|------|
@@ -22,7 +22,15 @@ PIR 人体感应触发后，设备根据 `pirMediaConfig` 决定拍照/录像，
 | `uploadMode` | string | `auto` / `manual` | `auto` 时应用层自动 MQTT wakeup |
 | `quality` | string | `high` / `low` | 画质档位（下发 t3x 时使用） |
 
-### 2.2 录像停止策略 `pirRecordPolicy`（`config.lua` / 云端 2010 扩展字段）
+### 2.2 硬件触发间隔 `PIR_CFG.cooldown_ms`（`config.lua`）
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `cooldown_ms` | `PIR_COOLDOWN_MS.frequent`（**3s**） | 两次有效触发最小间隔；档位见 `config.lua` |
+
+默认约 **每 5 秒最多 1 次** `PIR_HW_TRIGGERED`。档位与行业参考、现场日志分析见 **[`PIR_TRIGGER_INTERVAL.md`](PIR_TRIGGER_INTERVAL.md)**。
+
+### 2.3 录像停止策略 `pirRecordPolicy`（`pir_ctrl.lua` 默认 / 云端 2010 扩展字段）
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -103,7 +111,7 @@ flowchart TD
 
 1. 第一次 PIR：按 `action` 正常 `PIR_TAKE_PHOTO` / `PIR_RECORD_VIDEO`。  
 2. 录像未结束前第二次 PIR：仅 `PIR_STOP_RECORDING(pir_retrigger)` + `GPIO_PIR_TRIGGERED`，**不**再发新的拍照/录像事件。  
-3. PIR 冷却期（`lib/pir.lua` 默认 10s）过后，可再次全新触发。
+3. PIR 冷却期（`lib/pir.lua` 默认 5s，见 `PIR_CFG.cooldown_ms`）过后，可再次全新触发。
 
 ---
 
@@ -232,11 +240,12 @@ flowchart TD
 | 能力 | 模块 | 函数 |
 |------|------|------|
 | PIR 中断 | `lib/pir.lua` | `onInterrupt` → `APP_PIR_HW_TRIGGERED` → `pirCtrl.onPirTriggered` |
-| 会话/定时/停止发布 | `pirCtrl.lua` | `beginVideoSession` / `publishStopRecording` |
+| 会话/定时/停止发布 | `pir_ctrl.lua` | `beginVideoSession` / `publishStopRecording` |
 | 业务响应 | `app.lua` | `setupEventHandlers` 内 PIR 订阅 |
 | 云端 2010/2011 | `net.lua` | `pirCtrl.setMediaConfig` / `setRecordPolicy` / `requestStopFromCloud` |
 | 上行 1011 | `net.lua` | `publishPirRecordStop` |
-| 默认配置 | `config.lua` | `pirMediaConfig` / `pirRecordPolicy` |
+| 硬件触发 | `config.lua` | `PIR_CFG` |
+| 默认策略 | `pir_ctrl.lua` | `pirMediaConfig` / `pirRecordPolicy` |
 
 ---
 

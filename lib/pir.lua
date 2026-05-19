@@ -1,70 +1,69 @@
---- PIR 人体红外硬件驱动（lib 层，仅 GPIO + 冷却）
--- 触发后发布 APP_EVENTS.PIR_HW_TRIGGERED，业务见 user/pirCtrl.lua
+--- PIR 人体红外（GPIO 中断 + 冷却）
+-- 引脚与参数：config.lua → PIR_CFG
 -- @module pir
--- @release 2026.5.18
+-- @release 2026.5.20
 
 require "sys"
-local gpioUtil = require "gpioUtil"
+require "config"
+local gpio_util = require "gpio_util"
 
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-local CONFIG = {
-    pin = 30,
-    triggerMode = "rising",
-    debounce = 100,
-    cooldown = 10000,
-}
-
-local state = {
-    last_trigger_time = 0,
-    cooldown_active = false,
-}
+local LOG_TAG = "pir"
+local pin
+local cfg
+local started = false
+local cooldownUntil = 0
 
 local function onInterrupt(level)
-    if level ~= 1 then return end
-    local now = os.time() * 1000
-    if state.cooldown_active and (now - state.last_trigger_time < CONFIG.cooldown) then
+    log.info(LOG_TAG, "触发0", pin)
+    local active = cfg.active_level
+    if active == nil then
+        active = 1
+    end
+    if level ~= active then
         return
     end
 
-    state.last_trigger_time = now
-    state.cooldown_active = true
+    local now = os.time() * 1000
+    if now < cooldownUntil then
+        return
+    end
 
-    local E = _G.APP_EVENTS or {}
-    if E.PIR_HW_TRIGGERED then
+    cooldownUntil = now + (cfg.cooldown_ms or 10000)
+    log.info(LOG_TAG, "触发", pin)
+
+    local E = _G.APP_EVENTS
+    if E and E.PIR_HW_TRIGGERED then
         sys.publish(E.PIR_HW_TRIGGERED)
     end
-
-    sys.timerStart(function()
-        state.cooldown_active = false
-    end, CONFIG.cooldown)
 end
 
-function start(cfg)
-    if cfg then
-        for k, v in pairs(cfg) do
-            CONFIG[k] = v
-        end
+function start()
+    if started then
+        return false
     end
-    if CONFIG.pin then
-        gpioUtil.setupInput(CONFIG.pin, onInterrupt, {
-            triggerMode = CONFIG.triggerMode,
-            pull = "pulldown",
-            debounce = CONFIG.debounce,
-        })
+    cfg = _G.PIR_CFG
+    pin = cfg and cfg.pin
+    if not pin or not cfg then
+        log.warn(LOG_TAG, "PIR_CFG 无效")
+        return false
     end
+
+    gpio_util.setup_input(pin, onInterrupt, {
+        trigger_mode = cfg.trigger_mode or "rising",
+        pull = cfg.pull or "pulldown",
+        debounce_ms = cfg.debounce_ms or 100,
+    })
+    started = true
+    log.info(LOG_TAG, "已启动", pin, "cooldown", cfg.cooldown_ms or 10000)
     return true
 end
 
 function getState()
-    return {
-        pin = CONFIG.pin,
-        cooldown = CONFIG.cooldown,
-        cooldown_active = state.cooldown_active,
-        last_trigger_time = state.last_trigger_time,
-    }
+    return { started = started, pin = pin }
 end
 
 return _M

@@ -1,12 +1,12 @@
 --- 串口桥接（主路径唯一 UART 入口）：AT + 字符串 + 十六进制
---- 全工程仅本模块可对 _G.uartid 执行 uart.setup / uart.on / uart.write
+--- 全工程仅本模块可对 UART_CFG.id 执行 uart.setup / uart.on / uart.write
 -- 主机行协议（以 \\r\\n 结尾）：
 --   AT+...           设备管理（含 REBOOT / POWEROFF / LOWPOWER）
 --   HEX:<hex>        下发十六进制到串口对端
 --   STR:<text>       下发字符串（自动补 \\r\\n）
 -- 非行数据（无 \\r\\n 或二进制块）走 onRaw / APP_UART_RX_RAW
--- @module uartBridge
--- @release 2026.5.18
+-- @module uart_bridge
+-- @release 2026.5.19
 
 require "sys"
 
@@ -149,25 +149,29 @@ local function notifyRxHex(bin)
 end
 
 local function getConfigSnapshot()
+    local meta = _G.APP_META or {}
+    local rt = _G.APP_RUNTIME or {}
     return {
         version = (PROJECT or "") .. "_" .. (VERSION or ""),
-        online = _G.OnlineStatus or 0,
-        power = _G.PowerStatus or 0,
-        lowpower = _G.lowPowerModeStatus or 0,
-        battery = _G.electricity or "--",
-        vbat = _G.vbat or "--",
-        interval = _G.LowPowerInterval or 0,
-        devicemodel = _G.devicemodel or "",
+        online = rt.online_status or 0,
+        power = rt.power_status or 0,
+        lowpower = rt.low_power_mode or 0,
+        battery = rt.battery_percent or "--",
+        vbat = rt.battery_mv or "--",
+        interval = rt.low_power_interval_sec or 0,
+        devicemodel = meta.device_model or "",
     }
 end
 
 local function setConfigValue(key, val)
-    if key == "interval" and tonumber(val) then
-        _G.LowPowerInterval = tonumber(val)
+    local rt = _G.APP_RUNTIME
+    local meta = _G.APP_META
+    if key == "interval" and tonumber(val) and rt then
+        rt.low_power_interval_sec = tonumber(val)
         return true, "\r\n+SETCFG:OK\r\n"
     end
-    if key == "devicemodel" and val then
-        _G.devicemodel = val
+    if key == "devicemodel" and val and meta then
+        meta.device_model = val
         return true, "\r\n+SETCFG:OK\r\n"
     end
     if key == "hexrpt" then
@@ -222,7 +226,8 @@ local function processAtCommand(cmd)
     end
 
     if cmd == "AT+LOWPOWER=ENTER" then
-        if (_G.PowerStatus or 0) == 0 and (_G.lowPowerModeStatus or 0) == 0 then
+        local rt = _G.APP_RUNTIME or {}
+        if (rt.power_status or 0) == 0 and (rt.low_power_mode or 0) == 0 then
             if handlers.onEnterLowPower then handlers.onEnterLowPower() end
             return "\r\n+LOWPOWER:ENTERING\r\n"
         end
@@ -230,7 +235,7 @@ local function processAtCommand(cmd)
     end
 
     if cmd == "AT+LOWPOWER=EXIT" then
-        if (_G.lowPowerModeStatus or 0) == 1 then
+        if ((_G.APP_RUNTIME or {}).low_power_mode or 0) == 1 then
             if handlers.onExitLowPower then handlers.onExitLowPower() end
             return "\r\n+LOWPOWER:WAKEUP\r\n"
         end
@@ -343,8 +348,8 @@ function start(options)
     end
 
     options = options or {}
-    uartId = options.uartId or _G.uartid or 1
-    baud = options.baud or _G.uart_baud or 115200
+    uartId = options.uartId or (_G.UART_CFG and _G.UART_CFG.id) or 1
+    baud = options.baud or (_G.UART_CFG and _G.UART_CFG.baud) or 115200
     lineProtocol = options.lineProtocol ~= false
     hexReport = options.hexReport == true
 

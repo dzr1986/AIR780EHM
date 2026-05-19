@@ -117,9 +117,11 @@ end
 
 local function applyProductKey(data)
     local pk = data.product_key or data.project_key or data.productKey or data.projectKey
-        or config.product_key or _G.PRODUCT_KEY
+        or config.product_key or (_G.FOTA_CFG and _G.FOTA_CFG.product_key)
     if pk and pk ~= "" then
-        _G.PRODUCT_KEY = tostring(pk)
+        if _G.FOTA_CFG then
+            _G.FOTA_CFG.product_key = tostring(pk)
+        end
         return true
     end
     return false
@@ -170,8 +172,8 @@ local function runOtaTask(data)
         local opts, _ = buildOptionsFromPayload(data)
         applyProductKey(data)
 
-        if not opts.url and not _G.PRODUCT_KEY and not config.product_key then
-            log.error(LOG_TAG, "无 url 且未配置 PRODUCT_KEY，无法 OTA")
+        if not opts.url and not (_G.FOTA_CFG and _G.FOTA_CFG.product_key) and not config.product_key then
+            log.error(LOG_TAG, "无 url 且未配置 FOTA_CFG.product_key，无法 OTA")
             reportStatus("failed", -2, "no_url_and_no_product_key", data)
             return
         end
@@ -208,11 +210,13 @@ function start(options)
         return false
     end
 
-    if _G.FOTA_CONFIG then
-        mergeConfig(_G.FOTA_CONFIG)
+    if _G.FOTA_CFG then
+        mergeConfig(_G.FOTA_CFG)
     end
     if config.product_key and config.product_key ~= "" then
-        _G.PRODUCT_KEY = _G.PRODUCT_KEY or config.product_key
+        if _G.FOTA_CFG and config.product_key then
+            _G.FOTA_CFG.product_key = _G.FOTA_CFG.product_key or config.product_key
+        end
     end
 
     if options then
@@ -239,7 +243,7 @@ function getState()
         request_count = requestCount,
         last_request_time = lastRequestTime,
         last_result = lastResult,
-        product_key = _G.PRODUCT_KEY,
+        product_key = _G.FOTA_CFG and _G.FOTA_CFG.product_key,
     }
 end
 

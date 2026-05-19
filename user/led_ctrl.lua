@@ -1,7 +1,10 @@
---- LED控制模块
+--- LED 控制模块
+-- @module led_ctrl
 -- 管理红蓝LED指示灯，支持启动序列和电量指示
 require "sys"
+require "config"
 local led = require "led"
+local gpio_util = require "gpio_util"
 local _M = { _VERSION = "1.0.0" }
 module(..., package.seeall)
 _G[_M] = _M
@@ -65,7 +68,7 @@ local function ledStatusTask()
             led.runStartupSequence(ledPins.red, ledPins.blue, LED_CONFIG.startupSequence)
         end
         while true do
-            local batteryPercent = tonumber(_G.electricity) or -1
+            local batteryPercent = tonumber((_G.APP_RUNTIME or {}).battery_percent) or -1
             if LED_CONFIG.battery then
                 led.runBatteryPattern(ledPins.red, ledPins.blue, batteryPercent, LED_CONFIG.battery)
             else
@@ -84,11 +87,22 @@ function _M.start(cfg)
     if cfg then
         for k, v in pairs(cfg) do LED_CONFIG[k] = v end
     end
+    local gout = _G.GPIO_OUT or {}
     if LED_CONFIG.redPin then
-        ledPins.red = gpio.setup(LED_CONFIG.redPin, 0)
+        local e = gout.led_red
+        if e and e.pin == LED_CONFIG.redPin then
+            ledPins.red = gpio_util.setup_output(e)
+        else
+            ledPins.red = gpio.setup(LED_CONFIG.redPin, 0)
+        end
     end
     if LED_CONFIG.bluePin then
-        ledPins.blue = gpio.setup(LED_CONFIG.bluePin, 0)
+        local e = gout.bat_stat_led
+        if e and e.pin == LED_CONFIG.bluePin then
+            ledPins.blue = gpio_util.setup_output(e)
+        else
+            ledPins.blue = gpio.setup(LED_CONFIG.bluePin, 0)
+        end
     end
     ledOff()
     ledStatusTask()

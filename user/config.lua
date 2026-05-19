@@ -1,152 +1,216 @@
-﻿--- 模块功能：项目全局配置（纯数据，不含运行时状态）
+﻿--- 项目配置（纯数据：引脚、采样、连接）
+-- GPIO：GPIO_IN / GPIO_OUT 含 init_level、on_level、pull 等，见 lib/gpio_util.lua
+-- 业务：app_config.lua、key_config.lua、pir_ctrl.lua
 -- @module config
--- @release 2026.5.18
+-- @release 2026.5.21
 
 module(..., package.seeall)
 _G[_modname or (...)] = _M
 
 -- ============================================================
--- 基础配置
+-- 应用元数据 / 栈 / 运行时
 -- ============================================================
-_G.version = "1.0.0"
-_G.logFlag = false
-_G.devicemodel = "awake_normal"
-_G.cmd_ext = ""
-_G.update_time = 10 * 1000
-_G.deeprest_time = 10 * 60 * 1000
+_G.APP_META = {
+    version = "1.0.0",
+    log_enabled = false,
+    device_model = "awake_normal",
+    cmd_ext = "",
+    deep_rest_ms = 10 * 60 * 1000,
+}
 
--- 主路径栈选择（app.lua 按此加载）
 _G.APP_STACK = {
     mqtt = "net",
-    uart = "uartBridge",
+    uart = "uart_bridge",
 }
 
--- 运行时状态（AT/上报等会读写）
-_G.OnlineStatus = 0
-_G.PowerStatus = 0
-_G.lowPowerModeStatus = 0
-_G.LowPowerInterval = 30
-_G.electricity = "--"
-_G.vbat = "--"
-
--- PIR 默认媒体策略（可由云端 2010 或 pirCtrl.setMediaConfig 覆盖）
-_G.pirMediaConfig = {
-    action = "photo",
-    uploadMode = "auto",
-    quality = "high",
-}
-
--- PIR 录像停止策略（可由云端 2010 字段或 2011 命令配合使用）
-_G.pirRecordPolicy = {
-    maxDurationSec = 60,    -- 条件1：最长录像秒数，到时发布 PIR_STOP_RECORDING(reason=timer)
-    stopOnSecondPir = true, -- 条件2：录像中再次 PIR 触发则停止(reason=pir_retrigger)
-    stopOnCloud = true,     -- 条件3：允许云端 2011 停止(reason=cloud)
+_G.APP_RUNTIME = {
+    online_status = 0,
+    power_status = 0,
+    low_power_mode = 0,
+    low_power_interval_sec = 30,
+    battery_percent = "--",
+    battery_mv = "--",
+    battery_consumption_rate = "0",
 }
 
 -- ============================================================
--- 电量相关配置（纯配置，不含运行时状态）
+-- GPIO 输入（只读 / 中断，勿 gpio.set 当输出）
+-- 原理图：ps01masch260318.pdf → Air780EHM M1
+--
+-- 字段说明：
+--   pin            模组 GPIO 号
+--   net_name       原理图网络名
+--   pull           pullup | pulldown
+--   trigger_mode   rising | falling | both（中断边沿）
+--   debounce_ms    防抖(ms)
+--   active_level   有效电平 0/1（按键按下、PIR 触发、USB 插入等）
 -- ============================================================
-_G.vbat_max = 4300
-_G.vbat_min = 3300
-
--- ============================================================
--- UART 配置（方案：仅 uartBridge 管理主串口）
--- APP_STACK.uart = "uartBridge"；禁止在 lib/user 其他模块对 uartid 做 setup/on/write。
--- 收发请 require "uartBridge" 或 app 注入的 _G.uartBridge（sendString/sendHex/write）。
--- ============================================================
-_G.uartid = 1
-_G.uart_baud = 115200
-
--- Air780EHM 模组侧看门狗（LuatOS wdt，与 t3x 无关；app → lib/watchdog.lua）
-_G.WDT_CONFIG = {
-    timeout_ms = 9000,       -- 超时复位时间(ms)
-    feed_interval_ms = 3000,   -- 喂狗周期，须小于 timeout_ms
+_G.GPIO_IN = {
+    -- 按键（上拉，按下为低）
+    pwr_key = {
+        pin = 35,
+        net_name = "PWRKEY",
+        pull = "pullup",
+        trigger_mode = "both",
+        debounce_ms = 50,
+        active_level = 0,
+    },
+    boot_key = {
+        pin = 28,
+        net_name = "BOOT_KEY",
+        pull = "pullup",
+        trigger_mode = "both",
+        debounce_ms = 100,
+        active_level = 0,
+    },
+    -- 协处理器就绪（下拉，就绪为高）
+    coproc_ready = {
+        pin = 29,
+        net_name = "COPROC_READY",
+        pull = "pulldown",
+        trigger_mode = "rising",
+        debounce_ms = 100,
+        active_level = 1,
+    },
+    -- USB / 充电状态（只读）
+    usb_det = {
+        pin = 27,
+        net_name = "USB_DET",
+        pull = "pullup",
+        trigger_mode = "both",
+        debounce_ms = 50,
+        active_level = 0,
+    },
+    chg_state = {
+        pin = 17,
+        net_name = "CHG_STATE",
+        pull = "pullup",
+        trigger_mode = "both",
+        debounce_ms = 50,
+        active_level = 1,
+    },
+    -- PIR 人体检测（下拉，触发为高）
+    pir_det = {
+        pin = 30,
+        net_name = "PIR_MCU_DET",
+        pull = "pulldown",
+        trigger_mode = "rising",
+        debounce_ms = 100,
+        active_level = 1,
+    },
+    misc_pullup = {
+        pin = 7,
+        net_name = "GPIO_INPUT_PULLUP",
+        pull = "pullup",
+        trigger_mode = "both",
+        debounce_ms = 50,
+        active_level = 1,
+    },
 }
 
 -- ============================================================
--- MQTT 连接参数
+-- GPIO 输出
+--
+-- 字段说明：
+--   init_level     上电 gpio.setup 初始电平（0=低，1=高）
+--   on_level       逻辑「开启」时电平（LED 亮、t3x 供电等）
 -- ============================================================
-_G.mqtt_host = "112.86.146.218"
-_G.mqtt_port = 2123
-_G.mqtt_isssl = false
-_G.mqtt_user_name = "fptop1"
-_G.mqtt_password = "fptop1.com2025@#$&"
-_G.mqtt_client_id = nil
+_G.GPIO_OUT = {
+    led_red = {
+        pin = 20,
+        net_name = "LED_RED",
+        init_level = 0,
+        on_level = 1,
+    },
+    bat_stat_led = {
+        pin = 21,
+        net_name = "BAT_STAT_LED",
+        init_level = 1,
+        on_level = 1,
+    },
+    t3x_boot = {
+        pin = 26,
+        net_name = "T31_BOOT",
+        init_level = 0,
+        on_level = 1,
+    },
+    t3x_pwr_wake = {
+        pin = 22,
+        net_name = "T3X_PWR_WAKE",
+        init_level = 0,
+        on_level = 1,
+    },
+    t3x_ota = {
+        pin = 32,
+        net_name = "T3X_OTA",
+        init_level = 0,
+        on_level = 1,
+    },
+}
 
 -- ============================================================
--- FOTA（合宙 IoT 或自建 URL，见 lib/fota.lua / MQTT 2004）
+-- PIR（冷却等；引脚/中断参数与 GPIO_IN.pir_det 同步）
 -- ============================================================
-_G.PRODUCT_KEY = "l1I33ZHnJlrURfjigaHRo5uZhM0NDPOO"
+_G.PIR_COOLDOWN_MS = {
+    frequent = 3 * 1000,
+    normal = 10 * 1000,
+    standard = 15 * 1000,
+    economy = 30 * 1000,
+}
 
-_G.FOTA_CONFIG = {
-    product_key = _G.PRODUCT_KEY,
+do
+    local det = _G.GPIO_IN.pir_det
+    _G.PIR_CFG = {
+        pin = det.pin,
+        trigger_mode = det.trigger_mode,
+        pull = det.pull,
+        debounce_ms = det.debounce_ms,
+        active_level = det.active_level,
+        cooldown_ms = _G.PIR_COOLDOWN_MS.frequent,
+    }
+end
+
+-- ============================================================
+-- 电池 / UART / 看门狗 / MQTT / FOTA
+-- ============================================================
+_G.BATTERY_CFG = {
+    adc = {
+        channel = 1,
+        range = nil,
+        mv_scale = 4090 / 1311,
+    },
+    cell = {
+        v_max_mv = 4200,
+        v_min_mv = 3000,
+    },
+    sample_interval_ms = 10 * 1000,
+    mqtt_report_interval_sec = 60,
+}
+
+_G.UART_CFG = {
+    id = 1,
+    baud = 115200,
+}
+
+_G.WDT_CFG = {
+    timeout_ms = 9000,
+    feed_interval_ms = 3000,
+}
+
+_G.MQTT_CFG = {
+    host = "112.86.146.218",
+    port = 2123,
+    ssl = false,
+    username = "fptop1",
+    password = "fptop1.com2025@#$&",
+    client_id = nil,
+}
+
+_G.FOTA_CFG = {
+    product_key = "l1I33ZHnJlrURfjigaHRo5uZhM0NDPOO",
     request_delay_ms = 500,
     auto_reboot_on_success = true,
     default_options = {},
 }
 
--- ============================================================
--- GPIO 引脚定义
--- ============================================================
-_G.pwrkey_io_number = 35
-_G.t3x_ota_key_io_number = 28
--- t3x 电源使能（与唤醒脉冲同一 GPIO：常高供电，唤醒时拉低约 120ms 再拉高）
-_G.t3x_init_io_number = 22
-_G.t3x_ota_io_number = 32
-_G.t3x_boot_io_number = 26
-_G.led_red_io_number = 20
-_G.led_blue_io_number = 21
-_G.netstatus_io_number = 27
-_G.gpio_input_pullup_io_number = 7
-_G.PIR_io_number = 30
-_G.t3x_startup_io_number = 29
-
--- ============================================================
--- 模块功能开关（控制各功能模块的启用/禁用）
--- ============================================================
-_G.MODULE_FLAGS = {
-    watchdog = true,        -- Air780 模组 WDT：lib/watchdog.lua（t3x 侧无看门狗）
-    uart_bridge = true,     -- 串口桥接：AT / 字符串 / 十六进制
-    t3x_wakeup = true,      -- t3x唤醒脉冲：经 t3x.pulseWakeup()（与电源同脚 GPIO22）
-    gpio = true,            -- GPIO处理：按键、PIR、LED等外设
-    pmd_runtime = true,     -- PMD电源管理：USB插拔检测和电源状态管理
-    mqtt = true,            -- MQTT通信：远程消息收发
-    battery = true,         -- 电池检测：电量读取
-    charge = true,          -- 充电检测：充电状态监控
-    sntp = true,            -- SNTP时间同步：网络时间校准
-    mobile_info = true,     -- 移动网络信息：信号强度、运营商
-    fota = true,            -- FOTA：MQTT 2004 → lib/fota.lua
-    rndis = true,           -- USB RNDIS：lib/usb_rndis.lua（PC 经 USB 上网，会短暂飞行模式）
-}
-
--- ============================================================
--- 事件定义
--- ============================================================
-_G.APP_EVENTS = {
-    PIR_HW_TRIGGERED = "APP_PIR_HW_TRIGGERED",
-    GPIO_PIR_TRIGGERED = "APP_GPIO_PIR_TRIGGERED",
-    GPIO_VBUS_CHANGED = "APP_GPIO_VBUS_CHANGED",
-    GPIO_PWRKEY_SHORT = "APP_GPIO_PWRKEY_SHORT",
-    GPIO_PWRKEY_LONG = "APP_GPIO_PWRKEY_LONG",
-    GPIO_BOOTKEY_SHORT = "APP_GPIO_BOOTKEY_SHORT",
-    GPIO_BOOTKEY_LONG = "APP_GPIO_BOOTKEY_LONG",
-    GPIO_t3x_STARTED = "APP_GPIO_t3x_STARTED",
-    POWER_ENTER_REST = "APP_POWER_ENTER_REST",
-    POWER_EXIT_REST = "APP_POWER_EXIT_REST",
-    POWER_ENTERED_REST = "APP_POWER_ENTERED_REST",
-    POWER_EXITED_REST = "APP_POWER_EXITED_REST",
-    MQTT_SERVER_DATA = "APP_MQTT_SERVER_DATA",
-    MQTT_PUBLISH_WAKEUP = "APP_MQTT_PUBLISH_WAKEUP",
-    MQTT_PUBLISH_REST = "APP_MQTT_PUBLISH_REST",
-    MQTT_OFFLINE = "APP_MQTT_OFFLINE",
-    DEVICE_OTA_REQUEST = "APP_DEVICE_OTA_REQUEST",
-    MQTT_OTA_STATUS = "APP_MQTT_OTA_STATUS",
-    DEVICE_REBOOT_REQUEST = "APP_DEVICE_REBOOT_REQUEST",
-    DEVICE_POWER_OFF_REQUEST = "APP_DEVICE_POWER_OFF_REQUEST",
-    PIR_TAKE_PHOTO = "APP_PIR_TAKE_PHOTO",
-    PIR_RECORD_VIDEO = "APP_PIR_RECORD_VIDEO",
-    PIR_STOP_RECORDING = "APP_PIR_STOP_RECORDING",
-    UART_RX_RAW = "APP_UART_RX_RAW",
-    UART_RX_STRING = "APP_UART_RX_STRING",
-    UART_RX_HEX = "APP_UART_RX_HEX",
-}
+return _M

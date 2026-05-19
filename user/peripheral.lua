@@ -1,111 +1,97 @@
 ﻿--- 外设聚合模块
--- 统一管理 LED、电源键、t3x 按键、PIR 硬件（lib/pir）
--- PIR 业务不走本模块回调：硬件中断 → APP_PIR_HW_TRIGGERED → pirCtrl（app 内 pirCtrl.start）
--- 媒体/录像请订阅 APP_EVENTS 或改 pirCtrl，勿传 onPirTriggered / onTriggered
+-- 统一管理 LED、GPIO 按键（lib/key）、PIR 硬件（lib/pir）
+-- PIR 业务：硬件中断 → PIR_HW_TRIGGERED → pir_ctrl（app 内 pir_ctrl.start）
 require "sys"
 require "sysplus"
-local ledCtrl = require "ledCtrl"
-local powerKey = require "powerKey"
-local t3xKey = require "t3xKey"
+local led_ctrl = require "led_ctrl"
+local key = require "key"
 local pir = require "pir"
-local pirCtrl = require "pirCtrl"
+local pir_ctrl = require "pir_ctrl"
 local _M = {}
 module(..., package.seeall)
 
---- 将 app 扁平配置映射为子模块结构
+--- 将 app 扁平配置映射为 lib/key 结构
 -- @param cfg 扁平或嵌套配置表
--- @return { led, pwrkey, t3xKey, pir }
+-- @return { led, key }
 local function normalizeConfig(cfg)
     cfg = cfg or {}
 
     local led = cfg.led or {}
-    local pwrkey = cfg.pwrkey or {}
-    local t3xKeyCfg = cfg.t3xKey or {}
-    local pirCfg = cfg.pir or {}
+    local keyCfg = cfg.key or {}
 
     if cfg.ledRedPin then led.redPin = cfg.ledRedPin end
     if cfg.ledBluePin then led.bluePin = cfg.ledBluePin end
 
-    if cfg.pwrkeyPin then pwrkey.pin = cfg.pwrkeyPin end
-    if cfg.onPwrkeyShort then pwrkey.onShortPress = cfg.onPwrkeyShort end
-    if cfg.onPwrkeyLong then pwrkey.onLongPress = cfg.onPwrkeyLong end
+    if cfg.pwrkeyPin or cfg.onPwrkeyShort or cfg.onPwrkeyLong then
+        keyCfg.pwrkey = keyCfg.pwrkey or {}
+        if cfg.pwrkeyPin then keyCfg.pwrkey.pin = cfg.pwrkeyPin end
+        if cfg.onPwrkeyShort then keyCfg.pwrkey.onShortPress = cfg.onPwrkeyShort end
+        if cfg.onPwrkeyLong then keyCfg.pwrkey.onLongPress = cfg.onPwrkeyLong end
+    end
 
     if cfg.bootkeyPin or cfg.onBootkeyShort or cfg.onBootkeyLong then
-        t3xKeyCfg.bootkey = t3xKeyCfg.bootkey or {}
-        if cfg.bootkeyPin then t3xKeyCfg.bootkey.pin = cfg.bootkeyPin end
-        if cfg.onBootkeyShort then t3xKeyCfg.bootkey.onShortPress = cfg.onBootkeyShort end
-        if cfg.onBootkeyLong then t3xKeyCfg.bootkey.onLongPress = cfg.onBootkeyLong end
-    end
-    if cfg.t3xStartupPin or cfg.ont3xStarted then
-        t3xKeyCfg.t3xStartup = t3xKeyCfg.t3xStartup or {}
-        if cfg.t3xStartupPin then t3xKeyCfg.t3xStartup.pin = cfg.t3xStartupPin end
-        if cfg.ont3xStarted then t3xKeyCfg.t3xStartup.onStarted = cfg.ont3xStarted end
+        keyCfg.bootkey = keyCfg.bootkey or {}
+        if cfg.bootkeyPin then keyCfg.bootkey.pin = cfg.bootkeyPin end
+        if cfg.onBootkeyShort then keyCfg.bootkey.onShortPress = cfg.onBootkeyShort end
+        if cfg.onBootkeyLong then keyCfg.bootkey.onLongPress = cfg.onBootkeyLong end
     end
 
-    if cfg.pirPin then pirCfg.pin = cfg.pirPin end
+    if cfg.readyPin or cfg.onReady then
+        keyCfg.ready = keyCfg.ready or {}
+        if cfg.readyPin then keyCfg.ready.pin = cfg.readyPin end
+        if cfg.onReady then keyCfg.ready.onReady = cfg.onReady end
+    end
 
     return {
         led = led,
-        pwrkey = pwrkey,
-        t3xKey = t3xKeyCfg,
-        pir = pirCfg,
+        key = keyCfg,
     }
 end
 
 --[[
 启动所有外设模块
 
-@param cfg 配置表，支持嵌套或 app 扁平字段：
-  led = { redPin, bluePin }
-  pwrkey = { pin, onShortPress, onLongPress }
-  t3xKey = { bootkey = { pin, onShortPress, onLongPress }, t3xStartup = { pin, onStarted } }
-  pir = { pin, cooldown, debounce }   -- 仅硬件；无 onTriggered 回调
-  或扁平：ledRedPin, ledBluePin, pwrkeyPin, onPwrkeyLong, bootkeyPin, onBootkeyLong,
-         t3xStartupPin, ont3xStarted, pirPin
-  PIR 状态/策略：pirCtrl.getState() / getMediaConfig()，见 getState/getConfig
+@param cfg 配置表；按键默认从 key_config.KEY_CONFIG 加载，可扁平覆盖：
+  pwrkeyPin, bootkeyPin, readyPin, onPwrkeyShort/Long, onBootkeyShort/Long, onReady
+  或嵌套 key = { pwrkey={}, bootkey={}, ready={} }
 ]]
 function _M.start(cfg)
     local sub = normalizeConfig(cfg)
-    ledCtrl.start(sub.led)
-    powerKey.start(sub.pwrkey)
-    t3xKey.start(sub.t3xKey)
-    pir.start(sub.pir)
+    led_ctrl.start(sub.led)
+    key.start(sub.key)
+    pir.start()
     return true
 end
 
---- 获取所有子模块状态
 function _M.getState()
     return {
-        led = ledCtrl.getState(),
-        pwrkey = powerKey.getState(),
-        t3xKey = t3xKey.getState(),
-        pir = pirCtrl.getState(),
+        led = led_ctrl.getState(),
+        key = key.getState(),
+        pir = pir_ctrl.getState(),
     }
 end
 
---- 获取所有子模块配置
 function _M.getConfig()
     return {
         led = ledCtrl.getConfig(),
-        pwrkey = powerKey.getConfig(),
-        t3xKey = t3xKey.getConfig(),
-        pir = pirCtrl.getMediaConfig(),
+        key = key.getConfig(),
+        pir = pir_ctrl.getMediaConfig(),
     }
 end
 
 function _M.setLed(red, blue)
-    ledCtrl.setLed(red, blue)
+    led_ctrl.setLed(red, blue)
 end
 
 function _M.turnOffLed()
-    ledCtrl.turnOff()
+    led_ctrl.turnOff()
 end
 
 function _M.runLedPattern(pattern)
-    if pattern == "blink_red" and ledCtrl.blinkRed then
-        sys.taskInit(ledCtrl.blinkRed)
-    elseif pattern == "blink_blue" and ledCtrl.blinkBlue then
-        sys.taskInit(ledCtrl.blinkBlue)
+    if pattern == "blink_red" and led_ctrl.blinkRed then
+        sys.taskInit(led_ctrl.blinkRed)
+    elseif pattern == "blink_blue" and led_ctrl.blinkBlue then
+        sys.taskInit(led_ctrl.blinkBlue)
     else
         log.warn("peripheral", "未知LED模式", pattern)
     end

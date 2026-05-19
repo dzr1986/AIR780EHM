@@ -10,7 +10,7 @@
 | `pir.lua` | PIR 硬件中断 |
 | `led.lua` | LED 灯效（`user/ledCtrl`） |
 | `battery.lua` | 电量 |
-| `charge.lua` | [归档] 充电检测；主路径用 `lib/usb_charge.lua` |
+| `charge.lua` | [归档] 充电检测；主路径用 `user/charge.lua` |
 | `sntpSync.lua` | 网络授时 |
 | `mobileInfo.lua` | 蜂窝信息（无串口） |
 | `watchdog.lua` | Air780 模组 WDT |

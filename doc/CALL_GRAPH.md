@@ -1,6 +1,6 @@
-# user / lib 调用关系（780EHM_PJ）
+﻿# user / lib 调用关系（780EHM_PJ）
 
-> 与代码同步：`config.lua` 为配置真源；MQTT=`net.lua`；UART=`uartBridge.lua`（唯一串口入口）。  
+> 与代码同步：配置见 [`CONFIG.md`](CONFIG.md)；MQTT=`net.lua`；UART=`lib/uart_bridge.lua`；按键=`lib/key.lua` + `keyConfig.KEY_CONFIG`。  
 > 深度分析见 **[CODE_ANALYSIS.md](./CODE_ANALYSIS.md)**。
 
 ---
@@ -19,8 +19,8 @@ main.lua
 | # | 条件 | 动作 |
 |---|------|------|
 | 1 | 始终 | `setupEventHandlers()` + **`pirCtrl.start()`** |
-| 2 | `watchdog` | `watchdog.start(WDT_CONFIG)` |
-| 3 | `uart_bridge` | `uartBridge.start()` → `_G.uartBridge` |
+| 2 | `watchdog` | `watchdog.start(WDT_CFG)` |
+| 3 | `uart_bridge` | `uart_bridge.start()` → `_G.uart_bridge` |
 | 4 | 始终 | `t3x.start()` |
 | 5 | `gpio` | `peripheral.start({ 扁平引脚 })` |
 | 6 | `pmd_runtime` | PMD USB |
@@ -50,20 +50,20 @@ bootMqtt (task)
 
 ```
 app.lua
-  require: config, sntpSync, uartBridge, pirCtrl, battery, charge, mobileInfo, watchdog, fota
+  require: config, sntpSync, uart_bridge, pirCtrl, bat_adc, usb_charge, mobileInfo, watchdog, fota
   inject:  peripheral, net, t3x  (main.lua 传入)
 
 peripheral.lua
-  require: ledCtrl, powerKey, t3xKey, pir, pirCtrl
+  require: ledCtrl, key, pir, pirCtrl
 
 net.lua
   require: config, pirCtrl
 
-pirCtrl.lua
+pir_ctrl.lua
   require: sys
 
 lib/pir.lua
-  require: gpioUtil
+  require: gpio_util
 
 main.lua
   require: config, app, peripheral, net, t3x
@@ -72,10 +72,10 @@ main.lua
 | 模块 | 直接依赖 |
 |------|----------|
 | main | config, app, peripheral, net, t3x |
-| app | config, sntpSync, uartBridge, pirCtrl, battery, charge, mobileInfo, watchdog + 注入 |
-| peripheral | ledCtrl, powerKey, t3xKey, pir, pirCtrl |
+| app | config, sntpSync, uart_bridge, pirCtrl, battery, charge, mobileInfo, watchdog + 注入 |
+| peripheral | ledCtrl, key, pir, pirCtrl |
 | net | config, pirCtrl |
-| uartBridge | sys |
+| uart_bridge | sys |
 | t3x | sys, config 引脚 |
 
 **规则**：`lib/*` 不得 `require user/*`。
@@ -109,7 +109,7 @@ lib/pir (GPIO30 rising, cooldown 10s)
 
 ```
 PMD USB 拔出 (state=0)
-  → PowerStatus=0, GPIO_VBUS_CHANGED
+  → APP_RUNTIME.power_status=0, GPIO_VBUS_CHANGED
   → onEnterLowPower (if was awake)
        → POWER_ENTERED_REST, t3x.enterSleep (pm.hibernate), publishRest
   → startMqtt() if not started (fallback)
@@ -132,8 +132,8 @@ MQTT 2002 / AT+LOWPOWER
 ## 5. 按键事件流
 
 ```
-powerKey → GPIO_PWRKEY_SHORT / LONG
-t3xKey   → GPIO_BOOTKEY_SHORT / LONG, GPIO_t3x_STARTED
+lib/key pwrkey → GPIO_PWRKEY_SHORT / LONG
+lib/key  → GPIO_BOOTKEY_SHORT / LONG, GPIO_COPROC_READY
 
 app subscribe:
   PWRKEY_LONG     → pm.shutdown()
@@ -147,7 +147,7 @@ app subscribe:
 
 | 下行 | 处理 |
 |------|------|
-| 2003 | `LowPowerInterval` |
+| 2003 | `APP_RUNTIME.low_power_interval_sec` |
 | 2004 | reboot / off → 设备事件 |
 | 2001 | 唤醒查询 → 1001 |
 | 2002 | 低功耗 enter/exit |
@@ -170,7 +170,7 @@ app subscribe:
 
 ## 7. 串口
 
-仅 `uartBridge` 调用 `uart.setup/on/write`（`_G.uartid` 默认 1）。
+仅 `uart_bridge` 调用 `uart.setup/on/write`（`UART_CFG.id` 默认 1）。
 
 | 主机行 | 处理 |
 |--------|------|
@@ -187,7 +187,7 @@ app subscribe:
 
 | `lib/` 根（8） | `lib/archive/` |
 |----------------|----------------|
-| gpioUtil, pir, led, battery, charge, sntpSync, mobileInfo, watchdog, **fota** | powerMode, mqtt*, netClient, demoTask… |
+| gpio_util, pir, led, battery, charge, sntpSync, mobileInfo, watchdog, **fota** | powerMode, mqtt*, netClient, demoTask… |
 
 ---
 

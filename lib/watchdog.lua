@@ -48,7 +48,7 @@ local function feedOnce()
 end
 
 --- 启动 Air780 模组看门狗（重复调用无效）
--- @param opts 覆盖 _G.WDT_CONFIG：timeout_ms, feed_interval_ms
+-- @param opts 覆盖 _G.WDT_CFG：timeout_ms, feed_interval_ms
 function start(opts)
     if started then
         log.warn(LOG_TAG, "已启动")
@@ -63,7 +63,7 @@ function start(opts)
         return false
     end
 
-    mergeConfig(opts or _G.WDT_CONFIG)
+    mergeConfig(opts or _G.WDT_CFG)
 
     local timeout = config.timeout_ms
     local interval = config.feed_interval_ms

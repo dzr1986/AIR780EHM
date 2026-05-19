@@ -1,4 +1,4 @@
---- 蜂窝网络信息周期采集（无串口；串口统一由 user/uartBridge 管理）
+--- 蜂窝网络信息周期采集（无串口；串口统一由 lib/uartBridge 管理）
 -- @module mobileInfo
 -- @release 2026.5.18
 

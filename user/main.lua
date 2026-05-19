@@ -9,6 +9,8 @@ local isEntry = moduleName == nil
 require "sys"
 require "sysplus"
 require "config"
+require "app_config"
+require "key_config"
 
 local app = require "app"
 local peripheral = require "peripheral"

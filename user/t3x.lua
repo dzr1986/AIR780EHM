@@ -3,6 +3,8 @@
 -- @release 2026.5.18
 -- @description t3x 电源、BOOT/OTA、休眠（模组 WDT 见 lib/watchdog.lua）
 require "sys"
+require "config"
+local gpio_util = require "gpio_util"
 
 local _modname = ...
 module(_modname, package.seeall)
@@ -25,17 +27,17 @@ local t3xOtaPin = nil
 -- 最后操作记录
 local lastAction = nil
 
--- 配置（t3x_init_io_number：电源使能 + 唤醒脉冲，同一硬件信号）
-local powerPin = _G.t3x_init_io_number
+-- 配置（t3x_pwr_wake：电源使能 + 唤醒脉冲，同一硬件信号）
+local gout = _G.GPIO_OUT or {}
+local entry_pwr = gout.t3x_pwr_wake
+local entry_boot = gout.t3x_boot
+local entry_ota = gout.t3x_ota
 local pulseLowMs = 120
-local bootPin = _G.t3x_boot_io_number
-local otaPin = _G.t3x_ota_io_number
 
--- 电平配置
-local powerOnLevel = 1
-local powerOffLevel = 0
-local bootModeLevel = 1
-local otaModeLevel = 1
+local powerOnLevel = entry_pwr and entry_pwr.on_level or 1
+local powerOffLevel = entry_pwr and entry_pwr.init_level or 0
+local bootModeLevel = entry_boot and entry_boot.on_level or 1
+local otaModeLevel = entry_ota and entry_ota.on_level or 1
 
 -- BOOT 模式切换延迟(ms)
 local bootDelay = 500
@@ -54,9 +56,9 @@ local state = {
 function start()
     log.info("t3x", "========== t3x 控制模块启动 ==========")
 
-    t3xPowerPin = gpio.setup(powerPin, powerOffLevel)
-    t3xBootModePin = gpio.setup(bootPin, 0)
-    t3xOtaPin = gpio.setup(otaPin, 0)
+    t3xPowerPin = gpio_util.setup_output(entry_pwr)
+    t3xBootModePin = gpio_util.setup_output(entry_boot)
+    t3xOtaPin = gpio_util.setup_output(entry_ota)
 
     powerOn()
 
@@ -195,10 +197,10 @@ function enterDeepSleep()
     log.info("t3x", "========== 进入深度休眠 ==========")
     state.power_state = "sleeping"
 
-    if _G.uartBridge and _G.uartBridge.stop then
-        _G.uartBridge.stop()
-    elseif _G.uartid then
-        uart.close(_G.uartid)
+    if _G.uart_bridge and _G.uart_bridge.stop then
+        _G.uart_bridge.stop()
+    elseif _G.UART_CFG and _G.UART_CFG.id then
+        uart.close(_G.UART_CFG.id)
     end
 
     pm.deepSleep()

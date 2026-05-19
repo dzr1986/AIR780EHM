@@ -1,4 +1,4 @@
-# MQTT 通信协议（net）
+﻿# MQTT 通信协议（net）
 
 > **代码**：`user/net.lua` · **配置**：`user/config.lua`  
 > **下行手册**：[MQTT_DOWNLINK.md](./MQTT_DOWNLINK.md) · **PIR**：[PIR_PROTOCOL.md](./PIR_PROTOCOL.md)  
@@ -98,7 +98,7 @@ USB 拔出：业务低功耗 + 在线时 **1002**；MQTT 保持连接。
 
 | 字段 | 说明 |
 |------|------|
-| `interval` | 可选，秒；写入 `_G.LowPowerInterval` |
+| `interval` | 可选，秒；写入 `APP_RUNTIME.low_power_interval_sec` |
 
 **任意 2003 均应答 1003**；另每 60s 周期上报 1003。
 

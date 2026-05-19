@@ -1,7 +1,7 @@
-# 串口桥接协议（uartBridge）
+﻿# 串口桥接协议（uart_bridge）
 
-> 适用：`user/uartBridge.lua`（主路径**唯一** UART 入口）  
-> 配置：`config.lua` → `uartid`（默认 1）、`uart_baud`（默认 115200）  
+> 适用：`lib/uart_bridge.lua`（主路径**唯一** UART 入口）  
+> 配置：`config.lua` → `UART_CFG.id`（默认 1）、`UART_CFG.baud`（默认 115200）  
 > 更新：2026-05-18
 
 ---
@@ -12,10 +12,10 @@
 - 行协议：主机命令以 `\r\n` 结尾
 - 对端数据：任意原始字节经 `onRaw` / `APP_UART_RX_RAW` 上报；含 `\r\n` 时 additionally 按行解析
 
-**禁止**在其他模块对 `uartid` 调用 `uart.setup`；收发请用：
+**禁止**在其他模块对 `UART_CFG.id` 调用 `uart.setup`；收发请用：
 
 ```lua
-local ub = _G.uartBridge or require "uartBridge"
+local ub = _G.uart_bridge or require "uart_bridge"
 ub.sendString("hello")
 ub.sendHex("A0B1FF")
 ub.write(binaryData)
@@ -37,8 +37,8 @@ ub.write(binaryData)
 
 | 命令 | 说明 |
 |------|------|
-| `AT+SETCFG=interval,<秒>` | 设置 `_G.LowPowerInterval` |
-| `AT+SETCFG=devicemodel,<文本>` | 设置 `_G.devicemodel` |
+| `AT+SETCFG=interval,<秒>` | 设置 `APP_RUNTIME.low_power_interval_sec` |
+| `AT+SETCFG=devicemodel,<文本>` | 设置 `APP_META.device_model` |
 | `AT+SETCFG=hexrpt,1` | 开启对端二进制回显为 `+RXHEX:...`（0/off 关闭） |
 
 成功：`+SETCFG:OK` · 失败：`+SETCFG:ERROR`
@@ -93,7 +93,7 @@ ub.write(binaryData)
 
 | 函数 | 说明 |
 |------|------|
-| `start(options)` | 初始化 UART；`app` 设置 `_G.uartBridge` |
+| `start(options)` | 初始化 UART；`app` 设置 `_G.uart_bridge` |
 | `stop()` | 关闭 UART（如 `t3x.enterDeepSleep` 调用） |
 | `sendString(text, withCrlf?)` | 默认带 `\r\n` |
 | `sendHex(hexStr)` | 十六进制字符串 |
@@ -128,9 +128,9 @@ ub.write(binaryData)
 
 | 能力 | 位置 |
 |------|------|
-| 协议实现 | `user/uartBridge.lua` → `processAtCommand` / `processHostLine` |
-| 启动 | `user/app.lua` → `setupUartBridge()` |
-| 配置 | `user/config.lua` → `uartid`、`uart_baud`、`MODULE_FLAGS.uart_bridge` |
+| 协议实现 | `lib/uart_bridge.lua` → `processAtCommand` / `processHostLine` |
+| 启动 | `user/app.lua` → `setupuart_bridge()` |
+| 配置 | `config.lua` → `UART_CFG.id`、`UART_CFG.baud`；`app_config.lua` → `MODULE_FLAGS.uart_bridge` |
 | 事件名 | `APP_EVENTS.UART_RX_*` |
 
 ---
@@ -147,5 +147,5 @@ AT+POWEROFF\r\n
 ```
 
 ```lua
-log.info("uart", json.encode((_G.uartBridge or require("uartBridge")).getState()))
+log.info("uart", json.encode((_G.uart_bridge or require("uart_bridge")).getState()))
 ```

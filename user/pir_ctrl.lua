@@ -1,5 +1,5 @@
 --- PIR 业务控制：媒体策略、录像会话、事件发布（与 lib/pir.lua 硬件层配合）
--- @module pirCtrl
+-- @module pir_ctrl
 -- @release 2026.5.18
 
 require "sys"
@@ -72,8 +72,8 @@ end
 
 _G.normalizePirMediaConfig = normalizePirMediaConfig
 _G.normalizePirRecordPolicy = normalizePirRecordPolicy
-_G.pirMediaConfig = normalizePirMediaConfig(_G.pirMediaConfig or PIR_MEDIA.DEFAULT_CONFIG)
-_G.pirRecordPolicy = normalizePirRecordPolicy(_G.pirRecordPolicy or DEFAULT_RECORD_POLICY)
+_G.pirMediaConfig = normalizePirMediaConfig(PIR_MEDIA.DEFAULT_CONFIG)
+_G.pirRecordPolicy = normalizePirRecordPolicy(DEFAULT_RECORD_POLICY)
 
 local function getRecordPolicy()
     return normalizePirRecordPolicy(_G.pirRecordPolicy)
@@ -186,10 +186,12 @@ function onPirTriggered()
     local E = _G.APP_EVENTS or {}
     local media = normalizePirMediaConfig(_G.pirMediaConfig)
     if session.recording and getRecordPolicy().stopOnSecondPir then
+        log.info("pirCtrl", "录像中二次 PIR", media.action, media.uploadMode)
         publishStopRecording(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
         publishEvent(E.GPIO_PIR_TRIGGERED, "retrigger", media.action, media.uploadMode, media.quality)
         return nil
     end
+    log.info("pirCtrl", "PIR 业务处理", media.action, media.uploadMode, media.quality)
     publishEvent(E.GPIO_PIR_TRIGGERED, "detected", media.action, media.uploadMode, media.quality)
     return publishActionEvents(media)
 end
