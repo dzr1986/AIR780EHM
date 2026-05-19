@@ -116,6 +116,7 @@ _G.MODULE_FLAGS = {
     sntp = true,            -- SNTP时间同步：网络时间校准
     mobile_info = true,     -- 移动网络信息：信号强度、运营商
     fota = true,            -- FOTA：MQTT 2004 → lib/fota.lua
+    rndis = true,           -- USB RNDIS：lib/usb_rndis.lua（PC 经 USB 上网，会短暂飞行模式）
 }
 
 -- ============================================================

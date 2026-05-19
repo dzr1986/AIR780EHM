@@ -460,6 +460,38 @@
   发布 SIM(1005)        → 2005 应答
   发布 PIR 检测(1010)   → PIR 上报
 
+【正常日志示例 — 周期 1003（pong → 发布状态 → sent）】
+
+  说明:
+  - 设备 MQTT 连上后，约每 60 秒自动发一条 1003 到 .../status
+  - 下列 pong / sent 为 LuatOS mqtt 库内部事件，不是平台 JSON 字段，对接可忽略
+  - 平台只需订阅 /panshi/app/862323084068124/status 收 dataType=1003
+
+  串口典型顺序（时间戳仅供对照）:
+
+  [07:16:38.xxx] I/user.net MQTT事件: pong
+  [07:16:39.xxx] I/user.net 发布状态(1003): /panshi/app/862323084068124/status
+  [07:16:39.xxx] I/user.net MQTT事件: sent 227
+
+  含义:
+  | 日志行                         | 含义 |
+  |--------------------------------|------|
+  | MQTT事件: pong                 | 与 Broker 心跳正常，链路仍在线 |
+  | 发布状态(1003): .../status     | 已组包并调用 publish，主题为 status |
+  | MQTT事件: sent N               | 第 N 条 MQTT 报文已从模组发出（含本条 1003）|
+
+  与 MQTTX 对照:
+  - 出现「发布状态(1003)」后 1 秒内，订阅窗应收 JSON，dataType 为 "1003"
+  - 示例载荷见第三节 3.3【上行 1003 — 主题 status】
+  - 若日志有 1003 但订阅窗无消息: 查 ClientId 是否误用设备 IMEI、Broker/主题是否一致
+
+  其它常见上行日志（非周期）:
+  | 日志 | 对应上行 |
+  |------|----------|
+  | 发布唤醒(1001): .../wakeup     | 连网成功或 2001 查询 |
+  | 发布控制回复(1004): reboot ... | 2004 reboot/off/ota 受理 |
+  | 发布 SIM(1005): .../sim        | 2005 查询 |
+
 【串口 AT】
   AT+GETCFG
   返回含 online=1 表示 MQTT 已连接

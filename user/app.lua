@@ -13,6 +13,7 @@ local battery = require "battery"
 local charge = require "charge"
 local mobileInfo = require "mobileInfo"
 local fota = require "fota"
+local usbRndis = require "usb_rndis"
 -- watchdog 在 lib/ 中由工具链自动加载，勿 require（与核心 wdt 库区分）
 
 local _modname = ...
@@ -272,6 +273,19 @@ local function setupFota()
     log.info("app", "FOTA 已对接 MQTT 2004")
 end
 
+local function setupRndis()
+    if not _G.MODULE_FLAGS.rndis then
+        return
+    end
+    if type(usbRndis) ~= "table" or not usbRndis.start then
+        log.warn("app", "usb_rndis 模块无效，跳过 RNDIS")
+        return
+    end
+    if usbRndis.start() then
+        log.info("app", "RNDIS 任务已启动")
+    end
+end
+
 -- ============================================================
 -- 事件订阅
 -- ============================================================
@@ -445,6 +459,7 @@ function start(gpio, net, t3x)
     if _G.MODULE_FLAGS.pmd_runtime then setupPmd() end
     startBackgroundServices()
     initPowerStatus()
+    setupRndis()
     if _G.MODULE_FLAGS.mqtt and netModule and netModule.bootstrapNetwork then
         netModule.bootstrapNetwork()
     end
