@@ -46,10 +46,29 @@ local LED_CONFIG = {
     },
 }
 
-local ledPins = { red = nil, blue = nil }  -- LED引脚句柄
-local started = false                       -- 模块启动标志
+local ledPins = { red = nil, blue = nil }
+local ledEntries = { red = nil, blue = nil }
+local started = false
 
--- 关闭所有LED
+--- 逻辑 1=亮 / 0=灭 → 按 GPIO_OUT 的 on_level、init_level 写脚
+local function makeLedWriter(entry, rawHdl)
+    if not rawHdl then
+        return nil
+    end
+    if not entry then
+        return function(logical)
+            rawHdl(logical == 1 and 1 or 0)
+        end
+    end
+    local offLv = entry.init_level
+    local onLv = entry.on_level
+    if offLv == nil then offLv = 0 end
+    if onLv == nil then onLv = 1 end
+    return function(logical)
+        rawHdl((logical == 1 or logical == true) and onLv or offLv)
+    end
+end
+
 local function ledOff()
     led.turnOff(ledPins.red, ledPins.blue)
 end
@@ -90,19 +109,25 @@ function _M.start(cfg)
     local gout = _G.GPIO_OUT or {}
     if LED_CONFIG.redPin then
         local e = gout.led_red
+        local raw
         if e and e.pin == LED_CONFIG.redPin then
-            ledPins.red = gpio_util.setup_output(e)
+            ledEntries.red = e
+            raw = gpio_util.setup_output(e)
         else
-            ledPins.red = gpio.setup(LED_CONFIG.redPin, 0)
+            raw = gpio.setup(LED_CONFIG.redPin, 0)
         end
+        ledPins.red = makeLedWriter(ledEntries.red, raw)
     end
     if LED_CONFIG.bluePin then
         local e = gout.bat_stat_led
+        local raw
         if e and e.pin == LED_CONFIG.bluePin then
-            ledPins.blue = gpio_util.setup_output(e)
+            ledEntries.blue = e
+            raw = gpio_util.setup_output(e)
         else
-            ledPins.blue = gpio.setup(LED_CONFIG.bluePin, 0)
+            raw = gpio.setup(LED_CONFIG.bluePin, 1)
         end
+        ledPins.blue = makeLedWriter(ledEntries.blue or { init_level = 1, on_level = 0 }, raw)
     end
     ledOff()
     ledStatusTask()

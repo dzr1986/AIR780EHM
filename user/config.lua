@@ -1,4 +1,4 @@
-﻿--- 项目配置（纯数据：引脚、采样、连接）
+--- 项目配置（纯数据：引脚、采样、连接）
 -- GPIO：GPIO_IN / GPIO_OUT 含 init_level、on_level、pull 等，见 lib/gpio_util.lua
 -- 业务：app_config.lua、key_config.lua、pir_ctrl.lua
 -- @module config
@@ -126,7 +126,7 @@ _G.GPIO_OUT = {
         pin = 21,
         net_name = "BAT_STAT_LED",
         init_level = 1,
-        on_level = 1,
+        on_level = 0,
     },
     t3x_boot = {
         pin = 26,

@@ -1,4 +1,4 @@
-﻿--- 应用核心编排模块（方案1）
+--- 应用核心编排模块（方案1）
 -- 串口：仅通过 lib/uart_bridge；见 config.UART_CFG / APP_STACK.uart
 -- @module app
 -- @release 2026.5.18
@@ -14,6 +14,7 @@ local usbCharge = require "usb_charge"
 local mobile_info = require "mobile_info"
 local fota = require "fota"
 local usbRndis = require "usb_rndis"
+local led = require "led"
 -- watchdog 在 lib/ 中由工具链自动加载，勿 require（与核心 wdt 库区分）
 
 local _modname = ...
@@ -521,6 +522,12 @@ function start(gpio, net, t3x)
     if started then
         log.warn("app", "已启动")
         return false
+    end
+    if led.isBatStatBreathTestEnabled() then
+        led.startBatStatBreathTest()
+        started = true
+        log.info("app", "BAT_STAT_LED 测试模式，已跳过业务启动")
+        return true
     end
     gpioModule, netModule, t3xModule = gpio, net, t3x
 

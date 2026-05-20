@@ -1,4 +1,4 @@
-﻿-- 780EHM_PJ 入口
+-- 780EHM_PJ 入口
 -- 启动链: main → app.start(peripheral, net, t3x) → sys.run()
 PROJECT = PROJECT or "TUYA_CAT1"
 VERSION = VERSION or "1.0.0"

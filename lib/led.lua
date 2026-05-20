@@ -268,5 +268,61 @@ end
 function getState()
     return state
 end
+
+-- ============================================================
+-- BAT_STAT_LED 上电调试（GPIO21 低电平点亮，1s 翻转）
+-- ============================================================
+
+--- 设为 true 时仅跑蓝灯测试；由 app.start 检测并跳过其余业务
+_M.BAT_STAT_LED_BREATH_TEST = false
+
+local BREATH_INTERVAL_MS = 1000
+local breathStarted = false
+
+function isBatStatBreathTestEnabled()
+    return _M.BAT_STAT_LED_BREATH_TEST == true
+end
+
+function startBatStatBreathTest()
+    if breathStarted then
+        return false
+    end
+    require "config"
+    local gpio_util = require "gpio_util"
+    local gout = _G.GPIO_OUT or {}
+    local blue = gout.bat_stat_led
+    local red = gout.led_red
+    if not blue or not blue.pin then
+        log.warn("led", "bat_stat_led 未配置")
+        return false
+    end
+
+    gpio_util.setup_output(blue)
+    log.info("led", "bat_stat_led test", "pin", blue.pin,
+        "off", blue.init_level, "on", blue.on_level)
+
+    local tick = 0
+    local lit = false
+    sys.timerLoopStart(function()
+        tick = tick + 1
+        lit = not lit
+        gpio_util.set_output(blue, lit)
+        log.info("led", "bat_stat_led", blue.pin, lit and "ON" or "OFF", "tick", tick)
+    end, BREATH_INTERVAL_MS)
+
+    if red and red.pin then
+        gpio_util.setup_output(red)
+        local redLit = false
+        sys.timerLoopStart(function()
+            redLit = not redLit
+            gpio_util.set_output(red, redLit)
+        end, BREATH_INTERVAL_MS)
+        log.info("led", "led_red 同步翻转 pin", red.pin)
+    end
+
+    breathStarted = true
+    return true
+end
+
 if type(_M) == "table" then _G[_modname] = _M end
 return _M
