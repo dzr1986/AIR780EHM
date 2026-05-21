@@ -16,9 +16,26 @@ local pin
 local cfg
 local started = false
 local cooldownUntil = 0
+local pir_runtime = nil
+pcall(function() pir_runtime = require "pir_runtime" end)
+
+local function statBump(key)
+    if pir_runtime and pir_runtime.bump then
+        pir_runtime.bump(key)
+    end
+end
+
+local function statLast(evt)
+    if pir_runtime and pir_runtime.setLast then
+        pir_runtime.setLast(evt)
+    end
+end
 
 local function onInterrupt(level)
+    statBump("cnt_hw_irq")
     if _G.T31_BURN_MODE_ACTIVE then
+        statBump("cnt_hw_ignore_burn")
+        statLast("ignore_burn")
         return
     end
     log.info(LOG_TAG, "触发0", pin)
@@ -27,15 +44,20 @@ local function onInterrupt(level)
         active = 1
     end
     if level ~= active then
+        statBump("cnt_hw_ignore_level")
         return
     end
 
     local now = os.time() * 1000
     if now < cooldownUntil then
+        statBump("cnt_hw_ignore_cooldown")
+        statLast("ignore_cooldown")
         return
     end
 
     cooldownUntil = now + (cfg.cooldown_ms or 10000)
+    statBump("cnt_hw_accept")
+    statLast("hw_accept")
     log.info(LOG_TAG, "触发", pin)
 
     local E = _G.APP_EVENTS

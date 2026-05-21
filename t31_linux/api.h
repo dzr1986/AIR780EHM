@@ -41,6 +41,7 @@ int client_get_runtime_config(client_t *client, char *resp, size_t resp_size);
 int client_create_service(client_t *client);
 int client_close_service(client_t *client, int sid);
 int client_query_wakeup(client_t *client, wake_event_t *event);
+int client_get_pir_stat(client_t *client, char *resp, size_t resp_size);
 void client_shutdown(client_t *client);
 
 #endif

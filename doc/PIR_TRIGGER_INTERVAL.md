@@ -1,9 +1,10 @@
-# PIR 触发间隔分析（可视门铃参考）
+﻿# PIR 触发间隔分析（可视门铃参考）
 
 > 本文说明：**多久触发一次**、行业常见取值、本工程实现与现场日志。  
 > 配置真源：`user/config.lua`（`PIR_COOLDOWN_MS`、`PIR_CFG.cooldown_ms`）  
 > 配置索引：[`CONFIG.md`](CONFIG.md)  
-> 硬件流程：[`PIR_HARDWARE.md`](PIR_HARDWARE.md) · 协议：[`PIR_PROTOCOL.md`](PIR_PROTOCOL.md)
+> 硬件流程：[`PIR_HARDWARE.md`](PIR_HARDWARE.md) · 协议：[`PIR_PROTOCOL.md`](PIR_PROTOCOL.md)  
+> T31 经 UART 读冷却丢弃次数：`AT+PIRSTAT?`（`cnt_hw_ignore_cooldown`），见 [`T31_4G_AT_INTERACTION.md`](T31_4G_AT_INTERACTION.md)
 
 ---
 

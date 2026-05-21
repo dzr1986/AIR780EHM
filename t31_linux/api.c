@@ -91,6 +91,23 @@ int client_query_wakeup(client_t *client, wake_event_t *event)
     return query_wake_event(client, event);
 }
 
+int client_get_pir_stat(client_t *client, char *resp, size_t resp_size)
+{
+    char local_resp[MAX_RESP_SIZE];
+    char *out_resp = resp;
+    size_t out_size = resp_size;
+
+    if (out_resp == NULL || out_size == 0) {
+        out_resp = local_resp;
+        out_size = sizeof(local_resp);
+    }
+
+    if (client_request(client, "AT+PIRSTAT?", out_resp, out_size) != 0) {
+        return -1;
+    }
+    return response_contains(out_resp, "+PIRSTAT:") ? 0 : -1;
+}
+
 static int send_expect(client_t *client, const char *cmd, const char *expected)
 {
     char resp[MAX_RESP_SIZE];

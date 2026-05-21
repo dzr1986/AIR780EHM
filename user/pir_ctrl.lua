@@ -40,6 +40,27 @@ local session = {
 
 local handlerStarted = false
 local suspended = false
+local pir_runtime = nil
+pcall(function() pir_runtime = require "pir_runtime" end)
+
+local function statBump(key)
+    if pir_runtime and pir_runtime.bump then
+        pir_runtime.bump(key)
+    end
+end
+
+local function statLast(evt)
+    if pir_runtime and pir_runtime.setLast then
+        pir_runtime.setLast(evt)
+    end
+end
+
+local STOP_CNT = {
+    [PIR_MEDIA.STOP_REASON.TIMER] = "cnt_stop_timer",
+    [PIR_MEDIA.STOP_REASON.PIR_RETRIGGER] = "cnt_stop_retrigger",
+    [PIR_MEDIA.STOP_REASON.CLOUD] = "cnt_stop_cloud",
+    [PIR_MEDIA.STOP_REASON.MANUAL] = "cnt_stop_manual",
+}
 
 local function toBool(value, default)
     if value == nil then return default end
@@ -96,6 +117,11 @@ function publishStopRecording(reason)
     clearRecordTimer()
     session.recording = false
     session.last_stop_reason = reason
+    local ck = STOP_CNT[reason]
+    if ck then
+        statBump(ck)
+    end
+    statLast("stop_" .. tostring(reason))
     local E = _G.APP_EVENTS or {}
     publishEvent(E.PIR_STOP_RECORDING, reason, session.uploadMode, session.quality)
     log.info("pirCtrl", "停止录像", reason)
@@ -137,9 +163,11 @@ function publishActionEvents(cfg)
     local media = normalizePirMediaConfig(cfg)
     local E, A = _G.APP_EVENTS or {}, PIR_MEDIA.ACTION
     if media.action == A.PHOTO or media.action == A.BOTH then
+        statBump("cnt_biz_photo")
         publishEvent(E.PIR_TAKE_PHOTO, media.uploadMode, media.quality)
     end
     if media.action == A.VIDEO or media.action == A.BOTH then
+        statBump("cnt_biz_video")
         beginVideoSession(media.uploadMode, media.quality)
         publishEvent(E.PIR_RECORD_VIDEO, media.uploadMode, media.quality)
     end
@@ -205,17 +233,23 @@ end
 
 function onPirTriggered()
     if suspended then
+        statBump("cnt_biz_ignore_suspend")
+        statLast("ignore_suspend")
         log.info("pir_ctrl", "PIR 已挂起，忽略硬件触发")
         return nil
     end
     local E = _G.APP_EVENTS or {}
     local media = normalizePirMediaConfig(_G.pirMediaConfig)
     if session.recording and getRecordPolicy().stopOnSecondPir then
+        statBump("cnt_biz_retrigger")
+        statLast("retrigger")
         log.info("pirCtrl", "录像中二次 PIR", media.action, media.uploadMode)
         publishStopRecording(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
         publishEvent(E.GPIO_PIR_TRIGGERED, "retrigger", media.action, media.uploadMode, media.quality)
         return nil
     end
+    statBump("cnt_biz_detected")
+    statLast("detected")
     log.info("pirCtrl", "PIR 业务处理", media.action, media.uploadMode, media.quality)
     publishEvent(E.GPIO_PIR_TRIGGERED, "detected", media.action, media.uploadMode, media.quality)
     return publishActionEvents(media)

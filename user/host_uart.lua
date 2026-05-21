@@ -242,6 +242,24 @@ local function uart_getcfg(_cmd)
     ) .. ok_tail()
 end
 
+local function uart_pirstat_query(_cmd)
+    local body = ""
+    local ok, pir_runtime = pcall(require, "pir_runtime")
+    if ok and pir_runtime and pir_runtime.buildAtBody then
+        body = pir_runtime.buildAtBody()
+    end
+    return CRLF .. "+PIRSTAT:" .. body .. CRLF .. ok_tail()
+end
+
+local function uart_pirclr(_cmd)
+    local ok, pir_runtime = pcall(require, "pir_runtime")
+    if ok and pir_runtime and pir_runtime.resetCounters then
+        pir_runtime.resetCounters()
+        return rsp_line("PIRCLR", true) .. ok_tail()
+    end
+    return rsp_line("PIRCLR", false)
+end
+
 local function uart_ati(_cmd)
     return string.format(CRLF .. "+CGMR:%s" .. CRLF, get_config_snapshot().version) .. ok_tail()
 end
@@ -383,6 +401,8 @@ local AT_CMD_TABLE = {
     uart_cmd_entry("AT", nil, uart_at_ack),
     uart_cmd_entry({ "ATI", "AT+CGMR", "AT+GETVER" }, nil, uart_ati),
     uart_cmd_entry("AT+GETCFG", nil, uart_getcfg),
+    uart_cmd_entry("AT+PIRSTAT", nil, uart_pirstat_query),
+    uart_cmd_entry("AT+PIRCLR", nil, uart_pirclr),
     uart_cmd_entry("AT+WAKEVT", nil, uart_wakevt_query),
     uart_cmd_entry(nil, "AT+SERVCREATE=", uart_servcreate),
     uart_cmd_entry(nil, "AT+MQTTCFG=", uart_mqttcfg),

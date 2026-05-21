@@ -1,7 +1,7 @@
 ﻿# 串口桥接协议（uart_bridge）
 
 > 适用：`lib/uart_bridge.lua`（主路径**唯一** UART 入口）  
-> T31 主机 AT 由 `user/host_uart.uart_at_cmd` 统一处理，见 [`T31_WAKE_PROTOCOL.md`](T31_WAKE_PROTOCOL.md)。  
+> T31 主机 AT 由 `user/host_uart.uart_at_cmd` 统一处理；全量交互见 [`T31_4G_AT_INTERACTION.md`](T31_4G_AT_INTERACTION.md)，唤醒见 [`T31_WAKE_PROTOCOL.md`](T31_WAKE_PROTOCOL.md)。  
 > 配置：`config.lua` → `UART_CFG.id`（默认 1）、`UART_CFG.baud`（默认 115200）  
 > 更新：2026-05-18
 
@@ -32,6 +32,9 @@ ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（hos
 | 命令 | 响应示例 | 说明 |
 |------|----------|------|
 | `AT+GETCFG` | `+GETCFG:version=...,online=0,power=1,...` | 由 **`user/host_uart`** 应答（版本、在线、低功耗、电量等） |
+| `AT+PIRSTAT?` | `+PIRSTAT:suspended=0,recording=0,cnt_hw_accept=...` | PIR 策略与触发统计（4G 保存），见 [T31_4G_AT_INTERACTION.md](T31_4G_AT_INTERACTION.md) §5 |
+| `AT+PIRCLR` | `+PIRCLR:OK` | 清零 PIR 统计计数（不清策略） |
+| `AT+WAKEVT?` | `+WAKEVT:sid,evt` | 唤醒 pending（读后清除），见 [T31_WAKE_PROTOCOL.md](T31_WAKE_PROTOCOL.md) |
 
 ### 2.2 配置（`user/host_uart`）
 
