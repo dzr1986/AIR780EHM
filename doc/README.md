@@ -1,4 +1,4 @@
-# 780EHM_PJ 文档
+﻿# 780EHM_PJ 文档
 
 | 文档 | 说明 |
 |------|------|
@@ -15,6 +15,8 @@
 | [PIR_TRIGGER_INTERVAL.md](PIR_TRIGGER_INTERVAL.md) | PIR 冷却间隔 |
 | [PIR_PROTOCOL.md](PIR_PROTOCOL.md) | PIR / 2010 / 2011 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX |
+| [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T31 `AT+MQTTCFG` 下发 4G MQTT |
+| [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路（等 T31 / 上电自动连+覆盖） |
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行 |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
 
