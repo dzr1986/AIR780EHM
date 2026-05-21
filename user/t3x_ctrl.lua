@@ -19,6 +19,7 @@ local currentBootLevel = nil
 local currentOtaLevel = nil
 
 local t3xPowerPin = nil
+local t3xMcuIntPin = nil
 local t3xBootModePin = nil
 local t3xOtaPin = nil
 
@@ -40,7 +41,25 @@ local state = {
 --- 运行时读 GPIO_OUT（勿在 require 时缓存，避免 config 未就绪）
 local function getEntries()
     local gout = _G.GPIO_OUT or {}
-    return gout.t3x_pwr_wake, gout.t3x_boot, gout.t3x_ota
+    return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
+end
+
+local function getWakePulseMs()
+    local cfg = _G.HOST_WAKE_CFG or {}
+    return tonumber(cfg.pulse_ms) or pulseLowMs
+end
+
+local function getMcuIntLevels(entry_int)
+    local cfg = _G.HOST_WAKE_CFG or {}
+    local idle = cfg.idle_level
+    if idle == nil then
+        idle = entry_int and entry_int.init_level or 1
+    end
+    local active = cfg.pulse_level
+    if active == nil then
+        active = entry_int and entry_int.on_level or 0
+    end
+    return idle, active
 end
 
 local function refreshLevels()
@@ -54,11 +73,16 @@ end
 --- 确保 GPIO 句柄已 setup（start / enterBootMode 等可重复调用）
 local function ensurePins()
     refreshLevels()
-    local entry_pwr, entry_boot, entry_ota = getEntries()
+    local entry_pwr, entry_int, entry_boot, entry_ota = getEntries()
     if not entry_pwr or not entry_pwr.pin then
         log.warn(LOG_TAG, "t3x_pwr_wake 未配置")
     elseif not t3xPowerPin then
         t3xPowerPin = gpio_util.setup_output(entry_pwr)
+    end
+    if not entry_int or not entry_int.pin then
+        log.warn(LOG_TAG, "t3x_mcu_int 未配置")
+    elseif not t3xMcuIntPin then
+        t3xMcuIntPin = gpio_util.setup_output(entry_int)
     end
     if not entry_boot or not entry_boot.pin then
         log.warn(LOG_TAG, "t3x_boot 未配置")
@@ -70,7 +94,7 @@ local function ensurePins()
     elseif not t3xOtaPin then
         t3xOtaPin = gpio_util.setup_output(entry_ota)
     end
-    return entry_pwr, entry_boot, entry_ota
+    return entry_pwr, entry_int, entry_boot, entry_ota
 end
 
 function start()
@@ -99,22 +123,28 @@ function powerOn()
     return true
 end
 
-function pulseWakeup()
-    local entry_pwr = ensurePins()
-    if not t3xPowerPin then
-        log.warn(LOG_TAG, "电源脚未初始化，跳过脉冲", "pin", entry_pwr and entry_pwr.pin)
+--- GPIO29 → T31 PB27：低电平脉冲（空闲高，勿动 GPIO22 电源）
+function pulseMcuInt()
+    local _, entry_int = getEntries()
+    ensurePins()
+    if not t3xMcuIntPin then
+        log.warn(LOG_TAG, "MCU_INT 未初始化", "pin", entry_int and entry_int.pin)
         return false
     end
-    t3xPowerPin(powerOffLevel)
+    local idle, active = getMcuIntLevels(entry_int)
+    local ms = getWakePulseMs()
+    t3xMcuIntPin(active)
     sys.timerStart(function()
-        t3xPowerPin(powerOnLevel)
-        currentPowerLevel = powerOnLevel
-        isPoweredOn = true
-        state.power_state = "on"
-        lastAction = "pulseWakeup"
-        log.info(LOG_TAG, "唤醒脉冲", "pin", entry_pwr.pin, "ms", pulseLowMs)
-    end, pulseLowMs)
+        t3xMcuIntPin(idle)
+        lastAction = "pulseMcuInt"
+        log.info(LOG_TAG, "T31 唤醒脉冲(低)", "pin", entry_int.pin, "ms", ms,
+            "idle", idle, "active", active)
+    end, ms)
     return true
+end
+
+function pulseWakeup()
+    return pulseMcuInt()
 end
 
 function powerOff()
@@ -213,9 +243,8 @@ function wake()
 
     if not isPoweredOn then
         powerOn()
-    else
-        pulseWakeup()
     end
+    pulseMcuInt()
 end
 
 function enterDeepSleep()
@@ -232,7 +261,7 @@ function enterDeepSleep()
 end
 
 function getState()
-    local entry_pwr, entry_boot, entry_ota = getEntries()
+    local entry_pwr, entry_int, entry_boot, entry_ota = getEntries()
     return {
         powered_on = isPoweredOn,
         power_level = currentPowerLevel,
@@ -245,6 +274,7 @@ function getState()
         last_action = lastAction,
         pins = {
             pwr = entry_pwr and entry_pwr.pin,
+            mcu_int = entry_int and entry_int.pin,
             boot = entry_boot and entry_boot.pin,
             ota = entry_ota and entry_ota.pin,
         },

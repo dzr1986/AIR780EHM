@@ -156,6 +156,13 @@ _G.GPIO_OUT = {
         init_level = 0,
         on_level = 1,
     },
+    -- Cat.1 GPIO29(1.8V) → T31 PB27(3.3V 输入)：低电平脉冲唤醒，空闲高（T31 侧上拉）
+    t3x_mcu_int = {
+        pin = 29,
+        net_name = "MCU_INT_CPU",
+        init_level = 1,
+        on_level = 0,
+    },
     t3x_ota = {
         pin = 32,
         net_name = "T3X_OTA",
@@ -203,9 +210,20 @@ _G.BATTERY_CFG = {
     mqtt_report_interval_sec = 60,
 }
 
+-- 主机 PB27 唤醒（与 t31_linux gpio 下降沿一致）
+_G.HOST_WAKE_CFG = {
+    pulse_ms = 120,
+    idle_level = 1,
+    pulse_level = 0,
+    default_sid = 1,
+}
+
+-- UART1 ↔ T31；lib/uart_bridge 仅从此表读参（勿在驱动里写死波特率）
 _G.UART_CFG = {
     id = 1,
     baud = 115200,
+    line_protocol = true,
+    rx_line_max = 4096,
 }
 
 _G.WDT_CFG = {
@@ -213,6 +231,7 @@ _G.WDT_CFG = {
     feed_interval_ms = 3000,
 }
 
+-- 4G 上电默认 Broker；T31 经 AT+MQTTCFG 可覆盖并重连（t31_linux/client.ini [mqtt] 与之保持一致）
 _G.MQTT_CFG = {
     host = "112.86.146.218",
     port = 2123,

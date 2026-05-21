@@ -323,6 +323,40 @@ local function handleServerMessage(topic, payload)
 end
 
 -- ============================================================
+-- MQTT 配置（T31 经 AT+MQTTCFG 下发后覆盖 _G.MQTT_CFG）
+-- ============================================================
+
+function setMqttConfig(cfg)
+    if not cfg or not cfg.host or cfg.host == "" then
+        return false
+    end
+    _G.MQTT_CFG = {
+        host = cfg.host,
+        port = tonumber(cfg.port) or 1883,
+        ssl = cfg.ssl == true or cfg.ssl == 1,
+        username = cfg.username or "",
+        password = cfg.password or "",
+        client_id = cfg.client_id,
+    }
+    log.info("net", "MQTT 配置已更新", _G.MQTT_CFG.host, _G.MQTT_CFG.port)
+    return true
+end
+
+function getMqttConfig()
+    return _G.MQTT_CFG
+end
+
+function restart()
+    sys.taskInit(function()
+        log.info("net", "MQTT 重启...")
+        stop()
+        sys.wait(800)
+        start()
+    end)
+    return true
+end
+
+-- ============================================================
 -- MQTT任务
 -- ============================================================
 
@@ -331,7 +365,13 @@ local function mqttTask()
     if not gotReady then
         log.warn("net", "蜂窝未就绪，仍尝试 MQTT 连接")
     end
-    local clientId = deviceId or getDeviceId()
+    local mcfg = _G.MQTT_CFG or {}
+    if not mcfg.host or mcfg.host == "" then
+        log.error("net", "MQTT_CFG.host 未配置")
+        return
+    end
+    local clientId = (mcfg.client_id and mcfg.client_id ~= "") and mcfg.client_id
+        or (deviceId or getDeviceId())
 
     if not mqtt or not mqtt.create then
         log.error("net", "mqtt 库不可用，无法连接")
@@ -339,8 +379,7 @@ local function mqttTask()
     end
 
     log.info("net", "========== MQTT启动 ==========")
-    log.info("net", "+++++ imei=" .. tostring(clientId) .. " ++++++")
-    local mcfg = _G.MQTT_CFG or {}
+    log.info("net", "+++++ clientId=" .. tostring(clientId) .. " ++++++")
     log.info("net", "服务器:", mcfg.host, mcfg.port)
 
     if socket and socket.adapter and socket.dft then

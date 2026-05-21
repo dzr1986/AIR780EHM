@@ -11,7 +11,7 @@
 
 | 类别 | 规则 | 示例 |
 |------|------|------|
-| Lua 文件 | `snake_case` | `uart_bridge.lua`、`t3x_ctrl.lua`、`pir_ctrl.lua`、`led_ctrl.lua` |
+| Lua 文件 | `snake_case` | `uart_bridge.lua`（lib）、`host_uart.lua`（T31 串口业务）、`t3x_ctrl.lua`、`pir_ctrl.lua` |
 | 配置表 | `*_CFG` | `GPIO_IN`、`MQTT_CFG` |
 | 运行时 | `APP_RUNTIME` | `battery_percent`、`online_status` |
 | 表内字段 | `snake_case` | `init_level`、`trigger_mode` |
@@ -70,7 +70,16 @@
 
 - `PIR_CFG`：由 `GPIO_IN.pir_det` 自动带出中断参数 + `PIR_COOLDOWN_MS.frequent`
 - `BATTERY_CFG`：`cell.v_max_mv` / `v_min_mv`、`sample_interval_ms`
-- `UART_CFG` / `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末
+- `UART_CFG`（`lib/uart_bridge` 唯一数据源）：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `id` | `1` | UART 口（接 T31） |
+| `baud` | `115200` | 波特率，8N1 |
+| `line_protocol` | `true` | 按 `\r\n` 拆行 |
+| `rx_line_max` | `4096` | 行缓冲上限 |
+
+- `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末
 
 ---
 

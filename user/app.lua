@@ -15,6 +15,7 @@ local mobile_info = require "mobile_info"
 local fota = require "fota"
 local usbRndis = require "usb_rndis"
 local led = require "led"
+local host_uart = require "host_uart"
 -- watchdog 在 lib/ 中由工具链自动加载，勿 require（与核心 wdt 库区分）
 
 local _modname = ...
@@ -57,10 +58,13 @@ local function setLowPowerMode(enabled)
 end
 
 local function sendWakePulse(evt, channel)
-    wakeValue = string.format("%d,%d", channel or 0, evt)
+    local sid = channel or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+    wakeValue = string.format("%d,%d", sid, evt)
     state.last_wake_event = evt
-    log.info("app", "唤醒脉冲记录", wakeValue)
-    if _G.MODULE_FLAGS.t3x_wakeup and t3xModule and t3xModule.pulseWakeup then
+    log.info("app", "T31 唤醒", wakeValue)
+    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t31_app ~= false) then
+        host_uart.notify_host(sid, evt)
+    elseif t3xModule and t3xModule.pulseWakeup then
         t3xModule.pulseWakeup()
     end
 end
@@ -113,25 +117,49 @@ local function setupUartBridge()
         return false
     end
     local ok = uart_bridge.start({
-        uartId = (_G.UART_CFG and _G.UART_CFG.id) or 1,
-        baud = _G.UART_CFG and _G.UART_CFG.baud,
-        onEnterLowPower = onEnterLowPower,
-        onExitLowPower = onExitLowPower,
-        onReboot = onReboot,
-        onPowerOff = onPowerOff,
         onRaw = function(data)
             state.last_uart_rx = data
-        end,
-        onString = function(line)
-            log.info("app", "UART STR", line)
-        end,
-        onHex = function(bin, hex)
-            log.info("app", "UART HEX", hex or "")
+            if _G.MODULE_FLAGS.t31_app ~= false then
+                host_uart.on_rx_raw(data)
+            end
         end,
     })
     if ok then
         _G.uart_bridge = uart_bridge
-        log.info("app", "串口由 uart_bridge 管理", (_G.UART_CFG and _G.UART_CFG.id) or 1)
+        local uc = _G.UART_CFG
+        if type(uc) == "table" then
+            log.info("app", "串口驱动已启", uc.id, uc.baud)
+        else
+            log.info("app", "串口驱动已启")
+        end
+        if _G.MODULE_FLAGS.t31_app ~= false then
+            host_uart.start({
+                t3x = t3xModule,
+                on_enter_low_power = onEnterLowPower,
+                on_exit_low_power = onExitLowPower,
+                on_reboot = onReboot,
+                on_power_off = onPowerOff,
+                on_mqtt_cfg = function(cfg)
+                    if not netModule or not netModule.setMqttConfig then
+                        log.warn("app", "net 未就绪，忽略 MQTTCFG")
+                        return
+                    end
+                    if not netModule.setMqttConfig(cfg) then
+                        log.warn("app", "MQTTCFG 无效")
+                        return
+                    end
+                    log.info("app", "T31 覆盖 MQTT", cfg.host, cfg.port)
+                    if state.mqtt_started and netModule.restart then
+                        netModule.restart()
+                    elseif startMqtt() then
+                        log.info("app", "MQTT 已按 T31 配置连接")
+                    end
+                end,
+                on_plain_line = function(line)
+                    log.info("app", "UART 行", line)
+                end,
+            })
+        end
     end
     return ok
 end
@@ -543,7 +571,10 @@ local function onPirMediaAction(action, uploadMode, quality)
     if (uploadMode == "auto" or uploadMode == nil) and netModule and netModule.publishWakeup then
         netModule.publishWakeup()
     end
-    if t3xModule then
+    if _G.MODULE_FLAGS.t31_app ~= false then
+        local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+        host_uart.notify_host(sid, 0)
+    elseif t3xModule then
         sys.taskInit(function() t3xModule.wake() end)
     end
 end
@@ -553,8 +584,9 @@ local function onPirStopRecording(reason, uploadMode, quality)
     if netModule and netModule.publishPirRecordStop then
         netModule.publishPirRecordStop(reason, uploadMode, quality)
     end
-    if t3xModule and t3xModule.pulseWakeup then
-        t3xModule.pulseWakeup()
+    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t31_app ~= false) then
+        local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+        host_uart.notify_host(sid, 0)
     end
 end
 

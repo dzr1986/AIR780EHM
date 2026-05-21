@@ -9,6 +9,9 @@
 #include "gpio.h"
 #include "log.h"
 
+/* PB27：3.3V 输入，监听 Cat.1 GPIO29 低电平脉冲（下降沿）。
+ * 硬件建议 PB27 上拉至 3.3V；4G 侧 1.8V 高电平可能达不到 VIH，低电平脉冲更可靠。 */
+
 static int write_text_file(const char *path, const char *value)
 {
     int fd = open(path, O_WRONLY);

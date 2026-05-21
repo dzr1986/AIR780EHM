@@ -90,6 +90,18 @@ static void apply_key_value(app_config_t *cfg, const char *key, const char *valu
         (void)parse_int_value(value, &cfg->channel.critical_flag);
     } else if (strcmp(key, "run_type") == 0) {
         (void)parse_int_value(value, &cfg->channel.run_type);
+    } else if (strcmp(key, "mqtt_host") == 0) {
+        copy_string(cfg->mqtt.host, sizeof(cfg->mqtt.host), value);
+    } else if (strcmp(key, "mqtt_port") == 0) {
+        (void)parse_int_value(value, &cfg->mqtt.port);
+    } else if (strcmp(key, "mqtt_ssl") == 0) {
+        (void)parse_int_value(value, &cfg->mqtt.ssl);
+    } else if (strcmp(key, "mqtt_username") == 0) {
+        copy_string(cfg->mqtt.username, sizeof(cfg->mqtt.username), value);
+    } else if (strcmp(key, "mqtt_password") == 0) {
+        copy_string(cfg->mqtt.password, sizeof(cfg->mqtt.password), value);
+    } else if (strcmp(key, "mqtt_client_id") == 0) {
+        copy_string(cfg->mqtt.client_id, sizeof(cfg->mqtt.client_id), value);
     }
 }
 
@@ -279,6 +291,24 @@ static int load_json_config(app_config_t *cfg, const char *path)
     if (json_get_int(text, "run_type", &number)) {
         cfg->channel.run_type = number;
     }
+    if (json_get_string(text, "mqtt_host", value, sizeof(value))) {
+        apply_key_value(cfg, "mqtt_host", value);
+    }
+    if (json_get_int(text, "mqtt_port", &number)) {
+        cfg->mqtt.port = number;
+    }
+    if (json_get_int(text, "mqtt_ssl", &number)) {
+        cfg->mqtt.ssl = number;
+    }
+    if (json_get_string(text, "mqtt_username", value, sizeof(value))) {
+        apply_key_value(cfg, "mqtt_username", value);
+    }
+    if (json_get_string(text, "mqtt_password", value, sizeof(value))) {
+        apply_key_value(cfg, "mqtt_password", value);
+    }
+    if (json_get_string(text, "mqtt_client_id", value, sizeof(value))) {
+        apply_key_value(cfg, "mqtt_client_id", value);
+    }
 
     free(text);
     return 0;
@@ -303,6 +333,13 @@ void config_init_defaults(app_config_t *cfg)
     copy_string(cfg->channel.wake_hex, sizeof(cfg->channel.wake_hex), "AA55");
     cfg->channel.critical_flag = 1;
     cfg->channel.run_type = 0;
+
+    copy_string(cfg->mqtt.host, sizeof(cfg->mqtt.host), "112.86.146.218");
+    cfg->mqtt.port = 2123;
+    cfg->mqtt.ssl = 0;
+    copy_string(cfg->mqtt.username, sizeof(cfg->mqtt.username), "fptop1");
+    copy_string(cfg->mqtt.password, sizeof(cfg->mqtt.password), "fptop1.com2025@#$&");
+    cfg->mqtt.client_id[0] = '\0';
 }
 
 int config_load(app_config_t *cfg, const char *path)

@@ -1,4 +1,4 @@
-﻿# 780EHM_PJ 文档
+# 780EHM_PJ 文档
 
 | 文档 | 说明 |
 |------|------|
@@ -7,6 +7,7 @@
 | [CALL_GRAPH.md](CALL_GRAPH.md) | 启动顺序、require、事件流 |
 | [CODE_ANALYSIS.md](CODE_ANALYSIS.md) | 架构与风险 |
 | [T31_CAT1_GPIO.md](T31_CAT1_GPIO.md) | 原理图级引脚（T31 + Air780） |
+| [T31_WAKE_PROTOCOL.md](T31_WAKE_PROTOCOL.md) | GPIO29→PB27 低脉冲与 AT+WAKEVT |
 | [KEY_GPIO.md](KEY_GPIO.md) | 按键 / `key_config.lua` |
 | [T31_BURN_MODE.md](T31_BURN_MODE.md) | **GPIO28 长按 → T31 烧录**（电量/关停条件） |
 | [CHARGE_BATTERY.md](CHARGE_BATTERY.md) | 充电、ADC、MQTT 1003 |

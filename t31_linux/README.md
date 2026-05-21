@@ -71,8 +71,8 @@ sequenceDiagram
 	participant B as T31 业务回调
 
 	T->>L: AT / ATI / AT+RIL=0
-	T->>L: AT+SERVCREATE=...\nAT+GETCFG?
-	L-->>T: OK / +CGMR / +SERVCREATE / +GETCFG
+	T->>L: AT+SERVCREATE=...\nAT+MQTTCFG=...\nAT+GETCFG?
+	L-->>T: OK / +CGMR / +SERVCREATE / +MQTTCFG / +GETCFG
 
 	L->>S: 建立 TCP 长连接
 	L->>S: 发送登录包
@@ -127,6 +127,8 @@ sequenceDiagram
 
 ## 4. GPIO 唤醒模型
 
+本板 **Cat.1 GPIO29（1.8V）→ T31 `PB27`（3.3V 输入）**：协议为**低电平脉冲**（空闲高、120ms 拉低），`gpio.c` 配置**下降沿**。sysfs 编号一般为 **59**（`wake_gpio=59`）。模组 **GPIO22** 仅 **t3x 供电**，不再兼做唤醒脉冲。详见 [`doc/T31_WAKE_PROTOCOL.md`](../doc/T31_WAKE_PROTOCOL.md)。
+
 `gpio.c` 维护一个 `gpio_monitor_t`，使用 sysfs GPIO 接口：
 
 - 导出 GPIO
@@ -169,6 +171,7 @@ sequenceDiagram
 - `wake_hex`
 - `critical_flag`
 - `run_type`
+- `mqtt_host` / `mqtt_port` / `mqtt_ssl` / `mqtt_username` / `mqtt_password` / `mqtt_client_id`（经 `AT+MQTTCFG` 下发 4G，见 [HOST_MQTT_UART.md](../doc/HOST_MQTT_UART.md)）
 
 示例配置文件见：
 

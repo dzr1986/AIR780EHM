@@ -1,7 +1,7 @@
 {
   "uart_dev": "/dev/ttyS1",
   "baudrate": 115200,
-  "wake_gpio": 42,
+  "wake_gpio": 59,
   "read_timeout_ms": 2000,
   "wake_wait_timeout_ms": -1,
   "channel": {
@@ -15,5 +15,11 @@
     "wake_hex": "AA55",
     "critical_flag": 1,
     "run_type": 0
-  }
+  },
+  "mqtt_host": "112.86.146.218",
+  "mqtt_port": 2123,
+  "mqtt_ssl": 0,
+  "mqtt_username": "fptop1",
+  "mqtt_password": "fptop1.com2025@#$&",
+  "mqtt_client_id": ""
 }

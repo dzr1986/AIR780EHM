@@ -15,6 +15,7 @@ static int create_channel(client_t *client);
 static int close_channel(client_t *client, int sid);
 static int dump_config(client_t *client);
 static int query_wake_event(client_t *client, wake_event_t *event);
+static int push_mqtt_config(client_t *client);
 static int bootstrap(client_t *client);
 static int run_business_callbacks(client_t *client, const wake_event_t *event);
 
@@ -118,6 +119,26 @@ static int send_expect_ok(client_t *client, const char *cmd)
     return 0;
 }
 
+static int push_mqtt_config(client_t *client)
+{
+    char cmd[1024];
+    const mqtt_config_t *m = &client->config.mqtt;
+
+    if (m->host[0] == '\0') {
+        log_print("ERR", "mqtt_host empty, skip MQTTCFG");
+        return -1;
+    }
+    snprintf(cmd, sizeof(cmd),
+             "AT+MQTTCFG=%s;%d;%d;%s;%s;%s",
+             m->host,
+             m->port > 0 ? m->port : 1883,
+             m->ssl ? 1 : 0,
+             m->username,
+             m->password,
+             m->client_id);
+    return send_expect(client, cmd, "+MQTTCFG:OK");
+}
+
 static int create_channel(client_t *client)
 {
     char cmd[1024];
@@ -207,6 +228,9 @@ static int bootstrap(client_t *client)
         return -1;
     }
     if (client_create_service(client) != 0) {
+        return -1;
+    }
+    if (push_mqtt_config(client) != 0) {
         return -1;
     }
     if (dump_config(client) != 0) {
@@ -334,7 +358,16 @@ int client_handle_event(client_t *client, const wake_event_t *event)
     if (close_channel(client, client->config.channel.sid) != 0) {
         return -1;
     }
-    return create_channel(client);
+    if (create_channel(client) != 0) {
+        return -1;
+    }
+    if (event->evt == EVT_CONNECT_FAIL || event->evt == EVT_REGISTER_FAIL ||
+        event->evt == EVT_REGISTER_TIMEOUT) {
+        if (push_mqtt_config(client) != 0) {
+            log_print("WARN", "evt=%d: mqtt cfg push failed", event->evt);
+        }
+    }
+    return 0;
 }
 
 void client_shutdown(client_t *client)

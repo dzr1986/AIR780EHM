@@ -9,6 +9,7 @@ _G[_modname or (...)] = _M
 _G.MODULE_FLAGS = {
     watchdog = true,
     uart_bridge = true,
+    t31_app = true,
     t3x_wakeup = true,
     gpio = true,
     pmd_runtime = false,

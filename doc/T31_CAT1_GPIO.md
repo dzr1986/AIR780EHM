@@ -143,7 +143,7 @@
 | 原理图网络名         | T31 球名               | 功能说明               |
 | -------------- | -------------------- | ------------------ |
 | PIR_MCU_DET    | Air780 **GPIO30**（模组 Pin31） | PIR 人体检测 → 模组 `lib/pir.lua` |
-| MCU_INT_CPU    | （GPIO，VDDIO3）        | 外部 MCU/协处理器中断至 T31 |
+| MCU_INT_CPU    | **`PB27`**（VDDIO3，`t31_linux` `wake_gpio=59`） | Cat.1 **GPIO29** 低电平脉冲输入（T31 上拉 3.3V + 下降沿）；780 `t3x_mcu_int`；供电仍用 **GPIO22** `t3x_pwr_wake` |
 | T31_BOOT       | `BOOT_SEL0` `PC00` 等 | 启动/烧录模式控制          |
 | BOOT_SEL0      | BOOT_SEL0 `PC00`     | 67                 |
 | PPRST_ / RESET | PPRST_               | 7                  |

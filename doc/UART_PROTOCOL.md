@@ -1,6 +1,7 @@
-# 串口桥接协议（uart_bridge）
+﻿# 串口桥接协议（uart_bridge）
 
 > 适用：`lib/uart_bridge.lua`（主路径**唯一** UART 入口）  
+> T31 主机 AT 由 `user/host_uart.uart_at_cmd` 统一处理，见 [`T31_WAKE_PROTOCOL.md`](T31_WAKE_PROTOCOL.md)。  
 > 配置：`config.lua` → `UART_CFG.id`（默认 1）、`UART_CFG.baud`（默认 115200）  
 > 更新：2026-05-18
 
@@ -16,9 +17,8 @@
 
 ```lua
 local ub = _G.uart_bridge or require "uart_bridge"
-ub.sendString("hello")
-ub.sendHex("A0B1FF")
-ub.write(binaryData)
+ub.sendString("hello")   -- 驱动层
+ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（host_uart）
 ```
 
 ---
@@ -31,51 +31,52 @@ ub.write(binaryData)
 
 | 命令 | 响应示例 | 说明 |
 |------|----------|------|
-| `AT+GETCFG` | `+GETCFG:version=...,online=0,power=1,...` | 版本、在线、USB、低功耗、电量等 |
+| `AT+GETCFG` | `+GETCFG:version=...,online=0,power=1,...` | 由 **`user/host_uart`** 应答（版本、在线、低功耗、电量等） |
 
-### 2.2 配置
+### 2.2 配置（`user/host_uart`）
 
 | 命令 | 说明 |
 |------|------|
 | `AT+SETCFG=interval,<秒>` | 设置 `APP_RUNTIME.low_power_interval_sec` |
 | `AT+SETCFG=devicemodel,<文本>` | 设置 `APP_META.device_model` |
-| `AT+SETCFG=hexrpt,1` | 开启对端二进制回显为 `+RXHEX:...`（0/off 关闭） |
+| `AT+SETCFG=hexrpt,1` | 开启 `host_uart` 原始数据 `+RXHEX` 回显（0/off 关闭） |
+| `AT+MQTTCFG=<host>;<port>;<ssl>;<user>;<password>;<client_id>` | T31 下发 MQTT Broker；`host_uart` → `app` → `net.setMqttConfig` + 重启 MQTT。详见 [HOST_MQTT_UART.md](HOST_MQTT_UART.md) |
 
-成功：`+SETCFG:OK` · 失败：`+SETCFG:ERROR`
+成功：`+SETCFG:OK` · 失败：`+SETCFG:ERROR`  
+`MQTTCFG` 成功：`+MQTTCFG:OK` · 失败：`+MQTTCFG:ERROR`
 
-### 2.3 向串口对端下发数据
+### 2.3 向串口对端下发数据（`user/host_uart`）
 
 | 命令 | 说明 |
 |------|------|
-| `AT+SENDSTR=<文本>` | 向对端发送文本 + `\r\n` |
-| `AT+SENDHEX=<十六进制>` | 向对端发送二进制，如 `AT+SENDHEX=A0B1C2` |
+| `AT+SENDSTR=<文本>` | 经 `host_uart` → `uart_bridge.sendString` 发往对端 + `\r\n` |
+| `AT+SENDHEX=<十六进制>` | `host_uart` 解码 → `uart_bridge.write` |
 
 成功：`+SEND:OK` · 失败：`+SEND:ERROR`
 
-### 2.4 电源与低功耗
+### 2.4 电源与低功耗（`user/host_uart` → `host_uart` 注入 app 回调）
 
 | 命令 | 条件 | 响应 | 行为 |
 |------|------|------|------|
-| `AT+LOWPOWER=ENTER` | USB 未插且未在低功耗 | `+LOWPOWER:ENTERING` | `app.onEnterLowPower` |
+| `AT+LOWPOWER=ENTER` | 未在低功耗 | `+LOWPOWER:ENTERING` | `on_enter_low_power` |
 | `AT+LOWPOWER=ENTER` | 其它 | `+LOWPOWER:BUSY` | 无动作 |
-| `AT+LOWPOWER=EXIT` | 已在低功耗 | `+LOWPOWER:WAKEUP` | `app.onExitLowPower` |
+| `AT+LOWPOWER=EXIT` | 已在低功耗 | `+LOWPOWER:WAKEUP` | `on_exit_low_power` |
 | `AT+LOWPOWER=EXIT` | 已唤醒 | `+LOWPOWER:ALREADY_AWAKE` | 无动作 |
-| `AT+REBOOT` | — | `+REBOOT:OK` | 约 500ms 后 `app.onReboot` → `pm.reboot()` |
-| `AT+POWEROFF` | — | `+POWEROFF:OK` | 约 500ms 后 `app.onPowerOff` → `pm.shutdown()` |
+| `AT+REBOOT` | — | `+REBOOT:OK` | 约 500ms 后 `on_reboot` |
+| `AT+POWEROFF` | — | `+POWEROFF:OK` | 约 500ms 后 `on_power_off` |
+| `AT+OTA` / `AT+OTACHECK` | — | `+OTA:STARTING` | 发布 `DEVICE_OTA_REQUEST` |
 
-未知 AT：`\r\nERROR\r\n`
+未识别的 AT：由 `host_uart.uart_at_cmd` 返回 `\r\nERROR\r\n`
 
 ---
 
-## 3. 简写行协议（主机 → 设备）
-
-与 AT 等效或补充，均以 `\r\n` 结尾。
+## 3. 简写行协议（`host_uart` 行回调内处理）
 
 | 格式 | 示例 | 响应 | 行为 |
 |------|------|------|------|
-| `HEX:<hex>` | `HEX:A0 01 FF` | `+HEX:OK` / `+HEX:ERROR` | 解码后 `uart.write` 到对端 |
-| `STR:<text>` | `STR:hello` | `+STR:OK` / `+STR:ERROR` | 对端发送 text + `\r\n` |
-| 其它非 AT 行 | `ping` | 无固定响应 | `onString` + `APP_UART_RX_STRING` |
+| `HEX:<hex>` | `HEX:A0 01 FF` | `+HEX:OK` / `+HEX:ERROR` | 解码后 `uart_bridge.write` |
+| `STR:<text>` | `STR:hello` | `+STR:OK` / `+STR:ERROR` | `uart_bridge.sendString` |
+| 其它非 AT 行 | `ping` | 无固定响应 | `APP_UART_RX_STRING` 事件 |
 
 ---
 
@@ -89,25 +90,25 @@ ub.write(binaryData)
 
 ---
 
-## 5. Lua API
+## 5. Lua API（`uart_bridge` 驱动）
 
 | 函数 | 说明 |
 |------|------|
-| `start(options)` | 初始化 UART；`app` 设置 `_G.uart_bridge` |
-| `stop()` | 关闭 UART（如 `t3x_ctrl.enterDeepSleep` 调用） |
-| `sendString(text, withCrlf?)` | 默认带 `\r\n` |
-| `sendHex(hexStr)` | 十六进制字符串 |
-| `write(data)` | 原始字节 |
-| `getState()` | 统计与最近收发 |
+| `start(options)` | 读 `UART_CFG` 打开串口；`options` 仅含 `onRaw`、`onLine` |
+| `setOnRaw(fn)` / `setOnLine(fn)` | 启动后单独挂载回调 |
+| `stop()` | 关闭 UART |
+| `sendString(text, withCrlf?)` | 发字符串 |
+| `write(data)` | 发原始字节 |
+| `getState()` | 驱动统计 |
 
-### 5.1 启动回调（`app` 注入）
+### 5.1 启动回调
 
 | 回调 | 用途 |
 |------|------|
-| `onEnterLowPower` / `onExitLowPower` | AT 低功耗 |
-| `onReboot` | AT 重启 |
-| `onPowerOff` | AT 关机（`app` 已注入） |
-| `onRaw` / `onString` / `onHex` | 数据上报 |
+| `onRaw` | 原始 RX；`host_uart.on_rx_raw` 内可做 hexrpt |
+| `onLine` | 拆行后交给 `host_uart`（由 `host_uart.setOnLine` 挂载） |
+
+低功耗/重启/关机等经 `host_uart.start(opts)` 注入回调。
 
 ---
 
@@ -128,8 +129,9 @@ ub.write(binaryData)
 
 | 能力 | 位置 |
 |------|------|
-| 协议实现 | `lib/uart_bridge.lua` → `processAtCommand` / `processHostLine` |
-| 启动 | `user/app.lua` → `setupuart_bridge()` |
+| 驱动 | `lib/uart_bridge.lua`（`UART_CFG`，无协议） |
+| 协议 | `host_uart.uart_at_cmd` / HEX·STR 简写行 |
+| 启动 | `app.setupUartBridge` → `uart_bridge.start` → `host_uart.start` |
 | 配置 | `config.lua` → `UART_CFG.id`、`UART_CFG.baud`；`app_config.lua` → `MODULE_FLAGS.uart_bridge` |
 | 事件名 | `APP_EVENTS.UART_RX_*` |
 
