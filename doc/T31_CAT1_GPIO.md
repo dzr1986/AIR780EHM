@@ -1,4 +1,4 @@
-﻿# T31 + CAT1（Air780EHM）GPIO 功能一览
+# T31 + CAT1（Air780EHM）GPIO 功能一览
 
 > **原理图**：`ps01masch260318.pdf`（LGS `T31X` Rev V0，2024-04-12）  
 > **主控**：君正 **T31ZX**（QFN88，`U8`）  
@@ -123,7 +123,7 @@
 | CHG_STATE    | （GPIO）          | 充电状态                  |
 | BAT_ADC      | ADC_AUX0 `32` 等 | 电池电压 ADC 采样           |
 | CPU_PWR_EN   | （GPIO）          | **4G/系统电源使能**（控制模组上电） |
-| BAT_STAT_LED | **Air780 GPIO21** | 子板 FPC J1 Pin4 BATSTAT_LED → 主板 → 模组；`GPIO_OUT.bat_stat_led` / `ledCtrl` |
+| BAT_STAT_LED | **Air780 GPIO21** | 子板 FPC J1 Pin4 BATSTAT_LED → 主板 → 模组；`GPIO_OUT.bat_stat_led` / `led_ctrl` |
 
 
 ### 2.8 LED 与夜视

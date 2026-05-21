@@ -1,4 +1,4 @@
-﻿# user / lib 调用关系（780EHM_PJ）
+# user / lib 调用关系（780EHM_PJ）
 
 > 与代码同步：配置见 [`CONFIG.md`](CONFIG.md)；MQTT=`net.lua`；UART=`lib/uart_bridge.lua`；按键=`lib/key.lua` + `keyConfig.KEY_CONFIG`。  
 > 深度分析见 **[CODE_ANALYSIS.md](./CODE_ANALYSIS.md)**。
@@ -10,7 +10,7 @@
 ```
 main.lua
   require config
-  app.start(peripheral, net, t3x)    -- 依赖注入
+  app.start(peripheral, net, t3x_ctrl)    -- 依赖注入
   sys.run()
 ```
 
@@ -18,10 +18,10 @@ main.lua
 
 | # | 条件 | 动作 |
 |---|------|------|
-| 1 | 始终 | `setupEventHandlers()` + **`pirCtrl.start()`** |
+| 1 | 始终 | `setupEventHandlers()` + **`pir_ctrl.start()`** |
 | 2 | `watchdog` | `watchdog.start(WDT_CFG)` |
 | 3 | `uart_bridge` | `uart_bridge.start()` → `_G.uart_bridge` |
-| 4 | 始终 | `t3x.start()` |
+| 4 | 始终 | `t3x_ctrl.start()` |
 | 5 | `gpio` | `peripheral.start({ 扁平引脚 })` |
 | 6 | `pmd_runtime` | PMD USB |
 | 7 | flags | battery / charge / sntp / mobileInfo |
@@ -50,14 +50,14 @@ bootMqtt (task)
 
 ```
 app.lua
-  require: config, sntpSync, uart_bridge, pirCtrl, bat_adc, usb_charge, mobileInfo, watchdog, fota
-  inject:  peripheral, net, t3x  (main.lua 传入)
+  require: config, sntpSync, uart_bridge, pir_ctrl, bat_adc, usb_charge, mobileInfo, watchdog, fota
+  inject:  peripheral, net, t3x_ctrl  (main.lua 传入)
 
 peripheral.lua
-  require: ledCtrl, key, pir, pirCtrl
+  require: led_ctrl, key, pir, pir_ctrl
 
 net.lua
-  require: config, pirCtrl
+  require: config, pir_ctrl
 
 pir_ctrl.lua
   require: sys
@@ -66,17 +66,17 @@ lib/pir.lua
   require: gpio_util
 
 main.lua
-  require: config, app, peripheral, net, t3x
+  require: config, app, peripheral, net, t3x_ctrl
 ```
 
 | 模块 | 直接依赖 |
 |------|----------|
-| main | config, app, peripheral, net, t3x |
-| app | config, sntpSync, uart_bridge, pirCtrl, battery, charge, mobileInfo, watchdog + 注入 |
-| peripheral | ledCtrl, key, pir, pirCtrl |
-| net | config, pirCtrl |
+| main | config, app, peripheral, net, t3x_ctrl |
+| app | config, sntpSync, uart_bridge, pir_ctrl, battery, charge, mobileInfo, watchdog + 注入 |
+| peripheral | led_ctrl, key, pir, pir_ctrl |
+| net | config, pir_ctrl |
 | uart_bridge | sys |
-| t3x | sys, config 引脚 |
+| t3x_ctrl | sys, config 引脚 |
 
 **规则**：`lib/*` 不得 `require user/*`。
 
@@ -87,20 +87,20 @@ main.lua
 ```
 lib/pir (GPIO30 rising, cooldown 10s)
   publish APP_PIR_HW_TRIGGERED
-    → pirCtrl.onPirTriggered (subscribe in pirCtrl.start)
+    → pir_ctrl.onPirTriggered (subscribe in pir_ctrl.start)
         录像中 + stopOnSecondPir → PIR_STOP_RECORDING(pir_retrigger)
         否则 → GPIO_PIR_TRIGGERED
              → PIR_TAKE_PHOTO / PIR_RECORD_VIDEO (+ 录像 timer)
     → app subscribe
-        photo/video + uploadMode auto → net.publishWakeup + t3x.wake()
-        stop → net.publishPirRecordStop(1011) + t3x.pulseWakeup()
+        photo/video + uploadMode auto → net.publishWakeup + t3x_ctrl.wake()
+        stop → net.publishPirRecordStop(1011) + t3x_ctrl.pulseWakeup()
 ```
 
 云端：
 
 ```
-2010 → pirCtrl.setMediaConfig / setRecordPolicy
-2011 → pirCtrl.requestStopFromCloud → PIR_STOP_RECORDING(cloud)
+2010 → pir_ctrl.setMediaConfig / setRecordPolicy
+2011 → pir_ctrl.requestStopFromCloud → PIR_STOP_RECORDING(cloud)
 ```
 
 ---
@@ -111,11 +111,11 @@ lib/pir (GPIO30 rising, cooldown 10s)
 PMD USB 拔出 (state=0)
   → APP_RUNTIME.power_status=0, GPIO_VBUS_CHANGED
   → onEnterLowPower (if was awake)
-       → POWER_ENTERED_REST, t3x.enterSleep (pm.hibernate), publishRest
+       → POWER_ENTERED_REST, t3x_ctrl.enterSleep (pm.hibernate), publishRest
   → startMqtt() if not started (fallback)
 
 PMD USB 插入
-  → onExitLowPower → t3x.wake()
+  → onExitLowPower → t3x_ctrl.wake()
 
 initPowerStatus (no PMD, no USB)
   → onEnterLowPower immediately
@@ -137,8 +137,8 @@ lib/key  → GPIO_BOOTKEY_SHORT / LONG, GPIO_COPROC_READY
 
 app subscribe:
   PWRKEY_LONG     → pm.shutdown()
-  BOOTKEY_LONG    → t3x.enterBootMode()
-  t3x_STARTED     → t3x.exitBootMode()
+  BOOTKEY_LONG    → t3x_ctrl.enterBootMode()
+  t3x_STARTED     → t3x_ctrl.exitBootMode()
 ```
 
 ---
@@ -154,7 +154,7 @@ app subscribe:
 | 2003 | 状态/间隔 → 1003 |
 | 2004 | 电源/OTA → 1004 |
 | 2005 | SIM → 1005 |
-| 2010 | pirCtrl 配置 |
+| 2010 | pir_ctrl 配置 |
 | 2011 | 云端停录 |
 
 | 上行 | 函数 |

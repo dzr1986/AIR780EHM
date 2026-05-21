@@ -1,4 +1,4 @@
---- 项目配置（纯数据：引脚、采样、连接）
+﻿--- 项目配置（纯数据：引脚、采样、连接）
 -- GPIO：GPIO_IN / GPIO_OUT 含 init_level、on_level、pull 等，见 lib/gpio_util.lua
 -- 业务：app_config.lua、key_config.lua、pir_ctrl.lua
 -- @module config
@@ -31,6 +31,21 @@ _G.APP_RUNTIME = {
     battery_percent = "--",
     battery_mv = "--",
     battery_consumption_rate = "0",
+}
+
+-- T31 烧录模式（GPIO28 BOOT 键长按）：进入前条件与关停项，见 doc/T31_BURN_MODE.md
+_G.T31_BURN_CFG = {
+    min_battery_percent = 50,
+    require_battery_valid = true,
+    allow_repeat_enter_boot = true,
+    burn_check_retry_count = 2,
+    burn_check_retry_interval_ms = 800,
+    stop_mqtt = true,
+    stop_uart = true,
+    suspend_pir = true,
+    stop_heartbeat = true,
+    turn_off_led = true,
+    publish_rest_before_stop = true,
 }
 
 -- ============================================================
@@ -128,6 +143,7 @@ _G.GPIO_OUT = {
         init_level = 1,
         on_level = 0,
     },
+    ----烧录T31
     t3x_boot = {
         pin = 26,
         net_name = "T31_BOOT",

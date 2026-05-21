@@ -1,5 +1,5 @@
 -- 780EHM_PJ 入口
--- 启动链: main → app.start(peripheral, net, t3x) → sys.run()
+-- 启动链: main → app.start(peripheral, net, t3x_ctrl) → sys.run()
 PROJECT = PROJECT or "TUYA_CAT1"
 VERSION = VERSION or "1.0.0"
 
@@ -15,7 +15,7 @@ require "key_config"
 local app = require "app"
 local peripheral = require "peripheral"
 local net = require "net"
-local t3x = require "t3x"
+local t3x_ctrl = require "t3x_ctrl"
 
 if not isEntry then
     return app
@@ -27,6 +27,6 @@ if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)
 end
 
-app.start(peripheral, net, t3x)
+app.start(peripheral, net, t3x_ctrl)
 
 sys.run()

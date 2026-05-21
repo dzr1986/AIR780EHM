@@ -1,4 +1,4 @@
-﻿# 串口桥接协议（uart_bridge）
+# 串口桥接协议（uart_bridge）
 
 > 适用：`lib/uart_bridge.lua`（主路径**唯一** UART 入口）  
 > 配置：`config.lua` → `UART_CFG.id`（默认 1）、`UART_CFG.baud`（默认 115200）  
@@ -94,7 +94,7 @@ ub.write(binaryData)
 | 函数 | 说明 |
 |------|------|
 | `start(options)` | 初始化 UART；`app` 设置 `_G.uart_bridge` |
-| `stop()` | 关闭 UART（如 `t3x.enterDeepSleep` 调用） |
+| `stop()` | 关闭 UART（如 `t3x_ctrl.enterDeepSleep` 调用） |
 | `sendString(text, withCrlf?)` | 默认带 `\r\n` |
 | `sendHex(hexStr)` | 十六进制字符串 |
 | `write(data)` | 原始字节 |

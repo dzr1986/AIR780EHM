@@ -1,4 +1,4 @@
-﻿# 人体检测（PIR）— GPIO30 / PIR_MCU_DET
+# 人体检测（PIR）— GPIO30 / PIR_MCU_DET
 
 本文说明 **Air780EHM** 侧 PIR 硬件引脚、中断检测、业务联动与 **MQTT 1010** 上报流程。云端策略与 JSON 字段见 [`PIR_PROTOCOL.md`](PIR_PROTOCOL.md)。
 
@@ -36,7 +36,7 @@ flowchart LR
 | 1 | GND | 地 |
 | 2 | — | **MK1 麦克风**，经 C2/C3 滤波后送主控（与 PIR 无关） |
 | **3** | **PIRMCU_DET** | **PIR 检测输出 → 主板 `PIR_MCU_DET` → 模组 GPIO30** |
-| 4 | **BATSTAT_LED** | 子板电池状态灯 → 主板 **BAT_STAT_LED** → **Air780 GPIO21**（`ledCtrl`） |
+| 4 | **BATSTAT_LED** | 子板电池状态灯 → 主板 **BAT_STAT_LED** → **Air780 GPIO21**（`led_ctrl`） |
 | 5 | NETSTAT_LED | 网络状态灯（子板；模组侧网络状态另见 USB/NET 设计） |
 | 6 | 3V3 | 子板逻辑电源 |
 | 8 | CHGRED | 充电红灯（子板双色 LED，由充电逻辑驱动） |
@@ -57,7 +57,7 @@ flowchart LR
 | 原理图 | 主板 / 模组 | 固件 |
 |--------|-------------|------|
 | PIRMCU_DET | PIR_MCU_DET → **GPIO30** | `PIR_CFG` / `GPIO_IN.pir_det`，`lib/pir` |
-| BATSTAT_LED | **BAT_STAT_LED → GPIO21** | `GPIO_OUT.bat_stat_led`，`ledCtrl` |
+| BATSTAT_LED | **BAT_STAT_LED → GPIO21** | `GPIO_OUT.bat_stat_led`，`led_ctrl` |
 
 **要点（结合原理图的分析）**
 
@@ -65,7 +65,7 @@ flowchart LR
 2. **有效电平**：输出经上拉/下拉与 `PIR_CFG.pull = pulldown`、`active_level = 1` 一致时，**高电平** 表示触发；与 `trigger_mode = rising` 匹配。
 3. **防抖**：硬件有 **C1 + R1**；软件另有 **`debounce_ms = 100`**，二者叠加。
 4. **麦克风 MK1**：走 J1 Pin2，属音频子系统，不参与 PIR 流程。
-5. **BAT_STAT_LED**：子板 J1 Pin4 经主板接到 **Air780 GPIO21**，固件用 `ledCtrl` 按 `APP_RUNTIME.battery_percent` 控灯（高电量蓝常亮等）。子板 CHGRED/CHGBLUE 为 **5V 充电灯**，由充电硬件驱动，非 GPIO21。
+5. **BAT_STAT_LED**：子板 J1 Pin4 经主板接到 **Air780 GPIO21**，固件用 `led_ctrl` 按 `APP_RUNTIME.battery_percent` 控灯（高电量蓝常亮等）。子板 CHGRED/CHGBLUE 为 **5V 充电灯**，由充电硬件驱动，非 GPIO21。
 
 ---
 
@@ -132,17 +132,17 @@ cooldown_ms = _G.PIR_COOLDOWN_MS.standard,   -- 15s 标准档
 
 ## 4. 启动顺序
 
-须在 **PIR 硬件中断注册之前** 启动 `pirCtrl`，以便订阅硬件事件。
+须在 **PIR 硬件中断注册之前** 启动 `pir_ctrl`，以便订阅硬件事件。
 
 ```mermaid
 sequenceDiagram
     participant APP as app.start
-    participant PC as pirCtrl.start
+    participant PC as pir_ctrl.start
     participant PER as peripheral.start
     participant PIR as lib/pir
 
     APP->>APP: setupEventHandlers()
-    APP->>PC: pirCtrl.start() 订阅 PIR_HW_TRIGGERED
+    APP->>PC: pir_ctrl.start() 订阅 PIR_HW_TRIGGERED
     APP->>PER: setupGpio() → peripheral.start
     PER->>PIR: pir.start()
     PIR->>PIR: gpio_util 上升沿中断
@@ -150,7 +150,7 @@ sequenceDiagram
 
 对应 `app.lua`：
 
-1. `setupEventHandlers()` 内 **`pirCtrl.start()`**（最先）
+1. `setupEventHandlers()` 内 **`pir_ctrl.start()`**（最先）
 2. `setupGpio()` → `peripheral.start()` → `pir.start()`
 3. `peripheral` → `pir.start()`
 
@@ -167,7 +167,7 @@ flowchart TD
     A[GPIO30 上升沿] --> B{冷却期内?}
     B -->|是| Z[忽略]
     B -->|否| C[publish PIR_HW_TRIGGERED]
-    C --> D[pirCtrl.onPirTriggered]
+    C --> D[pir_ctrl.onPirTriggered]
     D --> E{正在录像且 stopOnSecondPir?}
     E -->|是| F[PIR_STOP_RECORDING pir_retrigger]
     E -->|否| G[GPIO_PIR_TRIGGERED]
@@ -181,8 +181,8 @@ flowchart TD
 | 事件 | 动作 |
 |------|------|
 | `GPIO_PIR_TRIGGERED` | `net.publishPirDetect()` → 上行 **1010** |
-| `PIR_TAKE_PHOTO` / `PIR_RECORD_VIDEO` | `uploadMode=auto` 时 **1001 唤醒**；`t3x.wake()` 拉起主控拍照/录像 |
-| `PIR_STOP_RECORDING` | **1011** 停录上报；`t3x.pulseWakeup()` |
+| `PIR_TAKE_PHOTO` / `PIR_RECORD_VIDEO` | `uploadMode=auto` 时 **1001 唤醒**；`t3x_ctrl.wake()` 拉起主控拍照/录像 |
+| `PIR_STOP_RECORDING` | **1011** 停录上报；`t3x_ctrl.pulseWakeup()` |
 
 默认媒体策略（`pir_ctrl.lua` → `pirMediaConfig`）：
 
@@ -233,10 +233,10 @@ flowchart TD
 | 事件（`APP_EVENTS`） | 发布者 | 说明 |
 |----------------------|--------|------|
 | `PIR_HW_TRIGGERED` | `lib/pir` | GPIO30 有效触发（过冷却） |
-| `GPIO_PIR_TRIGGERED` | `pirCtrl` | 业务层确认触发（含 action 等） |
-| `PIR_TAKE_PHOTO` | `pirCtrl` | 执行拍照策略 |
-| `PIR_RECORD_VIDEO` | `pirCtrl` | 开始录像会话 |
-| `PIR_STOP_RECORDING` | `pirCtrl` | 停止录像 |
+| `GPIO_PIR_TRIGGERED` | `pir_ctrl` | 业务层确认触发（含 action 等） |
+| `PIR_TAKE_PHOTO` | `pir_ctrl` | 执行拍照策略 |
+| `PIR_RECORD_VIDEO` | `pir_ctrl` | 开始录像会话 |
+| `PIR_STOP_RECORDING` | `pir_ctrl` | 停止录像 |
 
 ---
 
@@ -249,7 +249,7 @@ flowchart TD
 | 有日志无 1010 | `MODULE_FLAGS.mqtt`、`APP_RUNTIME.online_status`、是否订阅到 `GPIO_PIR_TRIGGERED` |
 | 只拍照不唤醒 | 检查 `uploadMode` 是否为 `manual` |
 
-日志 TAG：`pir`（硬件）、`pirCtrl`、`app`、`net`。
+日志 TAG：`pir`（硬件）、`pir_ctrl`、`app`、`net`。
 
 ---
 

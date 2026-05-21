@@ -1,16 +1,17 @@
-﻿# 配置说明（命名规范与索引）
+# 配置说明（命名规范与索引）
 
 > **硬件**：[`../user/config.lua`](../user/config.lua)  
 > **开关/事件**：[`../user/app_config.lua`](../user/app_config.lua)  
 > **按键策略**：[`../user/key_config.lua`](../user/key_config.lua)  
 > **PIR 媒体**：[`../user/pir_ctrl.lua`](../user/pir_ctrl.lua)  
+> **t3x 协处理器**：[`../user/t3x_ctrl.lua`](../user/t3x_ctrl.lua)  
 > **加载**：`main.lua` → `config` → `app_config` → `key_config`
 
 ## 命名约定
 
 | 类别 | 规则 | 示例 |
 |------|------|------|
-| Lua 文件 | `snake_case` | `uart_bridge.lua`、`pir_ctrl.lua` |
+| Lua 文件 | `snake_case` | `uart_bridge.lua`、`t3x_ctrl.lua`、`pir_ctrl.lua`、`led_ctrl.lua` |
 | 配置表 | `*_CFG` | `GPIO_IN`、`MQTT_CFG` |
 | 运行时 | `APP_RUNTIME` | `battery_percent`、`online_status` |
 | 表内字段 | `snake_case` | `init_level`、`trigger_mode` |
@@ -57,9 +58,9 @@
 |----|-----|--------------|------------|------|
 | `led_red` | 20 | **0** | **1** | `led_ctrl` |
 | `bat_stat_led` | 21 | **0** | **1** | `led_ctrl` |
-| `t3x_boot` | 26 | **0** | **1** | `t3x` |
-| `t3x_pwr_wake` | 22 | **0** | **1** | `t3x`（上电后 `powerOn()` 拉到 `on_level`） |
-| `t3x_ota` | 32 | **0** | **1** | `t3x` |
+| `t3x_boot` | 26 | **0** | **1** | `t3x_ctrl` |
+| `t3x_pwr_wake` | 22 | **0** | **1** | `t3x_ctrl`（上电后 `powerOn()` 拉到 `on_level`） |
+| `t3x_ota` | 32 | **0** | **1** | `t3x_ctrl` |
 
 修改 LED/协处理器默认亮灭：**只改 `init_level` / `on_level`**，无需改业务代码。
 

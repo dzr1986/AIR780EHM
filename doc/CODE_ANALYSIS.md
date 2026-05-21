@@ -1,4 +1,4 @@
-﻿# user/ 代码整体分析（780EHM_PJ）
+# user/ 代码整体分析（780EHM_PJ）
 
 > Air780EHM + t3x 摄像头 · LuatOS 方案1（扁平架构）  
 > 分析日期：2026-05-18（第二轮：全量源码对照）  
@@ -32,9 +32,9 @@
 | 编排与策略 | `app.lua` | ~390 |
 | 云端通信 | `net.lua` | ~270 |
 | 本地调试 | `lib/uart_bridge.lua` | ~400 |
-| 协处理器 | `t3x.lua` | ~215 |
+| 协处理器 | `t3x_ctrl.lua` | ~215 |
 | PIR 业务 | `pir_ctrl.lua` | ~210 |
-| 外设聚合 | `peripheral.lua` + ledCtrl | ~110 |
+| 外设聚合 | `peripheral.lua` + led_ctrl | ~110 |
 | GPIO 按键 | `lib/key.lua` | ~170 |
 | 配置 | `config.lua` | ~140 |
 
@@ -50,18 +50,18 @@
                     ┌─────────────┐
                     │  main.lua   │
                     └──────┬──────┘
-                           │ app.start(peripheral, net, t3x)  依赖注入
+                           │ app.start(peripheral, net, t3x_ctrl)  依赖注入
                            ▼
                     ┌─────────────┐
          ┌─────────│   app.lua   │─────────┐
          │         └─────────────┘         │
          ▼              ▼              ▼     ▼
-  peripheral.lua   net.lua      t3x.lua  lib/uart_bridge
+  peripheral.lua   net.lua      t3x_ctrl.lua  lib/uart_bridge
          │              │              │
-    ledCtrl          MQTT          GPIO22  UART1
+    led_ctrl          MQTT          GPIO22  UART1
     lib/key          2003-2011     电源/脉冲 AT/STR/HEX
          │          1001-1011
-    lib/pir ──PIR_HW──► pirCtrl ──事件──► app
+    lib/pir ──PIR_HW──► pir_ctrl ──事件──► app
 ```
 
 ### 2.2 设计原则
@@ -70,8 +70,8 @@
 |------|------|
 | 单 MQTT 入口 | 仅 `net.lua`；`APP_STACK.mqtt = "net"` |
 | 单串口入口 | 仅 `uart_bridge.lua` → `_G.uart_bridge` |
-| 配置分层 | `config.lua` 硬件；`app_config.lua` 开关/事件；`key_config.lua` 按键；`pirCtrl` PIR 策略 |
-| 硬件/业务分层 | PIR：`lib/pir`（冷却+中断）→ `pirCtrl`（会话）→ `app`（联动 net/t3x） |
+| 配置分层 | `config.lua` 硬件；`app_config.lua` 开关/事件；`key_config.lua` 按键；`pir_ctrl` PIR 策略 |
+| 硬件/业务分层 | PIR：`lib/pir`（冷却+中断）→ `pir_ctrl`（会话）→ `app`（联动 net/t3x_ctrl） |
 | 事件驱动 | 按键/PIR/MQTT/电源多数走 `sys.publish` + `app` 订阅 |
 | lib 不反向依赖 user | `lib/pir` 只发 `APP_EVENTS` 字符串，不 require user |
 
@@ -79,18 +79,18 @@
 
 | 文件 | 职责 | require / 注入 |
 |------|------|----------------|
-| `main.lua` | 入口；EC618 关 PWK；`sys.run()` | config, appConfig, keyConfig, app, peripheral, net, t3x |
+| `main.lua` | 入口；EC618 关 PWK；`sys.run()` | config, appConfig, keyConfig, app, peripheral, net, t3x_ctrl |
 | `config.lua` | 硬件引脚、PIR/电池、MQTT 等 | 无 |
 | `app_config.lua` | `MODULE_FLAGS`、`APP_EVENTS` | config |
 | `key_config.lua` | `KEY_CONFIG` | config |
-| `app.lua` | 启动顺序、事件订阅、低功耗、PMD、`bootMqtt` | uart_bridge, pirCtrl, bat_adc, usb_charge, mobileInfo, watchdog |
-| `net.lua` | MQTT 任务、下行路由、上行发布 | config, pirCtrl |
+| `app.lua` | 启动顺序、事件订阅、低功耗、PMD、`bootMqtt` | uart_bridge, pir_ctrl, bat_adc, usb_charge, mobileInfo, watchdog |
+| `net.lua` | MQTT 任务、下行路由、上行发布 | config, pir_ctrl |
 | `lib/uart_bridge.lua` | AT/STR/HEX、唯一 `uart.setup` | sys |
 | `lib/usb_charge.lua` | USB_DET / CHG_STATE 中断 | gpio_util, config |
-| `t3x.lua` | GPIO22 供电/脉冲、BOOT、休眠 | config 引脚 |
+| `t3x_ctrl.lua` | GPIO22 供电/脉冲、BOOT、休眠 | config 引脚 |
 | `pir_ctrl.lua` | 媒体策略、录像定时器、2010/2011 API | sys |
-| `peripheral.lua` | 聚合 LED/按键/PIR 硬件 | ledCtrl, key, pir, pirCtrl |
-| `ledCtrl.lua` | 红蓝 LED、开机序列、电量灯效 | lib/led |
+| `peripheral.lua` | 聚合 LED/按键/PIR 硬件 | led_ctrl, key, pir, pir_ctrl |
+| `led_ctrl.lua` | 红蓝 LED、开机序列、电量灯效 | lib/led |
 | `lib/key.lua` | pwrkey/bootkey/ready → `KEY_CONFIG` | gpio_util, config |
 
 ### 2.4 栈选择
@@ -110,20 +110,20 @@ APP_STACK = { mqtt = "net", uart = "uart_bridge" }
 ```text
 main.lua
   require config
-  app.start(peripheral, net, t3x)
+  app.start(peripheral, net, t3x_ctrl)
   sys.run()
 ```
 
-`main` 对 `app` 做 **依赖注入**，`app` 内不 `require net/peripheral/t3x`，便于单测或替换实现。
+`main` 对 `app` 做 **依赖注入**，`app` 内不 `require net/peripheral/t3x_ctrl`，便于单测或替换实现。
 
 ### 3.2 `app.start()` 顺序（与源码一致）
 
 | 顺序 | 条件 | 动作 |
 |------|------|------|
-| 1 | 始终 | `setupEventHandlers()` → **`pirCtrl.start()`** 订阅 `PIR_HW_TRIGGERED`（须在 `peripheral` 启 PIR 前） |
+| 1 | 始终 | `setupEventHandlers()` → **`pir_ctrl.start()`** 订阅 `PIR_HW_TRIGGERED`（须在 `peripheral` 启 PIR 前） |
 | 2 | `watchdog` | `lib/watchdog.start(WDT_CFG)` |
 | 3 | `uart_bridge` | `uart_bridge.start()` → `_G.uart_bridge` |
-| 4 | 始终 | `t3x.start()` → GPIO22 上电 |
+| 4 | 始终 | `t3x_ctrl.start()` → GPIO22 上电 |
 | 5 | `gpio` | `peripheral.start()` → LED/按键/PIR 硬件 |
 | 6 | `pmd_runtime` | PMD USB 插拔 |
 | 7 | 各 flag | battery / charge / sntpSync / mobileInfo |
@@ -149,16 +149,16 @@ bootMqtt (sys.taskInit)
 |------|------|
 | 上电 | `bootMqtt` 驱动 MQTT，与 USB 无关 |
 | USB 拔出 | `onEnterLowPower` + `publishRest`；MQTT **不断开** |
-| USB 插入 | `onExitLowPower` → `t3x.wake()` |
+| USB 插入 | `onExitLowPower` → `t3x_ctrl.wake()` |
 | USB 拔出且 MQTT 未起 | `startMqtt()` 兜底（少见） |
 
 ### 3.4 低功耗语义（易混淆）
 
 | 层级 | 实现 | 说明 |
 |------|------|------|
-| **业务低功耗** | `app.onEnterLowPower` | `APP_RUNTIME.low_power_mode=1`、`t3x.enterSleep()`、`publishRest` |
-| **t3x.enterSleep** | 内部调用 **`pm.hibernate()`** | 会挂起 Lua 协程，属模组休眠 API，不仅是“标记 t3x 睡眠” |
-| **t3x.enterDeepSleep** | `uart_bridge.stop` + **`pm.deepSleep()`** | 当前主路径 **未调用** |
+| **业务低功耗** | `app.onEnterLowPower` | `APP_RUNTIME.low_power_mode=1`、`t3x_ctrl.enterSleep()`、`publishRest` |
+| **t3x_ctrl.enterSleep** | 内部调用 **`pm.hibernate()`** | 会挂起 Lua 协程，属模组休眠 API，不仅是“标记 t3x 睡眠” |
+| **t3x_ctrl.enterDeepSleep** | `uart_bridge.stop` + **`pm.deepSleep()`** | 当前主路径 **未调用** |
 | **模组 WORK_MODE** | 未接 | `lib/archive/powerMode.lua` 未启用 |
 
 上电无 USB 且 `pmd_runtime=false` 时，`initPowerStatus` 会直接进业务低功耗，但 **MQTT 仍由 `bootMqtt` 启动**（与旧版“USB 常插不连 MQTT”不同）。
@@ -172,12 +172,12 @@ bootMqtt (sys.taskInit)
 ```text
 GPIO30 上升沿 (lib/pir, 默认 cooldown=10s)
   → APP_PIR_HW_TRIGGERED
-  → pirCtrl.onPirTriggered
+  → pir_ctrl.onPirTriggered
       若录像中且 stopOnSecondPir → PIR_STOP_RECORDING(reason=pir_retrigger)
       否则 → GPIO_PIR_TRIGGERED + PIR_TAKE_PHOTO / PIR_RECORD_VIDEO
   → app:
-        uploadMode=auto → net.publishWakeup(1001) + t3x.wake()
-  → PIR_STOP_RECORDING → publishPirRecordStop(1011) + t3x.pulseWakeup()
+        uploadMode=auto → net.publishWakeup(1001) + t3x_ctrl.wake()
+  → PIR_STOP_RECORDING → publishPirRecordStop(1011) + t3x_ctrl.pulseWakeup()
 ```
 
 `pulseWakeup`：GPIO22 拉低 120ms 再拉高，与供电同脚；**无**专用 UART 停录帧。
@@ -193,7 +193,7 @@ GPIO30 上升沿 (lib/pir, 默认 cooldown=10s)
 
 | 退出 | 路径 |
 |------|------|
-| USB 插入 | PMD → `onExitLowPower` → `t3x.wake()` |
+| USB 插入 | PMD → `onExitLowPower` → `t3x_ctrl.wake()` |
 | MQTT 2002 exit | `POWER_EXIT_REST` |
 | AT `AT+LOWPOWER=EXIT` | uart_bridge |
 
@@ -208,8 +208,8 @@ lib/key 中断（pwrkey / bootkey / ready）
   → sys.publish(GPIO_PWRKEY_* / GPIO_BOOTKEY_* / GPIO_COPROC_READY)
   → app.setupEventHandlers 订阅
       长按电源 → onPowerOff() → pm.shutdown()
-      长按 BOOT → t3x.enterBootMode()
-      t3x 启动脚上升沿 → t3x.exitBootMode()
+      长按 BOOT → t3x_ctrl.enterBootMode()
+      t3x 启动脚上升沿 → t3x_ctrl.exitBootMode()
 ```
 
 仍保留 `CONFIG.onLongPress` 可选回调字段，但主路径未使用。
@@ -221,8 +221,8 @@ lib/key 中断（pwrkey / bootkey / ready）
 | 低功耗 | 2002 | `AT+LOWPOWER` |
 | 重启 | 2004 reboot | `AT+REBOOT` |
 | 关机 | 2004 off | `AT+POWEROFF` |
-| PIR 配置 | 2010 → `pirCtrl.setMediaConfig/setRecordPolicy` | — |
-| 停录 | 2011 → `pirCtrl.requestStopFromCloud` | — |
+| PIR 配置 | 2010 → `pir_ctrl.setMediaConfig/setRecordPolicy` | — |
+| 停录 | 2011 → `pir_ctrl.requestStopFromCloud` | — |
 | OTA | 2004 action=ota → `DEVICE_OTA_REQUEST` | 1004 |
 | 读配置 | — | `AT+GETCFG`（含 online/power/lowpower/battery） |
 
@@ -230,10 +230,10 @@ lib/key 中断（pwrkey / bootkey / ready）
 
 | 事件 | 发布方 | 订阅方 / 用途 |
 |------|--------|----------------|
-| `PIR_HW_TRIGGERED` | lib/pir | pirCtrl |
-| `GPIO_PIR_TRIGGERED` | pirCtrl | app（日志） |
-| `PIR_TAKE_PHOTO` / `PIR_RECORD_VIDEO` | pirCtrl | app → net + t3x |
-| `PIR_STOP_RECORDING` | pirCtrl | app → 1011 + pulse |
+| `PIR_HW_TRIGGERED` | lib/pir | pir_ctrl |
+| `GPIO_PIR_TRIGGERED` | pir_ctrl | app（日志） |
+| `PIR_TAKE_PHOTO` / `PIR_RECORD_VIDEO` | pir_ctrl | app → net + t3x_ctrl |
+| `PIR_STOP_RECORDING` | pir_ctrl | app → 1011 + pulse |
 | `GPIO_PWRKEY_*` | lib/key pwrkey | app |
 | `GPIO_BOOTKEY_*` / `GPIO_COPROC_READY` | lib/key | app |
 | `GPIO_VBUS_CHANGED` | PMD、initPowerStatus | app（日志） |
@@ -263,8 +263,8 @@ lib/key 中断（pwrkey / bootkey / ready）
 | `2003` | 写 `APP_RUNTIME.low_power_interval_sec` |
 | `2004` | `reboot` → `DEVICE_REBOOT_REQUEST`；`off` → `DEVICE_POWER_OFF_REQUEST` |
 | `2002` | enter/exit → `POWER_ENTER_REST` / `POWER_EXIT_REST` |
-| `2010` | `pirCtrl.setMediaConfig` + `setRecordPolicy` |
-| `2011` | `pirCtrl.requestStopFromCloud()` |
+| `2010` | `pir_ctrl.setMediaConfig` + `setRecordPolicy` |
+| `2011` | `pir_ctrl.requestStopFromCloud()` |
 | `2004` OTA | `DEVICE_OTA_REQUEST` + 1004 |
 | `2005` | SIM 查询 → 1005 |
 | 任意 | 再发 `MQTT_SERVER_DATA` |
@@ -284,10 +284,10 @@ lib/key 中断（pwrkey / bootkey / ready）
 | `APP_RUNTIME.power_status` | PMD、initPowerStatus | net 1003、AT GETCFG |
 | `APP_RUNTIME.low_power_mode` | app 低功耗 | net 1003、AT、心跳 |
 | `APP_RUNTIME.online_status` | net conack/disconnect | AT GETCFG |
-| `pirMediaConfig` / `pirRecordPolicy` | pirCtrl 默认、net 2010 | pirCtrl、上报 |
+| `pirMediaConfig` / `pirRecordPolicy` | pir_ctrl 默认、net 2010 | pir_ctrl、上报 |
 | `APP_RUNTIME.low_power_interval_sec` | net 2003、AT SETCFG | AT GETCFG |
 | `APP_RUNTIME.battery_percent` / `battery_mv` | bat_core（经 bat_adc） | net 1003、LED、AT |
-| `_G.uart_bridge` | app.setupuart_bridge | t3x.enterDeepSleep（若用） |
+| `_G.uart_bridge` | app.setupuart_bridge | t3x_ctrl.enterDeepSleep（若用） |
 
 **优点**：AT/MQTT/多模块共享一致。  
 **缺点**：隐式依赖，重构需全库搜索；无类型约束。
@@ -302,16 +302,16 @@ lib/key 中断（pwrkey / bootkey / ready）
 |------|------|------|
 | `bootMqtt` | `sys.taskInit` | 等 net_ready 后 startMqtt |
 | `net.mqttTask` | `sys.taskInit` | 长驻：连接、60s status、mqtt_pub 循环 |
-| `pirCtrl` 录像 | `sys.timerStart` | `maxDurationSec` 到期停录 |
+| `pir_ctrl` 录像 | `sys.timerStart` | `maxDurationSec` 到期停录 |
 | `lib/pir` | `sys.timerStart` | cooldown 结束 |
 | `lib/key` | `sys.timerStart` | 长短按判定 |
-| `t3x.pulseWakeup` | `sys.timerStart` | 120ms 后拉高 |
+| `t3x_ctrl.pulseWakeup` | `sys.timerStart` | 120ms 后拉高 |
 | `app` 心跳 | `sys.timerLoopStart` | 10s |
 | `lib/watchdog` | `sys.timerLoopStart` | 喂狗 |
-| `ledCtrl` | `sys.taskInit` | 开机序列 + 电量灯效循环 |
+| `led_ctrl` | `sys.taskInit` | 开机序列 + 电量灯效循环 |
 | `user/bat_adc` | task | adc_lib 采样 + bat_core 写 `APP_RUNTIME.battery_percent` |
 
-**注意**：`t3x.enterSleep` → `pm.hibernate()` 会阻塞当前协程路径；若在错误上下文调用可能影响 MQTT 任务（当前仅在 `onEnterLowPower` 同步调用，需实机验证与 MQTT 并发）。
+**注意**：`t3x_ctrl.enterSleep` → `pm.hibernate()` 会阻塞当前协程路径；若在错误上下文调用可能影响 MQTT 任务（当前仅在 `onEnterLowPower` 同步调用，需实机验证与 MQTT 并发）。
 
 `net.start({ onOffline })` 支持回调，但 **app 未传入**，仅用 `MQTT_OFFLINE` 事件。
 
@@ -333,7 +333,7 @@ lib/key 中断（pwrkey / bootkey / ready）
 
 | 序号 | 问题 | 影响 | 建议 |
 |------|------|------|------|
-| 1 | `t3x.enterSleep` 调 `pm.hibernate` | 业务低功耗可能牵动整机休眠，与 MQTT 并发未文档化 | 实机测 MQTT 是否仍在线；或改为仅脉冲/标记，深睡走独立流程 |
+| 1 | `t3x_ctrl.enterSleep` 调 `pm.hibernate` | 业务低功耗可能牵动整机休眠，与 MQTT 并发未文档化 | 实机测 MQTT 是否仍在线；或改为仅脉冲/标记，深睡走独立流程 |
 | 2 | 双重 `net_ready` 等待 | `bootMqtt` 120s + `mqttTask` 90s，略冗余 | 可让 `net.start` 跳过二次等待或缩短超时 |
 | 3 | OTA 版本格式 | 合宙 IoT 要求 `x.y.z` | 平台与脚本 `VERSION` 对齐 |
 | 4 | MQTT 密码明文 | `config.lua` | 生产用参数下发或编译保护 |
@@ -376,7 +376,7 @@ lib/pir          →  lib/gpio_util
 | FOTA | 已实现 | `lib/fota.lua` + MQTT 1004；`MODULE_FLAGS.fota` |
 | `net.start({ onMessage })` | 未用 | 调试或二次解析 |
 | `peripheral` 回调字段 | normalize 支持，app 未传 | 保留兼容，不必删 |
-| `t3x.enterDeepSleep` | 未调用 | 极致功耗场景评估 |
+| `t3x_ctrl.enterDeepSleep` | 未调用 | 极致功耗场景评估 |
 | `UART_RX_*` 事件 | 已发布，app 用回调 | 业务可改订阅事件解耦 |
 | `POWER_ENTERED_REST` | 无订阅者 | 统计/LED 可挂 |
 | 1004+ 上行 | 协议文档有扩展位 | 在 `net.lua` 增函数 |
@@ -402,7 +402,7 @@ lib/pir          →  lib/gpio_util
 
 ## 12. 总结
 
-工程是以 **`app.lua` 为核心的事件驱动应用**：`config` 定规则，`peripheral`+`lib` 管硬件与 OTA，`pirCtrl` 管 PIR 会话，`net`/`uart_bridge` 管对外通道，`t3x` 管协处理器。主路径含 **常电 MQTT**、**FOTA（2004/1004）**；后续可重点验证 **`t3x.enterSleep` 与 MQTT 并发**、**t3x 停录 UART 协议**。
+工程是以 **`app.lua` 为核心的事件驱动应用**：`config` 定规则，`peripheral`+`lib` 管硬件与 OTA，`pir_ctrl` 管 PIR 会话，`net`/`uart_bridge` 管对外通道，`t3x_ctrl` 管协处理器。主路径含 **常电 MQTT**、**FOTA（2004/1004）**；后续可重点验证 **`t3x_ctrl.enterSleep` 与 MQTT 并发**、**t3x 停录 UART 协议**。
 
 ---
 

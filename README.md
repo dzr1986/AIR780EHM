@@ -6,12 +6,12 @@ Air780EHM + t3x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`
 
 ```
 main.lua
-  └─ app.start(peripheral, net, t3x)
+  └─ app.start(peripheral, net, t3x_ctrl)
        ├─ lib/uart_bridge   唯一串口（AT / STR / HEX）
        ├─ net               唯一 MQTT（2003–2011 ↓ / 1001–1011 ↑）
        ├─ fota              MQTT 2004 OTA → libfota2
        ├─ pir_ctrl + lib/pir
-       ├─ t3x               协处理器电源 / 唤醒
+       ├─ t3x_ctrl           协处理器电源 / 唤醒
        └─ peripheral        LED / 按键 / PIR 硬件
 ```
 
@@ -26,7 +26,7 @@ main.lua
 
 | 路径 | 说明 |
 |------|------|
-| `user/` | 入口、编排、MQTT、t3x、PIR、外设 |
+| `user/` | 入口、编排、MQTT、t3x_ctrl、PIR、外设 |
 | `lib/` | 串口、GPIO、硬件与 FOTA 库 |
 | `doc/` | 协议、硬件、配置说明（Markdown） |
 | `lib/archive/` | 旧栈（不参与启动） |
@@ -57,7 +57,7 @@ main.lua
 | `net.lua` | MQTT |
 | `pir_ctrl.lua` / `led_ctrl.lua` | PIR 业务 / LED |
 | `peripheral.lua` | 外设聚合 |
-| `t3x.lua` / `bat_adc.lua` | 协处理器 / 电池采样 |
+| `t3x_ctrl.lua` / `bat_adc.lua` | 协处理器 / 电池采样 |
 
 ## GPIO 配置速查
 

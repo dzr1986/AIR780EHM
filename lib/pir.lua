@@ -18,6 +18,9 @@ local started = false
 local cooldownUntil = 0
 
 local function onInterrupt(level)
+    if _G.T31_BURN_MODE_ACTIVE then
+        return
+    end
     log.info(LOG_TAG, "触发0", pin)
     local active = cfg.active_level
     if active == nil then

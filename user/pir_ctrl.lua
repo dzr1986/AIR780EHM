@@ -39,6 +39,7 @@ local session = {
 }
 
 local handlerStarted = false
+local suspended = false
 
 local function toBool(value, default)
     if value == nil then return default end
@@ -182,7 +183,31 @@ function start()
     return true
 end
 
+function suspend()
+    suspended = true
+    if session.recording then
+        publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
+    end
+    clearRecordTimer()
+    log.info("pir_ctrl", "已挂起（T31 烧录等场景）")
+    return true
+end
+
+function resume()
+    suspended = false
+    log.info("pir_ctrl", "已恢复")
+    return true
+end
+
+function isSuspended()
+    return suspended == true
+end
+
 function onPirTriggered()
+    if suspended then
+        log.info("pir_ctrl", "PIR 已挂起，忽略硬件触发")
+        return nil
+    end
     local E = _G.APP_EVENTS or {}
     local media = normalizePirMediaConfig(_G.pirMediaConfig)
     if session.recording and getRecordPolicy().stopOnSecondPir then
@@ -198,6 +223,7 @@ end
 
 function getState()
     return {
+        suspended = suspended,
         recording = session.recording,
         uploadMode = session.uploadMode,
         quality = session.quality,

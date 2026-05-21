@@ -603,6 +603,34 @@ function start(options)
     return true
 end
 
+--- 关停 MQTT 与发布任务（T31 烧录前由 app 调用）
+function stop()
+    if not started and not mqttClient then
+        return false
+    end
+    log.info("net", "========== 停止 MQTT ==========")
+    if isConnected and mqttClient and publishRest then
+        pcall(publishRest)
+        sys.wait(300)
+    end
+    if mqttClient then
+        pcall(function()
+            mqttClient:autoreconn(false)
+        end)
+        sys.publish("mqtt_pub", "close", "", 0)
+        sys.wait(500)
+        pcall(function()
+            mqttClient:close()
+        end)
+        mqttClient = nil
+    end
+    isConnected = false
+    _G.APP_RUNTIME.online_status = 0
+    started = false
+    log.info("net", "MQTT 已停止")
+    return true
+end
+
 function getState()
     return {
         started = started,

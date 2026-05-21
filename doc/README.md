@@ -8,6 +8,7 @@
 | [CODE_ANALYSIS.md](CODE_ANALYSIS.md) | 架构与风险 |
 | [T31_CAT1_GPIO.md](T31_CAT1_GPIO.md) | 原理图级引脚（T31 + Air780） |
 | [KEY_GPIO.md](KEY_GPIO.md) | 按键 / `key_config.lua` |
+| [T31_BURN_MODE.md](T31_BURN_MODE.md) | **GPIO28 长按 → T31 烧录**（电量/关停条件） |
 | [CHARGE_BATTERY.md](CHARGE_BATTERY.md) | 充电、ADC、MQTT 1003 |
 | [PIR_HARDWARE.md](PIR_HARDWARE.md) | PIR 硬件与流程 |
 | [PIR_TRIGGER_INTERVAL.md](PIR_TRIGGER_INTERVAL.md) | PIR 冷却间隔 |
@@ -17,3 +18,5 @@
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
 
 代码真源：`../user/config.lua`、`../user/app_config.lua`、`../user/key_config.lua`。
+
+**模块命名**（与 `user/*.lua` 一致）：`t3x_ctrl`、`led_ctrl`、`pir_ctrl`；`require` 使用同名（如 `require "t3x_ctrl"`）。硬件/协处理器仍称 **t3x**。

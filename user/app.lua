@@ -1,4 +1,4 @@
---- 应用核心编排模块（方案1）
+﻿--- 应用核心编排模块（方案1）
 -- 串口：仅通过 lib/uart_bridge；见 config.UART_CFG / APP_STACK.uart
 -- @module app
 -- @release 2026.5.18
@@ -38,6 +38,8 @@ local state = {
     last_wake_event = nil,
     last_usb_state = nil,
     heartbeat_count = 0,
+    t31_burn_active = false,
+    heartbeat_paused = false,
 }
 
 -- ============================================================
@@ -223,6 +225,10 @@ end
 -- ============================================================
 
 function startMqtt()
+    if _G.T31_BURN_MODE_ACTIVE or state.t31_burn_active then
+        log.warn("app", "T31 烧录模式，跳过启动 MQTT")
+        return false
+    end
     if state.mqtt_started then
         return false
     end
@@ -307,7 +313,232 @@ end
 -- 事件订阅
 -- ============================================================
 
+local function getBatteryPercentForBurn()
+    local pct = tonumber(_G.APP_RUNTIME and _G.APP_RUNTIME.battery_percent)
+    if pct and pct >= 0 then
+        return pct
+    end
+    if type(batAdc) == "table" and batAdc.getPercent then
+        pct = tonumber(batAdc.getPercent())
+        if pct and pct > 0 then
+            return pct
+        end
+    end
+    return nil
+end
+
+local function logT31BurnCheck(name, passed, detail)
+    log.info("app", "T31烧录条件", name, passed and "通过" or "失败", detail or "")
+end
+
+--- 单次条件判断（由 checkT31BurnPreconditions 轮询调用）
+local function checkT31BurnPreconditionsOnce(attemptIndex, attemptTotal)
+    local cfg = _G.T31_BURN_CFG or {}
+    local minPct = tonumber(cfg.min_battery_percent) or 50
+    local allowRepeat = cfg.allow_repeat_enter_boot ~= false
+    local failReason = nil
+    local pct = getBatteryPercentForBurn()
+
+    log.info("app", "---------- T31 烧录条件检查",
+        "第", attemptIndex or 1, "/", attemptTotal or 1, "次", "----------")
+    log.info("app", "T31烧录配置",
+        "min_battery", minPct, "%",
+        "require_battery_valid", cfg.require_battery_valid ~= false,
+        "allow_repeat_enter_boot", allowRepeat)
+
+    logT31BurnCheck("runtime.APP_RUNTIME.battery_percent",
+        pct ~= nil,
+        string.format("raw=%s mv=%s",
+            tostring(_G.APP_RUNTIME and _G.APP_RUNTIME.battery_percent),
+            tostring(_G.APP_RUNTIME and _G.APP_RUNTIME.battery_mv)))
+
+    if cfg.require_battery_valid ~= false then
+        if not pct then
+            logT31BurnCheck("电量", false,
+                string.format("未知(需≥%d%%)，请等待 bat_adc 采样", minPct))
+            failReason = failReason or "电量未知，请等待 bat_adc 采样"
+        elseif pct < minPct then
+            logT31BurnCheck("电量", false, string.format("%d%% < 要求 %d%%", pct, minPct))
+            failReason = failReason or string.format("电量 %d%% 低于 %d%%", pct, minPct)
+        else
+            logT31BurnCheck("电量", true, string.format("%d%% >= %d%%", pct, minPct))
+        end
+    else
+        logT31BurnCheck("电量", true, "已关闭 require_battery_valid")
+    end
+
+    if pir_ctrl.isRecording and pir_ctrl.isRecording() then
+        logT31BurnCheck("PIR录像中", true, "进入后将 suspend 并停录")
+    else
+        logT31BurnCheck("PIR录像中", true, "未在录像")
+    end
+
+    logT31BurnCheck("MQTT状态", true,
+        state.mqtt_started and "mqtt_started=true(进入后将 stop)" or "mqtt_started=false")
+
+    logT31BurnCheck("烧录标志",
+        not (_G.T31_BURN_MODE_ACTIVE or state.t31_burn_active),
+        string.format("T31_BURN_MODE_ACTIVE=%s t31_burn_active=%s",
+            tostring(_G.T31_BURN_MODE_ACTIVE), tostring(state.t31_burn_active)))
+
+    if not t3xModule or not t3xModule.getState then
+        logT31BurnCheck("t3x_ctrl", false, "模块未注入或无 getState")
+        failReason = failReason or "t3x_ctrl 不可用"
+    else
+        local st = t3xModule.getState() or {}
+        log.info("app", "T31烧录条件 t3x状态",
+            "in_boot_mode", tostring(st.in_boot_mode),
+            "powered_on", tostring(st.powered_on),
+            "power_state", tostring(st.power_state),
+            "last_action", tostring(st.last_action))
+        if st.pins then
+            log.info("app", "T31烧录条件 t3x引脚",
+                "pwr", tostring(st.pins.pwr),
+                "boot", tostring(st.pins.boot),
+                "ota", tostring(st.pins.ota))
+        end
+        if st.in_boot_mode then
+            if allowRepeat then
+                logT31BurnCheck("未在BOOT模式", true,
+                    "in_boot_mode=true 但 allow_repeat_enter_boot，允许再次 enterBootMode")
+            else
+                logT31BurnCheck("未在BOOT模式", false,
+                    "in_boot_mode=true（需 coproc_ready 退出 BOOT 或开 allow_repeat_enter_boot）")
+                failReason = failReason or "已在 BOOT 模式"
+            end
+        else
+            logT31BurnCheck("未在BOOT模式", true, "in_boot_mode=false")
+        end
+    end
+
+    if failReason then
+        log.warn("app", "本次判断结果: 失败", "第", attemptIndex or 1, "次", failReason)
+        return false, failReason
+    end
+    log.info("app", "本次判断结果: 通过", "第", attemptIndex or 1, "次", "battery", pct, "%")
+    return true, pct
+end
+
+--- 不满足时重试若干次后综合结果（默认再判断 2 次，共最多 3 次）
+local function checkT31BurnPreconditions()
+    local cfg = _G.T31_BURN_CFG or {}
+    local retryCount = tonumber(cfg.burn_check_retry_count) or 2
+    if retryCount < 0 then
+        retryCount = 0
+    end
+    local maxAttempts = 1 + retryCount
+    local retryMs = tonumber(cfg.burn_check_retry_interval_ms) or 800
+    local passCount = 0
+    local failCount = 0
+    local lastFailReason = nil
+    local lastPassPct = nil
+    local executed = 0
+    local finalOk = false
+
+    log.info("app", "========== T31 烧录条件轮询 ==========",
+        "最多", maxAttempts, "次",
+        "失败间隔", retryMs, "ms",
+        "额外重试", retryCount, "次")
+
+    for attempt = 1, maxAttempts do
+        executed = attempt
+        local ok, detail = checkT31BurnPreconditionsOnce(attempt, maxAttempts)
+        if ok then
+            passCount = passCount + 1
+            lastPassPct = detail
+            finalOk = true
+            log.info("app", "累计统计", "已执行", executed, "次",
+                "通过", passCount, "次", "失败", failCount, "次")
+            break
+        end
+        failCount = failCount + 1
+        lastFailReason = detail
+        log.warn("app", "累计统计", "已执行", executed, "次",
+            "通过", passCount, "次", "失败", failCount, "次", "最近失败", detail or "")
+        if attempt < maxAttempts then
+            log.info("app", "条件未满足，", retryMs, "ms 后进行第", attempt + 1, "/", maxAttempts, "次判断")
+            sys.wait(retryMs)
+        end
+    end
+
+    log.info("app", "========== T31 烧录条件综合 ==========",
+        "配置最多", maxAttempts, "次",
+        "实际执行", executed, "次",
+        "通过计数", passCount,
+        "失败计数", failCount,
+        "最终结果", finalOk and "通过" or "拒绝")
+    if finalOk then
+        log.info("app", "综合结论: 允许进入烧录", "电量", lastPassPct, "%")
+        return true, lastPassPct
+    end
+    log.warn("app", "综合结论: 拒绝进入烧录", "最近原因", lastFailReason or "未知")
+    return false, lastFailReason
+end
+
+local function shutdownServicesForT31Burn(cfg)
+    cfg = cfg or _G.T31_BURN_CFG or {}
+    _G.T31_BURN_MODE_ACTIVE = true
+    state.t31_burn_active = true
+    state.heartbeat_paused = true
+
+    log.info("app", "关停业务：准备 T31 烧录")
+
+    if cfg.suspend_pir ~= false and pir_ctrl.suspend then
+        pir_ctrl.suspend()
+    end
+
+    if cfg.stop_mqtt ~= false and state.mqtt_started and netModule and netModule.stop then
+        netModule.stop()
+        state.mqtt_started = false
+    end
+
+    if cfg.stop_uart ~= false then
+        local ub = _G.uart_bridge or uart_bridge
+        if ub and ub.stop then
+            ub.stop()
+        end
+    end
+
+    if cfg.turn_off_led ~= false and gpioModule and gpioModule.turnOffLed then
+        gpioModule.turnOffLed()
+    end
+
+    sys.wait(300)
+    return true
+end
+
+local function tryEnterT31BurnMode()
+    local cfg = _G.T31_BURN_CFG or {}
+    log.info("app", "========== T31 烧录模式（GPIO28 长按）==========")
+
+    local ok, detail = checkT31BurnPreconditions()
+    if not ok then
+        log.warn("app", "T31 烧录条件不满足:", detail)
+        if gpioModule and gpioModule.runLedPattern then
+            gpioModule.runLedPattern("blink_red")
+        end
+        return false
+    end
+    log.info("app", "电量 OK", detail, "%")
+
+    shutdownServicesForT31Burn(cfg)
+
+    if not t3xModule or not t3xModule.enterBootMode then
+        log.warn("app", "t3x_ctrl 不可用")
+        return false
+    end
+    if not t3xModule.enterBootMode() then
+        log.warn("app", "t3x_ctrl.enterBootMode 失败")
+        return false
+    end
+    log.info("app", "T31 烧录时序已启动，等待协处理器就绪(GPIO_COPROC_READY 退出 BOOT)")
+    return true
+end
+
 local function onPirMediaAction(action, uploadMode, quality)
+    if _G.T31_BURN_MODE_ACTIVE or state.t31_burn_active then
+        return
+    end
     log.info("app", "PIR动作", action, uploadMode, quality)
     if (uploadMode == "auto" or uploadMode == nil) and netModule and netModule.publishWakeup then
         netModule.publishWakeup()
@@ -370,11 +601,18 @@ local function setupEventHandlers()
     end)
     sys.subscribe(E.GPIO_BOOTKEY_LONG, function()
         log.info("app", "BOOT键长按")
-        if t3xModule then t3xModule.enterBootMode() end
+        sys.taskInit(tryEnterT31BurnMode)
     end)
     sys.subscribe(E.GPIO_COPROC_READY, function()
         log.info("app", "协处理器就绪")
         if t3xModule then t3xModule.exitBootMode() end
+        if pir_ctrl.resume and state.t31_burn_active then
+            pir_ctrl.resume()
+            _G.T31_BURN_MODE_ACTIVE = false
+            state.t31_burn_active = false
+            state.heartbeat_paused = false
+            log.info("app", "T31 烧录流程结束，PIR 已恢复（MQTT/串口需按需重启或复位）")
+        end
     end)
     sys.subscribe(E.GPIO_VBUS_CHANGED, function(powerStatus)
         log.info("app", "VBUS", powerStatus)
@@ -478,6 +716,9 @@ end
 
 local function startHeartbeat()
     sys.timerLoopStart(function()
+        if state.heartbeat_paused or _G.T31_BURN_MODE_ACTIVE or state.t31_burn_active then
+            return
+        end
         state.heartbeat_count = state.heartbeat_count + 1
         local mqttHint = "未启"
         if state.mqtt_started then
@@ -518,7 +759,7 @@ end
 -- 启动入口
 -- ============================================================
 
-function start(gpio, net, t3x)
+function start(gpio, net, t3x_ctrl)
     if started then
         log.warn("app", "已启动")
         return false
@@ -529,7 +770,7 @@ function start(gpio, net, t3x)
         log.info("app", "BAT_STAT_LED 测试模式，已跳过业务启动")
         return true
     end
-    gpioModule, netModule, t3xModule = gpio, net, t3x
+    gpioModule, netModule, t3xModule = gpio, net, t3x_ctrl
 
     log.info("app", "========== 应用启动 ==========")
     log.info("app", "栈", json.encode(_G.APP_STACK or {}))

@@ -1,4 +1,4 @@
-﻿# PIR 触发间隔分析（可视门铃参考）
+# PIR 触发间隔分析（可视门铃参考）
 
 > 本文说明：**多久触发一次**、行业常见取值、本工程实现与现场日志。  
 > 配置真源：`user/config.lua`（`PIR_COOLDOWN_MS`、`PIR_CFG.cooldown_ms`）  
@@ -85,7 +85,7 @@ flowchart LR
     B -->|是| C[忽略]
     B -->|否| D[记录时间戳]
     D --> E[publish PIR_HW_TRIGGERED]
-    E --> F[pirCtrl → app → MQTT 1010]
+    E --> F[pir_ctrl → app → MQTT 1010]
 ```
 
 - 冷却起点：**上一次成功发布** `PIR_HW_TRIGGERED` 的时刻（`os.time()*1000`）。
@@ -101,7 +101,7 @@ flowchart LR
 |------|------|------|------------|
 | 启动 | 03:45:50.799 | `I/user.pir 已启动 30 cooldown 10000` | — |
 | 1 | 03:46:47.033 | `I/user.pir 触发 30` | — |
-|  |  | → `pirCtrl PIR 业务处理` → `app PIR GPIO` → `net 发布 PIR 检测(1010)` |  |
+|  |  | → `pir_ctrl PIR 业务处理` → `app PIR GPIO` → `net 发布 PIR 检测(1010)` |  |
 | 2 | 03:46:58.724 | `I/user.pir 触发 30` | **≈ 11.7 s** |
 | 3 | 03:47:09.501 | `I/user.pir 触发 30` | **≈ 10.8 s** |
 

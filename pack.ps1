@@ -4,18 +4,21 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
 $ts = Get-Date -Format 'yyyyMMdd'
-$zipName = "780EHM_PJ_$ts.zip"
+$baseName = "780EHM_PJ_$ts"
+$zipName = "$baseName.zip"
 $zipPath = Join-Path $root $zipName
+$n = 2
+while (Test-Path $zipPath) {
+    $zipName = "${baseName}_$n.zip"
+    $zipPath = Join-Path $root $zipName
+    $n++
+}
 
 Write-Host "========================================"
 Write-Host "780EHM_PJ 整包打包"
 Write-Host "日期: $(Get-Date -Format 'yyyy-MM-dd') ($ts)"
 Write-Host "输出: $zipPath"
 Write-Host "========================================"
-
-if (Test-Path $zipPath) {
-    Remove-Item $zipPath -Force
-}
 
 $items = @(
     (Join-Path $root 'README.md'),
@@ -31,7 +34,7 @@ foreach ($item in $items) {
     }
 }
 
-Compress-Archive -Path $items -DestinationPath $zipPath -Force
+Compress-Archive -Path $items -DestinationPath $zipPath
 
 $f = Get-Item $zipPath
 Write-Host ""
