@@ -49,6 +49,17 @@ static int on_upload(client_t *client, const wake_event_t *event, void *user_dat
     return 0;
 }
 
+static void log_pir_stat(client_t *client)
+{
+    char pir_resp[MAX_RESP_SIZE];
+
+    if (client_get_pir_stat(client, pir_resp, sizeof(pir_resp)) == 0) {
+        log_print("APP", "4G PIRSTAT: %s", pir_resp);
+    } else {
+        log_print("WARN", "AT+PIRSTAT? failed");
+    }
+}
+
 int main(int argc, char **argv)
 {
     const char *config_path = "client.ini";
@@ -86,6 +97,7 @@ int main(int argc, char **argv)
     if (client_get_runtime_config(&client, config_resp, sizeof(config_resp)) == 0) {
         log_print("APP", "luat cfg rsp: %s", config_resp);
     }
+    log_pir_stat(&client);
 
     log_print("APP", "T31 enter sleep and wait gpio wakeup");
     while (!g_stop) {
@@ -105,6 +117,7 @@ int main(int argc, char **argv)
         }
 
         log_print("APP", "wake event sid=%d evt=%d", event.sid, event.evt);
+        log_pir_stat(&client);
         if (client_handle_event(&client, &event) != 0) {
             log_print("ERR", "handle event failed");
         }

@@ -213,6 +213,7 @@ end
 
 function suspend()
     suspended = true
+    statLast("suspend")
     if session.recording then
         publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
     end

@@ -248,6 +248,12 @@ local function uart_pirstat_query(_cmd)
     if ok and pir_runtime and pir_runtime.buildAtBody then
         body = pir_runtime.buildAtBody()
     end
+    if state.pending_valid then
+        body = body .. string.format(",pending_wake=1,pending_sid=%d,pending_evt=%d",
+            state.pending_sid, state.pending_evt)
+    else
+        body = body .. ",pending_wake=0"
+    end
     return CRLF .. "+PIRSTAT:" .. body .. CRLF .. ok_tail()
 end
 

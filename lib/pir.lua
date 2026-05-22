@@ -88,7 +88,16 @@ function start()
 end
 
 function getState()
-    return { started = started, pin = pin }
+    local now = os.time() * 1000
+    local remain = 0
+    if cooldownUntil > now then
+        remain = cooldownUntil - now
+    end
+    return {
+        started = started,
+        pin = pin,
+        cooldown_remaining_ms = remain,
+    }
 end
 
 return _M

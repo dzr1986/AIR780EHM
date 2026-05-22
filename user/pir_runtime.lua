@@ -64,12 +64,17 @@ function buildAtBody()
     local media = biz.mediaConfig or {}
     local policy = biz.recordPolicy or {}
 
+    local rt = _G.APP_RUNTIME or {}
     local parts = {
         "suspended=" .. (biz.suspended and 1 or 0),
         "recording=" .. (biz.recording and 1 or 0),
         "hw_started=" .. (hw.started and 1 or 0),
+        "burn_mode=" .. (_G.T31_BURN_MODE_ACTIVE and 1 or 0),
+        "lowpower=" .. (rt.low_power_mode or 0),
+        "online=" .. (rt.online_status or 0),
         "pin=" .. (hw.pin or cfg.pin or 0),
         "cooldown_ms=" .. (cfg.cooldown_ms or 0),
+        "cooldown_left_ms=" .. (hw.cooldown_remaining_ms or 0),
         "action=" .. escVal(media.action),
         "upload=" .. escVal(media.uploadMode),
         "quality=" .. escVal(media.quality),

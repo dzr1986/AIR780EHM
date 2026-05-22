@@ -116,7 +116,25 @@ T31 流程：`gpio` 中断 → `AT+WAKEVT?` → `client_handle_event` → 业务
 
 PIR 判断**可以且应当保存在 4G**（传感器接在 Cat.1 GPIO30）。T31 通过 `AT+PIRSTAT?` 读取，无需在 T31 再实现一套冷却/录像状态机。
 
-### 4.1 处理流水线
+### 4.1 各分支判定与 4G 侧持久化
+
+**结论：PIR 各分支的「是否触发 / 为何忽略」应保存在 4G**（RAM 计数 + 当前会话快照），T31 用 `AT+PIRSTAT?` 读取，不必在 T31 复刻冷却与录像状态机。
+
+| 阶段 | 条件 | 4G 动作 | `last=` | 累加计数 |
+|------|------|---------|---------|----------|
+| 硬件 | T31 烧录模式 | 忽略中断 | `ignore_burn` | `cnt_hw_ignore_burn` |
+| 硬件 | 非 `active_level` 沿 | 忽略 | — | `cnt_hw_ignore_level` |
+| 硬件 | `cooldown_ms` 内 | 忽略 | `ignore_cooldown` | `cnt_hw_ignore_cooldown` |
+| 硬件 | 通过 | 发布 `PIR_HW_TRIGGERED` | `hw_accept` | `cnt_hw_accept` |
+| 业务 | `pir_ctrl.suspended` | 忽略 | `ignore_suspend` | `cnt_biz_ignore_suspend` |
+| 业务 | 录像中 + `stopOnSecondPir` | 停录 + 上报 retrigger | `retrigger` | `cnt_biz_retrigger`, `cnt_stop_retrigger` |
+| 业务 | 正常检测 | 拍照/录像 + 唤醒 T31 | `detected` | `cnt_biz_detected`, `cnt_biz_photo`/`cnt_biz_video` |
+| 业务 | 进入烧录挂起 | `suspend()` | `suspend` | （停录计 `cnt_stop_manual`） |
+| 停录 | 定时 / 二次 PIR / 云端 / 手动 | `publishStopRecording` | `stop_<reason>` | `cnt_stop_*` |
+
+每次 GPIO 中断先 `cnt_hw_irq++`（含被忽略的边沿）。
+
+### 4.2 处理流水线
 
 ```text
 GPIO30 中断 (lib/pir.lua)
@@ -135,7 +153,7 @@ pir_ctrl.onPirTriggered
   ├─ timer / retrigger / cloud / manual → 对应 cnt_stop_*, last=stop_<reason>
 ```
 
-### 4.2 与 MQTT 的关系
+### 4.3 与 MQTT 的关系
 
 | 通道 | 用途 |
 |------|------|
@@ -145,7 +163,7 @@ pir_ctrl.onPirTriggered
 
 云端改配置后，统计仍保留；`AT+PIRCLR` 仅清计数。
 
-### 4.3 配置真源
+### 4.4 配置真源
 
 | 配置 | 文件 | AT/MQTT 是否可改 |
 |------|------|------------------|
@@ -173,7 +191,11 @@ OK
 | `suspended` | 1=烧录等场景已 `pir_ctrl.suspend` |
 | `recording` | 1=录像会话中 |
 | `hw_started` | PIR 驱动已启动 |
+| `burn_mode` | 1=`T31_BURN_MODE_ACTIVE` |
+| `lowpower` / `online` | 与 `GETCFG` 同源运行时 |
 | `pin` / `cooldown_ms` | 硬件配置 |
+| `cooldown_left_ms` | 距下次可触发剩余毫秒 |
+| `pending_wake` / `pending_sid` / `pending_evt` | 尚未被 `WAKEVT?` 读走的唤醒（与 §3 一致） |
 | `action` / `upload` / `quality` | 当前媒体策略 |
 | `max_sec` / `stop_second` / `stop_cloud` | 录像策略 |
 | `cnt_hw_*` | 硬件层计数 |
@@ -234,7 +256,20 @@ sequenceDiagram
 
 ---
 
-## 8. 未通过 UART 暴露的能力
+## 8. 代码索引
+
+| 模块 | 路径 | 职责 |
+|------|------|------|
+| AT 分发 | `user/host_uart.lua` | `AT+PIRSTAT?` / `AT+PIRCLR`、WAKEVT pending 拼入 PIRSTAT |
+| 统计 | `user/pir_runtime.lua` | 计数、`buildAtBody()` |
+| 硬件 | `lib/pir.lua` | GPIO、冷却、`cnt_hw_*` |
+| 业务 | `user/pir_ctrl.lua` | 策略、录像、`cnt_biz_*` / `cnt_stop_*` |
+| T31 API | `t31_linux/api.c` | `client_get_pir_stat()` |
+| 示例 | `t31_linux/main.c` | 初始化与每次唤醒后 `log_pir_stat()` |
+
+---
+
+## 9. 未通过 UART 暴露的能力
 
 仍仅走 **MQTT** 或 **本地事件**：
 
@@ -246,7 +281,7 @@ sequenceDiagram
 
 ---
 
-## 9. 相关文档
+## 10. 相关文档
 
 | 文档 | 内容 |
 |------|------|
