@@ -1,5 +1,6 @@
 # T31 Linux ↔ Air780 4G：AT 交互与 PIR 状态查询
 
+> 先读框架简图：[T31_4G_FRAMEWORK.md](T31_4G_FRAMEWORK.md)  
 > 物理：UART（默认 115200 8N1，`\r\n` 行协议）  
 > 4G 实现：`user/host_uart.lua`  
 > T31 实现：`t31_linux/api.c`  
