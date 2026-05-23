@@ -6,23 +6,31 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
+-- 累积计数（AT+PIRSTAT? / AT+PIRCLR）；详见 doc/PIR_COOLDOWN_AND_COUNT.md
 local stats = {
-    cnt_hw_irq = 0,
-    cnt_hw_ignore_level = 0,
-    cnt_hw_ignore_cooldown = 0,
-    cnt_hw_ignore_burn = 0,
-    cnt_hw_accept = 0,
-    cnt_biz_ignore_suspend = 0,
-    cnt_biz_detected = 0,
-    cnt_biz_retrigger = 0,
-    cnt_biz_photo = 0,
-    cnt_biz_video = 0,
-    cnt_stop_timer = 0,
-    cnt_stop_retrigger = 0,
-    cnt_stop_cloud = 0,
-    cnt_stop_manual = 0,
-    last_event = "none",
-    last_ts = 0,
+    -- lib/pir.lua 硬件层（GPIO 中断入口）
+    cnt_hw_irq = 0,              -- 中断总次数（含后续被忽略的）
+    cnt_hw_ignore_level = 0,     -- 非 active_level 边沿，丢弃
+    cnt_hw_ignore_cooldown = 0,  -- 冷却期内，丢弃（节流）
+    cnt_hw_ignore_burn = 0,      -- T31 烧录模式 active，丢弃
+    cnt_hw_accept = 0,           -- 放行，发布 PIR_HW_TRIGGERED
+
+    -- pir_ctrl.lua 业务层
+    cnt_biz_ignore_suspend = 0,  -- 已 suspend（烧录等），忽略触发
+    cnt_biz_detected = 0,        -- 正常人体检测（进入拍照/录像分支）
+    cnt_biz_retrigger = 0,       -- 录像中二次 PIR（stopOnSecondPir）
+    cnt_biz_photo = 0,           -- 发布 PIR_TAKE_PHOTO 次数
+    cnt_biz_video = 0,           -- 开始录像会话次数
+
+    -- 停录原因（publishStopRecording）
+    cnt_stop_timer = 0,          -- 达到 maxDurationSec
+    cnt_stop_retrigger = 0,      -- 录像中二次 PIR
+    cnt_stop_cloud = 0,          -- 云端 2011 / requestStopFromCloud
+    cnt_stop_manual = 0,         -- suspend 停录或手动停录
+
+    -- 最近一次事件（非累加；setLast 更新）
+    last_event = "none",         -- 如 hw_accept / detected / ignore_cooldown / retrigger
+    last_ts = 0,                 -- last_event 的 Unix 时间（秒）
 }
 
 function bump(key)

@@ -12,6 +12,7 @@ typedef struct client client_t;
 
 typedef int (*event_callback_t)(client_t *client, const wake_event_t *event, void *user_data);
 
+/* 旧式回调；evt=0 未设 on_server_data 时改走 media_ops（见 media_ops.h） */
 typedef struct {
     event_callback_t on_server_data;
     event_callback_t on_record;

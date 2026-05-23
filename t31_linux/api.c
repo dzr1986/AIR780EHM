@@ -3,6 +3,7 @@
 
 #include "api.h"
 #include "log.h"
+#include "media_ops.h"
 
 static bool response_contains(const char *resp, const char *keyword)
 {
@@ -263,23 +264,8 @@ static int run_business_callbacks(client_t *client, const wake_event_t *event)
     if (callbacks->on_server_data != NULL) {
         return callbacks->on_server_data(client, event, callbacks->user_data);
     }
-    if (callbacks->on_record != NULL && callbacks->on_record(client, event, callbacks->user_data) != 0) {
-        return -1;
-    }
-    if (callbacks->on_snapshot != NULL && callbacks->on_snapshot(client, event, callbacks->user_data) != 0) {
-        return -1;
-    }
-    if (callbacks->on_upload != NULL && callbacks->on_upload(client, event, callbacks->user_data) != 0) {
-        return -1;
-    }
-    if (callbacks->on_talkback != NULL && callbacks->on_talkback(client, event, callbacks->user_data) != 0) {
-        return -1;
-    }
-    if (callbacks->on_record == NULL && callbacks->on_snapshot == NULL &&
-        callbacks->on_upload == NULL && callbacks->on_talkback == NULL) {
-        log_print("APP", "evt=0: no business callbacks registered");
-    }
-    return 0;
+    /* 默认：读 4G PIRSTAT 并调用 media_ops 拍照/录像接口 */
+    return media_dispatch_wake_event(client, event);
 }
 
 int client_register_callbacks(client_t *client, const business_callbacks_t *callbacks)

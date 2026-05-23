@@ -20,37 +20,31 @@
 
 ```text
 t31_linux/
-├─ main.c        # 示例入口程序
-├─ api.h         # 对外集成接口
-├─ api.c         # Luat 通信控制与业务处理
-├─ types.h       # 公共类型、事件码、默认参数
-├─ config.h      # 配置加载接口
-├─ config.c      # ini/json 配置读取
-├─ serial.h      # 串口线程接口
-├─ serial.c      # 串口收发、应答等待
-├─ gpio.h        # GPIO 监听接口
-├─ gpio.c        # GPIO epoll 监听线程
-├─ log.h         # 日志接口
-├─ log.c         # 时间戳日志输出
-├─ client.ini    # ini 配置样例
-├─ client.json   # json 配置样例
-└─ Makefile      # 构建脚本
+├─ main.c        # 入口：注册 media_ops、t31_runtime_start
+├─ runtime.h/c   # 业务工作线程（唤醒循环）
+├─ media_ops.h/c # 拍照/录像/上传 功能接口（可外部调用）
+├─ api.h/c       # 4G AT 客户端
+├─ serial.h/c    # UART 接收线程
+├─ gpio.h/c      # GPIO 唤醒监听线程
+├─ config.h/c    # ini/json 配置
+├─ MEDIA_OPS.md  # 媒体接口与线程说明
+├─ client.ini    # 配置样例
+└─ Makefile
 ```
 
 ## 3. 核心运行模型
 
 ### 3.1 总体流程
 
-`main.c` 的主流程如下：
+`main.c` 主流程（线程化）：
 
-1. 读取配置文件路径，默认使用 `client.ini`
-2. 调用 `client_init()` 初始化串口、GPIO、Luat 通信
-3. 注册业务回调，例如录像、抓拍、上传
-4. 读取 Luat 版本信息和当前运行配置
-5. 进入等待唤醒循环
-6. GPIO 触发后调用 `client_wait_wakeup()` 查询 `WAKEVT`
-7. 调用 `client_handle_event()` 分发业务处理或执行异常恢复
-8. 退出时调用 `client_shutdown()` 释放资源
+1. `media_ops_register()` 注册产品层拍照/录像实现（可选）
+2. `t31_runtime_start()` → `client_init`（bootstrap AT）+ **工作线程**
+3. 工作线程循环：`gpio` 唤醒 → `WAKEVT?` → `PIRSTAT?` → `media_dispatch_wake_event` 或 `client_handle_event`
+4. 主线程或其他模块可随时调用 `media_snapshot()` / `media_record_start()` 等
+5. `t31_runtime_shutdown()` 退出
+
+详见 [MEDIA_OPS.md](MEDIA_OPS.md)。
 
 ### 3.2 时序图
 
@@ -200,6 +194,7 @@ sequenceDiagram
 - `client_create_service()`：发送 `AT+SERVCREATE=...`
 - `client_close_service()`：发送 `AT+SERVCLOSE=n`
 - `client_query_wakeup()`：发送 `AT+WAKEVT?`
+- `client_get_pir_stat()`：发送 `AT+PIRSTAT?`（PIR 策略与计数，见 [T31_4G_AT_INTERACTION.md](../doc/T31_4G_AT_INTERACTION.md)）
 
 ### 6.4 原始 AT 接口
 
