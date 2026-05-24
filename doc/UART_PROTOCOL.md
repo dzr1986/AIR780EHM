@@ -43,10 +43,11 @@ ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（hos
 | `AT+SETCFG=interval,<秒>` | 设置 `APP_RUNTIME.low_power_interval_sec` |
 | `AT+SETCFG=devicemodel,<文本>` | 设置 `APP_META.device_model` |
 | `AT+SETCFG=hexrpt,1` | 开启 `host_uart` 原始数据 `+RXHEX` 回显（0/off 关闭） |
-| `AT+MQTTCFG=<host>;<port>;<ssl>;<user>;<password>;<client_id>` | T31 下发 MQTT Broker；`host_uart` → `app` → `net.setMqttConfig` + 重启 MQTT。详见 [HOST_MQTT_UART.md](HOST_MQTT_UART.md) |
+| `AT+SERVCREATE=<sid>,<ip>,<port>,…` | **TCP 通道**（10 段逗号），`[channel]` → 见 [T31_CAT1_AT_COMMAND_SPEC.md](T31_CAT1_AT_COMMAND_SPEC.md) §3 |
+| `AT+SERVCLOSE=<sid>` | 关闭 TCP 通道记录 |
+| `AT+MQTTCFG=<host>;<port>;<ssl>;<user>;<password>;<client_id>` | **MQTT Broker**（6 段分号），`[mqtt]` → §4 |
 
-成功：`+SETCFG:OK` · 失败：`+SETCFG:ERROR`  
-`MQTTCFG` 成功：`+MQTTCFG:OK` · 失败：`+MQTTCFG:ERROR`
+成功：`+SETCFG:OK` · `+SERVCREATE:<sid>,OK` · `+MQTTCFG:OK` · 失败见各 `+XXX:ERROR`
 
 ### 2.3 向串口对端下发数据（`user/host_uart`）
 

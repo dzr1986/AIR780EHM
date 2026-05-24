@@ -1,6 +1,7 @@
 # T31 Linux ↔ Air780 4G：AT 交互与 PIR 状态查询
 
 > 先读框架简图：[T31_4G_FRAMEWORK.md](T31_4G_FRAMEWORK.md)  
+> **AT 规范（MQTT + TCP）**：[T31_CAT1_AT_COMMAND_SPEC.md](T31_CAT1_AT_COMMAND_SPEC.md)  
 > 物理：UART（默认 115200 8N1，`\r\n` 行协议）  
 > 4G 实现：`user/host_uart.lua`  
 > T31 实现：`t31_linux/api.c`  
@@ -22,7 +23,7 @@ flowchart LR
     subgraph CAT1["Air780 4G"]
         HU[host_uart]
         APP[app.lua]
-        NET[net.lua]
+        NET[net_mqtt.lua]
         PIR[pir + pir_ctrl]
         RT[pir_runtime 统计]
     end
@@ -58,7 +59,7 @@ flowchart LR
 | 5 | `AT+MQTTCFG=host;port;ssl;user;pass;cid` | 覆盖 `_G.MQTT_CFG`，重启 MQTT | `+MQTTCFG:OK` `OK` |
 | 6 | `AT+GETCFG?` | 读运行快照 | `+GETCFG:version=...,online=...` `OK` |
 
-> `SERVCREATE` 与 MQTT 独立：前者为 T31 侧 TCP 长连接模板（当前 4G 脚本主要存配置）；MQTT 由 `net.lua` 连接 Broker。
+> `SERVCREATE` 与 MQTT 独立：前者为 T31 侧 TCP 长连接模板（当前 4G 脚本主要存配置）；MQTT 由 `net_mqtt.lua` 连接 Broker。
 
 ### 2.2 查询（可随时发）
 

@@ -1,6 +1,6 @@
 ﻿# MQTT 通信协议（net）
 
-> **代码**：`user/net.lua` · **配置**：`user/config.lua`  
+> **代码**：`user/net_mqtt.lua` · **配置**：`user/config.lua`  
 > **下行手册**：[MQTT_DOWNLINK.md](./MQTT_DOWNLINK.md) · **PIR**：[PIR_PROTOCOL.md](./PIR_PROTOCOL.md)  
 > **更新**：2026-05-19
 

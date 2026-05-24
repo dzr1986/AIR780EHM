@@ -33,7 +33,7 @@ end
 
 local function onInterrupt(level)
     statBump("cnt_hw_irq")
-    if _G.T31_BURN_MODE_ACTIVE then
+    if _G.T3X_BURN_MODE_ACTIVE then
         statBump("cnt_hw_ignore_burn")
         statLast("ignore_burn")
         return

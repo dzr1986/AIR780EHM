@@ -41,6 +41,10 @@ int client_set_passthrough(client_t *client, bool enabled);
 int client_get_runtime_config(client_t *client, char *resp, size_t resp_size);
 int client_create_service(client_t *client);
 int client_close_service(client_t *client, int sid);
+/** 下发 [channel] → AT+SERVCREATE（TCP/低功耗业务通道模板） */
+int client_push_tcp_channel(client_t *client);
+/** 下发 [mqtt] → AT+MQTTCFG（MQTT Broker，4G 覆盖并重连） */
+int client_push_mqtt_config(client_t *client);
 int client_query_wakeup(client_t *client, wake_event_t *event);
 int client_get_pir_stat(client_t *client, char *resp, size_t resp_size);
 void client_shutdown(client_t *client);

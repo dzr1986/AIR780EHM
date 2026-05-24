@@ -1,4 +1,4 @@
-# 人体检测（PIR）— GPIO30 / PIR_MCU_DET
+﻿# 人体检测（PIR）— GPIO30 / PIR_MCU_DET
 
 本文说明 **Air780EHM** 侧 PIR 硬件引脚、中断检测、业务联动与 **MQTT 1010** 上报流程。云端策略与 JSON 字段见 [`PIR_PROTOCOL.md`](PIR_PROTOCOL.md)。
 
@@ -77,7 +77,7 @@ flowchart TB
     PIR[lib/pir.lua GPIO30 中断+冷却]
     CTRL[../user/pir_ctrl.lua 策略/录像会话]
     APP[user/app.lua 唤醒 t3x / MQTT]
-    NET[user/net.lua 1010 / 1011]
+    NET[user/net_mqtt.lua 1010 / 1011]
     HW --> PIR
     PIR -->|PIR_HW_TRIGGERED| CTRL
     CTRL -->|PIR_TAKE_PHOTO / RECORD / STOP| APP
@@ -93,7 +93,7 @@ flowchart TB
 | 聚合 | `peripheral.lua` | `pir.start()` |
 | 业务 | `pir_ctrl.lua` | 拍照/录像策略、录像定时、二次触发停录 |
 | 编排 | `app.lua` | 订阅事件 → `publishWakeup`、t3x 唤醒、`publishPirDetect` |
-| 云端 | `net.lua` | 下行 2010/2011，上行 1010/1011 |
+| 云端 | `net_mqtt.lua` | 下行 2010/2011，上行 1010/1011 |
 
 ---
 

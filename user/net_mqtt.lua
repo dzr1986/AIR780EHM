@@ -1,6 +1,6 @@
---- 网络与MQTT通信模块（扁平化架构）
+--- MQTT 通信模块（蜂窝 Broker，与 net_tcp 独立）
 -- 协议：下行 200x ↔ 上行 100x，见 user/MQTT_PROTOCOL.md
--- @module net
+-- @module net_mqtt
 -- @release 2026.5.19
 
 require "sys"
@@ -81,21 +81,21 @@ function bootstrapNetwork()
     end
     bootstrapStarted = true
     sys.taskInit(function()
-        log.info("net", "蜂窝入网：等待 IP_READY...")
+        log.info("net_mqtt", "蜂窝入网：等待 IP_READY...")
         local ipOk = sys.waitUntil("IP_READY", 300000)
         local ip = (socket and socket.localIP and socket.localIP()) or nil
         if ipOk and ip then
-            log.info("net", "IP_READY", ip)
+            log.info("net_mqtt", "IP_READY", ip)
         else
-            log.warn("net", "IP_READY 超时或无 IP", "ip", ip or "nil",
+            log.warn("net_mqtt", "IP_READY 超时或无 IP", "ip", ip or "nil",
                 "status", mobile and mobile.status and mobile.status() or "?",
                 "csq", mobile and mobile.csq and mobile.csq() or "?")
         end
         if not netReadyPublished then
             netReadyPublished = true
             local id = getDeviceId()
-            log.info("net", "+++++ imei=" .. tostring(id) .. " ++++++")
-            log.info("net", "发布 net_ready", id, "ip_ok", ipOk and ip ~= nil)
+            log.info("net_mqtt", "+++++ imei=" .. tostring(id) .. " ++++++")
+            log.info("net_mqtt", "发布 net_ready", id, "ip_ok", ipOk and ip ~= nil)
             sys.publish("net_ready", id, ipOk and ip ~= nil)
         end
     end)
@@ -105,17 +105,17 @@ end
 --- 等待蜂窝就绪（避免 net_ready 已发布而 mqttTask 后启动导致永远等不到）
 local function waitForNetworkReady()
     if netReadyPublished then
-        log.info("net", "net_ready 已发布，直接连 MQTT")
+        log.info("net_mqtt", "net_ready 已发布，直接连 MQTT")
         return true, getDeviceId()
     end
     if socket and socket.localIP then
         local ip = socket.localIP()
         if ip and ip ~= "" and ip ~= "0.0.0.0" then
-            log.info("net", "已有 IP，跳过 net_ready 等待", ip)
+            log.info("net_mqtt", "已有 IP，跳过 net_ready 等待", ip)
             return true, getDeviceId()
         end
     end
-    log.info("net", "等待 net_ready / IP_READY...")
+    log.info("net_mqtt", "等待 net_ready / IP_READY...")
     local gotReady, deviceId = sys.waitUntil("net_ready", 300000)
     if not gotReady then
         gotReady = sys.waitUntil("IP_READY", 120000)
@@ -165,9 +165,9 @@ end
 
 -- [2001] 唤醒查询 → 1001
 local function handleDownlink2001(data)
-    log.info("net", "[2001] 唤醒查询")
+    log.info("net_mqtt", "[2001] 唤醒查询")
     if data.messageId then
-        log.info("net", "[2001] messageId", data.messageId)
+        log.info("net_mqtt", "[2001] messageId", data.messageId)
     end
     publishWakeup()
 end
@@ -176,13 +176,13 @@ end
 local function handleDownlink2002(data)
     local action = data.action
     if data.lowPowerMode == "enter" or action == 1 or action == "1" or action == "enter" then
-        log.info("net", "[2002] 进入低功耗")
+        log.info("net_mqtt", "[2002] 进入低功耗")
         sys.publish(APP_EVENTS.POWER_ENTER_REST)
     elseif data.lowPowerMode == "exit" or action == 0 or action == "0" or action == "exit" then
-        log.info("net", "[2002] 退出低功耗")
+        log.info("net_mqtt", "[2002] 退出低功耗")
         sys.publish(APP_EVENTS.POWER_EXIT_REST)
     else
-        log.warn("net", "[2002] 无法识别 enter/exit", data.lowPowerMode, action)
+        log.warn("net_mqtt", "[2002] 无法识别 enter/exit", data.lowPowerMode, action)
     end
 end
 
@@ -193,7 +193,7 @@ local function handleDownlink2003(data)
         if _G.APP_RUNTIME then
             _G.APP_RUNTIME.low_power_interval_sec = interval
         end
-        log.info("net", "[2003] 低功耗间隔", interval)
+        log.info("net_mqtt", "[2003] 低功耗间隔", interval)
     end
     publishStatus()
 end
@@ -208,28 +208,28 @@ local function handleDownlink2004(data)
     end
 
     if action == "reboot" or action == "restart" then
-        log.info("net", "[2004] 重启")
+        log.info("net_mqtt", "[2004] 重启")
         reply(0, "ok", "reboot")
         sys.publish(APP_EVENTS.DEVICE_REBOOT_REQUEST)
     elseif action == "off" or action == "shutdown" or action == "poweroff" then
-        log.info("net", "[2004] 关机")
+        log.info("net_mqtt", "[2004] 关机")
         reply(0, "ok", "off")
         sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
     elseif action == "ota" or action == "upgrade" or action == "fota" or hasOtaFields(data) then
-        log.info("net", "[2004] OTA")
+        log.info("net_mqtt", "[2004] OTA")
         reply(0, "ota_accepted", "ota")
         publishAppEvent("DEVICE_OTA_REQUEST", data)
     else
-        log.warn("net", "[2004] 未知 action", action)
+        log.warn("net_mqtt", "[2004] 未知 action", action)
         reply(-1, "unknown_action", action or "")
     end
 end
 
 -- [2005] SIM 查询 → 1005
 local function handleDownlink2005(data)
-    log.info("net", "[2005] SIM 查询")
+    log.info("net_mqtt", "[2005] SIM 查询")
     if data.messageId then
-        log.info("net", "[2005] messageId", data.messageId)
+        log.info("net_mqtt", "[2005] messageId", data.messageId)
     end
     publishSimInfo()
 end
@@ -249,7 +249,7 @@ end
 local function handleDownlink2010(data)
     if data.query == 1 or data.query == true
         or data.action == "query" or data.action == "status" then
-        log.info("net", "[2010] PIR 状态查询")
+        log.info("net_mqtt", "[2010] PIR 状态查询")
         publishPirDetect(buildPirDetectExtra("query", nil, nil, nil, nil))
         return
     end
@@ -269,19 +269,19 @@ local function handleDownlink2010(data)
             stopOnCloud = data.stopOnCloud,
         })
         local pirState = pir_ctrl.getState()
-        log.info("net", "[2010] PIR 配置已更新",
+        log.info("net_mqtt", "[2010] PIR 配置已更新",
             "media", json.encode(pirState.mediaConfig),
             "policy", json.encode(pirState.recordPolicy))
     else
-        log.warn("net", "[2010] 无配置字段，仅日志")
+        log.warn("net_mqtt", "[2010] 无配置字段，仅日志")
     end
 end
 
 local function handleDownlink2011(data)
     if data.messageId then
-        log.info("net", "[2011] 停录 messageId", data.messageId)
+        log.info("net_mqtt", "[2011] 停录 messageId", data.messageId)
     else
-        log.info("net", "[2011] 云端停录")
+        log.info("net_mqtt", "[2011] 云端停录")
     end
     pir_ctrl.requestStopFromCloud()
 end
@@ -297,11 +297,11 @@ local DOWNLINK_HANDLERS = {
 }
 
 local function handleServerMessage(topic, payload)
-    log.info("net", "收到消息:", topic, payload)
+    log.info("net_mqtt", "收到消息:", topic, payload)
 
     local ok, data = pcall(json.decode, payload)
     if not ok then
-        log.error("net", "JSON解析失败:", data)
+        log.error("net_mqtt", "JSON解析失败:", data)
         return
     end
 
@@ -311,9 +311,9 @@ local function handleServerMessage(topic, payload)
     if handler then
         handler(data)
     elseif dataType then
-        log.warn("net", "未知 dataType", dataType)
+        log.warn("net_mqtt", "未知 dataType", dataType)
     else
-        log.warn("net", "缺少 dataType 字段")
+        log.warn("net_mqtt", "缺少 dataType 字段")
     end
 
     publishAppEvent("MQTT_SERVER_DATA", data, payload)
@@ -323,7 +323,7 @@ local function handleServerMessage(topic, payload)
 end
 
 -- ============================================================
--- MQTT 配置（T31 经 AT+MQTTCFG 下发后覆盖 _G.MQTT_CFG）
+-- MQTT 配置（t3x 经 AT+MQTTCFG 下发后覆盖 _G.MQTT_CFG）
 -- ============================================================
 
 function setMqttConfig(cfg)
@@ -338,7 +338,7 @@ function setMqttConfig(cfg)
         password = cfg.password or "",
         client_id = cfg.client_id,
     }
-    log.info("net", "MQTT 配置已更新", _G.MQTT_CFG.host, _G.MQTT_CFG.port)
+    log.info("net_mqtt", "MQTT 配置已更新", _G.MQTT_CFG.host, _G.MQTT_CFG.port)
     return true
 end
 
@@ -348,7 +348,7 @@ end
 
 function restart()
     sys.taskInit(function()
-        log.info("net", "MQTT 重启...")
+        log.info("net_mqtt", "MQTT 重启...")
         stop()
         sys.wait(800)
         start()
@@ -363,34 +363,34 @@ end
 local function mqttTask()
     local gotReady, deviceId = waitForNetworkReady()
     if not gotReady then
-        log.warn("net", "蜂窝未就绪，仍尝试 MQTT 连接")
+        log.warn("net_mqtt", "蜂窝未就绪，仍尝试 MQTT 连接")
     end
     local mcfg = _G.MQTT_CFG or {}
     if not mcfg.host or mcfg.host == "" then
-        log.error("net", "MQTT_CFG.host 未配置")
+        log.error("net_mqtt", "MQTT_CFG.host 未配置")
         return
     end
     local clientId = (mcfg.client_id and mcfg.client_id ~= "") and mcfg.client_id
         or (deviceId or getDeviceId())
 
     if not mqtt or not mqtt.create then
-        log.error("net", "mqtt 库不可用，无法连接")
+        log.error("net_mqtt", "mqtt 库不可用，无法连接")
         return
     end
 
-    log.info("net", "========== MQTT启动 ==========")
-    log.info("net", "+++++ clientId=" .. tostring(clientId) .. " ++++++")
-    log.info("net", "服务器:", mcfg.host, mcfg.port)
+    log.info("net_mqtt", "========== MQTT启动 ==========")
+    log.info("net_mqtt", "+++++ clientId=" .. tostring(clientId) .. " ++++++")
+    log.info("net_mqtt", "服务器:", mcfg.host, mcfg.port)
 
     if socket and socket.adapter and socket.dft then
         local waitIp = 0
         while not socket.adapter(socket.dft()) and waitIp < 120 do
-            log.info("net", "等待网络适配器...", waitIp)
+            log.info("net_mqtt", "等待网络适配器...", waitIp)
             sys.waitUntil("IP_READY", 5000)
             waitIp = waitIp + 1
         end
         if not socket.adapter(socket.dft()) then
-            log.warn("net", "无可用网络适配器，MQTT 可能无法连接",
+            log.warn("net_mqtt", "无可用网络适配器，MQTT 可能无法连接",
                 "ip", socket.localIP and socket.localIP() or "nil")
         end
     end
@@ -400,13 +400,13 @@ local function mqttTask()
     mqttClient:autoreconn(true, 3000)
 
     mqttClient:on(function(client, event, data, payload)
-        log.info("net", "MQTT事件:", event, data or "")
+        log.info("net_mqtt", "MQTT事件:", event, data or "")
 
         if event == "conack" then
             isConnected = true
             _G.APP_RUNTIME.online_status = 1
             state.reconnect_count = 0
-            log.info("net", "MQTT连接成功")
+            log.info("net_mqtt", "MQTT连接成功")
             client:subscribe(getSubTopic())
             sys.publish("APP_MQTT_CONNECTED")
             publishWakeup()
@@ -418,13 +418,13 @@ local function mqttTask()
             isConnected = false
             _G.APP_RUNTIME.online_status = 0
             state.reconnect_count = (state.reconnect_count or 0) + 1
-            log.warn("net", "MQTT断开", "重连次数", state.reconnect_count)
+            log.warn("net_mqtt", "MQTT断开", "重连次数", state.reconnect_count)
             publishAppEvent("MQTT_OFFLINE")
             if callbacks.onOffline then callbacks.onOffline() end
 
         elseif event == "error" or event == "connect" then
             if payload then
-                log.warn("net", "MQTT", event, payload)
+                log.warn("net_mqtt", "MQTT", event, payload)
             end
         end
     end)
@@ -432,7 +432,7 @@ local function mqttTask()
     mqttClient:connect()
     local conOk = sys.waitUntil("APP_MQTT_CONNECTED", 90000)
     if not conOk then
-        log.warn("net", "MQTT 连接超时(90s)，等待 autoreconn...")
+        log.warn("net_mqtt", "MQTT 连接超时(90s)，等待 autoreconn...")
     end
 
     local bcfg = _G.BATTERY_CFG or {}
@@ -464,25 +464,25 @@ end
 
 --- 1001 唤醒
 function publishWakeup()
-    if not isConnected then log.warn("net", "MQTT未连接"); return end
+    if not isConnected then log.warn("net_mqtt", "MQTT未连接"); return end
     local topic = getPubTopic() .. "wakeup"
     local payload = string.format(
         '{"deviceNo":"%s","dataType":"%s","time":"%s"}',
         getDeviceId(), DT.UL_WAKEUP, os.date("%Y-%m-%d %H:%M:%S"))
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布唤醒(1001):", topic)
+    log.info("net_mqtt", "发布唤醒(1001):", topic)
     publishAppEvent("MQTT_PUBLISH_WAKEUP", topic, payload)
 end
 
 --- 1002 休眠
 function publishRest()
-    if not isConnected then log.warn("net", "MQTT未连接"); return end
+    if not isConnected then log.warn("net_mqtt", "MQTT未连接"); return end
     local topic = getPubTopic() .. "rest"
     local payload = string.format(
         '{"deviceNo":"%s","dataType":"%s","time":"%s"}',
         getDeviceId(), DT.UL_REST, os.date("%Y-%m-%d %H:%M:%S"))
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布休眠(1002):", topic)
+    log.info("net_mqtt", "发布休眠(1002):", topic)
     publishAppEvent("MQTT_PUBLISH_REST", topic, payload)
 end
 
@@ -500,13 +500,13 @@ function publishStatus()
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布状态(1003):", topic)
+    log.info("net_mqtt", "发布状态(1003):", topic)
 end
 
 --- 1005 SIM 信息（应答 2005）
 function publishSimInfo()
     if not isConnected then
-        log.warn("net", "MQTT未连接，跳过 SIM 上报")
+        log.warn("net_mqtt", "MQTT未连接，跳过 SIM 上报")
         return
     end
     local snap = collectSimSnapshot()
@@ -530,13 +530,13 @@ function publishSimInfo()
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布 SIM(1005):", topic, snap.iccid)
+    log.info("net_mqtt", "发布 SIM(1005):", topic, snap.iccid)
 end
 
 --- 1004 控制回复（应答 2004；reply=1，与 OTA stage 区分）
 function publishControlReply(action, retCode, message, extra)
     if not isConnected then
-        log.warn("net", "MQTT未连接，跳过控制回复")
+        log.warn("net_mqtt", "MQTT未连接，跳过控制回复")
         return
     end
     extra = type(extra) == "table" and extra or {}
@@ -552,13 +552,13 @@ function publishControlReply(action, retCode, message, extra)
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布控制回复(1004):", action, retCode, message)
+    log.info("net_mqtt", "发布控制回复(1004):", action, retCode, message)
 end
 
 --- 1004 OTA 进度/结果（stage 字段，无 reply）
 function publishOtaStatus(stage, retCode, message, extra)
     if not isConnected then
-        log.warn("net", "MQTT未连接，跳过 OTA 状态上报")
+        log.warn("net_mqtt", "MQTT未连接，跳过 OTA 状态上报")
         return
     end
     extra = type(extra) == "table" and extra or {}
@@ -575,14 +575,14 @@ function publishOtaStatus(stage, retCode, message, extra)
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布 OTA 状态(1004):", stage, retCode, topic)
+    log.info("net_mqtt", "发布 OTA 状态(1004):", stage, retCode, topic)
     publishAppEvent("MQTT_OTA_STATUS", stage, retCode, message, extra)
 end
 
 --- 1010 PIR 检测状态（2010 策略生效后硬件触发，或 2010 query）
 function publishPirDetect(extra)
     if not isConnected then
-        log.warn("net", "MQTT未连接，跳过 PIR 检测上报")
+        log.warn("net_mqtt", "MQTT未连接，跳过 PIR 检测上报")
         return
     end
     extra = type(extra) == "table" and extra or buildPirDetectExtra("detected")
@@ -601,13 +601,13 @@ function publishPirDetect(extra)
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布 PIR 检测(1010):", extra.pirStatus or extra.status, topic)
+    log.info("net_mqtt", "发布 PIR 检测(1010):", extra.pirStatus or extra.status, topic)
 end
 
 --- 1011 PIR 录像停止（应答 2011 场景）
 function publishPirRecordStop(reason, uploadMode, quality)
     if not isConnected then
-        log.warn("net", "MQTT未连接，跳过录像停止上报")
+        log.warn("net_mqtt", "MQTT未连接，跳过录像停止上报")
         return
     end
     local topic = getPubTopic() .. "event"
@@ -621,7 +621,7 @@ function publishPirRecordStop(reason, uploadMode, quality)
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net", "发布录像停止(1011):", reason, topic)
+    log.info("net_mqtt", "发布录像停止(1011):", reason, topic)
 end
 
 function publish(topic, data, qos)
@@ -629,25 +629,25 @@ function publish(topic, data, qos)
 end
 
 function start(options)
-    if started then log.warn("net", "已启动"); return false end
+    if started then log.warn("net_mqtt", "已启动"); return false end
     if options then
         if options.onOffline then callbacks.onOffline = options.onOffline end
         if options.onMessage then callbacks.onMessage = options.onMessage end
     end
 
-    log.info("net", "========== 网络模块启动 ==========")
+    log.info("net_mqtt", "========== 网络模块启动 ==========")
     bootstrapNetwork()
     sys.taskInit(mqttTask)
     started = true
     return true
 end
 
---- 关停 MQTT 与发布任务（T31 烧录前由 app 调用）
+--- 关停 MQTT 与发布任务（t3x 烧录前由 app 调用）
 function stop()
     if not started and not mqttClient then
         return false
     end
-    log.info("net", "========== 停止 MQTT ==========")
+    log.info("net_mqtt", "========== 停止 MQTT ==========")
     if isConnected and mqttClient and publishRest then
         pcall(publishRest)
         sys.wait(300)
@@ -666,7 +666,7 @@ function stop()
     isConnected = false
     _G.APP_RUNTIME.online_status = 0
     started = false
-    log.info("net", "MQTT 已停止")
+    log.info("net_mqtt", "MQTT 已停止")
     return true
 end
 

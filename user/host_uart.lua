@@ -91,6 +91,11 @@ end
 local function get_config_snapshot()
     local meta = _G.APP_META or {}
     local rt = _G.APP_RUNTIME or {}
+    local tcp_extra = ""
+    local ok, net_tcp = pcall(require, "net_tcp")
+    if ok and net_tcp and net_tcp.appendGetCfgFields then
+        tcp_extra = net_tcp.appendGetCfgFields()
+    end
     return {
         version = (_G.PROJECT or "780EHM") .. "_" .. (_G.VERSION or "1.0.0"),
         online = rt.online_status or 0,
@@ -100,6 +105,7 @@ local function get_config_snapshot()
         vbat = rt.battery_mv or "--",
         interval = rt.low_power_interval_sec or 0,
         devicemodel = meta.device_model or "",
+        tcp_extra = tcp_extra,
     }
 end
 
@@ -218,6 +224,11 @@ local function uart_servcreate(cmd)
     log.info(LOG_TAG, "SERVCREATE", ch.sid, ch.server_ip, ch.server_port)
     if hooks.on_servcreate then
         hooks.on_servcreate(ch)
+    else
+        local ok, net_tcp = pcall(require, "net_tcp")
+        if ok and net_tcp and net_tcp.applyChannel then
+            net_tcp.applyChannel(ch)
+        end
     end
     return string.format(CRLF .. "+SERVCREATE:%d,OK" .. CRLF, ch.sid) .. ok_tail()
 end
@@ -230,15 +241,22 @@ local function uart_servclose(cmd)
     log.info(LOG_TAG, "SERVCLOSE", sid)
     if hooks.on_servclose then
         hooks.on_servclose(sid)
+    else
+        local ok, net_tcp = pcall(require, "net_tcp")
+        if ok and net_tcp and net_tcp.closeChannel then
+            net_tcp.closeChannel(sid)
+        end
     end
+    state.channel = nil
     return string.format(CRLF .. "+SERVCLOSE:%d" .. CRLF, sid) .. ok_tail()
 end
 
 local function uart_getcfg(_cmd)
     local s = get_config_snapshot()
     return string.format(
-        CRLF .. "+GETCFG:version=%s,online=%d,power=%d,lowpower=%d,battery=%s,vbat=%s,interval=%d,devicemodel=%s" .. CRLF,
-        s.version, s.online, s.power, s.lowpower, s.battery, s.vbat, s.interval, s.devicemodel
+        CRLF .. "+GETCFG:version=%s,online=%d,power=%d,lowpower=%d,battery=%s,vbat=%s,interval=%d,devicemodel=%s%s" .. CRLF,
+        s.version, s.online, s.power, s.lowpower, s.battery, s.vbat, s.interval, s.devicemodel,
+        s.tcp_extra or ""
     ) .. ok_tail()
 end
 

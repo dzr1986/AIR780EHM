@@ -39,7 +39,7 @@ local state = {
     last_wake_event = nil,
     last_usb_state = nil,
     heartbeat_count = 0,
-    t31_burn_active = false,
+    t3x_burn_active = false,
     heartbeat_paused = false,
 }
 
@@ -61,8 +61,8 @@ local function sendWakePulse(evt, channel)
     local sid = channel or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
     wakeValue = string.format("%d,%d", sid, evt)
     state.last_wake_event = evt
-    log.info("app", "T31 唤醒", wakeValue)
-    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t31_app ~= false) then
+    log.info("app", "t3x 唤醒", wakeValue)
+    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
         host_uart.notify_host(sid, evt)
     elseif t3xModule and t3xModule.pulseWakeup then
         t3xModule.pulseWakeup()
@@ -84,6 +84,12 @@ local function onEnterLowPower()
     if state.mqtt_started and netModule and netModule.publishRest then
         netModule.publishRest()
     end
+    pcall(function()
+        local net_tcp = require "net_tcp"
+        if net_tcp.getState and net_tcp.getState().configured then
+            net_tcp.closeChannel(net_tcp.getState().sid)
+        end
+    end)
 end
 
 local function onExitLowPower()
@@ -93,6 +99,12 @@ local function onExitLowPower()
     if t3xModule then
         sys.taskInit(function() t3xModule.wake() end)
     end
+    pcall(function()
+        local ch = _G.NET_TCP_CHANNEL
+        if ch and _G.MODULE_FLAGS.net_tcp ~= false then
+            require("net_tcp").applyChannel(ch)
+        end
+    end)
 end
 
 local function onReboot()
@@ -119,7 +131,7 @@ local function setupUartBridge()
     local ok = uart_bridge.start({
         onRaw = function(data)
             state.last_uart_rx = data
-            if _G.MODULE_FLAGS.t31_app ~= false then
+            if _G.MODULE_FLAGS.t3x_app ~= false then
                 host_uart.on_rx_raw(data)
             end
         end,
@@ -132,7 +144,7 @@ local function setupUartBridge()
         else
             log.info("app", "串口驱动已启")
         end
-        if _G.MODULE_FLAGS.t31_app ~= false then
+        if _G.MODULE_FLAGS.t3x_app ~= false then
             host_uart.start({
                 t3x = t3xModule,
                 on_enter_low_power = onEnterLowPower,
@@ -148,12 +160,20 @@ local function setupUartBridge()
                         log.warn("app", "MQTTCFG 无效")
                         return
                     end
-                    log.info("app", "T31 覆盖 MQTT", cfg.host, cfg.port)
+                    log.info("app", "t3x 覆盖 MQTT", cfg.host, cfg.port)
                     if state.mqtt_started and netModule.restart then
                         netModule.restart()
                     elseif startMqtt() then
-                        log.info("app", "MQTT 已按 T31 配置连接")
+                        log.info("app", "MQTT 已按 t3x 配置连接")
                     end
+                end,
+                on_servcreate = function(ch)
+                    local net_tcp = require "net_tcp"
+                    net_tcp.applyChannel(ch)
+                end,
+                on_servclose = function(sid)
+                    local net_tcp = require "net_tcp"
+                    net_tcp.closeChannel(sid)
                 end,
                 on_plain_line = function(line)
                     log.info("app", "UART 行", line)
@@ -253,8 +273,8 @@ end
 -- ============================================================
 
 function startMqtt()
-    if _G.T31_BURN_MODE_ACTIVE or state.t31_burn_active then
-        log.warn("app", "T31 烧录模式，跳过启动 MQTT")
+    if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
+        log.warn("app", "t3x 烧录模式，跳过启动 MQTT")
         return false
     end
     if state.mqtt_started then
@@ -263,7 +283,7 @@ function startMqtt()
     if not _G.MODULE_FLAGS.mqtt then
         return false
     end
-    if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "net") then
+    if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "net_mqtt") then
         log.warn("app", "MQTT 未配置")
         return false
     end
@@ -355,26 +375,26 @@ local function getBatteryPercentForBurn()
     return nil
 end
 
-local function logT31BurnCheck(name, passed, detail)
-    log.info("app", "T31烧录条件", name, passed and "通过" or "失败", detail or "")
+local function logT3xBurnCheck(name, passed, detail)
+    log.info("app", "t3x烧录条件", name, passed and "通过" or "失败", detail or "")
 end
 
---- 单次条件判断（由 checkT31BurnPreconditions 轮询调用）
-local function checkT31BurnPreconditionsOnce(attemptIndex, attemptTotal)
-    local cfg = _G.T31_BURN_CFG or {}
+--- 单次条件判断（由 checkT3xBurnPreconditions 轮询调用）
+local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
+    local cfg = _G.T3X_BURN_CFG or {}
     local minPct = tonumber(cfg.min_battery_percent) or 50
     local allowRepeat = cfg.allow_repeat_enter_boot ~= false
     local failReason = nil
     local pct = getBatteryPercentForBurn()
 
-    log.info("app", "---------- T31 烧录条件检查",
+    log.info("app", "---------- t3x 烧录条件检查",
         "第", attemptIndex or 1, "/", attemptTotal or 1, "次", "----------")
-    log.info("app", "T31烧录配置",
+    log.info("app", "t3x烧录配置",
         "min_battery", minPct, "%",
         "require_battery_valid", cfg.require_battery_valid ~= false,
         "allow_repeat_enter_boot", allowRepeat)
 
-    logT31BurnCheck("runtime.APP_RUNTIME.battery_percent",
+    logT3xBurnCheck("runtime.APP_RUNTIME.battery_percent",
         pct ~= nil,
         string.format("raw=%s mv=%s",
             tostring(_G.APP_RUNTIME and _G.APP_RUNTIME.battery_percent),
@@ -382,60 +402,60 @@ local function checkT31BurnPreconditionsOnce(attemptIndex, attemptTotal)
 
     if cfg.require_battery_valid ~= false then
         if not pct then
-            logT31BurnCheck("电量", false,
+            logT3xBurnCheck("电量", false,
                 string.format("未知(需≥%d%%)，请等待 bat_adc 采样", minPct))
             failReason = failReason or "电量未知，请等待 bat_adc 采样"
         elseif pct < minPct then
-            logT31BurnCheck("电量", false, string.format("%d%% < 要求 %d%%", pct, minPct))
+            logT3xBurnCheck("电量", false, string.format("%d%% < 要求 %d%%", pct, minPct))
             failReason = failReason or string.format("电量 %d%% 低于 %d%%", pct, minPct)
         else
-            logT31BurnCheck("电量", true, string.format("%d%% >= %d%%", pct, minPct))
+            logT3xBurnCheck("电量", true, string.format("%d%% >= %d%%", pct, minPct))
         end
     else
-        logT31BurnCheck("电量", true, "已关闭 require_battery_valid")
+        logT3xBurnCheck("电量", true, "已关闭 require_battery_valid")
     end
 
     if pir_ctrl.isRecording and pir_ctrl.isRecording() then
-        logT31BurnCheck("PIR录像中", true, "进入后将 suspend 并停录")
+        logT3xBurnCheck("PIR录像中", true, "进入后将 suspend 并停录")
     else
-        logT31BurnCheck("PIR录像中", true, "未在录像")
+        logT3xBurnCheck("PIR录像中", true, "未在录像")
     end
 
-    logT31BurnCheck("MQTT状态", true,
+    logT3xBurnCheck("MQTT状态", true,
         state.mqtt_started and "mqtt_started=true(进入后将 stop)" or "mqtt_started=false")
 
-    logT31BurnCheck("烧录标志",
-        not (_G.T31_BURN_MODE_ACTIVE or state.t31_burn_active),
-        string.format("T31_BURN_MODE_ACTIVE=%s t31_burn_active=%s",
-            tostring(_G.T31_BURN_MODE_ACTIVE), tostring(state.t31_burn_active)))
+    logT3xBurnCheck("烧录标志",
+        not (_G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active),
+        string.format("T3X_BURN_MODE_ACTIVE=%s t3x_burn_active=%s",
+            tostring(_G.T3X_BURN_MODE_ACTIVE), tostring(state.t3x_burn_active)))
 
     if not t3xModule or not t3xModule.getState then
-        logT31BurnCheck("t3x_ctrl", false, "模块未注入或无 getState")
+        logT3xBurnCheck("t3x_ctrl", false, "模块未注入或无 getState")
         failReason = failReason or "t3x_ctrl 不可用"
     else
         local st = t3xModule.getState() or {}
-        log.info("app", "T31烧录条件 t3x状态",
+        log.info("app", "t3x烧录条件 t3x状态",
             "in_boot_mode", tostring(st.in_boot_mode),
             "powered_on", tostring(st.powered_on),
             "power_state", tostring(st.power_state),
             "last_action", tostring(st.last_action))
         if st.pins then
-            log.info("app", "T31烧录条件 t3x引脚",
+            log.info("app", "t3x烧录条件 t3x引脚",
                 "pwr", tostring(st.pins.pwr),
                 "boot", tostring(st.pins.boot),
                 "ota", tostring(st.pins.ota))
         end
         if st.in_boot_mode then
             if allowRepeat then
-                logT31BurnCheck("未在BOOT模式", true,
+                logT3xBurnCheck("未在BOOT模式", true,
                     "in_boot_mode=true 但 allow_repeat_enter_boot，允许再次 enterBootMode")
             else
-                logT31BurnCheck("未在BOOT模式", false,
+                logT3xBurnCheck("未在BOOT模式", false,
                     "in_boot_mode=true（需 coproc_ready 退出 BOOT 或开 allow_repeat_enter_boot）")
                 failReason = failReason or "已在 BOOT 模式"
             end
         else
-            logT31BurnCheck("未在BOOT模式", true, "in_boot_mode=false")
+            logT3xBurnCheck("未在BOOT模式", true, "in_boot_mode=false")
         end
     end
 
@@ -448,8 +468,8 @@ local function checkT31BurnPreconditionsOnce(attemptIndex, attemptTotal)
 end
 
 --- 不满足时重试若干次后综合结果（默认再判断 2 次，共最多 3 次）
-local function checkT31BurnPreconditions()
-    local cfg = _G.T31_BURN_CFG or {}
+local function checkT3xBurnPreconditions()
+    local cfg = _G.T3X_BURN_CFG or {}
     local retryCount = tonumber(cfg.burn_check_retry_count) or 2
     if retryCount < 0 then
         retryCount = 0
@@ -463,14 +483,14 @@ local function checkT31BurnPreconditions()
     local executed = 0
     local finalOk = false
 
-    log.info("app", "========== T31 烧录条件轮询 ==========",
+    log.info("app", "========== t3x 烧录条件轮询 ==========",
         "最多", maxAttempts, "次",
         "失败间隔", retryMs, "ms",
         "额外重试", retryCount, "次")
 
     for attempt = 1, maxAttempts do
         executed = attempt
-        local ok, detail = checkT31BurnPreconditionsOnce(attempt, maxAttempts)
+        local ok, detail = checkT3xBurnPreconditionsOnce(attempt, maxAttempts)
         if ok then
             passCount = passCount + 1
             lastPassPct = detail
@@ -489,7 +509,7 @@ local function checkT31BurnPreconditions()
         end
     end
 
-    log.info("app", "========== T31 烧录条件综合 ==========",
+    log.info("app", "========== t3x 烧录条件综合 ==========",
         "配置最多", maxAttempts, "次",
         "实际执行", executed, "次",
         "通过计数", passCount,
@@ -503,13 +523,13 @@ local function checkT31BurnPreconditions()
     return false, lastFailReason
 end
 
-local function shutdownServicesForT31Burn(cfg)
-    cfg = cfg or _G.T31_BURN_CFG or {}
-    _G.T31_BURN_MODE_ACTIVE = true
-    state.t31_burn_active = true
+local function shutdownServicesForT3xBurn(cfg)
+    cfg = cfg or _G.T3X_BURN_CFG or {}
+    _G.T3X_BURN_MODE_ACTIVE = true
+    state.t3x_burn_active = true
     state.heartbeat_paused = true
 
-    log.info("app", "关停业务：准备 T31 烧录")
+    log.info("app", "关停业务：准备 t3x 烧录")
 
     if cfg.suspend_pir ~= false and pir_ctrl.suspend then
         pir_ctrl.suspend()
@@ -535,13 +555,13 @@ local function shutdownServicesForT31Burn(cfg)
     return true
 end
 
-local function tryEnterT31BurnMode()
-    local cfg = _G.T31_BURN_CFG or {}
-    log.info("app", "========== T31 烧录模式（GPIO28 长按）==========")
+local function tryEnterT3xBurnMode()
+    local cfg = _G.T3X_BURN_CFG or {}
+    log.info("app", "========== t3x 烧录模式（GPIO28 长按）==========")
 
-    local ok, detail = checkT31BurnPreconditions()
+    local ok, detail = checkT3xBurnPreconditions()
     if not ok then
-        log.warn("app", "T31 烧录条件不满足:", detail)
+        log.warn("app", "t3x 烧录条件不满足:", detail)
         if gpioModule and gpioModule.runLedPattern then
             gpioModule.runLedPattern("blink_red")
         end
@@ -549,7 +569,7 @@ local function tryEnterT31BurnMode()
     end
     log.info("app", "电量 OK", detail, "%")
 
-    shutdownServicesForT31Burn(cfg)
+    shutdownServicesForT3xBurn(cfg)
 
     if not t3xModule or not t3xModule.enterBootMode then
         log.warn("app", "t3x_ctrl 不可用")
@@ -559,19 +579,19 @@ local function tryEnterT31BurnMode()
         log.warn("app", "t3x_ctrl.enterBootMode 失败")
         return false
     end
-    log.info("app", "T31 烧录时序已启动，等待协处理器就绪(GPIO_COPROC_READY 退出 BOOT)")
+    log.info("app", "t3x 烧录时序已启动，等待协处理器就绪(GPIO_COPROC_READY 退出 BOOT)")
     return true
 end
 
 local function onPirMediaAction(action, uploadMode, quality)
-    if _G.T31_BURN_MODE_ACTIVE or state.t31_burn_active then
+    if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
         return
     end
     log.info("app", "PIR动作", action, uploadMode, quality)
     if (uploadMode == "auto" or uploadMode == nil) and netModule and netModule.publishWakeup then
         netModule.publishWakeup()
     end
-    if _G.MODULE_FLAGS.t31_app ~= false then
+    if _G.MODULE_FLAGS.t3x_app ~= false then
         local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
         host_uart.notify_host(sid, 0)
     elseif t3xModule then
@@ -584,7 +604,7 @@ local function onPirStopRecording(reason, uploadMode, quality)
     if netModule and netModule.publishPirRecordStop then
         netModule.publishPirRecordStop(reason, uploadMode, quality)
     end
-    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t31_app ~= false) then
+    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
         local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
         host_uart.notify_host(sid, 0)
     end
@@ -633,17 +653,17 @@ local function setupEventHandlers()
     end)
     sys.subscribe(E.GPIO_BOOTKEY_LONG, function()
         log.info("app", "BOOT键长按")
-        sys.taskInit(tryEnterT31BurnMode)
+        sys.taskInit(tryEnterT3xBurnMode)
     end)
     sys.subscribe(E.GPIO_COPROC_READY, function()
         log.info("app", "协处理器就绪")
         if t3xModule then t3xModule.exitBootMode() end
-        if pir_ctrl.resume and state.t31_burn_active then
+        if pir_ctrl.resume and state.t3x_burn_active then
             pir_ctrl.resume()
-            _G.T31_BURN_MODE_ACTIVE = false
-            state.t31_burn_active = false
+            _G.T3X_BURN_MODE_ACTIVE = false
+            state.t3x_burn_active = false
             state.heartbeat_paused = false
-            log.info("app", "T31 烧录流程结束，PIR 已恢复（MQTT/串口需按需重启或复位）")
+            log.info("app", "t3x 烧录流程结束，PIR 已恢复（MQTT/串口需按需重启或复位）")
         end
     end)
     sys.subscribe(E.GPIO_VBUS_CHANGED, function(powerStatus)
@@ -748,7 +768,7 @@ end
 
 local function startHeartbeat()
     sys.timerLoopStart(function()
-        if state.heartbeat_paused or _G.T31_BURN_MODE_ACTIVE or state.t31_burn_active then
+        if state.heartbeat_paused or _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
             return
         end
         state.heartbeat_count = state.heartbeat_count + 1

@@ -1,4 +1,4 @@
-# user/ 代码整体分析（780EHM_PJ）
+﻿# user/ 代码整体分析（780EHM_PJ）
 
 > Air780EHM + t3x 摄像头 · LuatOS 方案1（扁平架构）  
 > 分析日期：2026-05-18（第二轮：全量源码对照）  
@@ -30,7 +30,7 @@
 | 能力 | 主模块 | 行数级 |
 |------|--------|--------|
 | 编排与策略 | `app.lua` | ~390 |
-| 云端通信 | `net.lua` | ~270 |
+| 云端通信 | `net_mqtt.lua` | ~270 |
 | 本地调试 | `lib/uart_bridge.lua` | ~400 |
 | 协处理器 | `t3x_ctrl.lua` | ~215 |
 | PIR 业务 | `pir_ctrl.lua` | ~210 |
@@ -56,7 +56,7 @@
          ┌─────────│   app.lua   │─────────┐
          │         └─────────────┘         │
          ▼              ▼              ▼     ▼
-  peripheral.lua   net.lua      t3x_ctrl.lua  lib/uart_bridge
+  peripheral.lua   net_mqtt.lua      t3x_ctrl.lua  lib/uart_bridge
          │              │              │
     led_ctrl          MQTT          GPIO22  UART1
     lib/key          2003-2011     电源/脉冲 AT/STR/HEX
@@ -68,7 +68,7 @@
 
 | 原则 | 实现 |
 |------|------|
-| 单 MQTT 入口 | 仅 `net.lua`；`APP_STACK.mqtt = "net"` |
+| 单 MQTT 入口 | 仅 `net_mqtt.lua`；`APP_STACK.mqtt = "net_mqtt"` |
 | 单串口入口 | 仅 `uart_bridge.lua` → `_G.uart_bridge` |
 | 配置分层 | `config.lua` 硬件；`app_config.lua` 开关/事件；`key_config.lua` 按键；`pir_ctrl` PIR 策略 |
 | 硬件/业务分层 | PIR：`lib/pir`（冷却+中断）→ `pir_ctrl`（会话）→ `app`（联动 net/t3x_ctrl） |
@@ -84,7 +84,7 @@
 | `app_config.lua` | `MODULE_FLAGS`、`APP_EVENTS` | config |
 | `key_config.lua` | `KEY_CONFIG` | config |
 | `app.lua` | 启动顺序、事件订阅、低功耗、PMD、`bootMqtt` | uart_bridge, pir_ctrl, bat_adc, usb_charge, mobileInfo, watchdog |
-| `net.lua` | MQTT 任务、下行路由、上行发布 | config, pir_ctrl |
+| `net_mqtt.lua` | MQTT 任务、下行路由、上行发布 | config, pir_ctrl |
 | `lib/uart_bridge.lua` | AT/STR/HEX、唯一 `uart.setup` | sys |
 | `lib/usb_charge.lua` | USB_DET / CHG_STATE 中断 | gpio_util, config |
 | `t3x_ctrl.lua` | GPIO22 供电/脉冲、BOOT、休眠 | config 引脚 |
@@ -96,10 +96,10 @@
 ### 2.4 栈选择
 
 ```lua
-APP_STACK = { mqtt = "net", uart = "uart_bridge" }
+APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 ```
 
-`app.startMqtt()` 校验 `APP_STACK.mqtt == "net"`；换用 `lib/archive` 旧 MQTT 栈需改 `APP_STACK` 并自行接回 `app`，且避免与 `uart_bridge` 争用 UART。
+`app.startMqtt()` 校验 `APP_STACK.mqtt == "net_mqtt"`；换用 `lib/archive` 旧 MQTT 栈需改 `APP_STACK` 并自行接回 `app`，且避免与 `uart_bridge` 争用 UART。
 
 ---
 
@@ -256,7 +256,7 @@ lib/key 中断（pwrkey / bootkey / ready）
 | `mqtt_pub` | net 内部发布队列 |
 | `BATTERY_UPDATE` | user/bat_adc → adc_lib + bat_core |
 
-### 4.6 `net.lua` 下行路由
+### 4.6 `net_mqtt.lua` 下行路由
 
 | dataType | 动作 |
 |----------|------|
@@ -379,7 +379,7 @@ lib/pir          →  lib/gpio_util
 | `t3x_ctrl.enterDeepSleep` | 未调用 | 极致功耗场景评估 |
 | `UART_RX_*` 事件 | 已发布，app 用回调 | 业务可改订阅事件解耦 |
 | `POWER_ENTERED_REST` | 无订阅者 | 统计/LED 可挂 |
-| 1004+ 上行 | 协议文档有扩展位 | 在 `net.lua` 增函数 |
+| 1004+ 上行 | 协议文档有扩展位 | 在 `net_mqtt.lua` 增函数 |
 
 ---
 

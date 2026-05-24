@@ -98,7 +98,7 @@ local function infoTask(runtimeConfig)
 
     sys.wait(2000)
     while true do
-        if _G.T31_BURN_MODE_ACTIVE then
+        if _G.T3X_BURN_MODE_ACTIVE then
             sys.wait(interval)
         else
         local ok2, err2 = pcall(function()

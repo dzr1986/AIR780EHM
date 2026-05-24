@@ -218,7 +218,7 @@ function suspend()
         publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
     end
     clearRecordTimer()
-    log.info("pir_ctrl", "已挂起（T31 烧录等场景）")
+    log.info("pir_ctrl", "已挂起（t3x 烧录等场景）")
     return true
 end
 

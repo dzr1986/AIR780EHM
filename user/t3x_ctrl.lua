@@ -123,7 +123,7 @@ function powerOn()
     return true
 end
 
---- GPIO29 → T31 PB27：低电平脉冲（空闲高，勿动 GPIO22 电源）
+--- GPIO29 → t3x PB27：低电平脉冲（空闲高，勿动 GPIO22 电源）
 function pulseMcuInt()
     local _, entry_int = getEntries()
     ensurePins()
@@ -137,7 +137,7 @@ function pulseMcuInt()
     sys.timerStart(function()
         t3xMcuIntPin(idle)
         lastAction = "pulseMcuInt"
-        log.info(LOG_TAG, "T31 唤醒脉冲(低)", "pin", entry_int.pin, "ms", ms,
+        log.info(LOG_TAG, "t3x 唤醒脉冲(低)", "pin", entry_int.pin, "ms", ms,
             "idle", idle, "active", active)
     end, ms)
     return true

@@ -1,5 +1,7 @@
 # T31 → 4G MQTT 配置（UART）
 
+> 完整双链路规范见 [T31_CAT1_AT_COMMAND_SPEC.md](T31_CAT1_AT_COMMAND_SPEC.md) §4。
+
 MQTT Broker 参数由 **t31_linux** 的 `client.ini` / `client.json` 维护，上电 `bootstrap` 时经串口下发给 Air780，4G 解析后更新 `_G.MQTT_CFG` 并启动/重启 MQTT。
 
 两种产品策略（等 T31 / 上电自动连 + 覆盖）见 [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md)。

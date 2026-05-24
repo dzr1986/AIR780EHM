@@ -19,7 +19,7 @@ _G.APP_META = {
 }
 
 _G.APP_STACK = {
-    mqtt = "net",
+    mqtt = "net_mqtt",
     uart = "uart_bridge",
 }
 
@@ -33,8 +33,8 @@ _G.APP_RUNTIME = {
     battery_consumption_rate = "0",
 }
 
--- T31 烧录模式（GPIO28 BOOT 键长按）：进入前条件与关停项，见 doc/T31_BURN_MODE.md
-_G.T31_BURN_CFG = {
+-- t3x 烧录模式（GPIO28 BOOT 键长按）：进入前条件与关停项，见 doc/T3X_BURN_MODE.md
+_G.T3X_BURN_CFG = {
     min_battery_percent = 50,
     require_battery_valid = true,
     allow_repeat_enter_boot = true,
@@ -143,10 +143,10 @@ _G.GPIO_OUT = {
         init_level = 1,
         on_level = 0,
     },
-    ----烧录T31
+    ----烧录t3x
     t3x_boot = {
         pin = 26,
-        net_name = "T31_BOOT",
+        net_name = "T3X_BOOT",
         init_level = 0,
         on_level = 1,
     },
@@ -156,7 +156,7 @@ _G.GPIO_OUT = {
         init_level = 0,
         on_level = 1,
     },
-    -- Cat.1 GPIO29(1.8V) → T31 PB27(3.3V 输入)：低电平脉冲唤醒，空闲高（T31 侧上拉）
+    -- Cat.1 GPIO29(1.8V) → t3x PB27(3.3V 输入)：低电平脉冲唤醒，空闲高（t3x 侧上拉）
     t3x_mcu_int = {
         pin = 29,
         net_name = "MCU_INT_CPU",
@@ -210,7 +210,7 @@ _G.BATTERY_CFG = {
     mqtt_report_interval_sec = 60,
 }
 
--- 主机 PB27 唤醒（与 t31_linux gpio 下降沿一致）
+-- 主机 PB27 唤醒（与 t3x_linux gpio 下降沿一致）
 _G.HOST_WAKE_CFG = {
     pulse_ms = 120,
     idle_level = 1,
@@ -218,7 +218,7 @@ _G.HOST_WAKE_CFG = {
     default_sid = 1,
 }
 
--- UART1 ↔ T31；lib/uart_bridge 仅从此表读参（勿在驱动里写死波特率）
+-- UART1 ↔ t3x；lib/uart_bridge 仅从此表读参（勿在驱动里写死波特率）
 _G.UART_CFG = {
     id = 1,
     baud = 115200,
@@ -231,7 +231,7 @@ _G.WDT_CFG = {
     feed_interval_ms = 3000,
 }
 
--- 4G 上电默认 Broker；T31 经 AT+MQTTCFG 可覆盖并重连（t31_linux/client.ini [mqtt] 与之保持一致）
+-- 4G 上电默认 Broker；t3x 经 AT+MQTTCFG 可覆盖并重连（t3x_linux/client.ini [mqtt] 与之保持一致）
 _G.MQTT_CFG = {
     host = "112.86.146.218",
     port = 2123,

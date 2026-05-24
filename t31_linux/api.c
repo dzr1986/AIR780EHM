@@ -79,7 +79,17 @@ int client_get_runtime_config(client_t *client, char *resp, size_t resp_size)
 
 int client_create_service(client_t *client)
 {
+    return client_push_tcp_channel(client);
+}
+
+int client_push_tcp_channel(client_t *client)
+{
     return create_channel(client);
+}
+
+int client_push_mqtt_config(client_t *client)
+{
+    return push_mqtt_config(client);
 }
 
 int client_close_service(client_t *client, int sid)
@@ -245,10 +255,11 @@ static int bootstrap(client_t *client)
     if (client_set_passthrough(client, false) != 0) {
         return -1;
     }
-    if (client_create_service(client) != 0) {
+    /* 链路配置：先 TCP 通道模板，再 MQTT（二者独立，见 doc/T31_CAT1_AT_COMMAND_SPEC.md） */
+    if (client_push_tcp_channel(client) != 0) {
         return -1;
     }
-    if (push_mqtt_config(client) != 0) {
+    if (client_push_mqtt_config(client) != 0) {
         return -1;
     }
     if (dump_config(client) != 0) {
@@ -361,12 +372,12 @@ int client_handle_event(client_t *client, const wake_event_t *event)
     if (close_channel(client, client->config.channel.sid) != 0) {
         return -1;
     }
-    if (create_channel(client) != 0) {
+    if (client_push_tcp_channel(client) != 0) {
         return -1;
     }
     if (event->evt == EVT_CONNECT_FAIL || event->evt == EVT_REGISTER_FAIL ||
         event->evt == EVT_REGISTER_TIMEOUT) {
-        if (push_mqtt_config(client) != 0) {
+        if (client_push_mqtt_config(client) != 0) {
             log_print("WARN", "evt=%d: mqtt cfg push failed", event->evt);
         }
     }

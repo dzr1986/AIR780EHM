@@ -1,4 +1,4 @@
-# 充电、指示灯与电池电量（固件流程说明）
+﻿# 充电、指示灯与电池电量（固件流程说明）
 
 本文描述 **T31 + Air780EHM** 工程中：USB 插入检测、充电状态、**两套指示灯**、**ADC1/BAT_ADC** 采样电量，以及 **MQTT 1003** 上报的完整流程。硬件引脚详见仓库根目录 [`T31_CAT1_GPIO.md`](../T31_CAT1_GPIO.md) §3.1。
 
@@ -13,7 +13,7 @@
 | **USB 插入** | GPIO27 `USB_DET` | 固件中断 | `lib/usb_charge.lua` |
 | **充电中/充满** | GPIO17 `CHG_STATE` | 固件只读+中断 | `lib/usb_charge.lua` |
 | **电池电压** | ADC1 `BAT_ADC` | 固件周期采样 | `user/bat_adc.lua`（编排 `adc_lib` + `bat_core`） |
-| **云端电量** | MQTT `1003` / `status` | `remainPower` 字段 | `user/net.lua` |
+| **云端电量** | MQTT `1003` / `status` | `remainPower` 字段 | `user/net_mqtt.lua` |
 
 ```mermaid
 flowchart TB
@@ -28,7 +28,7 @@ flowchart TB
         BAT[bat_adc → adc_lib + bat_core]
         APP[app.lua 事件编排]
         LED[led_ctrl GPIO20/21]
-        NET[net.lua 1003]
+        NET[net_mqtt.lua 1003]
     end
     USB --> U17
     U17 --> LED_CHG
@@ -126,7 +126,7 @@ flowchart TB
 | `user/bat_adc.lua` | 周期任务编排、发布 `BATTERY_UPDATE` |
 | `user/app.lua` | 订阅事件、更新 `APP_RUNTIME.power_status`、触发 MQTT、低功耗与 USB 关系 |
 | `../user/led_ctrl.lua` | GPIO20/21 电量图案 |
-| `user/net.lua` | `publishStatus()` → 上行 **1003** |
+| `user/net_mqtt.lua` | `publishStatus()` → 上行 **1003** |
 
 ### 4.2 模块开关（`app_config.lua` → `MODULE_FLAGS`）
 
@@ -159,7 +159,7 @@ sequenceDiagram
     participant GPIO as gpioModule
     participant BAT as bat_adc.lua
     participant CHG as usb_charge.lua
-    participant NET as net.lua
+    participant NET as net_mqtt.lua
 
     APP->>APP: setupEventHandlers()
     APP->>GPIO: setupGpio() → led_ctrl
@@ -178,7 +178,7 @@ sequenceDiagram
 2. `setupGpio()` — 启动 `led_ctrl`（读后续更新的 `APP_RUNTIME.battery_percent`）
 3. `startBackgroundServices()` — `bat_adc.start()` + `usb_charge.start()`
 4. `initPowerStatus()` — 读 `charge.isUsbInserted()` 设置 `APP_RUNTIME.power_status`
-5. MQTT 联网后，`net.lua` 定时 `publishStatus()`，并在 USB/充电状态变化时由 `app` 额外触发
+5. MQTT 联网后，`net_mqtt.lua` 定时 `publishStatus()`，并在 USB/充电状态变化时由 `app` 额外触发
 
 ---
 
@@ -287,7 +287,7 @@ flowchart LR
 
 ### 9.1 上行 1003（`net.publishStatus`）
 
-主题：`/panshi/app/{imei}/status`（以工程 `net.lua` 为准）
+主题：`/panshi/app/{imei}/status`（以工程 `net_mqtt.lua` 为准）
 
 示例：
 

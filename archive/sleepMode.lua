@@ -1,4 +1,4 @@
---- 模块功能：项目休眠与 T31 电源控制库
+--- 模块功能：项目休眠与 t3x 电源控制库
 -- @module sleepMode
 -- @author GitHub Copilot
 -- @release 2026.5.13
@@ -7,7 +7,7 @@ require "sys"
 module(..., package.seeall)
 
 local config = {
-    t31_power_pin = function() return _G.t31j_init_io_number end,
+    t3x_power_pin = function() return _G.t3xj_init_io_number end,
     lowpower_flag_name = "lowPowerModeStatus",
     gps_power_off = true,
     wait_before_sleep = 500,
@@ -17,10 +17,10 @@ local config = {
 }
 
 local function getPin()
-    if type(config.t31_power_pin) == "function" then
-        return config.t31_power_pin()
+    if type(config.t3x_power_pin) == "function" then
+        return config.t3x_power_pin()
     end
-    return config.t31_power_pin
+    return config.t3x_power_pin
 end
 
 local function setLowpowerFlag(value)
@@ -29,7 +29,7 @@ end
 
 --- 配置休眠控制参数
 -- @param newConfig table
--- 支持字段：t31_power_pin、lowpower_flag_name、gps_power_off、wait_before_sleep、wait_after_gpio、cleanup_fn
+-- 支持字段：t3x_power_pin、lowpower_flag_name、gps_power_off、wait_before_sleep、wait_after_gpio、cleanup_fn
 -- @return table 当前配置
 function configure(newConfig)
     if type(newConfig) == "table" then
@@ -80,10 +80,10 @@ function enterRestDeep()
     return true
 end
 
---- 唤醒 T31
+--- 唤醒 t3x
 -- @return boolean 始终返回 true
-function wakeT31()
-    log.info("sleepMode.wakeT31")
+function wakeT3x()
+    log.info("sleepMode.wakeT3x")
     local pin = getPin()
     if pin then
         gpio.setup(pin, 1)

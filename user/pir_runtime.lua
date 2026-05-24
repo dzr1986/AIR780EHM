@@ -1,4 +1,4 @@
---- PIR 运行统计（供 host_uart AT+PIRSTAT? / T31 查询）
+--- PIR 运行统计（供 host_uart AT+PIRSTAT? / t3x 查询）
 -- 与 lib/pir.lua（硬件冷却）、pir_ctrl.lua（业务策略）配合
 -- @module pir_runtime
 
@@ -12,7 +12,7 @@ local stats = {
     cnt_hw_irq = 0,              -- 中断总次数（含后续被忽略的）
     cnt_hw_ignore_level = 0,     -- 非 active_level 边沿，丢弃
     cnt_hw_ignore_cooldown = 0,  -- 冷却期内，丢弃（节流）
-    cnt_hw_ignore_burn = 0,      -- T31 烧录模式 active，丢弃
+    cnt_hw_ignore_burn = 0,      -- t3x 烧录模式 active，丢弃
     cnt_hw_accept = 0,           -- 放行，发布 PIR_HW_TRIGGERED
 
     -- pir_ctrl.lua 业务层
@@ -77,7 +77,7 @@ function buildAtBody()
         "suspended=" .. (biz.suspended and 1 or 0),
         "recording=" .. (biz.recording and 1 or 0),
         "hw_started=" .. (hw.started and 1 or 0),
-        "burn_mode=" .. (_G.T31_BURN_MODE_ACTIVE and 1 or 0),
+        "burn_mode=" .. (_G.T3X_BURN_MODE_ACTIVE and 1 or 0),
         "lowpower=" .. (rt.low_power_mode or 0),
         "online=" .. (rt.online_status or 0),
         "pin=" .. (hw.pin or cfg.pin or 0),

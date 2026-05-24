@@ -1,4 +1,4 @@
-# 780EHM_PJ 项目技术文档
+﻿# 780EHM_PJ 项目技术文档
 
 > Air780EHM + t3x 摄像头 · LuatOS 方案1（扁平架构）  
 > **配置真源**：[`CONFIG.md`](CONFIG.md)（`config` / `appConfig` / `keyConfig`）· **调用关系**：`user/CALL_GRAPH.md`  
@@ -72,11 +72,11 @@ MQTT 在 **`bootMqtt()`** 中等待 `net_ready` 后启动，**常电联网**；U
 ### 1.4 栈选择 `APP_STACK`
 
 ```lua
-APP_STACK = { mqtt = "net", uart = "uart_bridge" }
+APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 ```
 
 - 串口 **仅** `lib/uart_bridge.lua` 可 `uart.setup`（`UART_CFG.id` 默认 1）
-- MQTT **仅** `user/net.lua`
+- MQTT **仅** `user/net_mqtt.lua`
 
 ---
 
@@ -119,7 +119,7 @@ APP_STACK = { mqtt = "net", uart = "uart_bridge" }
 | PIR 硬件 | `pir.start()` 读 `PIR_CFG` | **无** `onPirTriggered`；`PIR_HW_TRIGGERED` → `pir_ctrl` |
 | PIR 业务状态 | `getState().pir` / `getConfig().pir` | 来自 `pir_ctrl` |
 
-### 2.5 `net.lua`
+### 2.5 `net_mqtt.lua`
 
 | 项 | 说明 |
 |----|------|
@@ -329,7 +329,7 @@ log.info("pir", json.encode(require("pir_ctrl").getState()))
 log.info("uart", json.encode((_G.uart_bridge or require("uart_bridge")).getState()))
 
 -- MQTT / FOTA
-log.info("net", json.encode(require("net").getState()))
+log.info("net_mqtt", json.encode(require("net_mqtt").getState()))
 log.info("fota", json.encode(require("fota").getState()))
 ```
 
@@ -346,7 +346,7 @@ log.info("fota", json.encode(require("fota").getState()))
 | `app_config.lua` | `MODULE_FLAGS`、`APP_EVENTS` |
 | `key_config.lua` | `KEY_CONFIG` |
 | `app.lua` | 编排中心 |
-| `net.lua` | MQTT |
+| `net_mqtt.lua` | MQTT |
 | `lib/usb_charge.lua` | USB/充电 GPIO |
 | `t3x_ctrl.lua` | 协处理器 |
 | `pir_ctrl.lua` | PIR 业务 |

@@ -1,6 +1,6 @@
-# PIR 媒体与录像停止协议
+﻿# PIR 媒体与录像停止协议
 
-> 适用工程：780EHM_PJ（方案1：`lib/pir.lua` → `pir_ctrl.lua` → `app.lua` / `net.lua`）  
+> 适用工程：780EHM_PJ（方案1：`lib/pir.lua` → `pir_ctrl.lua` → `app.lua` / `net_mqtt.lua`）  
 > 更新日期：2026-05-18
 
 ---
@@ -68,7 +68,7 @@ sys.publish(APP_EVENTS.PIR_STOP_RECORDING, reason, uploadMode, quality)
 |----|------|----------|
 | `timer` | 达到 `maxDurationSec` | `pir_ctrl` 内定时器 |
 | `pir_retrigger` | 录像中第二次 PIR（且 `stopOnSecondPir=true`） | `pir_ctrl.onPirTriggered` |
-| `cloud` | 云端下发 `dataType=2011` | `net.lua` → `requestStopFromCloud()` |
+| `cloud` | 云端下发 `dataType=2011` | `net_mqtt.lua` → `requestStopFromCloud()` |
 | `manual` | 本地调用 `pir_ctrl.requestStopManual()` | 预留 AT/调试 |
 
 ---
@@ -82,7 +82,7 @@ sequenceDiagram
     participant PIR as lib/pir.lua
     participant CFG as pir_ctrl
     participant APP as app.lua
-    participant NET as net.lua
+    participant NET as net_mqtt.lua
 
     PIR->>CFG: PIR_HW_TRIGGERED → onPirTriggered()
     CFG->>CFG: beginVideoSession() 启动定时器
@@ -242,8 +242,8 @@ flowchart TD
 | PIR 中断 | `lib/pir.lua` | `onInterrupt` → `APP_PIR_HW_TRIGGERED` → `pir_ctrl.onPirTriggered` |
 | 会话/定时/停止发布 | `pir_ctrl.lua` | `beginVideoSession` / `publishStopRecording` |
 | 业务响应 | `app.lua` | `setupEventHandlers` 内 PIR 订阅 |
-| 云端 2010/2011 | `net.lua` | `pir_ctrl.setMediaConfig` / `setRecordPolicy` / `requestStopFromCloud` |
-| 上行 1011 | `net.lua` | `publishPirRecordStop` |
+| 云端 2010/2011 | `net_mqtt.lua` | `pir_ctrl.setMediaConfig` / `setRecordPolicy` / `requestStopFromCloud` |
+| 上行 1011 | `net_mqtt.lua` | `publishPirRecordStop` |
 | 硬件触发 | `config.lua` | `PIR_CFG` |
 | 默认策略 | `pir_ctrl.lua` | `pirMediaConfig` / `pirRecordPolicy` |
 

@@ -1,8 +1,8 @@
-# MQTT 下行命令手册（平台 → 设备）
+﻿# MQTT 下行命令手册（平台 → 设备）
 
 > **本机示例 IMEI**：`862323084068124`  
 > **MQTTX 抄录**：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)  
-> **完整协议**：[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) · **代码**：`user/net.lua`
+> **完整协议**：[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) · **代码**：`user/net_mqtt.lua`
 
 ---
 

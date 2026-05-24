@@ -5,7 +5,7 @@
   设备编号 deviceNo : 862323084068124
   固件版本         : 1.0.0（config.lua VERSION）
   协议规则         : 下行 200x  ↔  上行 100x（个位对齐）
-  代码实现         : user/net.lua
+  代码实现         : user/net_mqtt.lua
   详细说明         : user/MQTT_PROTOCOL.md / user/MQTT_DOWNLINK.md
   文档版本         : 2026-05-19
 

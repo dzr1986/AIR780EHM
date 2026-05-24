@@ -31,4 +31,4 @@
 | `pbCodec.lua` | Protobuf |
 | `demoTask.lua` / `pwmTask.lua` / `airlbsTask.lua` | 演示任务 |
 
-复用归档库时请自行 `require` 并接回 `user/app.lua`；MQTT 主路径为 **`user/net.lua`**。
+复用归档库时请自行 `require` 并接回 `user/app.lua`；MQTT 主路径为 **`user/net_mqtt.lua`**。

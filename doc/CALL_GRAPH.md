@@ -1,6 +1,6 @@
-# user / lib 调用关系（780EHM_PJ）
+﻿# user / lib 调用关系（780EHM_PJ）
 
-> 与代码同步：配置见 [`CONFIG.md`](CONFIG.md)；MQTT=`net.lua`；UART=`lib/uart_bridge.lua`；按键=`lib/key.lua` + `keyConfig.KEY_CONFIG`。  
+> 与代码同步：配置见 [`CONFIG.md`](CONFIG.md)；MQTT=`net_mqtt.lua`；UART=`lib/uart_bridge.lua`；按键=`lib/key.lua` + `keyConfig.KEY_CONFIG`。  
 > 深度分析见 **[CODE_ANALYSIS.md](./CODE_ANALYSIS.md)**。
 
 ---
@@ -56,7 +56,7 @@ app.lua
 peripheral.lua
   require: led_ctrl, key, pir, pir_ctrl
 
-net.lua
+net_mqtt.lua
   require: config, pir_ctrl
 
 pir_ctrl.lua

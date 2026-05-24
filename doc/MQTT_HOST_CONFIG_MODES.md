@@ -7,7 +7,7 @@ T31 Linux 与 Air780 4G 之间通过 UART `AT+MQTTCFG` 下发 MQTT Broker 参数
 
 - 串口协议：[HOST_MQTT_UART.md](HOST_MQTT_UART.md)
 - T31 侧：`t31_linux/client.ini` `[mqtt]`、`api.c` `push_mqtt_config()`
-- 4G 侧：`user/config.lua`、`user/host_uart.lua`、`user/app.lua`、`user/net.lua`
+- 4G 侧：`user/config.lua`、`user/host_uart.lua`、`user/app.lua`、`user/net_mqtt.lua`
 
 ---
 
@@ -125,7 +125,7 @@ host_uart (uart_mqttcfg)
 
 1. `config.lua`：删除或注释 `MQTT_CFG`，增加 `HOST_MQTT_CFG.defer_boot = true`
 2. `app.lua`：恢复 `shouldDeferMqttUntilHost()` 及 `bootMqtt` 内等待逻辑
-3. `net.lua`：`mqttTask` 在无 `host` 时直接返回（可选）
+3. `net_mqtt.lua`：`mqttTask` 在无 `host` 时直接返回（可选）
 4. 文档：在 README 标明「Broker 仅 t31_linux」
 
 从 A 切回 B：反向操作，恢复 `MQTT_CFG` 并去掉 `defer_boot` 判断。

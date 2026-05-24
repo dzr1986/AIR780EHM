@@ -1,5 +1,5 @@
 --- UART 驱动：唯一 uart.setup / read / write 入口
--- 硬件参数见 config.UART_CFG；T31 串口业务见 user/host_uart
+-- 硬件参数见 config.UART_CFG；t3x 串口业务见 user/host_uart
 -- @module uart_bridge
 -- @release 2026.5.21
 

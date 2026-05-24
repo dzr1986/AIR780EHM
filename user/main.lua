@@ -1,4 +1,4 @@
--- 780EHM_PJ 入口
+﻿-- 780EHM_PJ 入口
 -- 启动链: main → app.start(peripheral, net, t3x_ctrl) → sys.run()
 PROJECT = PROJECT or "TUYA_CAT1"
 VERSION = VERSION or "1.0.0"
@@ -14,7 +14,7 @@ require "key_config"
 
 local app = require "app"
 local peripheral = require "peripheral"
-local net = require "net"
+local net = require "net_mqtt"
 local t3x_ctrl = require "t3x_ctrl"
 
 if not isEntry then
