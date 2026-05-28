@@ -1,8 +1,8 @@
 ﻿-- 780EHM_PJ 入口
 -- 启动链: main → app.start(peripheral, net, t3x_ctrl) → sys.run()
 PROJECT = PROJECT or "TUYA_CAT1"
-VERSION = VERSION or "v1_20260528"
-BUILD_TAG = "v1_20260528"
+VERSION = VERSION or "v1_20260529"
+BUILD_TAG = "v1_20260529"
 
 local moduleName = ...
 local isEntry = moduleName == nil

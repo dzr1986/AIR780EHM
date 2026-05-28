@@ -98,7 +98,7 @@ gpioModule.start({
 | 配置 `events` / `event` | `APP_EVENTS` 键 | 典型订阅方 |
 |-------------------------|-----------------|------------|
 | pwrkey short/long | `GPIO_PWRKEY_SHORT` / `GPIO_PWRKEY_LONG` | `app` → 关机/日志 |
-| bootkey short/long | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 短按日志；**长按** → [`T31_BURN_MODE.md`](T31_BURN_MODE.md)（电量≥50%、关停 MQTT/PIR/UART 后 `t3x_ctrl.enterBootMode`） |
+| bootkey short/long | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 短按日志；**长按** → [`T31_BURN_MODE.md`](T31_BURN_MODE.md)（电量≥20%、关停 MQTT/PIR/UART 后 `t3x_ctrl.enterBootMode`） |
 | ready | `GPIO_COPROC_READY` | `app` → `t3x_ctrl.exitBootMode()` |
 
 ---

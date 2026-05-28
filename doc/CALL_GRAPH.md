@@ -9,8 +9,10 @@
 
 ```
 main.lua
-  require config
-  app.start(peripheral, net, t3x_ctrl)    -- 依赖注入
+  require config, app_config
+  [rndis] sys.taskInit(usb_rndis.open)
+  [mqtt]  net_mqtt.bootstrapNetwork()
+  app.start(peripheral, net, t3x_ctrl)
   sys.run()
 ```
 
@@ -19,12 +21,13 @@ main.lua
 | # | 条件 | 动作 |
 |---|------|------|
 | 1 | 始终 | `setupEventHandlers()` + **`pir_ctrl.start()`** |
+| 1b | `battery_guard` | `battery_guard.start(hooks)` |
 | 2 | `watchdog` | `watchdog.start(WDT_CFG)` |
 | 3 | `uart_bridge` | `uart_bridge.start()` → `_G.uart_bridge` |
 | 4 | 始终 | `t3x_ctrl.start()` |
 | 5 | `gpio` | `peripheral.start({ 扁平引脚 })` |
 | 6 | `pmd_runtime` | PMD USB |
-| 7 | flags | battery / charge / sntp / mobileInfo |
+| 7 | flags | `vbat` / charge / sntp / mobileInfo |
 | 8 | 始终 | `initPowerStatus()` |
 | 9 | 始终 | **`bootMqtt()`** → `net_ready` → `startMqtt()` → `net.start()` |
 | 10 | `fota` | `setupFota()` |
@@ -105,20 +108,21 @@ lib/pir (GPIO30 rising, cooldown 10s)
 
 ---
 
-## 4. 电源 / 低功耗 / USB
+## 4. 电源 / 低功耗 / USB / 电量
 
 ```
-PMD USB 拔出 (state=0)
-  → APP_RUNTIME.power_status=0, GPIO_VBUS_CHANGED
-  → onEnterLowPower (if was awake)
-       → POWER_ENTERED_REST, t3x_ctrl.enterSleep (pm.hibernate), publishRest
-  → startMqtt() if not started (fallback)
+BATTERY_UPDATE (vbat)
+  → app 日志
+  → battery_guard.evaluate (未插 USB: ≤15% 停 PIR, ≤10% onEnterLowPower+1002, ≤5% 关机)
+  → 插 USB: 忽略阈值 + t3x_ctrl.wake()
 
-PMD USB 插入
-  → onExitLowPower → t3x_ctrl.wake()
+GPIO27 USB 拔出 (usb_charge)
+  → battery_guard.onUsbRemoved()
+  → onEnterLowPower (RNDIS 开时可能跳过)
+       → t3x_ctrl.enterSleep (modemHibernate=false), publishRest(1002)
 
-initPowerStatus (no PMD, no USB)
-  → onEnterLowPower immediately
+GPIO27 USB 插入
+  → battery_guard.onUsbInserted() → onExitLowPower + wake T31
 ```
 
 ```
@@ -126,6 +130,8 @@ MQTT 2002 / AT+LOWPOWER
   → POWER_ENTER_REST / POWER_EXIT_REST
   → app onEnterLowPower / onExitLowPower
 ```
+
+配置：`BATTERY_CFG.guard` · [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md)
 
 ---
 

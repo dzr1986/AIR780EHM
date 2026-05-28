@@ -11,7 +11,7 @@ _G[_modname or (...)] = _M
 -- 应用元数据 / 栈 / 运行时
 -- ============================================================
 _G.APP_META = {
-    version = "v1_20260528",
+    version = "v1_20260529",
     log_enabled = false,
     device_model = "awake_normal",
     cmd_ext = "",
@@ -35,7 +35,7 @@ _G.APP_RUNTIME = {
 
 -- t3x 烧录模式（GPIO28 BOOT 键长按）：进入前条件与关停项，见 doc/T3X_BURN_MODE.md
 _G.T3X_BURN_CFG = {
-    min_battery_percent = 50,
+    min_battery_percent = 20,
     require_battery_valid = true,
     allow_repeat_enter_boot = true,
     burn_check_retry_count = 2,
@@ -197,7 +197,7 @@ do
 end
 
 -- ============================================================
--- 电池 / UART / 看门狗 / MQTT / FOTA
+-- 电池（ADC / 灯 / 电量保护）— 阈值均在此调节，见 doc/LOW_BATTERY_AND_LOW_POWER.md
 -- ============================================================
 _G.BATTERY_CFG = {
     adc = {
@@ -214,7 +214,40 @@ _G.BATTERY_CFG = {
     },
     sample_interval_ms = 10 * 1000,
     mqtt_report_interval_sec = 60,
+
+    -- 模组电量灯 GPIO20/21（led_ctrl → lib/led.runBatteryPattern）
+    led = {
+        high_threshold = 70,
+        medium_threshold = 20,
+        high_hold = 10000,
+        medium_light = 1000,
+        medium_dark = 1000,
+        medium_count = 5,
+        medium_gap = 1000,
+        low_light = 250,
+        low_dark = 250,
+        low_count = 20,
+        low_gap = 1000,
+        unknown_hold = 3000,
+        fallback_hold = 1000,
+    },
+
+    -- 电量保护 battery_guard（仅 GPIO27 外壳 USB 未插入；插入 USB 忽略并保持 T31 上电）
+    guard = {
+        enabled = true,
+        ignore_when_usb_inserted = true,
+        pir_suspend_percent = 15,
+        pir_resume_percent = 17,
+        t31_rest_percent = 10,
+        recover_rest_percent = 12,
+        shutdown_percent = 5,
+        shutdown_delay_ms = 3000,
+        require_valid_sample = true,
+    },
 }
+
+-- 兼容旧名（可选）；优先读 BATTERY_CFG.guard
+_G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
 
 -- 主机 PB27 唤醒（与 t3x_linux gpio 下降沿一致）
 _G.HOST_WAKE_CFG = {

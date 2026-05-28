@@ -11,6 +11,7 @@
 | [KEY_GPIO.md](KEY_GPIO.md) | 按键 / `key_config.lua` |
 | [T31_BURN_MODE.md](T31_BURN_MODE.md) | **GPIO28 长按 → T31 烧录**（电量/关停条件） |
 | [CHARGE_BATTERY.md](CHARGE_BATTERY.md) | 充电、ADC、MQTT 1003 |
+| [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) | **低电量 vs 低功耗**：指示灯、MQTT、`battery_guard` 分级保护 |
 | [PIR_HARDWARE.md](PIR_HARDWARE.md) | PIR 硬件与流程 |
 | [PIR_TRIGGER_INTERVAL.md](PIR_TRIGGER_INTERVAL.md) | PIR 冷却间隔 |
 | [PIR_COOLDOWN_AND_COUNT.md](PIR_COOLDOWN_AND_COUNT.md) | **冷却 vs 计数**（概念与 AT 字段） |

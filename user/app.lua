@@ -14,6 +14,7 @@ local usbCharge = require "usb_charge"
 local mobile_info = require "mobile_info"
 local fota = require "fota"
 local usbRndis = require "usb_rndis"
+local battery_guard = require "battery_guard"
 local led = require "led"
 local host_uart = require "host_uart"
 -- watchdog 在 lib/ 中由工具链自动加载，勿 require（与核心 wdt 库区分）
@@ -227,6 +228,11 @@ local function applyUsbInsertState(inserted, source)
             and usbRndis.isEnabled()
         if rndisOn then
             log.info("app", "RNDIS 已开，跳过因 GPIO27 未插入而进入低功耗")
+        elseif _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+            battery_guard.onUsbRemoved()
+            if _G.APP_RUNTIME.low_power_mode == 0 then
+                onEnterLowPower()
+            end
         elseif _G.APP_RUNTIME.low_power_mode == 0 then
             onEnterLowPower()
         end
@@ -235,7 +241,11 @@ local function applyUsbInsertState(inserted, source)
         state.usb_insert_tick = nowMs()
         cancelPwrKeyLongPress()
         log.info("app", "USB插入", source or "")
-        onExitLowPower()
+        if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+            battery_guard.onUsbInserted()
+        else
+            onExitLowPower()
+        end
     end
 end
 
@@ -421,7 +431,7 @@ end
 --- 单次条件判断（由 checkT3xBurnPreconditions 轮询调用）
 local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
     local cfg = _G.T3X_BURN_CFG or {}
-    local minPct = tonumber(cfg.min_battery_percent) or 50
+    local minPct = tonumber(cfg.min_battery_percent) or 20
     local allowRepeat = cfg.allow_repeat_enter_boot ~= false
     local failReason = nil
     local pct = getBatteryPercentForBurn()
@@ -752,6 +762,9 @@ local function setupEventHandlers()
     sys.subscribe("BATTERY_UPDATE", function(pct, mv)
         log.info("app", "电量", pct, "%", mv, "mV",
             "（模组LED：>70%蓝常亮，20~70%蓝闪，<20%红闪）")
+        if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+            battery_guard.onBatteryUpdate(pct, mv)
+        end
     end)
     sys.subscribe(E.MQTT_OFFLINE, onMqttOffline)
     sys.subscribe(E.MQTT_SERVER_DATA, function(_topic, payload)
@@ -892,6 +905,27 @@ function start(gpio, net, t3x_ctrl)
     logImeiBanner()
 
     setupEventHandlers()
+    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+        battery_guard.start({
+            on_enter_low_power = onEnterLowPower,
+            on_exit_low_power = onExitLowPower,
+            on_power_off = onPowerOff,
+            wake_t3x = function()
+                if t3xModule and t3xModule.wake then
+                    sys.taskInit(function() t3xModule.wake() end)
+                end
+            end,
+            is_usb_inserted = function()
+                if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
+                    return usbCharge.isUsbInserted()
+                end
+                return (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status) == 1
+            end,
+            is_burn_active = function()
+                return state.t3x_burn_active or _G.T3X_BURN_MODE_ACTIVE
+            end,
+        })
+    end
     if _G.MODULE_FLAGS.watchdog then setupWatchdog() end
     if _G.MODULE_FLAGS.uart_bridge then setupUartBridge() end
     if t3xModule then t3xModule.start() end

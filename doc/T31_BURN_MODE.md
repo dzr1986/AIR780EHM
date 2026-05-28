@@ -15,7 +15,7 @@
 
 | 条件 | 默认 | 说明 |
 |------|------|------|
-| **电量 ≥ 50%** | `min_battery_percent = 50` | 读 `APP_RUNTIME.battery_percent` 或 `bat_adc.getPercent()`；未知则拒绝 |
+| **电量 ≥ 20%** | `min_battery_percent = 20` | 读 `APP_RUNTIME.battery_percent` 或 `vbat.getPercent()`；未知则拒绝 |
 | **未已在 BOOT** | — | `in_boot_mode == false`；若上次未收到 `coproc_ready` 仍为 true，见下条 |
 | **允许重复进入 BOOT** | `allow_repeat_enter_boot = true` | 已为 BOOT 时仍可再次 `enterBootMode`（默认开） |
 | **条件轮询** | `burn_check_retry_count = 2` | 首次不满足时再判断 **2** 次，共最多 **3** 次；间隔 `burn_check_retry_interval_ms` |

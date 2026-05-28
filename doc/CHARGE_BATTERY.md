@@ -123,9 +123,10 @@ flowchart TB
 | `lib/usb_charge.lua` | USB_DET / CHG_STATE 双边沿中断、发布应用事件 |
 | `lib/adc_lib.lua` | `adc.setRange` / `adc.open` / 读引脚 mV、`mv_scale`（导出 `_G.adcLib`） |
 | `lib/bat_core.lua` | mV→%、耗电率、写入 `APP_RUNTIME.battery_percent` / `APP_RUNTIME.battery_mv` |
-| `user/bat_adc.lua` | 周期任务编排、发布 `BATTERY_UPDATE` |
+| `user/vbat.lua` | 周期 ADC 采样、发布 `BATTERY_UPDATE` |
+| `user/battery_guard.lua` | 未插 USB 时按 `BATTERY_CFG.guard` 分级保护 |
 | `user/app.lua` | 订阅事件、更新 `APP_RUNTIME.power_status`、触发 MQTT、低功耗与 USB 关系 |
-| `../user/led_ctrl.lua` | GPIO20/21 电量图案 |
+| `user/led_ctrl.lua` | GPIO20/21 电量图案（读 `BATTERY_CFG.led`） |
 | `user/net_mqtt.lua` | `publishStatus()` → 上行 **1003** |
 
 ### 4.2 模块开关（`app_config.lua` → `MODULE_FLAGS`）
@@ -133,21 +134,24 @@ flowchart TB
 | 标志 | 建议 | 说明 |
 |------|------|------|
 | `charge = true` | 本板必须 | 使用 GPIO27/17，**不用** `pmd_runtime` |
-| `battery = true` | 需要电量/MQTT/模组灯时 | 启动 `bat_adc.start()`（勿 `require "battery"`） |
+| `battery = true` | 需要电量/MQTT/模组灯时 | 启动 `vbat.start()` |
+| `battery_guard = true` | 电池供电场景建议开 | `BATTERY_CFG.guard`，见 [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) |
 | `pmd_runtime = false` | 本板 | PMD USB 路径与 `charge` 二选一 |
 | `gpio = true` | 需要模组 LED/PIR 时 | 内含 `led_ctrl` |
 
 ### 4.3 可调参数（`config.lua` → `BATTERY_CFG`）
 
+完整表见 [CONFIG.md §BATTERY_CFG](CONFIG.md#batterycfg-字段一览)。摘要：
+
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `adc.channel` | `1` | LuatOS ADC 通道 1 = **ADC1 / BAT_ADC** |
-| `adc.range` | `nil` | `nil`→`ADC_RANGE_MIN`（分压）；直连 0~3.3V 用 `adc.ADC_RANGE_MAX` |
-| `adc.mv_scale` | `1` | 引脚 mV × scale = 电芯 mV |
-| `cell.v_max_mv` | `4300` | 满电 mV → 100% |
-| `cell.v_min_mv` | `3300` | 放空 mV → 1% |
+| `adc.mv_scale` | `4090/1311` | 引脚 mV × scale = 电芯 mV |
+| `cell.v_max_mv` / `v_min_mv` | 4200 / 3000 | 满电 / 截止 → 100% / 1% |
 | `sample_interval_ms` | `10000` | 采样周期（ms） |
 | `mqtt_report_interval_sec` | `60` | MQTT **1003** 周期（秒） |
+| `led.*` | 70 / 20 等 | 模组红蓝灯阈值与时序 |
+| `guard.*` | 15 / 10 / 5 等 | 未插 USB：停 PIR(≤15%) / 休眠 T31 / 关机 |
 
 ---
 

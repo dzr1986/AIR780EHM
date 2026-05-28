@@ -95,7 +95,46 @@
 ## PIR / 电池 / 连接
 
 - `PIR_CFG`：由 `GPIO_IN.pir_det` 自动带出中断参数 + `PIR_COOLDOWN_MS.frequent`
-- `BATTERY_CFG`：`cell.v_max_mv` / `v_min_mv`、`sample_interval_ms`
+- `BATTERY_CFG`：ADC 采样、模组灯、电量保护（真源 [`config.lua`](../user/config.lua)）；行为见 [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md)
+- `T3X_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
+- `MODULE_FLAGS.battery_guard`：[`app_config.lua`](../user/app_config.lua)，`false` 可关闭电量保护
+
+### `BATTERY_CFG` 字段一览
+
+| 分组 | 字段 | 默认 | 说明 |
+|------|------|------|------|
+| **adc** | `channel` | `1` | BAT_ADC / ADC1 |
+| | `mv_scale` | `4090/1311` | 引脚 mV × scale = 电芯 mV |
+| | `divider` | 1000K+510K | `mv_scale` 为 nil 时自动计算 |
+| **cell** | `v_max_mv` / `v_min_mv` | 4200 / 3000 | 映射 100% / 1% |
+| | `sample_interval_ms` | 10000 | `vbat` 采样周期 |
+| | `mqtt_report_interval_sec` | 60 | MQTT 1003 `remainPower` 周期 |
+| **led** | `high_threshold` | 70 | &gt;70% 蓝常亮 |
+| | `medium_threshold` | 20 | 20～70% 蓝闪；≤20% 红闪 |
+| | `high_hold` / `medium_*` / `low_*` | 见 config | `led_ctrl` → `lib/led` 时序 |
+| **guard** | `enabled` | true | 总开关（另受 `MODULE_FLAGS.battery_guard`） |
+| | `ignore_when_usb_inserted` | true | **GPIO27 插入**时忽略阈值并保持 T31 上电 |
+| | `pir_suspend_percent` | 15 | 未插 USB 且 ≤15%：暂停 PIR |
+| | `pir_resume_percent` | 17 | &gt;17% 恢复 PIR（滞回） |
+| | `t31_rest_percent` | 10 | ≤10%：`onEnterLowPower` + MQTT 1002 + 断 T31 |
+| | `recover_rest_percent` | 12 | &gt;12% 退出电量休眠 |
+| | `shutdown_percent` | 5 | ≤5%：延时关机 |
+| | `shutdown_delay_ms` | 3000 | 关机前等待；插 USB 可取消 |
+| | `require_valid_sample` | true | 电量 `--` 时不执行 guard |
+
+兼容：`_G.BATTERY_GUARD_CFG` 指向 `BATTERY_CFG.guard`（旧代码/文档可继续用此名）。
+
+### 未插 USB 时的电量动作（摘要）
+
+```mermaid
+flowchart LR
+    A[≤15%] --> B[停 PIR]
+    C[≤10%] --> D[1002 + 断 T31]
+    E[≤5%] --> F[延时关机]
+```
+
+插 **USB_DET（GPIO27）** 后：不执行上表，并 `wake` T31。
+
 - `UART_CFG`（`lib/uart_bridge` 唯一数据源）：
 
 | 字段 | 默认值 | 说明 |
@@ -111,4 +150,4 @@
 
 ## 相关文档
 
-[README.md](README.md) · [KEY_GPIO.md](KEY_GPIO.md) · [CHARGE_BATTERY.md](CHARGE_BATTERY.md) · [T31_CAT1_GPIO.md](T31_CAT1_GPIO.md)
+[README.md](README.md) · [KEY_GPIO.md](KEY_GPIO.md) · [CHARGE_BATTERY.md](CHARGE_BATTERY.md) · [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [T31_CAT1_GPIO.md](T31_CAT1_GPIO.md)

@@ -46,6 +46,18 @@ local LED_CONFIG = {
     },
 }
 
+local function applyBatteryLedCfg()
+    local from = (_G.BATTERY_CFG or {}).led
+    if type(from) ~= "table" then
+        return
+    end
+    for k, v in pairs(from) do
+        LED_CONFIG.battery[k] = v
+    end
+end
+
+applyBatteryLedCfg()
+
 local ledPins = { red = nil, blue = nil }
 local ledEntries = { red = nil, blue = nil }
 local started = false
