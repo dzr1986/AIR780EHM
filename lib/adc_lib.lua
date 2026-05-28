@@ -34,12 +34,31 @@ function getChannel()
     return c
 end
 
-function getMvScale()
-    local s = tonumber(getAdcCfg().mv_scale)
-    if not s or s <= 0 then
-        return 1
+local function scaleFromDivider(div)
+    if type(div) ~= "table" then
+        return nil
     end
-    return s
+    local r = tonumber(div.r_kohm) or tonumber(div.r_upper_kohm)
+    local rx = tonumber(div.rx_kohm) or tonumber(div.r_lower_kohm)
+    if r and rx and rx > 0 then
+        return (r + rx) / rx
+    end
+    return nil
+end
+
+--- 分压还原系数：(R+Rx)/Rx；优先 mv_scale，其次 divider，最后本板默认 1000K/510K
+function getMvScale()
+    local cfg = getAdcCfg()
+    local s = tonumber(cfg.mv_scale)
+    if s and s > 1 then
+        return s
+    end
+    s = scaleFromDivider(cfg.divider)
+    if s and s > 1 then
+        return s
+    end
+    -- 本板 BAT_ADC 默认分压 1000K + 510K
+    return 1510 / 510
 end
 
 function applyRange()

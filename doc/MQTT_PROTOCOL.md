@@ -1,8 +1,8 @@
-﻿# MQTT 通信协议（net）
+# MQTT 通信协议（net）
 
 > **代码**：`user/net_mqtt.lua` · **配置**：`user/config.lua`  
 > **下行手册**：[MQTT_DOWNLINK.md](./MQTT_DOWNLINK.md) · **PIR**：[PIR_PROTOCOL.md](./PIR_PROTOCOL.md)  
-> **更新**：2026-05-19
+> **更新**：2026-05-24
 
 ---
 
@@ -17,6 +17,34 @@
 | PIR 扩展 | 2010 配置无固定上行；2011↔1011（PIR 子协议） |
 
 `deviceNo` = `mobile.imei()`（或 `_G.aliyuncs_imei`）。
+
+### 1.1 App / 平台侧 Topic 用法（MQTTX、MQTT.fx）
+
+命名易混，按 **Publish / Subscribe** 记即可：
+
+| 场景 | App 操作 | Topic | 说明 |
+|------|----------|-------|------|
+| **下发控制** | **Publish** | `/panshi/device/{deviceNo}/` | JSON `dataType`：`2004` 控制/OTA、`2002` 休眠、`2011` 停录等 |
+| **下发状态查询** | **Publish** | `/panshi/device/{deviceNo}/` | 与控制**同一 Topic**；载荷 `{"dataType":"2003"}` |
+| **接收设备状态** | **Subscribe** | `/panshi/app/{deviceNo}/status` | 设备应答 `1003`；也可用 `/panshi/app/{deviceNo}/#` 收全部上行 |
+| **接收控制回复** | **Subscribe** | `/panshi/app/{deviceNo}/event` | 应答 `2004` → `1004`（`reply=1`） |
+
+```text
+平台 ──Publish──► /panshi/device/{IMEI}/     （控制、状态查询等所有下行）
+设备 ──Publish──► /panshi/app/{IMEI}/…       （wakeup / status / event …）
+平台 ◄─Subscribe─ /panshi/app/{IMEI}/#       （收状态、控制回复等）
+```
+
+**常见误区**：状态查询也是 **Publish 到 `device` Topic**，不是 Publish 到 `app`。`app` 路径是设备**上报**用，App 在此 **Subscribe** 收 `1003`。
+
+**MQTT.fx 示例（IMEI = 862323084068124）**
+
+| 标签页 | Topic |
+|--------|-------|
+| **Publish**（下发控制 / 查询） | `/panshi/device/862323084068124/` |
+| **Subscribe**（收状态与上行） | `/panshi/app/862323084068124/#` |
+
+设备侧（`net_mqtt.lua`）：`subscribe` → `/panshi/device/…`；`publish` → `/panshi/app/…` + 后缀。
 
 ---
 

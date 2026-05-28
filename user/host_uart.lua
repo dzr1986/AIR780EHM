@@ -355,6 +355,46 @@ local function uart_poweroff(_cmd)
     return CRLF .. "+POWEROFF:OK" .. CRLF
 end
 
+local function uart_rndis(cmd)
+    local okMod, usb_rndis = pcall(require, "usb_rndis")
+    if not okMod or type(usb_rndis) ~= "table" then
+        return RSP_ERROR
+    end
+
+    if cmd == "AT+RNDIS?" or cmd == "AT+RNDIS" then
+        local st = usb_rndis.getStatus and usb_rndis.getStatus() or {}
+        return string.format(
+            CRLF .. "+RNDIS:enabled=%d,mode=%s,status=%s,ip=%s,flymode=%s" .. CRLF,
+            st.enabled and 1 or 0,
+            tostring(st.usb_ethernet_mode or "--"),
+            tostring(st.status or "--"),
+            tostring(st.ip or "--"),
+            st.flymode == nil and "--" or (st.flymode and "1" or "0")
+        ) .. ok_tail()
+    end
+
+    local n = tonumber(cmd:match("^AT%+RNDIS=(%d+)$"))
+    if n == 1 then
+        sys.taskInit(function()
+            if usb_rndis.open then
+                usb_rndis.open()
+            elseif usb_rndis.enable then
+                usb_rndis.enable()
+            end
+        end)
+        return rsp_line("RNDIS", true) .. ok_tail()
+    end
+    if n == 0 then
+        sys.taskInit(function()
+            if usb_rndis.disable then
+                usb_rndis.disable()
+            end
+        end)
+        return rsp_line("RNDIS", true) .. ok_tail()
+    end
+    return RSP_ERROR
+end
+
 local function uart_ota(_cmd)
     if hooks.on_ota then
         hooks.on_ota()
@@ -435,6 +475,8 @@ local AT_CMD_TABLE = {
     uart_cmd_entry(nil, "AT+SENDSTR=", uart_sendstr),
     uart_cmd_entry(nil, "AT+SENDHEX=", uart_sendhex),
     uart_cmd_entry(nil, "AT+LOWPOWER=", uart_lowpower),
+    uart_cmd_entry({ "AT+RNDIS", "AT+RNDIS?" }, nil, uart_rndis),
+    uart_cmd_entry(nil, "AT+RNDIS=", uart_rndis),
     uart_cmd_entry("AT+REBOOT", nil, uart_reboot),
     uart_cmd_entry("AT+POWEROFF", nil, uart_poweroff),
     uart_cmd_entry({ "AT+OTA", "AT+OTACHECK" }, nil, uart_ota),

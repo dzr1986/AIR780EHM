@@ -9,7 +9,7 @@ require "config"
 local sntp_sync = require "sntp_sync"
 local uart_bridge = require "uart_bridge"
 local pir_ctrl = require "pir_ctrl"
-local batAdc = require "bat_adc"
+local batAdc = require "vbat"
 local usbCharge = require "usb_charge"
 local mobile_info = require "mobile_info"
 local fota = require "fota"
@@ -21,6 +21,8 @@ local host_uart = require "host_uart"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
+local keyModule = require "key"
 
 local E = APP_EVENTS
 
@@ -41,7 +43,23 @@ local state = {
     heartbeat_count = 0,
     t3x_burn_active = false,
     heartbeat_paused = false,
+    usb_insert_tick = 0,
 }
+
+local USB_PWRKEY_GRACE_MS = 5000
+
+local function nowMs()
+    if mcu and mcu.ticks then
+        return mcu.ticks()
+    end
+    return os.time() * 1000
+end
+
+local function cancelPwrKeyLongPress()
+    if type(keyModule) == "table" and keyModule.cancelLongPress then
+        keyModule.cancelLongPress("pwr")
+    end
+end
 
 -- ============================================================
 -- 低功耗状态
@@ -110,7 +128,7 @@ end
 local function onReboot()
     log.info("app", "设备重启")
     sys.timerStart(function()
-        if pm and pm.reboot then pm.reboot() end
+    if pm and pm.reboot then pm.reboot() end
     end, 500)
 end
 
@@ -202,10 +220,20 @@ local function applyUsbInsertState(inserted, source)
     if v == 0 then
         state.flag_usb = false
         log.info("app", "USB拔出", source or "")
-        if _G.APP_RUNTIME.low_power_mode == 0 then onEnterLowPower() end
-        if not state.mqtt_started then startMqtt() end
+        -- GPIO27=外壳 USB 座；PC 调试线/RNDIS 时可能仍为未插入，勿因此进低功耗
+        local rndisOn = _G.MODULE_FLAGS.rndis
+            and type(usbRndis) == "table"
+            and usbRndis.isEnabled
+            and usbRndis.isEnabled()
+        if rndisOn then
+            log.info("app", "RNDIS 已开，跳过因 GPIO27 未插入而进入低功耗")
+        elseif _G.APP_RUNTIME.low_power_mode == 0 then
+            onEnterLowPower()
+        end
     else
         state.flag_usb = true
+        state.usb_insert_tick = nowMs()
+        cancelPwrKeyLongPress()
         log.info("app", "USB插入", source or "")
         onExitLowPower()
     end
@@ -303,10 +331,7 @@ local function bootMqtt()
         log.error("app", "net 模块未注入，无法启动 MQTT")
         return
     end
-    -- 尽早拉起蜂窝入网（发布 net_ready），避免只等事件却无人 publish
-    if netModule.bootstrapNetwork then
-        netModule.bootstrapNetwork()
-    end
+    -- 蜂窝入网由 main.lua bootstrapNetwork() 尽早启动（同 pwrkey_rndis_boot）
     sys.taskInit(function()
         log.info("app", "等待 net_ready...")
         local ready, deviceId = sys.waitUntil("net_ready", 300000)
@@ -318,8 +343,10 @@ local function bootMqtt()
         logImeiBanner()
         if startMqtt() then
             log.info("app", "MQTT 已按常电策略启动")
+        elseif state.mqtt_started then
+            log.info("app", "MQTT 已由其他路径启动，跳过重复 startMqtt")
         else
-            log.warn("app", "startMqtt 失败", "mqtt_started", state.mqtt_started)
+            log.warn("app", "startMqtt 失败")
         end
     end)
 end
@@ -339,8 +366,8 @@ local function setupFota()
             if netModule and netModule.publishOtaStatus then
                 netModule.publishOtaStatus(stage, retCode, message, extra)
             end
-        end,
-    })
+            end,
+        })
     log.info("app", "FOTA 已对接 MQTT 2004")
 end
 
@@ -348,13 +375,25 @@ local function setupRndis()
     if not _G.MODULE_FLAGS.rndis then
         return
     end
-    if type(usbRndis) ~= "table" or not usbRndis.start then
+    if type(usbRndis) ~= "table" or not usbRndis.isStarted then
         log.warn("app", "usb_rndis 模块无效，跳过 RNDIS")
         return
     end
-    if usbRndis.start() then
-        log.info("app", "RNDIS 任务已启动")
+    -- main.lua 已 taskInit(open)；未启动时补一次
+    if usbRndis.isStarted and not usbRndis.isStarted() and usbRndis.start then
+        usbRndis.start()
     end
+    sys.taskInit(function()
+        sys.wait(3000)
+        if type(usbRndis.getStatus) == "function" then
+            local st = usbRndis.getStatus()
+            log.info("app", "RNDIS 状态",
+                "enabled", st.enabled and 1 or 0,
+                "mode", st.usb_ethernet_mode or "--",
+                "ip", st.ip or "--",
+                "cell_ip", st.cell_ip or "--")
+        end
+    end)
 end
 
 -- ============================================================
@@ -547,6 +586,17 @@ local function shutdownServicesForT3xBurn(cfg)
         end
     end
 
+    if cfg.stop_rndis ~= false and _G.MODULE_FLAGS.rndis then
+        if type(usbRndis) == "table" and usbRndis.disable then
+            local rndisOk, rndisErr = usbRndis.disable()
+            if rndisOk then
+                log.info("app", "烧录前 RNDIS 已停止")
+            else
+                log.warn("app", "烧录前 RNDIS 停止失败", rndisErr or "")
+            end
+        end
+    end
+
     if cfg.turn_off_led ~= false and gpioModule and gpioModule.turnOffLed then
         gpioModule.turnOffLed()
     end
@@ -646,6 +696,13 @@ local function setupEventHandlers()
     end)
     sys.subscribe(E.GPIO_PWRKEY_LONG, function()
         log.info("app", "电源键长按")
+        if state.usb_insert_tick > 0 then
+            local elapsed = nowMs() - state.usb_insert_tick
+            if _G.APP_RUNTIME.power_status == 1 and elapsed < USB_PWRKEY_GRACE_MS then
+                log.warn("app", "USB刚插入", elapsed, "ms，忽略误触关机")
+                return
+            end
+        end
         onPowerOff()
     end)
     sys.subscribe(E.GPIO_BOOTKEY_SHORT, function()
@@ -671,6 +728,11 @@ local function setupEventHandlers()
     end)
     sys.subscribe(E.GPIO_USB_DET_CHANGED, function(inserted)
         applyUsbInsertState(inserted == 1, "GPIO27")
+        if inserted == 1 and _G.MODULE_FLAGS.rndis and not state.t3x_burn_active
+            and type(usbRndis) == "table" and usbRndis.enableAsync then
+            log.info("app", "USB 插入，重新启用 RNDIS（修复 PC 网卡媒体断开）")
+            usbRndis.enableAsync()
+        end
         if inserted == 1 and state.mqtt_started and netModule and netModule.publishStatus then
             sys.timerStart(function()
                 if _G.APP_RUNTIME.online_status == 1 then
@@ -724,6 +786,7 @@ end
 
 local function startBackgroundServices()
     if _G.MODULE_FLAGS.battery then
+        log.info("app", "电量模块", "vbat", "v2-divider")
         if type(batAdc) == "table" and batAdc.start then
             batAdc.start()
         else

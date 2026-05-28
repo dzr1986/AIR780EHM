@@ -297,22 +297,23 @@ lib/key pwrkey 长按 3s
 
 ## 7. GPIO 引脚
 
-与 `config.lua` → `GPIO_IN` / `GPIO_OUT` 一致：
+与 `config.lua` → `GPIO_IN` / `GPIO_OUT` 一致（**Luat GPIO**；模组 Pin 见 [T31_CAT1_GPIO.md §1.1](T31_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)）：
 
-| 配置键 | 引脚 | 功能 |
-|--------|------|------|
-| `GPIO_IN.pwr_key` | 35 | 电源键 |
-| `GPIO_IN.boot_key` | 28 | BOOT 键 |
-| `GPIO_IN.coproc_ready` | 29 | 协处理器就绪 |
-| `GPIO_IN.pir_det` | 30 | PIR |
-| `GPIO_OUT.led_red` | 20 | 红灯 |
-| `GPIO_OUT.bat_stat_led` | 21 | 蓝灯 / BAT_STAT_LED |
-| `GPIO_OUT.t3x_pwr_wake` | 22 | t3x 供电/唤醒脉冲 |
-| `GPIO_OUT.t3x_boot` | 26 | BOOT 模式 |
-| `GPIO_OUT.t3x_ota` | 32 | OTA/USB |
-| `GPIO_IN.usb_det` | 27 | USB 插入 |
-| `GPIO_IN.chg_state` | 17 | 充电状态 |
-| `GPIO_IN.misc_pullup` | 7 | 通用上拉输入 |
+| 配置键 | Luat GPIO | 模组 Pin | 功能 |
+|--------|-----------|----------|------|
+| `GPIO_IN.pwr_key` | 46 | 7 | 电源键 |
+| `GPIO_IN.boot_key` | 28 | 78 | BOOT 键（烧录） |
+| `GPIO_IN.coproc_ready` | 29 | 30 | 协处理器就绪 |
+| `GPIO_IN.pir_det` | 30 | 31 | PIR |
+| `GPIO_IN.usb_det` | 27 | 16 | USB 插入 |
+| `GPIO_IN.chg_state` | 17 | 100 | 充电状态 |
+| `GPIO_IN.misc_pullup` | 7 | 7 | 预留 |
+| `GPIO_OUT.led_red` | 20 | 102 | 红灯 |
+| `GPIO_OUT.bat_stat_led` | 21 | 107 | BAT_STAT_LED |
+| `GPIO_OUT.t3x_pwr_wake` | 22 | 19 | CPU_PWR_EN / 供电唤醒 |
+| `GPIO_OUT.t3x_boot` | **26** | **25** | `T31_BOOT`（丝印 CAN_TXD） |
+| `GPIO_OUT.t3x_ota` | 32 | 33 | `USB_DEBUG_EN` |
+| `GPIO_OUT.t3x_mcu_int` | 29 | 30 | MCU_INT_CPU 脉冲 |
 
 ---
 

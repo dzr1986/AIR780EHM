@@ -60,7 +60,20 @@ local function setupLongPressKey(cfg, state, logName)
         pressLevel = 0
     end
 
+    if cfg.requireReleaseFirst and gpio and gpio.get then
+        if gpio.get(cfg.pin) == pressLevel then
+            state.await_release = true
+            log.info(LOG_TAG, logName or "key", cfg.pin, "已按下，等待释放后再识别")
+        end
+    end
+
     local function onInterrupt(level)
+        if state.await_release then
+            if level ~= pressLevel then
+                state.await_release = false
+            end
+            return
+        end
         if level == pressLevel then
             if state.timer then
                 sys.timerStop(state.timer)
@@ -129,6 +142,19 @@ end
 
 --- 启动按键模块
 -- @param cfg table 可选覆盖：{ pwrkey, bootkey, ready }
+function cancelLongPress(name)
+    local state = pressStates[name]
+    if not state then
+        return false
+    end
+    if state.timer then
+        sys.timerStop(state.timer)
+        state.timer = nil
+    end
+    state.long_fired = false
+    return true
+end
+
 function start(cfg)
     if started then
         return false

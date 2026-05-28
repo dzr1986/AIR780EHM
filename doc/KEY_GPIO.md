@@ -1,4 +1,4 @@
-﻿# GPIO 按键与就绪信号（lib/key）
+# GPIO 按键与就绪信号（lib/key）
 
 > 引脚：`user/config.lua` → `GPIO_IN`  
 > 按键策略：`../user/key_config.lua` → `KEY_CONFIG`  
@@ -41,7 +41,7 @@ flowchart LR
 -- 引脚来自 GPIO_IN；事件键名对应 appConfig.APP_EVENTS
 _G.KEY_CONFIG = {
     pwrkey = {
-        pin = GPIO_IN.pwr_key.pin,    -- 35
+        pin = GPIO_IN.pwr_key.pin,    -- 46 = gpio.PWR_KEY
         triggerMode = "both",
         pull = "pullup",
         debounce = 50,
@@ -107,9 +107,19 @@ gpioModule.start({
 
 | 功能 | 固件 GPIO | 备注 |
 |------|-----------|------|
-| 电源键 | **35**（`GPIO_IN.pwr_key`） | JSON Pin7 为模组 **PWR_KEY** 硬件脚，若不一致请改 `config.lua` |
+| 电源键 | **46**（`gpio.PWR_KEY`） | 模组 Pin7 **PWR_KEY**（K1）；**不是 GPIO35** |
 | BOOT 键 | **28** | |
 | 协处理器就绪 | **29** | |
+
+### 5.1 PWRKEY 开机 / 关机
+
+| 机制 | 位置 | 行为 |
+|------|------|------|
+| **硬件开机** | `main.lua` `pm.power(pm.PWK_MODE, true)` | `pm.shutdown()` 后 **长按 K1 ≥约 2s** 再开机 |
+| **软件长短按** | `lib/key.lua` + `gpio.PWR_KEY` | 开机后识别；**长按 3s** → `app` → `pm.shutdown()` |
+| **T31 上电** | `t3x_ctrl` GPIO22 | 与 K1 无关；低功耗时 `powerOn()`/`wake()` |
+
+**排查**：原 `GPIO35` 不在 Air780EHM 引脚表，按键无中断；原 `PWK_MODE=false` 会导致关机后 K1 无法硬件开机。
 
 ---
 

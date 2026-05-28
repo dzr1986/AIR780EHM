@@ -135,10 +135,12 @@ function start()
     end
 
     started = true
-    log.info(LOG_TAG, "已启动(中断)", "USB_DET", up, "CHG_STATE", cp)
-
-    updateUsb(readUsbInserted(), false)
-    updateChg(readCharging(), false)
+    last_usb = readUsbInserted()
+    last_chg = readCharging()
+    log.info(LOG_TAG, "已启动(中断)",
+        "USB_DET GPIO" .. tostring(c.usb_det_pin), last_usb and "插入" or "拔出",
+        "CHG_STATE GPIO" .. tostring(c.chg_state_pin), last_chg and "充电" or "未充")
+    -- 初始化只记录电平，不 publish（避免 app 误判为「拔出」触发低功耗）
     return true
 end
 

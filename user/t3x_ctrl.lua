@@ -44,6 +44,20 @@ local function getEntries()
     return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
 end
 
+local function gpioTag(pin, level)
+    if pin == nil then
+        return "gpio(?)=?"
+    end
+    return string.format("gpio(%d)=%d", pin, level or 0)
+end
+
+local function logGpioSet(action, entry_pwr, entry_boot, entry_ota, pwrLv, bootLv, otaLv)
+    log.info(LOG_TAG, action,
+        gpioTag(entry_pwr and entry_pwr.pin, pwrLv),
+        gpioTag(entry_boot and entry_boot.pin, bootLv),
+        gpioTag(entry_ota and entry_ota.pin, otaLv))
+end
+
 local function getWakePulseMs()
     local cfg = _G.HOST_WAKE_CFG or {}
     return tonumber(cfg.pulse_ms) or pulseLowMs
@@ -63,7 +77,7 @@ local function getMcuIntLevels(entry_int)
 end
 
 local function refreshLevels()
-    local entry_pwr, entry_boot, entry_ota = getEntries()
+    local entry_pwr, _, entry_boot, entry_ota = getEntries()
     powerOnLevel = entry_pwr and entry_pwr.on_level or 1
     powerOffLevel = entry_pwr and entry_pwr.init_level or 0
     bootModeLevel = entry_boot and entry_boot.on_level or 1
@@ -106,7 +120,7 @@ function start()
 end
 
 function powerOn()
-    local entry_pwr = ensurePins()
+    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
     if not t3xPowerPin then
         log.warn(LOG_TAG, "电源脚未初始化", "pin", entry_pwr and entry_pwr.pin)
         return false
@@ -119,7 +133,8 @@ function powerOn()
     isPoweredOn = true
     state.power_state = "on"
     lastAction = "powerOn"
-    log.info(LOG_TAG, "t3x 上电", "pin", entry_pwr.pin)
+    logGpioSet("t3x上电", entry_pwr, entry_boot, entry_ota,
+        powerOnLevel, currentBootLevel, currentOtaLevel)
     return true
 end
 
@@ -148,7 +163,7 @@ function pulseWakeup()
 end
 
 function powerOff()
-    ensurePins()
+    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
     if not t3xPowerPin then
         log.warn(LOG_TAG, "电源脚未初始化，跳过断电")
         return false
@@ -158,18 +173,19 @@ function powerOff()
     isPoweredOn = false
     state.power_state = "off"
     lastAction = "powerOff"
-    log.info(LOG_TAG, "t3x 断电")
+    logGpioSet("t3x断电", entry_pwr, entry_boot, entry_ota,
+        powerOffLevel, currentBootLevel, currentOtaLevel)
     return true
 end
 
 function enterBootMode()
     log.info(LOG_TAG, "进入 BOOT 模式")
-    local entry_pwr, entry_boot, entry_ota = ensurePins()
+    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
     if not t3xPowerPin or not t3xBootModePin or not t3xOtaPin then
         log.warn(LOG_TAG, "BOOT 模式失败：GPIO 未就绪",
-            "pwr", entry_pwr and entry_pwr.pin,
-            "boot", entry_boot and entry_boot.pin,
-            "ota", entry_ota and entry_ota.pin)
+            gpioTag(entry_pwr and entry_pwr.pin, nil),
+            gpioTag(entry_boot and entry_boot.pin, nil),
+            gpioTag(entry_ota and entry_ota.pin, nil))
         return false
     end
 
@@ -181,7 +197,8 @@ function enterBootMode()
         currentBootLevel = bootModeLevel
         currentOtaLevel = otaModeLevel
         isInBootMode = true
-        log.info(LOG_TAG, "BOOT/OTA 电平已设置", "boot", entry_boot.pin, "ota", entry_ota.pin)
+        logGpioSet("BOOT/OTA已设置", entry_pwr, entry_boot, entry_ota,
+            powerOffLevel, bootModeLevel, otaModeLevel)
     end, bootDelay)
 
     sys.timerStart(function()
@@ -193,6 +210,7 @@ function enterBootMode()
 end
 
 function exitBootMode()
+    local entry_pwr, _, entry_boot, entry_ota = getEntries()
     ensurePins()
     if not t3xBootModePin or not t3xOtaPin then
         log.warn(LOG_TAG, "退出 BOOT：GPIO 未就绪")
@@ -200,12 +218,16 @@ function exitBootMode()
     end
     log.info(LOG_TAG, "退出 BOOT 模式")
 
-    t3xBootModePin(1 - bootModeLevel)
-    t3xOtaPin(1 - otaModeLevel)
-    currentBootLevel = 1 - bootModeLevel
-    currentOtaLevel = 1 - otaModeLevel
+    local bootOff = 1 - bootModeLevel
+    local otaOff = 1 - otaModeLevel
+    t3xBootModePin(bootOff)
+    t3xOtaPin(otaOff)
+    currentBootLevel = bootOff
+    currentOtaLevel = otaOff
     isInBootMode = false
     lastAction = "exitBootMode"
+    logGpioSet("退出BOOT", entry_pwr, entry_boot, entry_ota,
+        currentPowerLevel, bootOff, otaOff)
     return true
 end
 

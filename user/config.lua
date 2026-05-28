@@ -11,7 +11,7 @@ _G[_modname or (...)] = _M
 -- 应用元数据 / 栈 / 运行时
 -- ============================================================
 _G.APP_META = {
-    version = "1.0.0",
+    version = "v1_20260528",
     log_enabled = false,
     device_model = "awake_normal",
     cmd_ext = "",
@@ -42,6 +42,7 @@ _G.T3X_BURN_CFG = {
     burn_check_retry_interval_ms = 800,
     stop_mqtt = true,
     stop_uart = true,
+    stop_rndis = true,
     suspend_pir = true,
     stop_heartbeat = true,
     turn_off_led = true,
@@ -62,8 +63,9 @@ _G.T3X_BURN_CFG = {
 -- ============================================================
 _G.GPIO_IN = {
     -- 按键（上拉，按下为低）
+    -- K1 → 模组 Pin7 PWRKEY（Luat: gpio.PWR_KEY=46），勿用无效 GPIO35
     pwr_key = {
-        pin = 35,
+        pin = 46,
         net_name = "PWRKEY",
         pull = "pullup",
         trigger_mode = "both",
@@ -143,10 +145,10 @@ _G.GPIO_OUT = {
         init_level = 1,
         on_level = 0,
     },
-    ----烧录t3x
+    ----烧录 t3x：T31_BOOT = Luat GPIO26 = 模组 Pin25(CAN_TXD)；USB_DEBUG_EN = GPIO32
     t3x_boot = {
         pin = 26,
-        net_name = "T3X_BOOT",
+        net_name = "T31_BOOT",
         init_level = 0,
         on_level = 1,
     },
@@ -163,6 +165,7 @@ _G.GPIO_OUT = {
         init_level = 1,
         on_level = 0,
     },
+    -- USB 切换 USB_DEBUG_EN：上电低；进入烧录拉高，退出烧录拉低
     t3x_ota = {
         pin = 32,
         net_name = "T3X_OTA",
@@ -200,6 +203,9 @@ _G.BATTERY_CFG = {
     adc = {
         channel = 1,
         range = nil,
+        -- 原理图 BAT_ADC 分压：R=1000K(上) + Rx=510K(下)；pin = Vbat * Rx/(R+Rx)
+        divider = { r_kohm = 1000, rx_kohm = 510 },
+        -- 引脚 mV × mv_scale = 电芯 mV；nil 时自动用 (R+Rx)/Rx；可用万用表复标覆盖
         mv_scale = 4090 / 1311,
     },
     cell = {

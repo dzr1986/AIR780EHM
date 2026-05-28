@@ -2,11 +2,11 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CONFIG.md](CONFIG.md) | **配置索引**：`GPIO_IN`/`GPIO_OUT` 字段、`init_level`、文件命名 |
+| [CONFIG.md](CONFIG.md) | **配置索引**：`GPIO_IN`/`GPIO_OUT`、**§Air780 GPIO 编号对照** |
 | [PROJECT_DOC.md](PROJECT_DOC.md) | 模块职责、业务流程、调试 |
 | [CALL_GRAPH.md](CALL_GRAPH.md) | 启动顺序、require、事件流 |
 | [CODE_ANALYSIS.md](CODE_ANALYSIS.md) | 架构与风险 |
-| [T31_CAT1_GPIO.md](T31_CAT1_GPIO.md) | 原理图级引脚（T31 + Air780） |
+| [T31_CAT1_GPIO.md](T31_CAT1_GPIO.md) | 原理图级引脚；**§1.1 固件 GPIO 全表** |
 | [T31_WAKE_PROTOCOL.md](T31_WAKE_PROTOCOL.md) | GPIO29→PB27 低脉冲与 AT+WAKEVT |
 | [KEY_GPIO.md](KEY_GPIO.md) | 按键 / `key_config.lua` |
 | [T31_BURN_MODE.md](T31_BURN_MODE.md) | **GPIO28 长按 → T31 烧录**（电量/关停条件） |
@@ -21,8 +21,8 @@
 | [T31_4G_AT_INTERACTION.md](T31_4G_AT_INTERACTION.md) | T31↔4G AT 全量交互、PIR 状态 AT 查询 |
 | [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T31 `AT+MQTTCFG` 下发 4G MQTT |
 | [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路（等 T31 / 上电自动连+覆盖） |
-| [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行 |
-| [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
+| [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行（含 **§1.1 App Topic 用法**） |
+| [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册（含 MQTT.fx Publish/Subscribe） |
 
 代码真源：`../user/config.lua`、`../user/app_config.lua`、`../user/key_config.lua`。
 

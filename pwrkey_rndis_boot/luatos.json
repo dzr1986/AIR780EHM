@@ -1,28 +1,27 @@
 {
   "luatools": {
-    "version": "3.3.4"
+    "version": "3.1.8"
   },
   "build": {
-    "time": "2026-05-28 00:00:00"
+    "time": "2025-11-28 07:59:54"
   },
   "lib": {
     "dirs": [
       "lib"
     ]
   },
-  "core": "LuatOS-SoC_V2034_Air780EHM_116.soc",
-  "projec_name": "780EHM_PJ",
+  "core": "LuatOS-SoC_V2014_Air780EHM_11.soc",
+  "projec_name": "pwrkey_rndis_boot",
   "project_info": {
     "type": ".soc",
     "active": "False",
     "output_suffix_enable": "False",
-    "code_enable": "True",
+    "code_enable": "False",
     "print_mode": "2",
-    "add_core": "False",
+    "add_core": "True",
     "only_code": "False",
     "only_luac_code": "False",
-    "file_system_enable": "True",
     "default_lib": "True"
   },
-  "version": 2
+  "version": 1
 }

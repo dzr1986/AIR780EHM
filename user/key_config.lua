@@ -9,13 +9,22 @@ _G[_modname or (...)] = _M
 
 local IN = _G.GPIO_IN or {}
 
+-- 优先 gpio.PWR_KEY（模组硬件开机键），与 config.GPIO_IN.pwr_key 一致
+local function pwrKeyPin()
+    if gpio and gpio.PWR_KEY then
+        return gpio.PWR_KEY
+    end
+    return IN.pwr_key and IN.pwr_key.pin
+end
+
 _G.KEY_CONFIG = {
     pwrkey = {
-        pin = IN.pwr_key and IN.pwr_key.pin,
+        pin = pwrKeyPin(),
         triggerMode = "both",
         pull = "pullup",
         debounce = 50,
         longPressMs = 3000,
+        requireReleaseFirst = true,
         events = { short = "GPIO_PWRKEY_SHORT", long = "GPIO_PWRKEY_LONG" },
     },
     bootkey = {

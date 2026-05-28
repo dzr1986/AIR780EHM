@@ -1,4 +1,4 @@
-# T31 + CAT1（Air780EHM）GPIO 功能一览
+﻿# T31 + CAT1（Air780EHM）GPIO 功能一览
 
 > **原理图**：`ps01masch260318.pdf`（LGS `T31X` Rev V0，2024-04-12）  
 > **主控**：君正 **T31ZX**（QFN88，`U8`）  
@@ -20,6 +20,46 @@
 | 4G Air780EHM      | UART1 + USB + 电源控制 | 蜂窝联网   |
 | PIR / 充电 / LED 板  | GPIO + ADC         | 见下文    |
 
+
+### 1.1 780EHM_PJ 固件 GPIO 对照（`config.lua` 真源）
+
+> **`config.lua` 里 `pin` = Luat GPIO 号**（`gpio.setup` 参数），**不是**模组丝印 Pin 号。  
+> 典型易混：**Luat GPIO26** = 模组 **Pin25**（`CAN_TXD`）；模组 **Pin26** = `PWM4`，与 GPIO26 无关。  
+> 引脚表文件：[`../user/pins_air780ehm.json`](../user/pins_air780ehm.json)（第一列为**模组物理 Pin**）。
+
+#### 输入 `GPIO_IN`
+
+| `config` 键 | Luat GPIO | 模组 Pin | 丝印 | 原理图网络 | 说明 |
+|-------------|-----------|----------|------|------------|------|
+| `pwr_key` | **46**（`gpio.PWR_KEY`） | 7 | PWRKEY | K1 | 电源键，按下低 |
+| `boot_key` | 28 | 78 | GPIO28 | BOOT 键 | 长按进烧录，见 [T31_BURN_MODE.md](T31_BURN_MODE.md) |
+| `coproc_ready` | 29 | 30 | GPIO29 | 协处理器就绪 | 上升沿；与 `t3x_mcu_int` 同脚时需按板级设计取舍 |
+| `usb_det` | 27 | 16 | GPIO27 | USB_DET | USB 插入检测 |
+| `chg_state` | 17 | 100 | GPIO17 | CHG_STATE | 充电状态（只读） |
+| `pir_det` | 30 | 31 | GPIO30 | PIR_MCU_DET | PIR 人体检测 |
+| `misc_pullup` | 7 | 7 | PWRKEY 域 | — | 预留上拉输入 |
+
+#### 输出 `GPIO_OUT`
+
+| `config` 键 | Luat GPIO | 模组 Pin | 丝印 | 原理图网络 | 说明 |
+|-------------|-----------|----------|------|------------|------|
+| `led_red` | 20 | 102 | GPIO20 | LED_RED | 模组红灯 |
+| `bat_stat_led` | 21 | 107 | GPIO21 | BAT_STAT_LED / LED_BLUE | 电量蓝灯 |
+| `t3x_pwr_wake` | 22 | 19 | GPIO22 | CPU_PWR_EN | T31 供电使能 + 唤醒同线 |
+| `t3x_boot` | **26** | **25** | **CAN_TXD** | **T31_BOOT** | 进/退烧录 BOOT 脚 |
+| `t3x_ota` | 32 | 33 | GPIO32 | USB_DEBUG_EN | USB 切换，烧录时拉高 |
+| `t3x_mcu_int` | 29 | 30 | GPIO29 | MCU_INT_CPU | 低脉冲唤醒 T31 `PB27` |
+
+#### 烧录 / 协处理器（常用子集）
+
+| 功能 | Luat GPIO | 模组 Pin | 丝印 | `config` 键 |
+|------|-----------|----------|------|-------------|
+| T31_BOOT | **26** | **25** | CAN_TXD | `GPIO_OUT.t3x_boot` |
+| USB_DEBUG_EN | 32 | 33 | GPIO32 | `GPIO_OUT.t3x_ota` |
+| CPU_PWR_EN | 22 | 19 | GPIO22 | `GPIO_OUT.t3x_pwr_wake` |
+| 烧录按键 | 28 | 78 | GPIO28 | `GPIO_IN.boot_key` |
+
+详细时序：[T31_BURN_MODE.md](T31_BURN_MODE.md) · 配置字段：[CONFIG.md](CONFIG.md)
 
 ---
 
@@ -189,14 +229,18 @@
 | 16      | **GPIO27**     | **USB_DET**，USB 插入检测（上拉，插入有效电平见 `config`） |
 | 17      | UART1_RXD      | ← T31 **UART1_TXD**（`PA06`） |
 | 18      | UART1_TXD      | → T31 **UART1_RXD**（`PA07`） |
-| 19      | GPIO22         | 通用 GPIO                     |
+| 19      | GPIO22         | **`CPU_PWR_EN`**（`t3x_pwr_wake`） |
 | 20      | PWM1           | PWM 输出                      |
 | 22      | PWM0           | PWM 输出                      |
 | 23      | ONEWIRE        | 单总线（若用）                     |
 | 24      | VDD_EXT        | 模组外部供电（由 T31 侧电源网络供电）       |
+| **25**  | **CAN_TXD**    | 复用 **Luat GPIO26** → 原理图 **`T31_BOOT`**（`t3x_boot`） |
+| 26      | PWM4           | 与 Luat GPIO26 **不同**（勿与 Pin25 混淆） |
 | 28–29   | UART2_RXD/TXD  | 第二路串口（本图未接 T31）             |
-| 30–32   | GPIO29–31      | 通用 GPIO                     |
+| **30**  | **GPIO29**     | **`MCU_INT_CPU`**（Cat.1 唤醒脉冲 → T31 `PB27`） |
 | **31**  | **GPIO30**     | **PIR_MCU_DET**，PIR 人体检测输入（固件上升沿） |
+| **32**  | **GPIO31**     | **BAT_ALRT_N** → CW2015 Alert（跨页 Sheet6） |
+| **33**  | **GPIO32**     | **`USB_DEBUG_EN`**（`t3x_ota`，USB 切换） |
 | 38      | DBG_RXD        | USB 切换/调试相关                 |
 | 39      | DBG_TXD        | USB 切换/调试相关                 |
 | 42–43   | VBAT1/2        | 电池                          |
@@ -227,7 +271,7 @@
 | USB 插入检测 | —                          | **GPIO27 `USB_DET`**           |
 | 充电/插入灯   | —                          | **GPIO17 `CHG_STATE`** → RED/BLUE |
 | 模组电源     | `CPU_PWR_EN`               | 电源使能网络                         |
-| 烧录模式     | `T31_BOOT`、`USB_DEBUG_EN`  | `USB_BOOT`、USB 切换              |
+| 烧录模式     | `T31_BOOT`、`USB_DEBUG_EN`  | **GPIO26**（Pin25 `CAN_TXD`）、**GPIO32**（Pin33） |
 | 电池 ADC   | `BAT_ADC`                  | 模组/分压网络（按 Sheet6）               |
 | PIR 人体检测 | `PIR_MCU_DET`              | **GPIO30**，见 [`user/PIR_HARDWARE.md`](user/PIR_HARDWARE.md) |
 | 电池状态灯（4G 侧） | 子板 FPC **BATSTAT_LED**（Sheet6→M1） | **GPIO21**（Pin107，`LED_BLUE`），见 [`user/CHARGE_BATTERY.md`](user/CHARGE_BATTERY.md) |
