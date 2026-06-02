@@ -55,6 +55,7 @@
 由 `host_uart.uart_at_cmd` 处理（`uart_bridge` 收到 AT 行后直接调用）：
 
 - `AT` / `ATI` / `AT+WAKEVT?` / `AT+SERVCREATE=...` / `AT+SERVCLOSE=n` / `AT+RIL=0|1`  
+- （规划）`AT+PLAYSOUND=boot|shutdown`：提示音，见 [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md)
 
 **`host_uart` 处理的 AT**（与 `t31_linux` 对齐）：`AT`/`ATI`/`GETCFG`/`WAKEVT`/`SERVCREATE`/`SERVCLOSE`/`RIL`、`LOWPOWER`、`REBOOT`、`POWEROFF`、`OTA`、`SENDSTR`/`SENDHEX`。  
 

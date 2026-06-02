@@ -18,8 +18,11 @@ _G.MODULE_FLAGS = {
     mqtt = true,
     battery = true,
     battery_guard = true,
+    sound_prompt = true,
+    time_sync = true,
     sntp = true,
     mobile_info = true,
+    cellular = true,
     fota = true,
     rndis = true,
 }

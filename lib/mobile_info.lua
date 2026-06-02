@@ -48,7 +48,20 @@ local function collectSnapshot()
         snr = mobile.snr(),
         simid = mobile.simid(),
         ip = socket.localIP(),
+        operator = "unknown",
+        operator_name = "未知",
     }
+    local okCell, cellular = pcall(require, "cellular_bootstrap")
+    if okCell and cellular and cellular.detectOperator then
+        snap.operator = cellular.detectOperator(snap.imsi, snap.iccid)
+        local names = { mobile = "移动", telecom = "电信", unicom = "联通", unknown = "未知" }
+        snap.operator_name = names[snap.operator] or "未知"
+    end
+    local rt = _G.APP_RUNTIME
+    if rt and rt.sim_operator_name then
+        snap.operator = rt.sim_operator or snap.operator
+        snap.operator_name = rt.sim_operator_name
+    end
     local sn = mobile.sn()
     if sn then
         snap.sn_hex = sn:toHex()
@@ -63,7 +76,8 @@ end
 local function logSnapshot(snap, title)
     log.info(LOG_TAG, title or "radio",
         string.format(
-            "imei=%s csq=%s rssi=%s rsrp=%s snr=%s ip=%s status=%s",
+            "operator=%s imei=%s csq=%s rssi=%s rsrp=%s snr=%s ip=%s status=%s",
+            tostring(snap.operator_name or snap.operator),
             tostring(snap.imei), tostring(snap.csq), tostring(snap.rssi),
             tostring(snap.rsrp), tostring(snap.snr), tostring(snap.ip), tostring(snap.status)
         ))
@@ -77,11 +91,30 @@ local function logSnapshot(snap, title)
     log.info(LOG_TAG, "mem lua", rtos.meminfo(), "sys", rtos.meminfo("sys"))
 end
 
-local function probeBands()
+local function collectBandList()
+    if not mobile or not mobile.getBand or not zbuff then
+        return ""
+    end
     local band = zbuff.create(40)
     mobile.getBand(band)
-    for index = 0, band:used() - 1 do
-        log.info(LOG_TAG, "band", band[index])
+    local n = band:used()
+    if not n or n <= 0 then
+        return ""
+    end
+    local parts = {}
+    for index = 0, n - 1 do
+        parts[#parts + 1] = tostring(band[index])
+    end
+    return table.concat(parts, ",")
+end
+
+local function logInitProbe()
+    local status = mobile and mobile.status and mobile.status() or "?"
+    local bands = collectBandList()
+    if bands ~= "" then
+        log.info(LOG_TAG, string.format("status=%s bands=%s", tostring(status), bands))
+    else
+        log.info(LOG_TAG, "status", status)
     end
 end
 
@@ -89,8 +122,7 @@ local function infoTask(runtimeConfig)
     local interval = runtimeConfig.info_interval or 15000
 
     local ok, err = pcall(function()
-        log.info(LOG_TAG, "status", mobile.status())
-        probeBands()
+        logInitProbe()
     end)
     if not ok then
         log.warn(LOG_TAG, "init probe failed", err)

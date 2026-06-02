@@ -9,6 +9,7 @@
 
 #include "log.h"
 #include "serial.h"
+#include "uart_host_cmd.h"
 
 #define SERIAL_IDLE_MS 150
 
@@ -122,7 +123,7 @@ static void *serial_thread_main(void *arg)
                     if (serial->awaiting) {
                         append_rx_buffer(serial, chunk, (size_t)n);
                     } else {
-                        log_print("RX", "%s", chunk);
+                        uart_host_cmd_feed(serial, chunk, (size_t)n);
                     }
                     pthread_mutex_unlock(&serial->lock);
                 }
@@ -213,6 +214,7 @@ int serial_start(serial_port_t *serial, const char *dev, int baudrate)
     }
     serial->thread_started = true;
     tcflush(serial->fd, TCIOFLUSH);
+    uart_host_cmd_reset();
     return 0;
 }
 

@@ -53,11 +53,12 @@ flowchart LR
 | 顺序 | 命令 | 4G 行为 | 典型响应 |
 |------|------|---------|----------|
 | 1 | `AT` | 存活检测 | `OK` |
-| 2 | `ATI` / `AT+CGMR` | 返回版本串 | `+CGMR:780EHM_1.0.0` `OK` |
-| 3 | `AT+RIL=0` | 关闭 modem AT 透传 | `+RIL:0` `OK` |
-| 4 | `AT+SERVCREATE=...` | 保存 TCP 通道 10 段参数到 `state.channel` | `+SERVCREATE:1,OK` `OK` |
-| 5 | `AT+MQTTCFG=host;port;ssl;user;pass;cid` | 覆盖 `_G.MQTT_CFG`，重启 MQTT | `+MQTTCFG:OK` `OK` |
-| 6 | `AT+GETCFG?` | 读运行快照 | `+GETCFG:version=...,online=...` `OK` |
+| 2 | `AT+TIME?` | 读 4G Unix 时间（可选，失败不阻断） | `+TIME:<unix>` 或 `+TIME:0` |
+| 3 | `ATI` / `AT+CGMR` | 返回版本串 | `+CGMR:780EHM_1.0.0` `OK` |
+| 4 | `AT+RIL=0` | 关闭 modem AT 透传 | `+RIL:0` `OK` |
+| 5 | `AT+SERVCREATE=...` | 保存 TCP 通道 10 段参数到 `state.channel` | `+SERVCREATE:1,OK` `OK` |
+| 6 | `AT+MQTTCFG=host;port;ssl;user;pass;cid` | 覆盖 `_G.MQTT_CFG`，重启 MQTT | `+MQTTCFG:OK` `OK` |
+| 7 | `AT+GETCFG?` | 读运行快照 | `+GETCFG:version=...,online=...` `OK` |
 
 > `SERVCREATE` 与 MQTT 独立：前者为 T31 侧 TCP 长连接模板（当前 4G 脚本主要存配置）；MQTT 由 `net_mqtt.lua` 连接 Broker。
 
@@ -69,8 +70,9 @@ flowchart LR
 | `AT+WAKEVT?` | `+WAKEVT:` | `sid,evt`（读后清除 pending，见 §4） |
 | `AT+PIRSTAT?` | `+PIRSTAT:` | PIR 策略 + 计数 + 最近一次事件（§5） |
 | `AT+PIRCLR` | `+PIRCLR:` | 清零 PIR 统计计数（不清配置） |
+| `AT+TIME?` | `+TIME:` | Unix 秒；4G SNTP 未就绪时 `+TIME:0`（见 [TIME_SYNC.md](TIME_SYNC.md)） |
 
-T31 API：`client_get_runtime_config`、`client_query_wakeup`、`client_get_pir_stat`。
+T31 API：`client_get_runtime_config`、`client_query_wakeup`、`client_get_pir_stat`、`client_sync_time_from_cat1`。
 
 ### 2.3 配置 / 控制
 
@@ -96,6 +98,13 @@ T31 API：`client_get_runtime_config`、`client_query_wakeup`、`client_get_pir_
 ---
 
 ## 3. 4G → T31：GPIO 唤醒 + WAKEVT
+
+除 GPIO 脉冲外，4G 还可 **主动下发** AT（T31 `uart_host_cmd.c` 解析）：
+
+| 命令 | 作用 | 文档 |
+|------|------|------|
+| `AT+PLAYSOUND=boot\|shutdown` | 提示音 | [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md) |
+| `AT+TIMESET=<unix>` | 设置系统时间 | [TIME_SYNC.md](TIME_SYNC.md) |
 
 4G 调用 `host_uart.notify_host(sid, evt)` → GPIO29 低脉冲 → T31 `PB27` 下降沿。
 

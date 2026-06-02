@@ -1,7 +1,7 @@
 # 4G CAT1 低电量与低功耗行为说明
 
-> 版本：`v1_20260528`  
-> 代码真源：[`user/vbat.lua`](../user/vbat.lua)、[`user/app.lua`](../user/app.lua)、[`user/led_ctrl.lua`](../user/led_ctrl.lua)、[`user/net_mqtt.lua`](../user/net_mqtt.lua)、[`user/config.lua`](../user/config.lua)  
+> 版本：`v1_20260529`  
+> 代码真源：[`user/vbat.lua`](../user/vbat.lua)、[`user/app.lua`](../user/app.lua)、[`user/led_ctrl.lua`](../user/led_ctrl.lua)、[`user/net_mqtt.lua`](../user/net_mqtt.lua)、[`user/battery_guard.lua`](../user/battery_guard.lua)、[`user/host_uart.lua`](../user/host_uart.lua)、[`user/t3x_ctrl.lua`](../user/t3x_ctrl.lua)、[`user/config.lua`](../user/config.lua)  
 > 相关：[CHARGE_BATTERY.md](CHARGE_BATTERY.md)（充电/ADC/MQTT 1003 流程）、[T31_BURN_MODE.md](T31_BURN_MODE.md)（烧录电量门槛）
 
 ---
@@ -13,7 +13,8 @@
 | **低电量** | ADC 采样 → `APP_RUNTIME.battery_percent` / `battery_mv` | 模组 **GPIO20 红灯闪**（&lt;20%） |
 | **低功耗模式** | `APP_RUNTIME.low_power_mode == 1` | 日志 `进入低功耗`、MQTT `lowPowerMode: "rest"` |
 
-**重要**：未插 USB 时，**`battery_guard`** 会按电量自动暂停 PIR、休眠 T31、极低电量关机（见 §8）。**插入 USB** 时忽略上述阈值并保持 T31 上电。另有 **USB 拔出 / 云端 / AT** 触发的低功耗（见 §4）。
+**重要**：未插 USB 时，**`battery_guard`** 会按电量自动暂停 PIR、休眠 T31、极低电量关机（见 §8）。**插入 USB** 时忽略上述阈值并保持 T31 上电。另有 **USB 拔出 / 云端 / AT** 触发的低功耗（见 §4）。  
+**逻辑总览**（四维度、上电时序、优先级、已知缺口）：[POWER_USB_BATTERY_T31_LOGIC.md](POWER_USB_BATTERY_T31_LOGIC.md)
 
 ```mermaid
 flowchart LR
@@ -173,6 +174,8 @@ GPIO28 **BOOT 长按** 进入烧录前检查（[`T3X_BURN_CFG`](../user/config.l
 | 云端 `remainPower` 低但设备仍联网 | 设计如此：低电量仍常电 MQTT |
 | 无法进 T31 烧录 | 电量 &lt; 20% 或采样未就绪 |
 | PC RNDIS 调试时误休眠 | 确认 `rndis=true` 且 RNDIS 已 open；或 GPIO27 误报拔出 |
+| **T31 低电量 `rest` 下反复重启** | 见 **§9**（MQTT 离线误唤醒、电量阈值抖动、欠压 brownout） |
+| **低电量同时插 USB** | 见 **§10**（忽略电量保护、恢复 T31/PIR、取消关机） |
 
 ---
 
@@ -209,3 +212,247 @@ flowchart TD
 - USB **拔出** 仍会走原有 `applyUsbInsertState`（高电量时也会 `onEnterLowPower` 仅断 T31，4G/MQTT 常电）。
 - **RNDIS 调试** 且 GPIO27 仍为未插入时，电量保护 **仍会执行**（与 RNDIS 跳过 USB 拔出低功耗不同）。
 - T31 **烧录模式** 期间不执行电量保护。
+
+---
+
+## 9. 低电量 + `rest` 下 T31 反复重启（FAQ）
+
+### 9.1 典型云端状态（MQTT 1003）
+
+未插 USB、已进入业务低功耗时，周期 **1003** 可能类似：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1003",
+  "powerStatus": "0",
+  "remainPower": "12",
+  "lowPowerMode": "rest",
+  "time": "2026-06-02 13:30:49"
+}
+```
+
+| 字段 | 含义 |
+|------|------|
+| `powerStatus: "0"` | 外壳 USB **未插入**（GPIO27） |
+| `lowPowerMode: "rest"` | 业务低功耗，设计上 **T31 应断电**（GPIO22） |
+| `remainPower: "12"` | ADC 电量约 **12%**（低电，PIR 已暂停） |
+
+**注意**：`rest` 表示 **低功耗标志**，不是“已经关机”；4G 模组通常仍保持蜂窝/MQTT 联网。
+
+### 9.2 12% 时电量保护实际在做什么
+
+配置见 `BATTERY_CFG.guard`（[`user/config.lua`](../user/config.lua)）：
+
+| 阈值 | 动作 | **12% 是否触发** |
+|------|------|------------------|
+| ≤ 15% | 暂停 PIR | ✅ |
+| ≤ 10% | `onEnterLowPower()` + 1002 + **断 T31** | ❌（12 > 10） |
+| > 12%（曾电量休眠） | 退出电量休眠、**唤醒 T31** | ❌（12 不大于 12） |
+| ≤ 5% | 延时整机关机 | ❌ |
+
+因此：**12% 且已在 `rest` 时，电量保护不会再次主动断 T31，也不会因 12% 而退出休眠**（需 **>12%**，例如 13% 才会 `exitBatteryRest`）。
+
+### 9.3 为什么会出现 T31「一直重启」
+
+常见为 **软件误唤醒 + 低电压带载** 叠加，而非 T31 主动重启。
+
+#### 原因 ①：MQTT 离线仍唤醒 T31（未判断 `rest`/低电量）
+
+[`user/app.lua`](../user/app.lua) 订阅 `MQTT_OFFLINE` 时 **无条件** 唤醒：
+
+```lua
+local function onMqttOffline()
+    log.info("app", "MQTT离线")
+    sendWakePulse(2, 0)   -- → host_uart.notify_host → t3x powerOn + GPIO 脉冲
+end
+```
+
+[`user/host_uart.lua`](../user/host_uart.lua) 的 `notify_host()` 在 T31 已断电时会 **先 `powerOn()` 再发脉冲**，且 **不检查** `APP_RUNTIME.low_power_mode`。
+
+低电量时蜂窝/MQTT 易 **断线 → autoreconn → 再断线**，每次离线都可能把 T31 拉起。若启用 `time_sync`，还会在脉冲前 **上电并等待约 1.5s**，进一步加重负载。
+
+#### 原因 ②：电量在 10%～13% 边界抖动 → 断/上电循环
+
+| 配置项 | 默认 |
+|--------|------|
+| `t31_rest_percent` | 10（≤10% 断 T31） |
+| `recover_rest_percent` | 12（**>12%** 才恢复） |
+
+典型振荡：
+
+```text
+10% → battery_guard 断 T31 → 负载减小 → ADC 读到 13%
+13% → exitBatteryRest → onExitLowPower → wake T31
+T31 上电 → 负载增大 → 电压跌落 → 又读到 10%
+10% → 再断 T31 …
+```
+
+4G 串口可见 **`t3x上电` / `t3x断电` / `唤醒设备`** 交替出现。
+
+#### 原因 ③：低电压 brownout（硬件）
+
+12% 附近若 GPIO22 仍给 T31 供电：
+
+- T31 启动 `cat1_host`、媒体模块上电 **浪涌电流大**
+- 电芯电压瞬间被拉低 → T31 **欠压复位**
+- 4G 侧可能仍认为 T31 已上电 → 表现为 **T31 侧反复 boot**
+
+日志可能 **只有** `t3x上电`，未必成对出现 `t3x断电`。
+
+### 9.4 现象与日志对照
+
+在 **4G 调试串口** 按时间搜索：
+
+| 关键字 | 可能原因 |
+|--------|----------|
+| `MQTT断开` / `MQTT离线` + `t3x 唤醒` | MQTT 抖动导致 **rest 下误唤醒** |
+| `battery_guard` + `休眠阈值` / `退出电量休眠` | **10%↔13%** 电量边界振荡 |
+| `t3x上电` 与 `t3x断电` **交替** | 软件 power 循环 |
+| 仅 `t3x上电`，T31 反复 boot | 多为 **欠压 brownout** |
+| `[ALIVE]` 中 `lowPwr=1 bat=12%` | 与 1003 一致：rest + 低电 |
+
+### 9.5 处理建议
+
+| 优先级 | 建议 |
+|--------|------|
+| **现场** | 12% 附近 **插 USB 充电**；接受 T31 必须保持断电，避免远程唤醒录像 |
+| **固件（推荐）** | `rest` 或 `battery_percent ≤ 15%` 时：**禁止** `onMqttOffline` / `notify_host` 对 T31 `powerOn` |
+| **固件** | `sendWakePulse` / `time_sync.pushBeforeNotify` 统一加低功耗/低电量门禁 |
+| **配置** | 加宽迟滞，例如 ≤10% 休眠、**≥18%** 才恢复，减少 10～13% ADC 抖动 |
+| **排查** | 对照 §9.4 抓一段完整串口日志再定因 |
+
+### 9.6 相关代码索引
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| MQTT 离线唤醒 | [`user/app.lua`](../user/app.lua) | `onMqttOffline` → `sendWakePulse` |
+| GPIO 唤醒 + 上电 | [`user/host_uart.lua`](../user/host_uart.lua) | `notify_host()` |
+| T31 电源 | [`user/t3x_ctrl.lua`](../user/t3x_ctrl.lua) | `powerOn` / `powerOff` / `enterSleep` / `wake` |
+| 电量分级 | [`user/battery_guard.lua`](../user/battery_guard.lua) | `evaluate()` |
+| 时间同步唤醒 | [`user/time_sync.lua`](../user/time_sync.lua) | `pushBeforeNotify` |
+| 阈值配置 | [`user/config.lua`](../user/config.lua) | `BATTERY_CFG.guard` |
+
+```mermaid
+sequenceDiagram
+    participant Cloud as MQTT Broker
+    participant CAT1 as 4G app
+    participant T31 as T31
+
+    Note over CAT1: lowPowerMode=rest, bat≈12%
+    CAT1->>CAT1: enterSleep → T31 断电
+    Cloud--x CAT1: MQTT disconnect
+    CAT1->>CAT1: onMqttOffline → notify_host
+    CAT1->>T31: GPIO22 上电 + 脉冲
+    T31->>T31: 启动 cat1_host
+    Note over T31: 低电压可能 brownout 复位
+    T31-->>T31: 再次 boot（表现为重启循环）
+```
+
+---
+
+## 10. 低电量同时插入 USB 时软件如何处理
+
+**结论**：外壳 USB 插入（`power_status == 1`）后，**电量保护策略整体失效**，优先保证 **T31 上电、PIR 恢复、取消自动关机**；ADC 仍上报低 `remainPower`，模组红灯仍可能闪（仅指示，不触发断 T31）。
+
+### 10.1 USB 如何判定「已插入」
+
+| 来源 | 说明 |
+|------|------|
+| **GPIO27** | `lib/usb_charge.lua` 读 `usb_det`，发布 `GPIO_USB_DET_CHANGED` |
+| **运行时** | `APP_RUNTIME.power_status = 1` |
+| **battery_guard** | `isUsbInserted()` 读 `power_status`，或 `app` 注入的 `hooks.is_usb_inserted()` |
+
+配置：`BATTERY_CFG.guard.ignore_when_usb_inserted = true`（默认 **true** = 插 USB 则忽略电量阈值）。
+
+### 10.2 插入 USB 时的调用链
+
+```mermaid
+flowchart TD
+    A[GPIO27 插入] --> B[usb_charge / app.applyUsbInsertState]
+    B --> C[power_status = 1]
+    C --> D[battery_guard.onUsbInserted]
+    D --> E[取消 ≤5% 关机定时器]
+    D --> F[清除 rest_by_battery / pir_suspended 标志]
+    F --> G[resumePir]
+    F --> H{曾在低功耗或电量休眠?}
+    H -->|是| I[on_exit_low_power → wake T31]
+    H -->|否| J[wake_t3x 仍执行]
+    D --> K[后续 BATTERY_UPDATE 不再走电量断 T31]
+```
+
+[`user/app.lua`](../user/app.lua) 插入分支：
+
+```lua
+-- USB 插入
+battery_guard.onUsbInserted()   -- 优先走电量保护恢复
+-- 若无 battery_guard：onExitLowPower()
+```
+
+[`user/battery_guard.lua`](../user/battery_guard.lua) `onUsbInserted()`：
+
+| 步骤 | 动作 |
+|------|------|
+| 1 | `cancelShutdownTimer()` — 若 ≤5% 已启动 3s 关机，**取消** |
+| 2 | `guard.rest_by_battery = false`、`guard.pir_suspended = false` |
+| 3 | 若曾暂停 PIR → `pir_ctrl.resume()` |
+| 4 | 若曾电量休眠 **或** `low_power_mode == 1` → `on_exit_low_power()` → `t3x_ctrl.wake()` |
+| 5 | `wake_t3x()` — 再确保 T31 上电 + 脉冲 |
+
+日志典型：`USB 插入，忽略低电量限制，保持 T31 上电`。
+
+### 10.3 插着 USB 时，每次电量采样（BATTERY_UPDATE）
+
+`evaluate(pct, mv)` **开头**判断 USB：
+
+```lua
+if isUsbInserted() then
+    cancelShutdownTimer()
+    if guard.rest_by_battery or guard.pir_suspended then
+        onUsbInserted()   -- 兜底恢复
+    end
+    return              -- 不执行 ≤15% / ≤10% / ≤5% 任何分支
+end
+```
+
+因此：**即使 remainPower 只有 5%～12%，只要 USB 一直插着，就不会**：
+
+- 因电量暂停 PIR（新触发）
+- 因电量进入 `onEnterLowPower` 断 T31
+- 因电量启动 `pm.shutdown()` 定时器
+
+### 10.4 与 MQTT 1003 / 指示灯的关系
+
+| 项 | 插 USB + 低电量时行为 |
+|----|----------------------|
+| **1003 `powerStatus`** | `"1"`（已插入） |
+| **1003 `remainPower`** | 仍为 ADC 百分比（如 `"12"`），**不会**因插 USB 变高（需充电一段时间后采样才升） |
+| **1003 `lowPowerMode`** | 若已 `on_exit_low_power` → `"normal"`；若仅 `power_status=1` 未退出低功耗，可能仍为 `"rest"`（取决于插入前状态） |
+| **模组红/蓝灯** | `led_ctrl` **仍按** `battery_percent` 显示（&lt;20% 仍可能红闪），**与** T31 是否断电 **无关** |
+
+### 10.5 场景对照
+
+| 场景 | 软件行为 |
+|------|----------|
+| 先低电（已 rest、T31 断电）再插 USB | `onUsbInserted` → 退出低功耗、**wake T31**、恢复 PIR |
+| 先插 USB 再降到 5% | `evaluate` 见 USB 直接 return，**不关机、不断 T31** |
+| 5% 已启动 3s 关机倒计时，中途插 USB | 定时器回调里再次 `isUsbInserted()` → **取消关机** |
+| 低电 rest 中 MQTT 离线 | 当前固件仍可能 `onMqttOffline` 唤醒 T31（见 §9）；插 USB 后应已 `wake`，但 **未** 单独禁止 MQTT 唤醒 |
+| 拔出 USB 且仍 12% | `onUsbRemoved` → `evaluate(12%)` → 暂停 PIR；**不** 断 T31（12&gt;10）；若 `low_power_mode==0` 还可能 `onEnterLowPower`（USB 拔出路径） |
+
+### 10.6 配置与开关
+
+| 配置 | 作用 |
+|------|------|
+| `BATTERY_CFG.guard.ignore_when_usb_inserted` | 默认 true；设为 false 则插 USB 也按电量阈值执行（一般不推荐） |
+| `MODULE_FLAGS.battery_guard` | false 时插 USB 只走 `app.onExitLowPower()`，无电量保护恢复逻辑 |
+| `MODULE_FLAGS.charge` | 启用 `usb_charge` 读 GPIO27 |
+
+### 10.7 相关代码
+
+| 模块 | 文件 |
+|------|------|
+| USB 插入/拔出 | [`user/app.lua`](../user/app.lua) `applyUsbInsertState` |
+| 电量+USB 策略 | [`user/battery_guard.lua`](../user/battery_guard.lua) `evaluate` / `onUsbInserted` / `onUsbRemoved` |
+| GPIO27 检测 | [`lib/usb_charge.lua`](../lib/usb_charge.lua) |
+| T31 唤醒 | [`user/t3x_ctrl.lua`](../user/t3x_ctrl.lua) `wake` / `powerOn` |

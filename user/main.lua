@@ -1,8 +1,8 @@
 ﻿-- 780EHM_PJ 入口
 -- 启动链: main → app.start(peripheral, net, t3x_ctrl) → sys.run()
 PROJECT = PROJECT or "TUYA_CAT1"
-VERSION = VERSION or "v1_20260529"
-BUILD_TAG = "v1_20260529"
+VERSION = VERSION or "v1.2"
+BUILD_TAG = "v1.2"
 
 local moduleName = ...
 local isEntry = moduleName == nil
@@ -37,6 +37,14 @@ if _G.MODULE_FLAGS and _G.MODULE_FLAGS.rndis then
         log.info("main", "RNDIS taskInit(open)")
     else
         log.warn("main", "usb_rndis 不可用，跳过 RNDIS")
+    end
+end
+
+-- ② SIM/运营商/APN（须在 IP_READY 前，参考 SDK demo/mobile/mobile_test.lua）
+if _G.MODULE_FLAGS and _G.MODULE_FLAGS.cellular ~= false then
+    local okCell, cellular = pcall(require, "cellular_bootstrap")
+    if okCell and type(cellular) == "table" and cellular.start then
+        cellular.start()
     end
 end
 

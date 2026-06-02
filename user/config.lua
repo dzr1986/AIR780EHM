@@ -11,7 +11,7 @@ _G[_modname or (...)] = _M
 -- 应用元数据 / 栈 / 运行时
 -- ============================================================
 _G.APP_META = {
-    version = "v1_20260529",
+    version = "v1.2",
     log_enabled = false,
     device_model = "awake_normal",
     cmd_ext = "",
@@ -31,6 +31,31 @@ _G.APP_RUNTIME = {
     battery_percent = "--",
     battery_mv = "--",
     battery_consumption_rate = "0",
+    sim_operator = "unknown",
+    sim_operator_name = "未知",
+    sim_present = 0,
+    cellular_apn = "",
+}
+
+-- 蜂窝/SIM/APN（参考 v2026.03.24.12/demo/mobile/mobile_test.lua）
+-- 联通卡常需显式 APN；移动/电信可 apn_auto
+_G.CELLULAR_CFG = {
+    enabled = true,
+    apn_auto = true,
+    force_explicit_apn = { unicom = true },
+    apn_by_operator = {
+        unicom = "3gnet",       -- 联通公网；物联卡可改 scuiot / wnet
+        telecom = "ctnet",
+        mobile = "cmnet",
+    },
+    unicom_apn_fallback = "scuiot", -- 3gnet 失败时二次尝试（物联卡）
+    set_auto_interval_ms = 10000,
+    cell_search_ms = 30000,
+    set_auto_count = 5,
+    sim_wait_ms = 30000,
+    bootstrap_timeout_ms = 60000,
+    max_reset_attempts = 3,
+    reset_delay_ms = 30000,
 }
 
 -- t3x 烧录模式（GPIO28 BOOT 键长按）：进入前条件与关停项，见 doc/T3X_BURN_MODE.md
@@ -248,6 +273,32 @@ _G.BATTERY_CFG = {
 
 -- 兼容旧名（可选）；优先读 BATTERY_CFG.guard
 _G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
+
+-- 开机/关机提示音（T31 播放，4G 发 AT+PLAYSOUND）；见 doc/BOOT_SHUTDOWN_SOUND.md
+_G.SOUND_CFG = {
+    enabled = true,
+    boot_on_cold_start = true,
+    boot_on_wake = false,
+    shutdown_on_user_off = true,
+    shutdown_on_low_power = false,
+    shutdown_on_battery_off = false,
+    boot_delay_ms = 6000,
+    play_timeout_ms = 2500,
+    t3x_power_wait_ms = 800,
+}
+
+-- CAT1 ↔ T31 时间同步；见 doc/TIME_SYNC.md
+_G.TIME_SYNC_CFG = {
+    enabled = true,
+    min_valid_unix = 1704067200,   -- 2024-01-01 UTC，低于此视为未同步
+    sync_on_sntp = true,           -- SNTP 成功后推送 AT+TIMESET
+    sync_on_wake = true,           -- 退出低功耗后推送
+    sync_before_wake = true,       -- notify_host 前先 TIMESET
+    host_boot_wait_ms = 1500,      -- T31 上电后等待 Linux/UART 就绪
+    t3x_power_wait_ms = 800,
+    ack_timeout_ms = 800,
+    resync_skew_sec = 2,           -- 同一秒内重复推送节流
+}
 
 -- 主机 PB27 唤醒（与 t3x_linux gpio 下降沿一致）
 _G.HOST_WAKE_CFG = {

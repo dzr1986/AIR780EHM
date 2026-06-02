@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "api.h"
+#include "audio_prompt.h"
 #include "log.h"
 #include "media_ops.h"
 #include "runtime.h"
@@ -68,6 +69,7 @@ int main(int argc, char **argv)
     signal(SIGTERM, on_signal);
 
     media_ops_register(&product_ops);
+    audio_prompt_init();
 
     if (t31_runtime_start(&rt, config_path) != 0) {
         return EXIT_FAILURE;

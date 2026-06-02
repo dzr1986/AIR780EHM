@@ -174,6 +174,17 @@ local function uart_wakevt_query(_cmd)
     return string.format(CRLF .. "+WAKEVT:%d,%d" .. CRLF, sid, evt) .. ok_tail()
 end
 
+local DEFAULT_MIN_UNIX = 1704067200
+
+local function uart_time_query(_cmd)
+    local minTs = (_G.TIME_SYNC_CFG and _G.TIME_SYNC_CFG.min_valid_unix) or DEFAULT_MIN_UNIX
+    local t = os.time()
+    if t < minTs then
+        return CRLF .. "+TIME:0" .. CRLF .. ok_tail()
+    end
+    return string.format(CRLF .. "+TIME:%d" .. CRLF, t) .. ok_tail()
+end
+
 --- AT+MQTTCFG=host;port;ssl;user;password;client_id（字段以 ; 分隔，密码勿含 ;）
 local function parse_mqttcfg_body(body)
     if not body or body == "" then
@@ -468,6 +479,7 @@ local AT_CMD_TABLE = {
     uart_cmd_entry("AT+PIRSTAT", nil, uart_pirstat_query),
     uart_cmd_entry("AT+PIRCLR", nil, uart_pirclr),
     uart_cmd_entry("AT+WAKEVT", nil, uart_wakevt_query),
+    uart_cmd_entry("AT+TIME", nil, uart_time_query),
     uart_cmd_entry(nil, "AT+SERVCREATE=", uart_servcreate),
     uart_cmd_entry(nil, "AT+MQTTCFG=", uart_mqttcfg),
     uart_cmd_entry(nil, "AT+SERVCLOSE=", uart_servclose),
@@ -526,8 +538,43 @@ local function host_plain_line(line)
     end
 end
 
+local function try_sound_ack_line(line)
+    if not line then
+        return false
+    end
+    local name = line:match("^%+SOUNDACK:(%w+)$")
+    if not name then
+        return false
+    end
+    local ok, sp = pcall(require, "sound_prompt")
+    if ok and type(sp) == "table" and sp.onSoundAck then
+        sp.onSoundAck(name)
+    end
+    return true
+end
+
+local function try_timeset_ack_line(line)
+    if not line then
+        return false
+    end
+    if line:match("^%+TIMESET:OK$") then
+        local ok, ts = pcall(require, "time_sync")
+        if ok and type(ts) == "table" and ts.onTimesetAck then
+            ts.onTimesetAck()
+        end
+        return true
+    end
+    return false
+end
+
 local function host_process_line(line)
     if not line or line == "" then
+        return nil
+    end
+    if try_sound_ack_line(line) then
+        return nil
+    end
+    if try_timeset_ack_line(line) then
         return nil
     end
     if line:sub(1, 2) == "AT" then

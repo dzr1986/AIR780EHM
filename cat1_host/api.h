@@ -47,6 +47,8 @@ int client_push_tcp_channel(client_t *client);
 int client_push_mqtt_config(client_t *client);
 int client_query_wakeup(client_t *client, wake_event_t *event);
 int client_get_pir_stat(client_t *client, char *resp, size_t resp_size);
+/** 向 4G 查询 AT+TIME? 并 settimeofday；SNTP 未就绪时返回 -1 */
+int client_sync_time_from_cat1(client_t *client);
 void client_shutdown(client_t *client);
 
 #endif

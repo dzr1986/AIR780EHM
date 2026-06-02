@@ -8,8 +8,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "api.h"
 #include "log.h"
 #include "media_ops.h"
+#include "time_sync.h"
 
 static client_t *g_client;           /* runtime 绑定，供无 client 参数的 media_* 使用 */
 static media_ops_impl_t g_impl;      /* 产品层注册的 ISP/VENC 实现 */
@@ -279,6 +281,12 @@ int media_dispatch_wake_event(client_t *client, const wake_event_t *event)
         return -1;
     }
     media_ops_bind_client(client);
+
+    if (!time_sync_is_valid(time_sync_now())) {
+        if (client_sync_time_from_cat1(client) != 0) {
+            log_print("WARN", "system time invalid before media, recording may use wrong timestamp");
+        }
+    }
 
     if (client_get_pir_stat(client, pir_resp, sizeof(pir_resp)) != 0) {
         log_print("WARN", "PIRSTAT failed, fallback snapshot");

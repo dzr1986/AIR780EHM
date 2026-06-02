@@ -1,9 +1,11 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "api.h"
 #include "log.h"
 #include "media_ops.h"
+#include "time_sync.h"
 
 static bool response_contains(const char *resp, const char *keyword)
 {
@@ -244,10 +246,35 @@ static int query_wake_event(client_t *client, wake_event_t *event)
     return -1;
 }
 
+int client_sync_time_from_cat1(client_t *client)
+{
+    char resp[MAX_RESP_SIZE];
+    const char *p;
+    char *end = NULL;
+    long unix_sec;
+
+    if (client_request(client, "AT+TIME?", resp, sizeof(resp)) != 0) {
+        return -1;
+    }
+    p = strstr(resp, "+TIME:");
+    if (p == NULL) {
+        return -1;
+    }
+    unix_sec = strtol(p + 6, &end, 10);
+    if (unix_sec <= 0 || !time_sync_is_valid((time_t)unix_sec)) {
+        log_print("WARN", "CAT1 time not ready (+TIME:%ld)", unix_sec);
+        return -1;
+    }
+    return time_sync_apply_unix((time_t)unix_sec);
+}
+
 static int bootstrap(client_t *client)
 {
     if (client_ping(client) != 0) {
         return -1;
+    }
+    if (client_sync_time_from_cat1(client) != 0) {
+        log_print("WARN", "bootstrap time sync skipped (4G SNTP pending?)");
     }
     if (client_get_version(client, NULL, 0) != 0) {
         return -1;

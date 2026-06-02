@@ -75,21 +75,39 @@ end
 local netReadyPublished = false
 local bootstrapStarted = false
 
+local function getCellular()
+    local ok, mod = pcall(require, "cellular_bootstrap")
+    if ok then
+        return mod
+    end
+    return nil
+end
+
 function bootstrapNetwork()
     if bootstrapStarted then
         return false
     end
     bootstrapStarted = true
     sys.taskInit(function()
-        log.info("net_mqtt", "蜂窝入网：等待 IP_READY...")
-        local ipOk = sys.waitUntil("IP_READY", 300000)
-        local ip = (socket and socket.localIP and socket.localIP()) or nil
+        local cellular = getCellular()
+        local ipOk, ip
+
+        if cellular and cellular.waitForNetwork and (_G.MODULE_FLAGS.cellular ~= false) then
+            log.info("net_mqtt", "蜂窝入网：cellular_bootstrap...")
+            ipOk, ip = cellular.waitForNetwork()
+        else
+            log.info("net_mqtt", "蜂窝入网：等待 IP_READY...")
+            ipOk = sys.waitUntil("IP_READY", 300000)
+            ip = (socket and socket.localIP and socket.localIP()) or nil
+        end
+
         if ipOk and ip then
             log.info("net_mqtt", "IP_READY", ip)
         else
             log.warn("net_mqtt", "IP_READY 超时或无 IP", "ip", ip or "nil",
                 "status", mobile and mobile.status and mobile.status() or "?",
-                "csq", mobile and mobile.csq and mobile.csq() or "?")
+                "csq", mobile and mobile.csq and mobile.csq() or "?",
+                "operator", _G.APP_RUNTIME and _G.APP_RUNTIME.sim_operator_name or "?")
         end
         if not netReadyPublished then
             netReadyPublished = true
@@ -155,10 +173,25 @@ local function collectSimSnapshot()
         snr = mobile.snr and mobile.snr() or "",
         simid = mobile.simid and mobile.simid() or "",
         ip = socket and socket.localIP and socket.localIP() or "",
+        operator = "",
+        operator_name = "",
     }
+    local okCell, cellular = pcall(require, "cellular_bootstrap")
+    if okCell and cellular and cellular.detectOperator then
+        snap.operator = cellular.detectOperator(snap.imsi, snap.iccid)
+        local names = { mobile = "移动", telecom = "电信", unicom = "联通", unknown = "未知" }
+        snap.operator_name = names[snap.operator] or "未知"
+    end
+    local rt = _G.APP_RUNTIME
+    if rt and rt.sim_operator and rt.sim_operator ~= "" then
+        snap.operator = rt.sim_operator
+        snap.operator_name = rt.sim_operator_name or snap.operator_name
+    end
     local ok, apn = pcall(mobile.apn, 0, 1)
     if ok and apn then
         snap.apn = apn
+    elseif rt and rt.cellular_apn then
+        snap.apn = rt.cellular_apn
     end
     return snap
 end
@@ -513,12 +546,14 @@ function publishSimInfo()
     local deviceNo = getDeviceId()
     local topic = getPubTopic() .. "sim"
     local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","imei":"%s","imsi":"%s","iccid":"%s","status":"%s","csq":"%s","rssi":"%s","rsrp":"%s","snr":"%s","simid":"%s","ip":"%s","apn":"%s","time":"%s"}',
+        '{"deviceNo":"%s","dataType":"%s","imei":"%s","imsi":"%s","iccid":"%s","operator":"%s","operatorName":"%s","status":"%s","csq":"%s","rssi":"%s","rsrp":"%s","snr":"%s","simid":"%s","ip":"%s","apn":"%s","time":"%s"}',
         deviceNo,
         DT.UL_SIM,
         escJson(snap.imei),
         escJson(snap.imsi),
         escJson(snap.iccid),
+        escJson(snap.operator),
+        escJson(snap.operator_name),
         escJson(snap.status),
         escJson(snap.csq),
         escJson(snap.rssi),
@@ -530,7 +565,7 @@ function publishSimInfo()
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布 SIM(1005):", topic, snap.iccid)
+    log.info("net_mqtt", "发布 SIM(1005):", topic, snap.operator_name, snap.iccid)
 end
 
 --- 1004 控制回复（应答 2004；reply=1，与 OTA stage 区分）

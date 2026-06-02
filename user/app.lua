@@ -15,6 +15,8 @@ local mobile_info = require "mobile_info"
 local fota = require "fota"
 local usbRndis = require "usb_rndis"
 local battery_guard = require "battery_guard"
+local sound_prompt = require "sound_prompt"
+local time_sync = require "time_sync"
 local led = require "led"
 local host_uart = require "host_uart"
 -- watchdog 在 lib/ 中由工具链自动加载，勿 require（与核心 wdt 库区分）
@@ -82,7 +84,12 @@ local function sendWakePulse(evt, channel)
     state.last_wake_event = evt
     log.info("app", "t3x 唤醒", wakeValue)
     if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
-        host_uart.notify_host(sid, evt)
+        if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table"
+            and time_sync.pushBeforeNotifyAsync then
+            time_sync.pushBeforeNotifyAsync(sid, evt)
+        else
+            host_uart.notify_host(sid, evt)
+        end
     elseif t3xModule and t3xModule.pulseWakeup then
         t3xModule.pulseWakeup()
     end
@@ -93,7 +100,7 @@ local function onMqttOffline()
     sendWakePulse(2, 0)
 end
 
-local function onEnterLowPower()
+local function doEnterLowPowerBody()
     if not setLowPowerMode(true) then return end
     log.info("app", "进入低功耗")
     sys.publish(E.POWER_ENTERED_REST)
@@ -111,6 +118,20 @@ local function onEnterLowPower()
     end)
 end
 
+local function onEnterLowPower()
+    if type(sound_prompt) == "table" and sound_prompt.shouldPlay
+        and sound_prompt.shouldPlay("shutdown_low_power") then
+        sys.taskInit(function()
+            if sound_prompt.playBlocking then
+                sound_prompt.playBlocking("shutdown", "shutdown_low_power")
+            end
+            doEnterLowPowerBody()
+        end)
+        return
+    end
+    doEnterLowPowerBody()
+end
+
 local function onExitLowPower()
     if not setLowPowerMode(false) then return end
     log.info("app", "退出低功耗")
@@ -124,6 +145,14 @@ local function onExitLowPower()
             require("net_tcp").applyChannel(ch)
         end
     end)
+    if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table"
+        and sound_prompt.onWakeFromLowPower then
+        sound_prompt.onWakeFromLowPower()
+    end
+    if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table"
+        and time_sync.onT31Wake then
+        time_sync.onT31Wake()
+    end
 end
 
 local function onReboot()
@@ -133,9 +162,17 @@ local function onReboot()
     end, 500)
 end
 
-local function onPowerOff()
-    log.info("app", "设备关机")
-    pm.shutdown()
+local function onPowerOff(reason)
+    local function shutdownNow()
+        log.info("app", "设备关机", reason or "")
+        pm.shutdown()
+    end
+    if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table"
+        and sound_prompt.playShutdownThen then
+        sound_prompt.playShutdownThen(reason or "user", shutdownNow)
+        return
+    end
+    shutdownNow()
 end
 
 -- ============================================================
@@ -169,7 +206,9 @@ local function setupUartBridge()
                 on_enter_low_power = onEnterLowPower,
                 on_exit_low_power = onExitLowPower,
                 on_reboot = onReboot,
-                on_power_off = onPowerOff,
+                on_power_off = function()
+                    onPowerOff("user")
+                end,
                 on_mqtt_cfg = function(cfg)
                     if not netModule or not netModule.setMqttConfig then
                         log.warn("app", "net 未就绪，忽略 MQTTCFG")
@@ -675,7 +714,9 @@ local function setupEventHandlers()
     sys.subscribe(E.POWER_ENTER_REST, onEnterLowPower)
     sys.subscribe(E.POWER_EXIT_REST, onExitLowPower)
     sys.subscribe(E.DEVICE_REBOOT_REQUEST, onReboot)
-    sys.subscribe(E.DEVICE_POWER_OFF_REQUEST, onPowerOff)
+    sys.subscribe(E.DEVICE_POWER_OFF_REQUEST, function()
+        onPowerOff("mqtt")
+    end)
 
     sys.subscribe(E.PIR_TAKE_PHOTO, function(uploadMode, quality)
         onPirMediaAction("photo", uploadMode, quality)
@@ -713,7 +754,7 @@ local function setupEventHandlers()
                 return
             end
         end
-        onPowerOff()
+        onPowerOff("user")
     end)
     sys.subscribe(E.GPIO_BOOTKEY_SHORT, function()
         log.info("app", "BOOT键短按")
@@ -909,7 +950,9 @@ function start(gpio, net, t3x_ctrl)
         battery_guard.start({
             on_enter_low_power = onEnterLowPower,
             on_exit_low_power = onExitLowPower,
-            on_power_off = onPowerOff,
+            on_power_off = function()
+                onPowerOff("battery")
+            end,
             wake_t3x = function()
                 if t3xModule and t3xModule.wake then
                     sys.taskInit(function() t3xModule.wake() end)
@@ -929,6 +972,15 @@ function start(gpio, net, t3x_ctrl)
     if _G.MODULE_FLAGS.watchdog then setupWatchdog() end
     if _G.MODULE_FLAGS.uart_bridge then setupUartBridge() end
     if t3xModule then t3xModule.start() end
+    if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table" then
+        sound_prompt.start({ t3x = t3xModule })
+        if _G.MODULE_FLAGS.uart_bridge and sound_prompt.onAppStarted then
+            sound_prompt.onAppStarted()
+        end
+    end
+    if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table" then
+        time_sync.start({ t3x = t3xModule })
+    end
     if _G.MODULE_FLAGS.gpio then setupGpio() end
     if _G.MODULE_FLAGS.pmd_runtime then setupPmd() end
     startBackgroundServices()

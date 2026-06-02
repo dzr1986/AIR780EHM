@@ -135,6 +135,33 @@ flowchart LR
 
 插 **USB_DET（GPIO27）** 后：不执行上表，并 `wake` T31。
 
+### `SOUND_CFG` 提示音（`config.lua`）
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `enabled` | true | 总开关（`MODULE_FLAGS.sound_prompt`） |
+| `boot_on_cold_start` | true | 上电约 `boot_delay_ms` 后发 `AT+PLAYSOUND=boot` |
+| `boot_on_wake` | **false** | 低功耗/PIR 唤醒 **不播** 开机音 |
+| `shutdown_on_user_off` | true | PWRKEY / MQTT / AT 关机前播 `shutdown` |
+| `shutdown_on_low_power` | false | 业务休眠前不播 |
+| `shutdown_on_battery_off` | false | 5% 自动关机不播 |
+| `boot_delay_ms` | 6000 | 等 T31 就绪 |
+| `play_timeout_ms` | 2500 | 等 `+SOUNDACK` 超时 |
+
+实现：`user/sound_prompt.lua`（4G）、`t31_linux/audio_prompt.c`（T31 桩）。见 [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md)。
+
+### `TIME_SYNC_CFG` 时间同步（`config.lua`）
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `enabled` | true | 总开关（`MODULE_FLAGS.time_sync`） |
+| `min_valid_unix` | 1704067200 | 低于此视为未同步（防 1970） |
+| `sync_on_sntp` | true | SNTP 成功后 `AT+TIMESET` |
+| `sync_before_wake` | true | GPIO 唤醒前先设时 |
+| `host_boot_wait_ms` | 1500 | T31 上电后等 UART 就绪 |
+
+见 [TIME_SYNC.md](TIME_SYNC.md)。
+
 - `UART_CFG`（`lib/uart_bridge` 唯一数据源）：
 
 | 字段 | 默认值 | 说明 |
