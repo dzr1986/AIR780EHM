@@ -3,7 +3,7 @@
 ================================================================================
 
   设备编号 deviceNo : 862323084068124
-  固件版本         : 1.0.0（config.lua VERSION）
+  固件版本         : 2034.001.002（main.lua VERSION）
   协议规则         : 下行 200x  ↔  上行 100x（个位对齐）
   代码实现         : user/net_mqtt.lua
   详细说明         : user/MQTT_PROTOCOL.md / user/MQTT_DOWNLINK.md
@@ -45,6 +45,8 @@
   /panshi/app/862323084068124/status   → 1003 状态（含周期 60s）
   /panshi/app/862323084068124/event    → 1004 控制回复 / OTA 进度、1011 停录
   /panshi/app/862323084068124/sim      → 1005 SIM 信息
+  /panshi/app/862323084068124/identity → 1006 设备标识（IMEI + GB28181）
+  /panshi/app/862323084068124/tfcard    → 1007 TF/SD 卡状态
   /panshi/app/862323084068124/pir      → 1010 PIR 检测状态
 
 【设备上电后自动上行（无需下发）】
@@ -60,8 +62,10 @@
   2001      唤醒查询                      1001      wakeup
   2002      低功耗 进入/退出               1002      rest（仅 enter 成功后）
   2003      状态查询 / 配置上报间隔         1003      status
-  2004      重启 / 关机 / OTA              1004      event
+  2004      重启 / 关机 / OTA / 白光灯 WLED   1004      event
   2005      SIM 卡信息查询                 1005      sim
+  2006      IMEI + GB28181 标识查询         1006      identity
+  2007      TF/SD 卡状态查询               1007      tfcard
   2010      PIR 策略配置 / 状态查询         1010      pir
   2011      云端停止录像                   1011      event
 
@@ -97,7 +101,7 @@
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   应答 : 进入低功耗成功后发 1002；退出不发 1002
-  说明 : 业务低功耗仅 t3x 断电，模组保持 Cat.1/MQTT（不断网）
+  说明 : 业务低功耗仅 T3x 断电，模组保持 Cat.1/MQTT（不断网）
 
 【进入低功耗 — 任选一种】
 {"dataType":"2002","lowPowerMode":"enter"}
@@ -144,14 +148,25 @@
   "deviceNo": "862323084068124",
   "dataType": "1003",
   "powerStatus": "1",
+  "usbInserted": 1,
+  "charging": 1,
   "remainPower": "85",
+  "batteryMv": "4079",
   "lowPowerMode": "normal",
   "time": "2026-05-19 12:02:00"
 }
 
-  powerStatus   : 0=无USB/未充电  1=USB/充电
-  remainPower   : 电量百分比或 "--"
+  powerStatus   : 0/1  兼容字段，同 usbInserted（GPIO27 USB 座插入）
+  usbInserted   : 0=未插 USB  1=已插 USB（GPIO27）
+  charging      : 0=未在充电/已满  1=充电中（GPIO17 CHG_STATE）
+  remainPower   : 电量百分比（ADC）或 "--"
+  batteryMv     : 电芯电压 mV 或 "--"
   lowPowerMode  : "normal" | "rest"
+
+【获取方式】
+  ① 订阅 /panshi/app/{IMEI}/status
+  ② 下发 {"dataType":"2003"} → 立即应答 1003
+  ③ 设备每 60s 主动 1003；USB 插拔/充电变化/电量更新（≥30s 间隔）也会上报
 
 ------------------------------------------------------------------------------
 3.4  2004 — 电源 / OTA 控制  →  1004
@@ -249,7 +264,7 @@
 
 ---- 3.4.3 OTA（合宙 IoT，无 url）----
 【下行】
-{"dataType":"2004","action":"ota","version":"1.0.1","product_key":"l1I33ZHnJlrURfjigaHRo5uZhM0NDPOO","messageId":"ota-001"}
+{"dataType":"2004","action":"ota","version":"2034.001.002","product_key":"F6Br8JzE5056NwGtHqAz1IMV0wrt1S2e","messageId":"ota-001"}
 
 【上行 ① — 受理回复 reply=1】
 {
@@ -271,8 +286,8 @@
   "stage": "starting",
   "ret": 0,
   "message": "check_upgrade",
-  "currentVersion": "1.0.0",
-  "targetVersion": "1.0.1",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
   "time": "2026-05-19 12:04:01"
 }
 
@@ -283,8 +298,8 @@
   "stage": "success",
   "ret": 0,
   "message": "download_ok",
-  "currentVersion": "1.0.0",
-  "targetVersion": "1.0.1",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
   "time": "2026-05-19 12:05:00"
 }
 
@@ -295,8 +310,8 @@
   "stage": "failed",
   "ret": 1,
   "message": "connect_failed",
-  "currentVersion": "1.0.0",
-  "targetVersion": "1.0.1",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
   "time": "2026-05-19 12:05:00"
 }
 
@@ -305,7 +320,7 @@
 
 ---- 3.4.4 OTA（自建服务器，带 url）----
 【下行】
-{"dataType":"2004","action":"ota","url":"http://192.168.1.5:8000/firmware.bin","version":"1.0.1","timeout":300000,"full_url":0,"messageId":"ota-002"}
+{"dataType":"2004","action":"ota","url":"http://192.168.1.5:8000/firmware.bin","version":"2034.001.002","timeout":300000,"full_url":0,"messageId":"ota-002"}
 
   full_url=1 表示 url 前自动加 "###" 前缀（LuatOS libfota2 约定）
 
@@ -313,7 +328,7 @@
   dataType     string  是   "2004"
   action       string  是*  reboot | restart | off | shutdown | poweroff | ota | upgrade | fota
   messageId    string  否   原样回传到 1004 reply
-  version      string  OTA  目标版本 x.y.z
+  version      string  OTA  目标版本 内核号.XXX.ZZZ（如 2034.001.002）；非法 1004 ret=-1 invalid_version_format
   product_key  string  OTA  合宙项目 key
   url          string  OTA  固件下载地址
   timeout      number  OTA  超时毫秒
@@ -325,6 +340,61 @@
   AT+REBOOT
   AT+POWEROFF
   AT+OTA
+
+---- 3.4.5 白光灯 WLED（开/关/查询）----
+  方向 : 平台 → 设备
+  应答 : 立即 1004（reply=1，含 enable 字段）
+
+【MQTTX 操作 — 开灯】
+  主题  : /panshi/device/862323084068124/
+  QoS   : 1
+  载荷  : {"dataType":"2004","action":"wled","enable":1,"messageId":"wled-001"}
+
+【MQTTX 操作 — 关灯】
+  载荷  : {"dataType":"2004","action":"wled","enable":0,"messageId":"wled-002"}
+  同义  : {"dataType":"2004","action":"wled_off","messageId":"wled-002"}
+
+【MQTTX 操作 — 查询状态】
+  订阅  : /panshi/app/862323084068124/event
+  载荷  : {"dataType":"2004","action":"wled_query","messageId":"wled-q1"}
+  同义  : {"dataType":"2004","action":"wled","query":1,"messageId":"wled-q1"}
+
+【下行字段说明】
+  action     wled / wled_on / wled_off / wled_query
+  enable     0 关 / 1 开（wled 时必填；wled_on/wled_off 可省略）
+  query      1 表示查询（与 action=wled 同用）
+
+【上行 — 订阅 /panshi/app/862323084068124/event】
+  控制成功:
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "wled-001",
+  "action": "wled",
+  "ret": 0,
+  "message": "ok",
+  "enable": 1,
+  "time": "2026-05-19 12:04:30"
+}
+
+  查询应答（enable 为当前状态 0/1）:
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "wled-q1",
+  "action": "wled",
+  "ret": 0,
+  "message": "ok",
+  "enable": 0,
+  "time": "2026-05-19 12:04:35"
+}
+
+【4G → T3x 串口转发】
+  MQTT 开/关 → 4G 发 AT+WLED=0/1 至 T3x（config WLED_CFG.forward_to_t3x=true）
+  串口直控   : AT+WLED=1 / AT+WLED=0
+  串口查询   : AT+WLED?  → +WLED:0 或 +WLED:1（4G 侧缓存状态；T3x 侧 cat1_host 亦支持 AT+WLED）
 
 ------------------------------------------------------------------------------
 3.5  2005 — SIM 卡信息查询  →  1005
@@ -355,12 +425,70 @@
 }
 
 ------------------------------------------------------------------------------
-3.6  2010 — PIR 策略 / 状态查询  →  1010
+3.6  2006 — IMEI + GB28181 标识查询  →  1006
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 立即 1006（主题 identity）
+  说明 : Cat.1 读本地 IMEI；经 UART 发 AT+GB28181? 读 T3x GB28181 ID
+         T3x 未上电时会先 powerOn；就绪后也可能自动上报 1006
+
+【下行】
+{"dataType":"2006"}
+{"dataType":"2006","messageId":"id-query-001"}
+
+【上行 — 主题 identity，约数秒内】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1006",
+  "imei": "862323084068124",
+  "gb28181Id": "34020000001320000001",
+  "ret": 0,
+  "messageId": "id-query-001",
+  "time": "2026-05-24 12:00:00"
+}
+
+  gb28181Id  : T3x client.ini → gb28181_id；未配置或超时为空，ret=-1
+
+【串口等价】
+  T3xx→Cat.1: AT+IPCINFO?
+  Cat.1→T3xx: AT+GB28181?
+
+------------------------------------------------------------------------------
+3.7  2007 — TF/SD 卡状态查询  →  1007
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 立即 1007（主题 tfcard）
+  说明 : Cat.1 经 UART 发 AT+TFCARD? 读 T3x 挂载点容量（client.ini tf_mount_path）
+
+【下行】
+{"dataType":"2007","messageId":"tf-001"}
+
+【上行 — 主题 tfcard】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1007",
+  "tfPresent": 1,
+  "totalMb": 16384,
+  "usedMb": 1024,
+  "freeMb": 15360,
+  "ret": 0,
+  "messageId": "tf-001",
+  "time": "2026-05-24 12:00:00"
+}
+
+  tfPresent  : 0=无卡或未挂载  1=已挂载可读容量
+  无卡时 totalMb/usedMb/freeMb 均为 0
+
+【串口等价】
+  Cat.1→T3xx: AT+TFCARD?
+
+------------------------------------------------------------------------------
+3.8  2010 — PIR 策略 / 状态查询  →  1010
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   应答 : action=query 时立即 1010；人体触发硬件后自动 1010（无需下行）
 
----- 3.6.1 配置 PIR 策略（下次 PIR 触发生效）----
+---- 3.8.1 配置 PIR 策略（下次 PIR 触发生效）----
 【下行】
 {"dataType":"2010","action":"video","uploadMode":"auto","quality":"high","videoMaxDurationSec":90,"stopOnSecondPir":1,"stopOnCloud":1}
 
@@ -375,7 +503,7 @@
 【拍照策略示例】
 {"dataType":"2010","action":"photo","uploadMode":"auto","quality":"high"}
 
----- 3.6.2 查询 PIR 状态 ----
+---- 3.8.2 查询 PIR 状态 ----
 【下行】
 {"dataType":"2010","action":"query"}
 {"dataType":"2010","query":1}
@@ -412,7 +540,7 @@
   若 uploadMode=auto，随后还会有 1001（wakeup）。
 
 ------------------------------------------------------------------------------
-3.7  2011 — 云端停止录像  →  1011
+3.9  2011 — 云端停止录像  →  1011
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   条件 : 设备正在录像 且 stopOnCloud=1（2010 配置）
@@ -447,12 +575,14 @@
   ① 2001 → 收 1001
   ② 2003 → 收 1003
   ③ 2005 → 收 1005
-  ④ 2010 配置 → 人体触发 → 收 1010（及可能 1001）
-  ⑤ 2010 query → 收 1010 pirStatus=query
-  ⑥ 2004 reboot → 收 1004 reply=1（设备将重启）
-  ⑦ 2002 enter → 收 1002；2002 exit 唤醒
-  ⑧ 2004 ota（谨慎）→ 1004 reply + stage
-  ⑨ 2011（录像中）→ 1011 reason=cloud
+  ④ 2006 → 收 1006（identity）
+  ⑤ 2007 → 收 1007（tfcard）
+  ⑥ 2010 配置 → 人体触发 → 收 1010（及可能 1001）
+  ⑦ 2010 query → 收 1010 pirStatus=query
+  ⑧ 2004 reboot → 收 1004 reply=1（设备将重启）
+  ⑨ 2002 enter → 收 1002；2002 exit 唤醒
+  ⑩ 2004 ota（谨慎）→ 1004 reply + stage
+  ⑪ 2011（录像中）→ 1011 reason=cloud
 
 ================================================================================
 五、日志与串口自检
@@ -464,6 +594,8 @@
   发布状态(1003)        → 周期状态
   发布控制回复(1004)    → 2004 应答
   发布 SIM(1005)        → 2005 应答
+  发布设备标识(1006)    → 2006 应答 / T3x 就绪自动
+  发布 TF 卡(1007)      → 2007 应答
   发布 PIR 检测(1010)   → PIR 上报
 
 【正常日志示例 — 周期 1003（pong → 发布状态 → sent）】
@@ -497,6 +629,8 @@
   | 发布唤醒(1001): .../wakeup     | 连网成功或 2001 查询 |
   | 发布控制回复(1004): reboot ... | 2004 reboot/off/ota 受理 |
   | 发布 SIM(1005): .../sim        | 2005 查询 |
+  | 发布设备标识(1006): .../identity | 2006 查询 / 自动上报 |
+  | 发布 TF 卡(1007): .../tfcard   | 2007 查询 |
 
 【串口 AT】
   AT+GETCFG

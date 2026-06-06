@@ -1,4 +1,4 @@
---- t3x 协处理器控制模块
+--- T3x 协处理器控制模块
 -- @module t3x_ctrl
 -- @release 2026.5.20
 -- @description t3x 电源、BOOT/OTA、休眠（模组 WDT 见 lib/watchdog.lua）
@@ -112,10 +112,15 @@ local function ensurePins()
 end
 
 function start()
-    log.info(LOG_TAG, "========== t3x 控制模块启动 ==========")
+    log.info(LOG_TAG, "========== T3x 控制模块启动 ==========")
     ensurePins()
-    powerOn()
-    log.info(LOG_TAG, "========== t3x 控制模块启动完成 ==========")
+    local ok, policy = pcall(require, "t3x_policy")
+    if ok and type(policy) == "table" and policy.bootPowerOn then
+        policy.bootPowerOn(_M)
+    else
+        powerOn()
+    end
+    log.info(LOG_TAG, "========== T3x 控制模块启动完成 ==========")
     return true
 end
 
@@ -133,7 +138,7 @@ function powerOn()
     isPoweredOn = true
     state.power_state = "on"
     lastAction = "powerOn"
-    logGpioSet("t3x上电", entry_pwr, entry_boot, entry_ota,
+    logGpioSet("T3x上电", entry_pwr, entry_boot, entry_ota,
         powerOnLevel, currentBootLevel, currentOtaLevel)
     return true
 end
@@ -152,7 +157,7 @@ function pulseMcuInt()
     sys.timerStart(function()
         t3xMcuIntPin(idle)
         lastAction = "pulseMcuInt"
-        log.info(LOG_TAG, "t3x 唤醒脉冲(低)", "pin", entry_int.pin, "ms", ms,
+        log.info(LOG_TAG, "T3x 唤醒脉冲(低)", "pin", entry_int.pin, "ms", ms,
             "idle", idle, "active", active)
     end, ms)
     return true
@@ -173,7 +178,7 @@ function powerOff()
     isPoweredOn = false
     state.power_state = "off"
     lastAction = "powerOff"
-    logGpioSet("t3x断电", entry_pwr, entry_boot, entry_ota,
+    logGpioSet("T3x断电", entry_pwr, entry_boot, entry_ota,
         powerOffLevel, currentBootLevel, currentOtaLevel)
     return true
 end
@@ -238,7 +243,18 @@ function enterSleep(opts)
     end
 
     opts = type(opts) == "table" and opts or {}
-    log.info(LOG_TAG, "========== 进入休眠 ==========")
+    if opts.skip_pending_work_check ~= true then
+        local okHu, hu = pcall(require, "host_uart")
+        local okHe, he = pcall(require, "host_event")
+        if okHu and hu and hu.buildHostEvtBody and okHe and he and he.shouldBlockT3xSleep then
+            local body = hu.buildHostEvtBody()
+            if he.shouldBlockT3xSleep(body) then
+                log.warn(LOG_TAG, "HOSTEVT has_event，跳过 T3x 断电", opts.reason or "")
+                return false
+            end
+        end
+    end
+    log.info(LOG_TAG, "========== 进入休眠 ==========", opts.reason or "")
     state.power_state = "sleeping"
     state.rest_enter_time = os.time()
 
@@ -249,7 +265,25 @@ function enterSleep(opts)
     end
 
     if isPoweredOn then
-        powerOff()
+        local ipcCfg = _G.HOST_IPC_CFG or {}
+        if ipcCfg.graceful_poweroff ~= false then
+            local ok, ipc = pcall(require, "t3x_ipc")
+            if ok and type(ipc) == "table" and ipc.gracefulPowerOff then
+                local playSound = opts.ipc_poweroff_sound
+                if playSound == nil then
+                    playSound = ipcCfg.poweroff_play_sound
+                end
+                ipc.gracefulPowerOff({
+                    play_sound = playSound,
+                    poweroff_timeout_ms = opts.ipc_poweroff_timeout_ms,
+                    status_timeout_ms = opts.ipc_status_timeout_ms,
+                })
+            else
+                powerOff()
+            end
+        else
+            powerOff()
+        end
         log.info(LOG_TAG, "业务休眠：t3x 已断电，模组保持联网")
     else
         log.info(LOG_TAG, "业务休眠：t3x 已处于断电")

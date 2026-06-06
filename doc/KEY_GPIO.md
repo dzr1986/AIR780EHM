@@ -98,7 +98,7 @@ gpioModule.start({
 | 配置 `events` / `event` | `APP_EVENTS` 键 | 典型订阅方 |
 |-------------------------|-----------------|------------|
 | pwrkey short/long | `GPIO_PWRKEY_SHORT` / `GPIO_PWRKEY_LONG` | `app` → 关机/日志 |
-| bootkey short/long | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 短按日志；**长按** → [`T31_BURN_MODE.md`](T31_BURN_MODE.md)（电量≥20%、关停 MQTT/PIR/UART 后 `t3x_ctrl.enterBootMode`） |
+| bootkey short/long | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 短按日志；**长按** → [`T3X_BURN_MODE.md`](T3X_BURN_MODE.md)（电量≥20%、关停 MQTT/PIR/UART 后 `t3x_ctrl.enterBootMode`） |
 | ready | `GPIO_COPROC_READY` | `app` → `t3x_ctrl.exitBootMode()` |
 
 ---
@@ -117,7 +117,7 @@ gpioModule.start({
 |------|------|------|
 | **硬件开机** | `main.lua` `pm.power(pm.PWK_MODE, true)` | `pm.shutdown()` 后 **长按 K1 ≥约 2s** 再开机 |
 | **软件长短按** | `lib/key.lua` + `gpio.PWR_KEY` | 开机后识别；**长按 3s** → `app` → `pm.shutdown()` |
-| **T31 上电** | `t3x_ctrl` GPIO22 | 与 K1 无关；低功耗时 `powerOn()`/`wake()` |
+| **T3x 上电** | `t3x_ctrl` GPIO22 | 与 K1 无关；低功耗时 `powerOn()`/`wake()` |
 
 **排查**：原 `GPIO35` 不在 Air780EHM 引脚表，按键无中断；原 `PWK_MODE=false` 会导致关机后 K1 无法硬件开机。
 

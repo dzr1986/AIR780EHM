@@ -270,6 +270,90 @@ function getState()
 end
 
 -- ============================================================
+-- 单蓝灯（GPIO21）：开机 / 电量 / MQTT 联网
+-- ============================================================
+
+function runBlueStartup(bluePin, startupCfg)
+    state.last_action = "runBlueStartup"
+    local s = type(startupCfg) == "table" and startupCfg or {}
+    if s.enabled == false or not bluePin then
+        state.last_ok = false
+        return false
+    end
+    local n = tonumber(s.blinks) or 3
+    local light = tonumber(s.light_ms) or 300
+    local dark = tonumber(s.dark_ms) or 300
+    setLevel(bluePin, 0)
+    for _ = 1, n do
+        blinkPwm(bluePin, light, dark)
+    end
+    state.last_ok = true
+    return true
+end
+
+--- 单蓝灯一轮（简化：快闪=低电，慢闪=未联网，常亮=正常）
+-- st: battery_percent, online_status, mqtt_enabled, usb_inserted, charging
+function runSimpleBlueCycle(bluePin, st, cfg)
+    state.last_action = "runSimpleBlueCycle"
+    if not bluePin then
+        state.last_ok = false
+        return "none"
+    end
+
+    st = type(st) == "table" and st or {}
+    cfg = type(cfg) == "table" and cfg or {}
+
+    local pct = tonumber(st.battery_percent)
+    local online = st.online_status == 1
+    local mqttOn = st.mqtt_enabled ~= false
+    local lowPct = tonumber(cfg.low_percent) or 20
+    local fastMs = tonumber(cfg.low_blink_ms) or 400
+    local slowMs = tonumber(cfg.offline_blink_ms) or 1000
+    local okHold = tonumber(cfg.ok_hold_ms) or 5000
+    local checkNet = cfg.check_network ~= false
+
+    local chargingActive = cfg.suppress_low_when_charging ~= false
+        and st.usb_inserted
+        and (st.charging == 1 or st.charging == true)
+
+    setLevel(bluePin, 0)
+
+    -- 1 低电：快闪（充电中且 suppress 开启则跳过）
+    if pct ~= nil and pct <= lowPct and not chargingActive then
+        local n = tonumber(cfg.low_blinks_per_round) or 6
+        for _ = 1, n do
+            blinkPwm(bluePin, fastMs, fastMs)
+        end
+        state.last_ok = true
+        return "low"
+    end
+
+    -- 2 未联网：慢闪
+    if checkNet and mqttOn and not online then
+        blinkPwm(bluePin, slowMs, slowMs)
+        state.last_ok = true
+        return chargingActive and "charging_offline" or "offline"
+    end
+
+    -- 3 正常：常亮
+    if pct == nil and not chargingActive then
+        sys.wait(tonumber(cfg.unknown_hold_ms) or 3000)
+        state.last_ok = true
+        return "unknown"
+    end
+
+    setLevel(bluePin, 1)
+    sys.wait(okHold)
+    state.last_ok = true
+    return chargingActive and "charging_ok" or "ok"
+end
+
+--- 兼容旧名
+function runUnifiedBlueCycle(bluePin, st, cfg)
+    return runSimpleBlueCycle(bluePin, st, cfg)
+end
+
+-- ============================================================
 -- BAT_STAT_LED 上电调试（GPIO21 低电平点亮，1s 翻转）
 -- ============================================================
 
@@ -310,7 +394,7 @@ function startBatStatBreathTest()
         log.info("led", "bat_stat_led", blue.pin, lit and "ON" or "OFF", "tick", tick)
     end, BREATH_INTERVAL_MS)
 
-    if red and red.pin then
+    if red and red.pin and red.enabled ~= false then
         gpio_util.setup_output(red)
         local redLit = false
         sys.timerLoopStart(function()

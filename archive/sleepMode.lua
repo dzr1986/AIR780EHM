@@ -1,4 +1,4 @@
---- 模块功能：项目休眠与 t3x 电源控制库
+--- 模块功能：项目休眠与 t3xx 电源控制库
 -- @module sleepMode
 -- @author GitHub Copilot
 -- @release 2026.5.13

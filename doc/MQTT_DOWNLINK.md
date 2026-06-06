@@ -68,8 +68,10 @@
 | **2001** | 唤醒查询 | **1001** | `wakeup` |
 | **2002** | 低功耗 enter/exit | **1002** | `rest`（仅 enter 后） |
 | **2003** | 状态查询 / 配置 interval | **1003** | `status` |
-| **2004** | 重启 / 关机 / OTA | **1004** | `event` |
+| **2004** | 重启 / 关机 / OTA / **白光灯** | **1004** | `event` |
 | **2005** | SIM 查询 | **1005** | `sim` |
+| **2006** | IMEI + GB28181 查询 | **1006** | `identity` |
+| **2007** | TF/SD 卡状态查询 | **1007** | `tfcard` |
 | **2010** | PIR 策略 / 查询 | **1010** | `pir` |
 | **2011** | 云端停录 | **1011** | `event` |
 
@@ -133,8 +135,8 @@
 
 | 操作 | 设备行为 | 上行 |
 |------|----------|------|
-| enter | t3x 协处理器断电，模组保持 MQTT | **1002** |
-| exit | 退出低功耗，唤醒 t3x（`t3x_ctrl.wake`） | 无 |
+| enter | T3x 协处理器断电，模组保持 MQTT | **1002** |
+| exit | 退出低功耗，唤醒 T3x（`t3x_ctrl.wake`） | 无 |
 
 **应答示例**（`/panshi/app/862323084068124/rest`）：
 
@@ -179,7 +181,10 @@
   "deviceNo": "862323084068124",
   "dataType": "1003",
   "powerStatus": "1",
+  "usbInserted": 1,
+  "charging": 1,
   "remainPower": "85",
+  "batteryMv": "4079",
   "lowPowerMode": "normal",
   "time": "2026-05-19 12:02:00"
 }
@@ -187,8 +192,11 @@
 
 | 上行字段 | 说明 |
 |----------|------|
-| `powerStatus` | `0` 未充电 / `1` USB 或充电 |
+| `powerStatus` | 兼容字段，同 `usbInserted` |
+| `usbInserted` | `0` 未插 USB / `1` 已插（GPIO27） |
+| `charging` | `0` 未充电或已满 / `1` 充电中（GPIO17） |
 | `remainPower` | 电量百分比或 `"--"` |
+| `batteryMv` | 电芯电压 mV 或 `"--"` |
 | `lowPowerMode` | `"normal"` / `"rest"` |
 
 ---
@@ -284,7 +292,7 @@
 **下行**：
 
 ```json
-{"dataType":"2004","action":"ota","version":"1.0.1","product_key":"l1I33ZHnJlrURfjigaHRo5uZhM0NDPOO","messageId":"ota-001"}
+{"dataType":"2004","action":"ota","version":"2034.001.002","product_key":"F6Br8JzE5056NwGtHqAz1IMV0wrt1S2e","messageId":"ota-001"}
 ```
 
 **上行 ① 受理**：
@@ -311,8 +319,8 @@
   "stage": "starting",
   "ret": 0,
   "message": "check_upgrade",
-  "currentVersion": "1.0.0",
-  "targetVersion": "1.0.1",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
   "time": "2026-05-19 12:04:01"
 }
 ```
@@ -324,40 +332,97 @@
   "stage": "success",
   "ret": 0,
   "message": "download_ok",
-  "currentVersion": "1.0.0",
-  "targetVersion": "1.0.1",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
   "time": "2026-05-19 12:05:00"
 }
 ```
 
 成功约 **1s** 后设备重启。
 
-### 6.4 OTA（自建 url）
+**版本格式错误**（如 `"version":"001.000.002"` 缺内核号）：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "ota-001",
+  "action": "ota",
+  "ret": -1,
+  "message": "invalid_version_format",
+  "time": "2026-05-19 12:04:00"
+}
+```
+
+### 6.5 白光灯（WLED）
+
+| 项 | 值 |
+|----|-----|
+| 下行主题 | `/panshi/device/862323084068124/` |
+| 上行主题 | `/panshi/app/862323084068124/event` |
+
+**开灯**：
+
+```json
+{"dataType":"2004","action":"wled","enable":1,"messageId":"wled-001"}
+```
+
+**关灯**（同义 `action=wled_off` 或 `enable=0`）：
+
+```json
+{"dataType":"2004","action":"wled","enable":0,"messageId":"wled-002"}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `action` | `wled` / `wled_on` / `wled_off` |
+| `enable` | `0` 关 / `1` 开（`state` / `on` 同义） |
+
+**上行**：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "wled-001",
+  "action": "wled",
+  "ret": 0,
+  "message": "ok",
+  "time": "2026-05-19 12:04:30"
+}
+```
+
+4G 维护 `APP_RUNTIME.wled_on`，经 UART 转发 `AT+WLED=n` 至 T3x 驱动 `WLED_EN` GPIO。串口：`AT+WLED=0/1`、`AT+WLED?`（别名 `AT+WLEDEN*`）。
+
+### 6.6 OTA（自建 url）
 
 **下行**：
 
 ```json
-{"dataType":"2004","action":"ota","url":"http://192.168.1.5:8000/firmware.bin","version":"1.0.1","timeout":300000,"full_url":0,"messageId":"ota-002"}
+{"dataType":"2004","action":"ota","url":"http://192.168.1.5:8000/firmware.bin","version":"2034.001.002","timeout":300000,"full_url":0,"messageId":"ota-002"}
 ```
 
 | OTA 字段 | 说明 |
 |----------|------|
-| `version` | 目标版本 `x.y.z` |
-| `product_key` | 合宙项目 key（默认见 `FOTA_CFG.product_key`） |
+| `version` | 目标版本 **`内核号.XXX.ZZZ`**（如 `2034.001.002`，与合宙 IoT / LuatTools / `main.lua` `VERSION` 一致） |
+| `product_key` | 合宙项目 key（默认 `F6Br8JzE5056NwGtHqAz1IMV0wrt1S2e`，见 `FOTA_CFG.product_key`） |
 | `url` | 固件地址 |
 | `timeout` | 超时 ms |
 | `full_url` | `1` 时 url 前加 `###` |
 
-### 6.5 `action` 取值
+### 6.7 `action` 取值
 
 | action | 1004 | 设备 |
 |--------|------|------|
 | `reboot` / `restart` | `ret=0`, `ok` | 重启 |
 | `off` / `shutdown` / `poweroff` | 同上 | 关机 |
 | `ota` / `upgrade` / `fota` | `ota_accepted` | FOTA + stage |
+| `wled` / `wled_on` / `wled_off` | `ret=0`, `ok` | 白光灯开/关 |
 | 其它 | `ret=-1`, `unknown_action` | 无操作 |
 
-串口：`AT+REBOOT` · `AT+POWEROFF` · `AT+OTA`
+串口：`AT+REBOOT` · `AT+POWEROFF` · `AT+OTA` · `AT+WLED=0/1`
 
 ---
 
@@ -398,11 +463,75 @@
 
 ---
 
-## 8. `2010` — PIR 策略 / 查询 → `1010`
+## 8. `2006` — IMEI + GB28181 查询 → `1006`
 
 **发布**：`/panshi/device/862323084068124/`
 
-### 8.1 配置策略
+```json
+{"dataType":"2006"}
+```
+
+```json
+{"dataType":"2006","messageId":"id-query-001"}
+```
+
+设备若 T3x 未上电会先 `powerOn`，经 UART 发 `AT+GB28181?` 读取 GB28181 ID，与 Cat.1 IMEI 一并上报。
+
+**应答主题**：`/panshi/app/862323084068124/identity`
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1006",
+  "imei": "862323084068124",
+  "gb28181Id": "34020000001320000001",
+  "ret": 0,
+  "messageId": "id-query-001",
+  "time": "2026-05-24 12:00:00"
+}
+```
+
+> T3x 侧在 `client.ini` 配置 `gb28181_id`；未配置或查询超时则 `gb28181Id` 为空、`ret=-1`。
+
+**串口等价**：Cat.1 经 UART 发 `AT+GB28181?` → T3x 答 `+GB28181:<id>`。T3x 就绪且 MQTT 在线时可自动上报 1006（`HOST_IDENTITY_CFG.auto_publish_on_ready`）。
+
+---
+
+## 8.1 `2007` — TF/SD 卡状态 → `1007`
+
+**发布**：`/panshi/device/862323084068124/`
+
+```json
+{"dataType":"2007","messageId":"tf-001"}
+```
+
+设备若 T3x 未上电会先 `powerOn`，经 UART 发 `AT+TFCARD?` 读取 TF 卡状态与容量。
+
+**应答主题**：`/panshi/app/862323084068124/tfcard`
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1007",
+  "tfPresent": 1,
+  "totalMb": 16384,
+  "usedMb": 1024,
+  "freeMb": 15360,
+  "ret": 0,
+  "messageId": "tf-001",
+  "time": "2026-05-24 12:00:00"
+}
+```
+
+> T3x 挂载点 `client.ini` → `tf_mount_path`（默认 `/mnt/sd`）；无卡时 `tfPresent=0`，容量为 0；查询超时 `ret=-1`。
+
+---
+
+## 9. `2010` — PIR 策略 / 查询 → `1010`
+
+**发布**：`/panshi/device/862323084068124/`
+
+### 9.1 配置策略
 
 ```json
 {"dataType":"2010","action":"video","uploadMode":"auto","quality":"high","videoMaxDurationSec":90,"stopOnSecondPir":1,"stopOnCloud":1}
@@ -423,7 +552,7 @@
 | `stopOnSecondPir` | 录像中二次 PIR 是否停录 |
 | `stopOnCloud` | 是否响应 **2011** |
 
-### 8.2 状态查询
+### 9.2 状态查询
 
 ```json
 {"dataType":"2010","action":"query"}
@@ -449,7 +578,7 @@
 }
 ```
 
-### 8.3 硬件 PIR 触发（自动）
+### 9.3 硬件 PIR 触发（自动）
 
 ```json
 {
@@ -475,7 +604,7 @@
 
 ---
 
-## 9. `2011` — 云端停录 → `1011`
+## 10. `2011` — 云端停录 → `1011`
 
 **发布**：`/panshi/device/862323084068124/`
 
@@ -507,24 +636,26 @@
 
 ---
 
-## 10. MQTTX 测试顺序（862323084068124）
+## 11. MQTTX 测试顺序（862323084068124）
 
 1. 连接 Broker，订阅 `/panshi/app/862323084068124/#`
 2. 确认设备 `mqtt=已连接`，收到 **1001**
 3. `2001` → **1001**
 4. `2003` → **1003**
 5. `2005` → **1005**
-6. `2010` 配置 → PIR 触发 → **1010**（可能 **1001**）
-7. `2010` + `action=query` → **1010**
-8. `2004` + `reboot` → **1004** `reply=1`（设备重启）
-9. `2002` enter → **1002**；`2002` exit
-10. `2011`（录像中）→ **1011**
+6. `2006` → **1006**（identity）
+7. `2007` → **1007**（tfcard）
+8. `2010` 配置 → PIR 触发 → **1010**（可能 **1001**）
+9. `2010` + `action=query` → **1010**
+10. `2004` + `reboot` → **1004** `reply=1`（设备重启）
+11. `2002` enter → **1002**；`2002` exit
+12. `2011`（录像中）→ **1011**
 
 单行 JSON 抄录见：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)
 
 ---
 
-## 11. 代码映射
+## 12. 代码映射
 
 | 下行 | 处理函数 | 上行函数 |
 |------|----------|----------|
@@ -533,5 +664,7 @@
 | 2003 | `handleDownlink2003` | `publishStatus` |
 | 2004 | `handleDownlink2004` | `publishControlReply` / `publishOtaStatus` |
 | 2005 | `handleDownlink2005` | `publishSimInfo` |
+| 2006 | `handleDownlink2006` | `publishDeviceIdentity` |
+| 2007 | `handleDownlink2007` | `publishTfCardStatus` |
 | 2010 | `handleDownlink2010` | `publishPirDetect` |
 | 2011 | `handleDownlink2011` | `publishPirRecordStop` |

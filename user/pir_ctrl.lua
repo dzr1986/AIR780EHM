@@ -9,7 +9,7 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 
 local PIR_MEDIA = {
-    ACTION = { PHOTO = "photo", VIDEO = "video", BOTH = "both" },
+    ACTION = { PHOTO = "photo", VIDEO = "video", BOTH = "both", DEVINFO = "devinfo" },
     UPLOAD_MODE = { AUTO = "auto", MANUAL = "manual" },
     QUALITY = { HIGH = "high", LOW = "low" },
     DEFAULT_CONFIG = { action = "photo", uploadMode = "auto", quality = "high" },
@@ -36,6 +36,7 @@ local session = {
     quality = nil,
     startedAt = nil,
     last_stop_reason = nil,
+    stop_mqtt_published = false,
 }
 
 local handlerStarted = false
@@ -74,7 +75,9 @@ function normalizePirMediaConfig(config)
     local action = input.action
     local uploadMode = input.uploadMode
     local quality = input.quality
-    if action ~= A.PHOTO and action ~= A.VIDEO and action ~= A.BOTH then action = D.action end
+    if action ~= A.PHOTO and action ~= A.VIDEO and action ~= A.BOTH and action ~= A.DEVINFO then
+        action = D.action
+    end
     if uploadMode ~= U.AUTO and uploadMode ~= U.MANUAL then uploadMode = D.uploadMode end
     if quality ~= Q.HIGH and quality ~= Q.LOW then quality = D.quality end
     return { action = action, uploadMode = uploadMode, quality = quality }
@@ -112,6 +115,26 @@ local function clearRecordTimer()
     end
 end
 
+function canPublishStopMqtt()
+    return session.stop_mqtt_published ~= true
+end
+
+function markStopMqttPublished()
+    session.stop_mqtt_published = true
+end
+
+--- 请求 T3x 停录/停写盘：二次 PIR 时保持 recording=1 供 PIRSTAT；timer/cloud 用 last_stop
+function requestT3xStopRecord(reason)
+    if not session.recording then return false end
+    clearRecordTimer()
+    session.last_stop_reason = reason
+    local E = _G.APP_EVENTS or {}
+    publishEvent(E.PIR_REQUEST_T3X_STOP or "APP_PIR_REQUEST_T3X_STOP",
+        reason, session.uploadMode, session.quality)
+    log.info("pirCtrl", "请求 T3x 停录", reason)
+    return true
+end
+
 function publishStopRecording(reason)
     if not session.recording then return false end
     clearRecordTimer()
@@ -128,6 +151,20 @@ function publishStopRecording(reason)
     return true
 end
 
+--- T3x AT+RECORD=0 同步停录：清本地会话，不发布 PIR_STOP_RECORDING（MQTT 由 app 经 T3x_RECORD_STOP 上报）
+function syncStopFromT3x(reason)
+    clearRecordTimer()
+    local uploadMode = session.uploadMode
+    local quality = session.quality
+    if session.recording then
+        session.recording = false
+        session.last_stop_reason = reason
+        statLast("stop_t3x_" .. tostring(reason))
+        log.info("pirCtrl", "T3x 同步停录", reason)
+    end
+    return uploadMode, quality
+end
+
 local function beginVideoSession(uploadMode, quality)
     local policy = getRecordPolicy()
     clearRecordTimer()
@@ -136,9 +173,12 @@ local function beginVideoSession(uploadMode, quality)
     session.quality = quality
     session.startedAt = os.time()
     session.last_stop_reason = nil
+    session.stop_mqtt_published = false
     session.timerId = sys.timerStart(function()
         session.timerId = nil
-        publishStopRecording(PIR_MEDIA.STOP_REASON.TIMER)
+        local E = _G.APP_EVENTS or {}
+        publishEvent(E.PIR_TIMER_EXPIRED or "APP_PIR_TIMER_EXPIRED",
+            session.uploadMode, session.quality)
     end, policy.maxDurationSec * 1000)
     log.info("pirCtrl", "录像会话开始", policy.maxDurationSec, "s")
 end
@@ -147,6 +187,9 @@ function requestStopFromCloud()
     if not getRecordPolicy().stopOnCloud then
         log.warn("pirCtrl", "策略禁止云端停止")
         return false
+    end
+    if session.recording then
+        return requestT3xStopRecord(PIR_MEDIA.STOP_REASON.CLOUD)
     end
     return publishStopRecording(PIR_MEDIA.STOP_REASON.CLOUD)
 end
@@ -159,18 +202,23 @@ function isRecording()
     return session.recording == true
 end
 
+--- 一次 PIR 触发 → 至多一次唤醒 T3x。
+--- both：Luat 开录像会话 + 单次唤醒；T3x 读 PIRSTAT action=both 在同一周期内先拍后录。
 function publishActionEvents(cfg)
     local media = normalizePirMediaConfig(cfg)
     local E, A = _G.APP_EVENTS or {}, PIR_MEDIA.ACTION
+    if media.action == A.DEVINFO then
+        return media
+    end
     if media.action == A.PHOTO or media.action == A.BOTH then
         statBump("cnt_biz_photo")
-        publishEvent(E.PIR_TAKE_PHOTO, media.uploadMode, media.quality)
     end
     if media.action == A.VIDEO or media.action == A.BOTH then
         statBump("cnt_biz_video")
         beginVideoSession(media.uploadMode, media.quality)
-        publishEvent(E.PIR_RECORD_VIDEO, media.uploadMode, media.quality)
     end
+    publishEvent(E.PIR_WAKE_T3X or "APP_PIR_WAKE_T3X",
+        media.action, media.uploadMode, media.quality)
     return media
 end
 
@@ -232,11 +280,38 @@ function isSuspended()
     return suspended == true
 end
 
-function onPirTriggered()
+--- rest 低功耗（与 suspend 独立：≤15% 仅 suspend，≤10% 或 USB 拔出可能 rest）
+local function isRestLowPower()
+    if _G.FEATURE_CFG and _G.FEATURE_CFG.low_power == false then
+        return false
+    end
+    local rt = _G.APP_RUNTIME
+    return rt and tonumber(rt.low_power_mode) == 1
+end
+
+--- @return nil | "suspend" | "rest"
+local function shouldIgnorePirTrigger()
     if suspended then
+        return "suspend"
+    end
+    if isRestLowPower() then
+        return "rest"
+    end
+    return nil
+end
+
+function onPirTriggered()
+    local ignore = shouldIgnorePirTrigger()
+    if ignore == "suspend" then
         statBump("cnt_biz_ignore_suspend")
         statLast("ignore_suspend")
         log.info("pir_ctrl", "PIR 已挂起，忽略硬件触发")
+        return nil
+    end
+    if ignore == "rest" then
+        statBump("cnt_biz_ignore_rest")
+        statLast("ignore_rest")
+        log.info("pir_ctrl", "rest 低功耗中，忽略 PIR")
         return nil
     end
     local E = _G.APP_EVENTS or {}
@@ -245,7 +320,7 @@ function onPirTriggered()
         statBump("cnt_biz_retrigger")
         statLast("retrigger")
         log.info("pirCtrl", "录像中二次 PIR", media.action, media.uploadMode)
-        publishStopRecording(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
+        requestT3xStopRecord(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
         publishEvent(E.GPIO_PIR_TRIGGERED, "retrigger", media.action, media.uploadMode, media.quality)
         return nil
     end
@@ -253,6 +328,13 @@ function onPirTriggered()
     statLast("detected")
     log.info("pirCtrl", "PIR 业务处理", media.action, media.uploadMode, media.quality)
     publishEvent(E.GPIO_PIR_TRIGGERED, "detected", media.action, media.uploadMode, media.quality)
+    if media.action == PIR_MEDIA.ACTION.DEVINFO then
+        local ok, net = pcall(require, "net_mqtt")
+        if ok and net and net.refreshAndPublishDeviceIdentity then
+            net.refreshAndPublishDeviceIdentity(nil)
+        end
+        return media
+    end
     return publishActionEvents(media)
 end
 
@@ -264,6 +346,7 @@ function getState()
         quality = session.quality,
         startedAt = session.startedAt,
         last_stop_reason = session.last_stop_reason,
+        stop_mqtt_published = session.stop_mqtt_published,
         recordPolicy = getRecordPolicy(),
         mediaConfig = normalizePirMediaConfig(_G.pirMediaConfig),
     }

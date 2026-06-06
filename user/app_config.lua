@@ -12,6 +12,7 @@ _G.MODULE_FLAGS = {
     t3x_app = true,
     net_tcp = true,
     t3x_wakeup = true,
+    t3x_policy = true,
     gpio = true,
     pmd_runtime = false,
     charge = true,
@@ -24,7 +25,9 @@ _G.MODULE_FLAGS = {
     mobile_info = true,
     cellular = true,
     fota = true,
-    rndis = true,
+    rndis = (_G.FEATURE_CFG and _G.FEATURE_CFG.rndis) == true,
+    low_power = (_G.FEATURE_CFG and _G.FEATURE_CFG.low_power) ~= false,
+    host_evt = (_G.FEATURE_CFG and _G.FEATURE_CFG.host_evt) ~= false,
 }
 
 _G.APP_EVENTS = {
@@ -46,16 +49,25 @@ _G.APP_EVENTS = {
     MQTT_PUBLISH_WAKEUP = "APP_MQTT_PUBLISH_WAKEUP",
     MQTT_PUBLISH_REST = "APP_MQTT_PUBLISH_REST",
     MQTT_OFFLINE = "APP_MQTT_OFFLINE",
+    MQTT_CONNECTED = "APP_MQTT_CONNECTED",
     DEVICE_OTA_REQUEST = "APP_DEVICE_OTA_REQUEST",
     MQTT_OTA_STATUS = "APP_MQTT_OTA_STATUS",
     DEVICE_REBOOT_REQUEST = "APP_DEVICE_REBOOT_REQUEST",
     DEVICE_POWER_OFF_REQUEST = "APP_DEVICE_POWER_OFF_REQUEST",
-    PIR_TAKE_PHOTO = "APP_PIR_TAKE_PHOTO",
-    PIR_RECORD_VIDEO = "APP_PIR_RECORD_VIDEO",
+    --- 一次 PIR 业务 → 一次 GPIO 唤醒 T3x（action=photo|video|both）
+    PIR_WAKE_T3X = "APP_PIR_WAKE_T3X",
+    PIR_REQUEST_T3X_STOP = "APP_PIR_REQUEST_T3X_STOP",
+    T3X_SNAPSHOT_DONE = "APP_T3X_SNAPSHOT_DONE",
+    PIR_TAKE_PHOTO = "APP_PIR_TAKE_PHOTO",   -- 已废弃，仅保留常量兼容
+    PIR_RECORD_VIDEO = "APP_PIR_RECORD_VIDEO", -- 已废弃，仅保留常量兼容
     PIR_STOP_RECORDING = "APP_PIR_STOP_RECORDING",
+    T3X_RECORD_ACTIVE = "APP_T3X_RECORD_ACTIVE",
+    T3X_RECORD_STOP = "APP_T3X_RECORD_STOP",
+    PIR_TIMER_EXPIRED = "APP_PIR_TIMER_EXPIRED",
     UART_RX_RAW = "APP_UART_RX_RAW",
     UART_RX_STRING = "APP_UART_RX_STRING",
     UART_RX_HEX = "APP_UART_RX_HEX",
+    HOST_UART_FIRST_AT = "APP_HOST_UART_FIRST_AT",
 }
 
 return _M

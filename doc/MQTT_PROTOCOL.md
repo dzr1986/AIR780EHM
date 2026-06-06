@@ -57,6 +57,8 @@
 | **2003** | 状态查询 / 配置间隔 | **1003** | 状态上报 | `status` |
 | **2004** | 电源 / OTA 控制 | **1004** | 控制回复 / OTA 进度 | `event` |
 | **2005** | SIM 卡信息查询 | **1005** | SIM 信息 | `sim` |
+| **2006** | IMEI + GB28181 ID 查询 | **1006** | 设备标识 | `identity` |
+| **2007** | TF/SD 卡状态查询 | **1007** | TF 卡容量 | `tfcard` |
 | **2010** | PIR 策略 / 状态查询 | **1010** | PIR 检测状态 | `pir` |
 | **2011** | 云端停止录像 | **1011** | 录像停止 | `event` |
 
@@ -143,7 +145,11 @@ USB 拔出：业务低功耗 + 在线时 **1002**；MQTT 保持连接。
 ```
 
 ```json
-{ "dataType": "2004", "action": "ota", "version": "1.0.1", "product_key": "xxx" }
+{ "dataType": "2004", "action": "ota", "version": "2034.001.002", "product_key": "F6Br8JzE5056NwGtHqAz1IMV0wrt1S2e" }
+```
+
+```json
+{ "dataType": "2004", "action": "wled", "enable": 1, "messageId": "wled-001" }
 ```
 
 | action | 1004 回复 | 设备 |
@@ -151,11 +157,12 @@ USB 拔出：业务低功耗 + 在线时 **1002**；MQTT 保持连接。
 | `reboot` / `restart` | `reply=1`, `ret=0` | 约 500ms 重启 |
 | `off` / `shutdown` / `poweroff` | 同上 | 关机 |
 | `ota` / `upgrade` / `fota` 或含 OTA 字段 | `message=ota_accepted` | FOTA → **1004** `stage=*` |
+| `wled` / `wled_on` / `wled_off` | `reply=1`, `ret=0`, `ok` | 白光灯；UART 转发 T3x |
 | 其它 | `ret=-1` | 无操作 |
 
-OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `lib/fota.lua`）。
+OTA 字段：`version`（**须 `内核号.XXX.ZZZ`**，如 `2034.001.002`，与 LuatTools / 合宙 IoT / `main.lua` `VERSION` 一致）、`url`, `product_key`, `timeout`, `full_url` 等（同 `lib/fota.lua`）。
 
-串口：`AT+REBOOT`、`AT+POWEROFF`、`AT+OTA`。
+串口：`AT+REBOOT`、`AT+POWEROFF`、`AT+OTA`、`AT+WLED=0/1`。
 
 ---
 
@@ -169,7 +176,82 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
 
 ---
 
-### 4.6 `2010` — PIR 策略 / 查询 → `1010`
+### 4.6 `2006` — IMEI + GB28181 ID 查询 → `1006`
+
+平台下发查询后，Cat.1 **上电/唤醒 T3x**（若未上电），经 UART 发 `AT+GB28181?` 读取 T3x 侧 GB28181 设备 ID，与 Cat.1 IMEI 一并上报。
+
+**下行**（`/panshi/device/{imei}/`）：
+
+```json
+{ "dataType": "2006", "messageId": "id-query-001" }
+```
+
+**上行**（`/panshi/app/{imei}/identity`）：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1006",
+  "imei": "862323084068124",
+  "gb28181Id": "34020000001320000001",
+  "ret": 0,
+  "messageId": "id-query-001",
+  "time": "2026-05-24 12:00:00"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `imei` | Cat.1 模组 IMEI（与 `deviceNo` / MQTT ClientId 同源） |
+| `gb28181Id` | T3x 返回的 GB28181 设备 ID（`client.ini` → `gb28181_id`） |
+| `ret` | `0` 成功读到 GB28181；`-1` 超时或未配置 |
+| `messageId` | 可选，回显下行 `messageId` |
+
+**自动上报**：T3x 首条 AT 与 MQTT 均就绪后，若 `HOST_IDENTITY_CFG.auto_publish_on_ready=true`，主动发一次 **1006**（无 `messageId`）。
+
+实现：`user/host_uart.lua`（`AT+GB28181?`）、`user/net_mqtt.lua`；T3x：`cat1_host/uart_host_cmd.c`。
+
+---
+
+### 4.7 `2007` — TF/SD 卡状态查询 → `1007`
+
+平台下发后，Cat.1 上电/唤醒 T3x，经 UART 发 `AT+TFCARD?` 读取 TF 卡是否存在及容量。
+
+**下行**：
+
+```json
+{ "dataType": "2007", "messageId": "tf-001" }
+```
+
+**上行**（`/panshi/app/{imei}/tfcard`）：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1007",
+  "tfPresent": 1,
+  "totalMb": 16384,
+  "usedMb": 1024,
+  "freeMb": 15360,
+  "ret": 0,
+  "messageId": "tf-001",
+  "time": "2026-05-24 12:00:00"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `tfPresent` | `1` 卡存在且挂载点可访问；`0` 未检测到 |
+| `totalMb` | 总容量（MB） |
+| `usedMb` | 已用容量（MB） |
+| `freeMb` | 可用容量（MB） |
+| `ret` | `0` 查询成功；`-1` 超时或无卡 |
+
+T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
+
+---
+
+### 4.8 `2010` — PIR 策略 / 查询 → `1010`
 
 **配置策略**（与原先相同）：
 
@@ -197,7 +279,7 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
 
 硬件 PIR 触发后自动上行 **1010**（无需下行）。详见 [PIR_PROTOCOL.md](./PIR_PROTOCOL.md)。
 
-### 4.7 `2011` — 云端停录 → `1011`
+### 4.9 `2011` — 云端停录 → `1011`
 
 见 PIR 协议文档。停录成功时上行 **1011**。
 
@@ -238,13 +320,25 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
   "deviceNo": "868...",
   "dataType": "1003",
   "powerStatus": "1",
+  "usbInserted": 1,
+  "charging": 1,
   "remainPower": "85",
+  "batteryMv": "4079",
   "lowPowerMode": "normal",
   "time": "..."
 }
 ```
 
-触发：下行 **2003**；周期 60s。
+| 字段 | 说明 |
+|------|------|
+| `powerStatus` | 兼容字段，同 `usbInserted`（USB 座 GPIO27） |
+| `usbInserted` | `0` 未插 USB / `1` 已插 |
+| `charging` | `0` 未充电或已满 / `1` 充电中（GPIO17） |
+| `remainPower` | 电量 %（ADC） |
+| `batteryMv` | 电芯电压 mV |
+| `lowPowerMode` | `normal` / `rest` |
+
+触发：下行 **2003**；周期 60s；USB/充电变化；电量更新（≥30s 间隔）。
 
 ---
 
@@ -276,8 +370,8 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
   "stage": "success",
   "ret": 0,
   "message": "download_ok",
-  "currentVersion": "1.0.0",
-  "targetVersion": "1.0.1",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
   "time": "..."
 }
 ```
@@ -311,7 +405,48 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
 
 ---
 
-### 5.6 `1010` — PIR 检测状态
+### 5.6 `1006` — 设备标识（IMEI + GB28181）
+
+主题：`.../identity`
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1006",
+  "imei": "862323084068124",
+  "gb28181Id": "34020000001320000001",
+  "ret": 0,
+  "messageId": "id-query-001",
+  "time": "2026-05-24 12:00:00"
+}
+```
+
+触发：**2006** 查询；或 T3x 通讯就绪 + MQTT 在线后自动上报（可配置）。
+
+---
+
+### 5.7 `1007` — TF/SD 卡状态
+
+主题：`.../tfcard`
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1007",
+  "tfPresent": 1,
+  "totalMb": 16384,
+  "usedMb": 1024,
+  "freeMb": 15360,
+  "ret": 0,
+  "time": "2026-05-24 12:00:00"
+}
+```
+
+触发：**2007** 查询。
+
+---
+
+### 5.8 `1010` — PIR 检测状态
 
 | 项 | 值 |
 |----|-----|
@@ -336,26 +471,36 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
 | pirStatus | 含义 |
 |-----------|------|
 | `detected` | 正常 PIR 触发 |
+| `t3x_active` | T3x 首个 I 帧已写盘（`active=1`） |
 | `retrigger` | 录像中二次 PIR（将停录） |
 | `query` | 应答 2010 状态查询 |
 
 ---
 
-### 5.7 `1011` — PIR 停录
+### 5.9 `1011` — PIR 停录
 
 主题：`.../event`（与 1004 共用，按 `dataType` 区分）
 
 ```json
 {
+  "deviceNo": "868...",
   "dataType": "1011",
   "reason": "cloud",
+  "source": "4g",
   "uploadMode": "auto",
   "quality": "high",
   "time": "..."
 }
 ```
 
-### 5.8 上行汇总
+| source | 含义 |
+|--------|------|
+| `4g` | 4G 定时/云端停录（T3x 未写盘时） |
+| `t3x` | T3x `AT+RECORD=0,reason=*` |
+
+常见 T3x `reason`：`done`、`time_sync`、`no_iframe`、`open_failed`、`pir_retrigger`。详见 [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)。
+
+### 5.10 上行汇总
 
 | dataType | 主题 | 触发 |
 |----------|------|------|
@@ -364,6 +509,8 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
 | 1003 | `status` | 2003 / 60s |
 | 1004 | `event` | 2004 回复 / OTA |
 | 1005 | `sim` | 2005 |
+| 1006 | `identity` | 2006 / T3x 就绪自动 |
+| 1007 | `tfcard` | 2007 |
 | 1010 | `pir` | PIR 触发 / 2010 query |
 | 1011 | `event` | 停录 |
 
@@ -378,6 +525,8 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
 | 2003 | `handleDownlink2003` | `publishStatus` |
 | 2004 | `handleDownlink2004` | `publishControlReply` / `publishOtaStatus` |
 | 2005 | `handleDownlink2005` | `publishSimInfo` |
+| 2006 | `handleDownlink2006` | `publishDeviceIdentity` |
+| 2007 | `handleDownlink2007` | `publishTfCardStatus` |
 | 2010 | `handleDownlink2010` | `publishPirDetect` |
 | 2011 | `handleDownlink2011` | `publishPirRecordStop` |
 
@@ -391,5 +540,7 @@ OTA 字段：`version`, `url`, `product_key`, `timeout`, `full_url` 等（同 `l
 - [ ] 2004 reboot/off → 1004 `reply=1`
 - [ ] 2004 ota → 1004 回复 + stage 进度
 - [ ] 2005 → 1005
+- [ ] 2006 → 1006（含 T3x 未上电时唤醒查询）
+- [ ] 2007 → 1007（TF 存在/总容量/已用/可用）
 - [ ] PIR 触发 → 1010；2010 query → 1010
 - [ ] 2011 停录 → 1011

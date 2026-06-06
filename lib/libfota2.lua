@@ -1,47 +1,17 @@
 --[[
 @module libfota2
-@summary fota升级v2
+@summary FOTA 升级 v2（合宙 IoT + 脚本版 VERSION 转 IoT 版）
 @version 1.1
 @date    2024.11.22
 @author  wendal/HH
 @demo    fota2
+
 @usage
---用法实例
-local libfota2 = require("libfota2")
-
--- 功能:获取fota的回调函数
--- 参数:
--- result:number类型
---   0表示成功
---   1表示连接失败
---   2表示url错误
---   3表示服务器断开
---   4表示接收报文错误
---   5表示使用iot平台VERSION需要使用 xxx.yyy.zzz形式
-function libfota_cb(result)
-    log.info("fota", "result", result)
-    -- fota成功
-    if result == 0 then
-        rtos.reboot()   --如果还有其他事情要做,自行决定reboot的时机
-    end
-end
-
---下方示例为合宙iot平台,地址:http://iot.openluat.com
-libfota2.request(libfota_cb)
-
---如使用自建服务器,自行更换url
--- 对自定义服务器的要求是:
--- 若需要升级, 响应http 200, body为升级文件的内容
--- 若不需要升级, 响应300或以上的代码,务必注意
-local opts = {url="http://xxxxxx.com/xxx/upgrade"}
--- opts的详细说明, 看后面的函数API文档
-libfota2.request(libfota_cb, opts)
-
--- 若需要定时升级
--- 合宙iot平台
-sys.timerLoopStart(libfota2.request, 4*3600*1000, libfota_cb)
--- 自建平台
-sys.timerLoopStart(libfota2.request, 4*3600*1000, libfota_cb, opts)
+local libfota2 = require "libfota2"
+-- 合宙 IoT：空 opts，需全局 PRODUCT_KEY / PROJECT / VERSION
+libfota2.request(function(ret) if ret == 0 then rtos.reboot() end end, {})
+-- 自建/CDN：url 前加 ### 表示完整地址
+libfota2.request(cb, { url = "###http://cdn.example.com/fw.bin" })
 ]]
 
 local sys = require "sys"
@@ -49,176 +19,227 @@ require "sysplus"
 
 local libfota2 = {}
 
--- 单独判断下服务器下发的数据是不是"{"开头"}"结尾的字符串
-local function isjson(str)
-    local start, _ = string.find(str, "^%{")
-    local _, end_ = string.find(str, "%}$")
-    return start == 1 and end_ == #str and string.sub(str, 2, #str - 1):find("%B{") == nil
+local LOG_TAG = "libfota2"
+local IOT_UPGRADE_URL = "http://iot.openluat.com/api/site/firmware_upgrade?"
+local IOT_HOST = "iot.openluat.com"
+local SCRIPT_VERSION_PATTERN = "^%d%d%d%.%d%d%d%.%d%d%d$"
+
+--- 合宙 IoT 平台错误码说明（HTTP 非 200 时 body 内 code）
+local IOT_ERR_HINT = {
+    [3] = "无效的设备，检查 imei 参数",
+    [17] = "无权限，检查 IMEI 是否在项目下、固件与项目是否同账号",
+    [21] = "不允许升级，检查平台是否禁止该 IMEI",
+    [25] = "无效的项目，检查 PRODUCT_KEY",
+    [26] = "无效固件，检查 firmware_name 与后台一致",
+    [27] = "已是最新或未配置升级设备",
+    [40] = "循环升级被禁，在平台解除该 IMEI 禁止",
+    [43] = "差分包生成中，等待 1~3 分钟后重试",
+}
+
+local function coreVersionNumber()
+    local coreVer = rtos and rtos.version and rtos.version()
+    if not coreVer or coreVer == "" then
+        return nil
+    end
+    return coreVer:sub(1, 1) == "V" and coreVer:sub(2) or coreVer
 end
 
-local function fota_task(cbFnc, opts)
-    local ret = 0
-    local url = opts.url
-    local code, headers, body = http.request(opts.method, opts.url, opts.headers, opts.body, opts, opts.server_cert,
-                                    opts.client_cert, opts.client_key, opts.client_password).wait()
-    -- log.info("http fota", code, headers, body)
-    if code == 200 or code == 206 then
-        if body == 0 then
-            ret = 4
-        else
-            ret = 0
+--- 脚本版 001.000.002 → IoT 2034.001.002
+local function resolveIotOtaVersion(ver)
+    if ver == nil or ver == "" then
+        ver = _G.VERSION
+    end
+    if type(ver) ~= "string" then
+        return nil
+    end
+    if ver:match(SCRIPT_VERSION_PATTERN) then
+        local x, _, z = ver:match("^(%d%d%d)%.(%d%d%d)%.(%d%d%d)$")
+        local core = coreVersionNumber()
+        if not core then
+            return nil
         end
+        return core .. "." .. x .. "." .. z
+    end
+    local coreInVer = ver:match("^(%d+)%.")
+    local core = coreVersionNumber()
+    if coreInVer and core and coreInVer == core and ver:match("^%d+%.%d%d%d%.%d%d%d$") then
+        return ver
+    end
+    return nil
+end
+
+local function defaultFirmwareName()
+    local bsp = rtos.bsp()
+    if bsp:find("-") then
+        bsp = bsp:sub(1, bsp:find("-") - 1)
+    end
+    return (_G.PROJECT or "PANSHI_CAT1") .. "_LuatOS-SoC_" .. bsp
+end
+
+local function defaultDeviceQuery()
+    if mobile then
+        return "imei=" .. mobile.imei()
+    end
+    if wlan and wlan.getMac then
+        return "mac=" .. wlan.getMac()
+    end
+    return "uid=" .. mcu.unique_id():toHex()
+end
+
+local function isJsonBody(str)
+    if type(str) ~= "string" then
+        return false
+    end
+    local start = string.find(str, "^%{")
+    local _, endPos = string.find(str, "%}$")
+    return start == 1 and endPos == #str and string.sub(str, 2, #str - 1):find("%B{") == nil
+end
+
+local function logIotErrorBody(url, body)
+    if not url or not string.find(url, IOT_HOST) then
+        return
+    end
+    log.info(LOG_TAG, "合宙IoT响应解析")
+    local jsonBody, ok = json.decode(body)
+    local code
+    if ok == 1 and isJsonBody(body) then
+        code = jsonBody.code
+    else
+        log.info(LOG_TAG, "响应非JSON", type(body), body)
+        return
+    end
+    local hint = IOT_ERR_HINT[code]
+    if hint then
+        log.info(LOG_TAG, "code", code, hint)
+    else
+        log.info(LOG_TAG, "code", code)
+    end
+end
+
+local function fotaTask(cbFnc, opts)
+    local ret = 0
+    local code, _, body = http.request(
+        opts.method,
+        opts.url,
+        opts.headers,
+        opts.body,
+        opts,
+        opts.server_cert,
+        opts.client_cert,
+        opts.client_key,
+        opts.client_password
+    ).wait()
+
+    if code == 200 or code == 206 then
+        ret = (body == 0) and 4 or 0
     elseif code == -4 then
         ret = 1
     elseif code == -5 then
         ret = 3
+    elseif code == 401 or code == 403 then
+        log.error(LOG_TAG, "http fota", code, "合宙IoT无权限")
+        logIotErrorBody(opts.url, body)
+        ret = 3
+    elseif code >= 300 then
+        log.error(LOG_TAG, "http fota", code, "body", body)
+        logIotErrorBody(opts.url, body)
+        ret = 3
     else
-        log.info("libfota2", code, body)
+        log.error(LOG_TAG, "http fota", code, "body", body)
         ret = 4
-        local hziot = "iot.openluat.com"
-        local msg, json_body, result
-        if string.find(url, hziot) then
-            log.info("使用合宙服务器,接下来解析body里的code")
-            json_body, result = json.decode(body)
-            -- 如果json解析失败，证明服务器下发的不是json
-            if result == 1 and isjson(body) then
-                code = json_body["code"]
-            else
-                -- 这个值随便取的，只要不和其他定义重复就行
-                code = 1111111111111
-            end
-            if code == 43 then
-                log.info("请等待",
-                    ",云平台生成差分升级包需要等待,一到三分钟后云平台生成完成差分包便可以请求成功")
-            elseif code == 3 then
-                log.info("无效的设备", "检查请求键名(imei小写)正确性")
-            elseif code == 17 then
-                log.info("无权限",
-                    "设备会上报imei、固件名、项目key,服务器会以此查出设备、固件、项目三 条记录，如果 这三者不在同一个用户名下，就会认为无权限。设备不在项目key对应的账户下，可寻找合宙技术支持查询该设备在哪个账户下，核实情况后可修改设备归属")
-            elseif code == 21 then
-                log.info("不允许升级", "请检查IOT平台,是否对应imei被禁止了升级")
-            elseif code == 25 then
-                log.info("无效的项目",
-                    "productkey不一致,检查是否存在拼写错误,检查模块是否在本人账户下,若不在本人账户下,请联系合宙工作人员处理")
-            elseif code == 26 then
-                log.info("无效的固件",
-                    "固件名称错误,项目中没有对应的固件,也有可能是用户自己修改了固件名称,可对照升级日志中设备当前固件名与升级配置中固件名是否相同(固件名称,固件功能要完全一致,只是版本号不同)")
-            elseif code == 27 then
-                log.info("已是最新版本",
-                    "1.设备的固件/脚本版本高于或等于云平台上的版本号 2.用户项目升级配置中未添加该设备 3.云平台升级配置中，是否升级配置为否")
-            elseif code == 40 then
-                log.info("循环升级",
-                    "云平台进入设备列表搜索被禁止的imei,解除禁止升级即可. 云平台防止模块在升级失败后,反复请求升级导致流量卡流量耗尽,在模块一天请求升级六次后会禁止模块升级. 可在平台解除")
-            elseif code == 1111111111111 then
-                log.info("云平台下发的不是json", "我看看body是个什么东西", type(body), body)
-            else
-                log.info("不是上面的那些错误code", code)
-            end
-        end
+        logIotErrorBody(opts.url, body)
     end
-
     cbFnc(ret)
 end
 
---[[
-fota升级
-@api libfota2.request(cbFnc, opts)
-@function cbFnc 用户回调函数，回调函数的调用形式为：cbFnc(result) , 必须传
-@table fota参数, 后面有详细描述
-@return nil 无返回值
-@usaga
+local function buildIotUpgradeUrl(opts)
+    if not opts.project_key then
+        opts.project_key = _G.PRODUCT_KEY
+        if not opts.project_key then
+            log.error(LOG_TAG, "need PRODUCT_KEY")
+            return false
+        end
+    end
 
--- opts参数说明, 所有参数都是可选的
--- 1. opts.url string 升级所需要的URL, 若使用合宙iot平台,则不需要填
--- 2. opts.version string 版本号, 默认是 BSP版本号.x.z格式
--- 3. opts.timeout int 请求超时时间, 默认300000毫秒,单位毫秒
--- 4. opts.project_key string 合宙IOT平台的项目key, 默认取全局变量PRODUCT_KEY. 自建服务器不用填
--- 5. opts.imei string 设备识别码, 默认取IMEI(Cat.1模块)或WLAN MAC地址(wifi模块)或MCU唯一ID
--- 6. opts.firmware_name string 固件名称,默认是 _G.PROJECT.. "_LuatOS-SoC_" .. rtos.bsp()
--- 7. opts.server_cert string 服务器证书, 默认不使用
--- 8. opts.client_cert string 客户端证书, 默认不使用
--- 9. opts.client_key string 客户端私钥, 默认不使用
--- 10. opts.client_password string 客户端私钥口令, 默认不使用
--- 11. opts.method string 请求方法, 默认是GET
--- 12. opts.headers table 额外添加的请求头,默认不需要
--- 13. opts.body string 额外添加的请求body,默认不需要
+    if not opts.version then
+        opts.version = _G.IOT_VERSION or _G.VERSION
+    end
+
+    local iotVer = resolveIotOtaVersion(opts.version)
+    if not iotVer then
+        log.error(LOG_TAG, "version 无效", opts.version)
+        return false
+    end
+    if iotVer ~= opts.version then
+        log.info(LOG_TAG, "IoT version", opts.version, "→", iotVer)
+    end
+    opts.version = iotVer
+
+    if not opts.firmware_name then
+        opts.firmware_name = defaultFirmwareName()
+    end
+
+    local query
+    if opts.imei then
+        opts.url = string.format(
+            "%simei=%s&project_key=%s&firmware_name=%s&version=%s",
+            opts.url, opts.imei, opts.project_key, opts.firmware_name, opts.version
+        )
+    else
+        query = defaultDeviceQuery()
+        opts.url = string.format(
+            "%s%s&project_key=%s&firmware_name=%s&version=%s",
+            opts.url, query, opts.project_key, opts.firmware_name, opts.version
+        )
+    end
+    return true, query
+end
+
+--[[
+fota 升级
+@api libfota2.request(cbFnc, opts)
+@function cbFnc 回调 cbFnc(result)；0=成功
+@table opts 可选：url, version, project_key, firmware_name, imei, timeout, method 等
+@return nil
 ]]
 function libfota2.request(cbFnc, opts)
-    if not opts then
-        opts = {}
-    end
+    opts = opts or {}
     if fota then
         opts.fota = true
     else
         os.remove("/update.bin")
         opts.dst = "/update.bin"
     end
-    if not cbFnc then
-        cbFnc = function(ret)
-        end
-    end
-    -- 处理URL
+    cbFnc = cbFnc or function() end
+
     if not opts.url then
-        opts.url = "http://iot.openluat.com/api/site/firmware_upgrade?"
+        opts.url = IOT_UPGRADE_URL
     end
+
     local query = ""
     if opts.url:sub(1, 3) ~= "###" and not opts.url_done then
-        -- 补齐project_key函数
-        if not opts.project_key then
-            opts.project_key = _G.FOTA_CFG and _G.FOTA_CFG.product_key
-            if not opts.project_key then
-                log.error("libfota2", "iot.openluat.com need FOTA_CFG.product_key!!!")
-                cbFnc(5)
-                return
-            end
-        end
-        -- 补齐version参数
-        if not opts.version then
-            local x, y, z = string.match(_G.VERSION, "(%d+).(%d+).(%d+)")
-            opts.version = rtos.version():sub(2) .. "." .. x .. "." .. z
-        end
-        -- 补齐firmware_name参数
-        if not opts.firmware_name then
-            local bsp = rtos.bsp()
-            -- 如bsp包含'-', 就截取'-'前面的部分, 例如"air105-evb"就取"air105"
-            if bsp:find("-") then
-                bsp = bsp:sub(1, bsp:find("-") - 1)
-            end
-            opts.firmware_name = _G.PROJECT .. "_LuatOS-SoC_" .. bsp
-        end
-        -- 补齐imei参数
-        if not opts.imei then
-            if mobile then
-                query = "imei=" .. mobile.imei()
-            elseif wlan and wlan.getMac then
-                query = "mac=" .. wlan.getMac()
-            else
-                query = "uid=" .. mcu.unique_id():toHex()
-            end
-        end
-
-        -- 然后拼接到最终的url里
-        if not opts.imei then
-            opts.url = string.format("%s%s&project_key=%s&firmware_name=%s&version=%s", opts.url, query, opts.project_key, opts.firmware_name, opts.version)
-        else
-            opts.url = string.format("%simei=%s&project_key=%s&firmware_name=%s&version=%s", opts.url, opts.imei, opts.project_key, opts.firmware_name, opts.version)
+        local ok
+        ok, query = buildIotUpgradeUrl(opts)
+        if not ok then
+            cbFnc(5)
+            return
         end
     else
-        if opts.url:sub(1,3)=="###" then
-            opts.url = opts.url:sub(4)
-        end
+        opts.url = opts.url:sub(4)
     end
+
     opts.url_done = true
-    -- 处理method
-    if not opts.method then
-        opts.method = "GET"
-    end
+    opts.method = opts.method or "GET"
+
     log.info("libfota2.url", opts.method, opts.url)
-    log.info("libfota2.imei/mac/uid", query)
     log.info("libfota2.project_key", opts.project_key)
     log.info("libfota2.firmware_name", opts.firmware_name)
     log.info("libfota2.version", opts.version)
-    sys.taskInit(fota_task, cbFnc, opts)
+    if query ~= "" then
+        log.info("libfota2.imei/mac/uid", query)
+    end
+
+    sys.taskInit(fotaTask, cbFnc, opts)
 end
 
 return libfota2

@@ -51,37 +51,49 @@ local function collectSnapshot()
         operator = "unknown",
         operator_name = "未知",
     }
+    local ok, apn = pcall(mobile.apn, 0, 1)
+    if ok then
+        snap.apn = apn
+    end
     local okCell, cellular = pcall(require, "cellular_bootstrap")
-    if okCell and cellular and cellular.detectOperator then
-        snap.operator = cellular.detectOperator(snap.imsi, snap.iccid)
+    if okCell and cellular and cellular.resolveOperator then
+        snap.operator, snap.operator_name, snap.operator_src =
+            cellular.resolveOperator(snap.imsi, snap.iccid, snap.apn)
+    elseif okCell and cellular and cellular.detectOperator then
+        snap.operator = cellular.detectOperator(snap.imsi, snap.iccid, snap.apn)
         local names = { mobile = "移动", telecom = "电信", unicom = "联通", unknown = "未知" }
         snap.operator_name = names[snap.operator] or "未知"
     end
     local rt = _G.APP_RUNTIME
-    if rt and rt.sim_operator_name then
+    if snap.operator == "unknown" and rt and rt.sim_operator_name and rt.sim_operator ~= "unknown" then
         snap.operator = rt.sim_operator or snap.operator
         snap.operator_name = rt.sim_operator_name
+        snap.operator_src = "runtime"
+    end
+    if okCell and cellular and cellular.detectServingOperator then
+        snap.serving_operator, snap.serving_operator_name = cellular.detectServingOperator()
     end
     local sn = mobile.sn()
     if sn then
         snap.sn_hex = sn:toHex()
     end
-    local ok, apn = pcall(mobile.apn, 0, 1)
-    if ok then
-        snap.apn = apn
-    end
     return snap
 end
 
 local function logSnapshot(snap, title)
+    local opLine = "sim=" .. tostring(snap.operator_name or snap.operator or "?")
+    if snap.serving_operator_name and snap.serving_operator_name ~= snap.operator_name then
+        opLine = opLine .. " camp=" .. tostring(snap.serving_operator_name)
+    end
     log.info(LOG_TAG, title or "radio",
         string.format(
-            "operator=%s imei=%s csq=%s rssi=%s rsrp=%s snr=%s ip=%s status=%s",
-            tostring(snap.operator_name or snap.operator),
+            "%s imei=%s csq=%s rssi=%s rsrp=%s snr=%s ip=%s status=%s",
+            opLine,
             tostring(snap.imei), tostring(snap.csq), tostring(snap.rssi),
             tostring(snap.rsrp), tostring(snap.snr), tostring(snap.ip), tostring(snap.status)
         ))
-    log.info(LOG_TAG, "imsi", snap.imsi, "iccid", snap.iccid)
+    log.info(LOG_TAG, "imsi", snap.imsi, "iccid", snap.iccid,
+        "sim_src", tostring(snap.operator_src or "?"))
     if snap.sn_hex then
         log.info(LOG_TAG, "sn", snap.sn_hex)
     end

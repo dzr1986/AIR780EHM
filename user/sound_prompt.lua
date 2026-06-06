@@ -1,5 +1,5 @@
---- 提示音编排：4G 发 AT+PLAYSOUND，T31 播放（见 t31_linux/audio_prompt.c）
--- 不在 PIR/低功耗唤醒时播开机音（boot_on_wake=false）
+--- 提示音编排：4G 发 AT+PLAYSOUND，T3x 播放（见 t3x_linux/audio_prompt.c）
+-- 冷启动：收到 T3x 首条 AT 后再 AT+PLAYSOUND=boot（非固定延时）
 -- @module sound_prompt
 -- @release v1_20260529
 
@@ -16,6 +16,7 @@ local ACK_EVENT = "SOUND_PROMPT_ACK"
 local uart_bridge
 local t3xModule
 local coldBootPlayed = false
+local bootColdTaskStarted = false
 
 local function cfg()
     return _G.SOUND_CFG or {}
@@ -71,6 +72,11 @@ local function getUart()
 end
 
 local function ensureT3xPowered()
+    local okPol, policy = pcall(require, "t3x_policy")
+    if okPol and type(policy) == "table" and policy.mayPowerT3x
+        and not policy.mayPowerT3x("sound_prompt") then
+        return false
+    end
     if not t3xModule then
         local ok, mod = pcall(require, "t3x_ctrl")
         if ok then
@@ -133,15 +139,15 @@ function playBlocking(name, scene)
     ensureT3xPowered()
 
     local timeoutMs = tonumber(cfg().play_timeout_ms) or 2500
+    if scene == "boot_cold" then
+        coldBootPlayed = true
+    end
     log.info(LOG_TAG, "AT+PLAYSOUND", name, "scene", scene or "--")
     ub.sendString("AT+PLAYSOUND=" .. name, true)
 
     local ok = waitSoundAck(name, timeoutMs)
     if ok then
         log.info(LOG_TAG, "播放完成", name)
-        if name == "boot" and scene == "boot_cold" then
-            coldBootPlayed = true
-        end
     else
         log.warn(LOG_TAG, "播放超时", name, timeoutMs, "ms")
     end
@@ -155,12 +161,54 @@ function onSoundAck(name)
 end
 
 function onAppStarted()
-    if not shouldPlay("boot_cold") then
+    if bootColdTaskStarted or not shouldPlay("boot_cold") then
         return
     end
+    bootColdTaskStarted = true
     sys.taskInit(function()
-        local delay = tonumber(cfg().boot_delay_ms) or 6000
-        sys.wait(delay)
+        local ipcCfg = _G.HOST_IPC_CFG or {}
+        local useIpcReady = ipcCfg.enabled ~= false and ipcCfg.boot_sound_wait_ready ~= false
+        local timeoutMs = tonumber(cfg().boot_wait_host_ms)
+            or tonumber(cfg().boot_delay_ms)
+            or 60000
+        local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+        local firstCmd
+
+        if useIpcReady then
+            local okIpc, ipc = pcall(require, "t3x_ipc")
+            if okIpc and type(ipc) == "table" and ipc.powerOnWaitReady then
+                log.info(LOG_TAG, "等待 T3x +IPCSTATUS:ready", timeoutMs, "ms")
+                local ready = ipc.powerOnWaitReady({
+                    ready_timeout_ms = timeoutMs,
+                    poll_ms = ipcCfg.ready_poll_ms,
+                })
+                if not ready then
+                    log.warn(LOG_TAG, "等待 T3x ready 超时，跳过开机音", timeoutMs, "ms")
+                    return
+                end
+                log.info(LOG_TAG, "T3x ready")
+            else
+                useIpcReady = false
+            end
+        end
+
+        if not useIpcReady then
+            local okHu, hu = pcall(require, "host_uart")
+            if okHu and hu and hu.isHostAtReady and hu.isHostAtReady() then
+                firstCmd = hu.getHostFirstAt and hu.getHostFirstAt() or ""
+                log.info(LOG_TAG, "T3x 已发首条 AT", firstCmd or "")
+            else
+                log.info(LOG_TAG, "等待 T3x 首条 AT", timeoutMs, "ms")
+                local got
+                got, firstCmd = sys.waitUntil(evt, timeoutMs)
+                if not got then
+                    log.warn(LOG_TAG, "等待 T3x 首条 AT 超时，跳过开机音", timeoutMs, "ms")
+                    return
+                end
+                log.info(LOG_TAG, "收到 T3x 首条 AT", firstCmd or "")
+            end
+        end
+
         if shouldPlay("boot_cold") then
             playBlocking("boot", "boot_cold")
         end

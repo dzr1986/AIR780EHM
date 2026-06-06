@@ -1,7 +1,8 @@
-﻿# user / lib 调用关系（780EHM_PJ）
+# user / lib 调用关系（780EHM_PJ）
 
 > 与代码同步：配置见 [`CONFIG.md`](CONFIG.md)；MQTT=`net_mqtt.lua`；UART=`lib/uart_bridge.lua`；按键=`lib/key.lua` + `keyConfig.KEY_CONFIG`。  
-> 深度分析见 **[CODE_ANALYSIS.md](./CODE_ANALYSIS.md)**。
+> 深度分析见 **[CODE_ANALYSIS.md](./CODE_ANALYSIS.md)**。  
+> PIR 唤醒 / 录像 MQTT： [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)
 
 ---
 
@@ -88,15 +89,22 @@ main.lua
 ## 3. PIR 事件流
 
 ```
-lib/pir (GPIO30 rising, cooldown 10s)
+lib/pir (GPIO30 rising, cooldown)
   publish APP_PIR_HW_TRIGGERED
-    → pir_ctrl.onPirTriggered (subscribe in pir_ctrl.start)
+    → pir_ctrl.onPirTriggered
         录像中 + stopOnSecondPir → PIR_STOP_RECORDING(pir_retrigger)
-        否则 → GPIO_PIR_TRIGGERED
-             → PIR_TAKE_PHOTO / PIR_RECORD_VIDEO (+ 录像 timer)
-    → app subscribe
-        photo/video + uploadMode auto → net.publishWakeup + t3x_ctrl.wake()
-        stop → net.publishPirRecordStop(1011) + t3x_ctrl.pulseWakeup()
+        否则 → GPIO_PIR_TRIGGERED → MQTT 1010 detected
+             → publishActionEvents
+                 video/both → beginVideoSession + timer
+                 → PIR_WAKE_T3X ×1（both 不双唤醒）
+    → app subscribe PIR_WAKE_T3X
+        uploadMode=auto → net.publishWakeup(1001) + requestT3xWake()
+    → host_uart AT+RECORD=1/0
+        → T3X_RECORD_ACTIVE → 1010 t3x_active
+        → T3X_RECORD_STOP → 1011 source=t3x
+    → PIR_STOP_RECORDING / timer
+        → publishPirRecordStop(1011, source=4g) + requestT3xWake(pir_stop)
+        （会话去重：stop_mqtt_published）
 ```
 
 云端：
@@ -122,7 +130,7 @@ GPIO27 USB 拔出 (usb_charge)
        → t3x_ctrl.enterSleep (modemHibernate=false), publishRest(1002)
 
 GPIO27 USB 插入
-  → battery_guard.onUsbInserted() → onExitLowPower + wake T31
+  → battery_guard.onUsbInserted() → onExitLowPower + wake T3x
 ```
 
 ```

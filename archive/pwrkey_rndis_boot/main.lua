@@ -31,10 +31,10 @@ end)
 -- ③ 4G 拨号等 IP_READY（testmy 由 single_mqtt 完成，RNDIS 依赖此连接）
 net.start()
 
--- ④ pwrkey / boot / T31（testmy 由 gpio_irq_test 完成）
+-- ④ pwrkey / boot / T3x（testmy 由 gpio_irq_test 完成）
 sys.taskInit(function()
     pwrkey_boot.init_gpio()
-    pwrkey_boot.power_on_t31()
+    pwrkey_boot.power_on_t3x()
     log.info("main", "按键就绪: pwrkey 长按 %dms 关机", cfg.pwrkey_long_ms)
 end)
 

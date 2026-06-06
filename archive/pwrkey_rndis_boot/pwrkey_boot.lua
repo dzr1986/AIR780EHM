@@ -1,6 +1,6 @@
 --[[
 @module  pwrkey_boot
-@summary pwrkey 长按关机；boot 短按/长按控制 T31
+@summary pwrkey 长按关机；boot 短按/长按控制 T3x
 ]]
 
 local cfg = require "config"
@@ -16,23 +16,23 @@ local function now_ms()
     return mcu.ticks()
 end
 
-local function t31_power_on()
-    log.info("boot", "T31 上电")
-    gpio.setup(cfg.t31_power_io, 1)
-    gpio.set(cfg.t31_power_io, 1)
+local function t3x_power_on()
+    log.info("boot", "T3x 上电")
+    gpio.setup(cfg.t3x_power_io, 1)
+    gpio.set(cfg.t3x_power_io, 1)
 end
 
-local function t31_enter_boot_mode()
-    log.info("boot", "进入 T31 boot 模式")
-    gpio.setup(cfg.t31_power_io, 1)
-    gpio.set(cfg.t31_power_io, 0)
+local function t3x_enter_boot_mode()
+    log.info("boot", "进入 T3x boot 模式")
+    gpio.setup(cfg.t3x_power_io, 1)
+    gpio.set(cfg.t3x_power_io, 0)
     sys.timerStart(function()
-        gpio.setup(cfg.t31_boot_io, 1)
-        gpio.set(cfg.t31_boot_io, 1)
-        gpio.setup(cfg.t31_ota_io, 1)
-        gpio.set(cfg.t31_ota_io, 1)
+        gpio.setup(cfg.t3x_boot_io, 1)
+        gpio.set(cfg.t3x_boot_io, 1)
+        gpio.setup(cfg.t3x_ota_io, 1)
+        gpio.set(cfg.t3x_ota_io, 1)
     end, 500)
-    sys.timerStart(t31_power_on, 800)
+    sys.timerStart(t3x_power_on, 800)
 end
 
 local function on_pwrkey_long()
@@ -41,8 +41,8 @@ local function on_pwrkey_long()
 end
 
 local function on_bootkey_long()
-    log.info("bootkey", "长按 %d ms，T31 boot", cfg.bootkey_long_ms)
-    t31_enter_boot_mode()
+    log.info("bootkey", "长按 %d ms，T3x boot", cfg.bootkey_long_ms)
+    t3x_enter_boot_mode()
 end
 
 local function gpio_irq(io, level)
@@ -70,10 +70,10 @@ local function gpio_irq(io, level)
             end
             local dur = now_ms() - bootkey_down_ms
             if dur < cfg.bootkey_long_ms then
-                log.info("bootkey", "短按，T31 上电")
-                gpio.setup(cfg.t31_ota_io, 1)
-                gpio.set(cfg.t31_ota_io, 1)
-                t31_power_on()
+                log.info("bootkey", "短按，T3x 上电")
+                gpio.setup(cfg.t3x_ota_io, 1)
+                gpio.set(cfg.t3x_ota_io, 1)
+                t3x_power_on()
             end
             log.info("bootkey", "释放")
         end
@@ -92,8 +92,8 @@ function M.init_gpio()
     log.info("pwrkey_boot", "GPIO 已配置")
 end
 
-function M.power_on_t31()
-    t31_power_on()
+function M.power_on_t3x()
+    t3x_power_on()
 end
 
 return M

@@ -1,250 +1,484 @@
---- FOTA：MQTT 下行 2004 / DEVICE_OTA_REQUEST → libfota2
+--- FOTA：MQTT 2004 / REST_SEND_OTA → libfota2（合宙 IoT 平台）
+
+-- 依赖 main.lua 全局 PROJECT / VERSION / PRODUCT_KEY；IoT 版号见 _G.IOT_VERSION
+
 -- @module fota
--- @release 2026.5.18
+
+-- @release 2026.6.3
+
+
 
 require "sys"
 
+
+
 local _modname = ...
+
 module(_modname, package.seeall)
+
 _G[_modname] = _M
 
+
+
 local LOG_TAG = "fota"
+
 local libfota2 = require "libfota2"
 
+
+
 local started = false
+
 local busy = false
+
 local lastResult = nil
+
 local lastPayload = nil
+
 local requestCount = 0
+
 local lastRequestTime = 0
 
-local handlers = {
-    publishStatus = nil,
-}
-
 local config = {
-    product_key = nil,
+
     request_delay_ms = 500,
+
+    network_wait_ms = 120000,
+
+    callback_timeout_ms = 320000,
+
+    timeout_ms = 300000,
+
     auto_reboot_on_success = true,
-    default_options = {},
-    event_name = nil,
+
 }
 
-local RET_MSG = {
-    [0] = "download_ok",
-    [1] = "connect_failed",
-    [2] = "url_error",
-    [3] = "server_disconnect",
-    [4] = "recv_error",
-    [5] = "version_format_error",
-}
+local handlers = { publishStatus = nil }
+
+
 
 local function mergeConfig(newConfig)
+
     if type(newConfig) ~= "table" then
-        return config
+
+        return
+
     end
-    for key, value in pairs(newConfig) do
-        if key == "default_options" and type(value) == "table" then
-            config.default_options = value
-        elseif value ~= nil then
-            config[key] = value
+
+    for k, v in pairs(newConfig) do
+
+        if v ~= nil and k ~= "publishStatus" and k ~= "custom" then
+
+            config[k] = v
+
         end
+
     end
-    return config
+
 end
+
+
 
 local function reportStatus(stage, retCode, message, extra)
+
     log.info(LOG_TAG, "status", stage, retCode, message)
+
     if handlers.publishStatus then
+
         handlers.publishStatus(stage, retCode, message, extra)
+
     end
+
 end
 
---- 将 MQTT 2004 OTA 下行 JSON 转为 libfota2 的 opts
-function buildOptionsFromPayload(data)
-    data = type(data) == "table" and data or {}
-    local opts = {}
 
-    if type(config.default_options) == "table" then
-        for k, v in pairs(config.default_options) do
-            opts[k] = v
+
+local function waitNetworkReady(timeoutMs)
+
+    timeoutMs = tonumber(timeoutMs) or 120000
+
+    if socket and socket.localIP then
+
+        local ip = socket.localIP()
+
+        if ip and ip ~= "" and ip ~= "0.0.0.0" then
+
+            return true, ip
+
         end
+
     end
+
+    local ok = sys.waitUntil("IP_READY", timeoutMs)
+
+    local ip = (socket and socket.localIP and socket.localIP()) or nil
+
+    return ok and ip ~= nil and ip ~= "" and ip ~= "0.0.0.0", ip
+
+end
+
+
+
+--- 合宙 IoT opts；MQTT 显式带 url 时仍支持 CDN 直链（full_url=1）
+
+local function buildIotOpts(data)
+
+    data = type(data) == "table" and data or {}
+
+
 
     local url = data.url or data.otaUrl or data.firmwareUrl
+
     if url and url ~= "" then
+
         if data.url_no_query or data.full_url == true or data.full_url == 1 then
+
             url = "###" .. url
+
         end
-        opts.url = url
+
+        return { url = url, timeout = config.timeout_ms }
+
     end
 
-    local ver = data.version or data.targetVersion or data.firmwareVersion
-    if ver and ver ~= "" then
-        opts.version = tostring(ver)
+
+
+    local opts = {
+
+        project_key = data.project_key or data.projectKey or _G.PRODUCT_KEY,
+
+        version = data.version or data.targetVersion or data.firmwareVersion
+
+            or _G.IOT_VERSION or _G.VERSION,
+
+        timeout = config.timeout_ms,
+
+    }
+
+    local fw = data.firmware_name or data.firmwareName
+
+    if fw and fw ~= "" then
+
+        opts.firmware_name = fw
+
     end
 
-    local pk = data.product_key or data.project_key or data.productKey or data.projectKey
-    if pk and pk ~= "" then
-        opts.project_key = tostring(pk)
-    end
+    return opts
 
-    if data.firmware_name and data.firmware_name ~= "" then
-        opts.firmware_name = tostring(data.firmware_name)
-    end
-    if data.imei and data.imei ~= "" then
-        opts.imei = tostring(data.imei)
-    end
-
-    local timeout = tonumber(data.timeout or data.otaTimeout)
-    if timeout and timeout > 0 then
-        opts.timeout = timeout
-    end
-
-    if type(data.options) == "table" then
-        for k, v in pairs(data.options) do
-            opts[k] = v
-        end
-    end
-    if type(data.ota_opts) == "table" then
-        for k, v in pairs(data.ota_opts) do
-            opts[k] = v
-        end
-    end
-
-    return opts, data
 end
 
-local function applyProductKey(data)
-    local pk = data.product_key or data.project_key or data.productKey or data.projectKey
-        or config.product_key or (_G.FOTA_CFG and _G.FOTA_CFG.product_key)
-    if pk and pk ~= "" then
-        if _G.FOTA_CFG then
-            _G.FOTA_CFG.product_key = tostring(pk)
-        end
+
+
+local function validateIotConfig(opts)
+
+    if opts.url then
+
         return true
+
     end
-    return false
+
+    if not opts.project_key or opts.project_key == "" then
+
+        return false, "missing_product_key"
+
+    end
+
+    if not opts.version or opts.version == "" then
+
+        return false, "missing_version"
+
+    end
+
+    if not _G.PROJECT or _G.PROJECT == "" then
+
+        return false, "missing_project"
+
+    end
+
+    return true
+
 end
 
-local function fotaCallback(ret)
+
+
+-- 升级结果：0成功 1连接失败 2url错误 3服务器断开/无权限 4接收错误 5版本号格式错误
+
+local function fota_cb(ret)
+
     busy = false
+
     lastResult = ret
-    local msg = RET_MSG[ret] or ("unknown_ret_" .. tostring(ret))
-    log.info(LOG_TAG, "callback", ret, msg)
+
+    log.info(LOG_TAG, "result", ret)
+
+
 
     if ret == 0 then
-        reportStatus("success", ret, msg, {
-            version = lastPayload and (lastPayload.version or lastPayload.targetVersion),
-            targetVersion = lastPayload and (lastPayload.version or lastPayload.targetVersion),
-        })
-        if config.auto_reboot_on_success then
-            log.info(LOG_TAG, "升级成功，即将重启")
-            sys.timerStart(function()
-                if rtos and rtos.reboot then
-                    rtos.reboot()
-                elseif pm and pm.reboot then
-                    pm.reboot()
-                end
-            end, 1000)
+
+        log.info(LOG_TAG, "升级包下载成功,重启模块")
+
+        reportStatus("success", ret, "download_ok", lastPayload)
+
+        if config.auto_reboot_on_success ~= false then
+
+            rtos.reboot()
+
         end
+
+    elseif ret == 1 then
+
+        log.warn(LOG_TAG, "连接失败", "检查网络与 iot.openluat.com 可达性")
+
+        reportStatus("failed", ret, "connect_failed", lastPayload)
+
+    elseif ret == 2 then
+
+        log.warn(LOG_TAG, "url错误")
+
+        reportStatus("failed", ret, "url_error", lastPayload)
+
+    elseif ret == 3 then
+
+        log.warn(LOG_TAG, "合宙IoT拒绝或无新版本", "请确认 IMEI 已加入项目、固件已上传且版本高于当前")
+
+        reportStatus("failed", ret, "iot_rejected", lastPayload)
+
+    elseif ret == 4 then
+
+        log.warn(LOG_TAG, "接收报文错误", "检查固件包或网络")
+
+        reportStatus("failed", ret, "recv_error", lastPayload)
+
+    elseif ret == 5 then
+
+        log.warn(LOG_TAG, "版本号错误", "VERSION 须 xxx.yyy.zzz 或 IoT 版 内核.x.z")
+
+        reportStatus("failed", ret, "version_format_error", lastPayload)
+
     else
-        reportStatus("failed", ret, msg, {
-            version = lastPayload and (lastPayload.version or lastPayload.targetVersion),
-            targetVersion = lastPayload and (lastPayload.version or lastPayload.targetVersion),
-        })
+
+        log.warn(LOG_TAG, "未知结果", ret)
+
+        reportStatus("failed", ret, "unknown_ret_" .. tostring(ret), lastPayload)
+
     end
+
 end
 
-local function runOtaTask(data)
+
+
+local function autoOta(data)
+
     sys.taskInit(function()
+
         if busy then
-            log.warn(LOG_TAG, "已有升级任务进行中")
+
+            log.warn(LOG_TAG, "升级进行中")
+
             reportStatus("busy", -1, "ota_in_progress", data)
+
             return
+
         end
+
+
 
         data = type(data) == "table" and data or {}
+
         lastPayload = data
+
         requestCount = requestCount + 1
+
         lastRequestTime = os.time()
 
-        local opts, _ = buildOptionsFromPayload(data)
-        applyProductKey(data)
 
-        if not opts.url and not (_G.FOTA_CFG and _G.FOTA_CFG.product_key) and not config.product_key then
-            log.error(LOG_TAG, "无 url 且未配置 FOTA_CFG.product_key，无法 OTA")
-            reportStatus("failed", -2, "no_url_and_no_product_key", data)
+
+        local netOk, ip = waitNetworkReady(config.network_wait_ms)
+
+        if not netOk then
+
+            log.warn(LOG_TAG, "网络未就绪，跳过 OTA", "ip", ip or "nil")
+
+            reportStatus("failed", 1, "network_not_ready", data)
+
             return
+
         end
 
-        local statusExtra = {
-            version = opts.version,
-            targetVersion = opts.version,
-            url = opts.url,
-        }
+
+
+        local opts = buildIotOpts(data)
+
+        local valid, err = validateIotConfig(opts)
+
+        if not valid then
+
+            log.error(LOG_TAG, "IoT 配置无效", err)
+
+            reportStatus("failed", 5, err, data)
+
+            return
+
+        end
+
+
+
         busy = true
-        reportStatus("starting", 0, "check_upgrade", statusExtra)
+
+        reportStatus("starting", 0, "check_upgrade", data)
+
+
+
+        log.info(LOG_TAG, "开始检查升级", "ip", ip,
+
+            "project_key", opts.project_key or "(url)",
+
+            "version", opts.version or "(url)",
+
+            "firmware", opts.firmware_name or "(auto)")
+
+
 
         sys.wait(config.request_delay_ms or 500)
+
+
+
+        local done = false
+
+        local function wrapped_cb(ret)
+
+            if done then
+
+                return
+
+            end
+
+            done = true
+
+            fota_cb(ret)
+
+        end
+
+
+
         log.info(LOG_TAG, "libfota2.request", json.encode(opts))
-        libfota2.request(fotaCallback, opts)
+
+        libfota2.request(wrapped_cb, opts)
+
+
+
+        local timeoutMs = tonumber(config.callback_timeout_ms) or 320000
+
+        sys.wait(timeoutMs)
+
+        if not done then
+
+            busy = false
+
+            log.error(LOG_TAG, "OTA 超时无回调", timeoutMs, "ms")
+
+            reportStatus("failed", -1, "callback_timeout", data)
+
+        end
+
     end)
+
 end
+
+
 
 function configure(newConfig)
-    return mergeConfig(newConfig)
+
+    mergeConfig(newConfig)
+
+    return config
+
 end
+
+
 
 function getConfig()
+
     return config
+
 end
+
+
 
 function request(data)
-    runOtaTask(data or {})
+
+    autoOta(data)
+
     return true
+
 end
 
+
+
 function start(options)
+
     if started then
+
         return false
+
     end
 
     if _G.FOTA_CFG then
+
         mergeConfig(_G.FOTA_CFG)
+
     end
-    if config.product_key and config.product_key ~= "" then
-        if _G.FOTA_CFG and config.product_key then
-            _G.FOTA_CFG.product_key = _G.FOTA_CFG.product_key or config.product_key
-        end
+
+    if options and options.publishStatus then
+
+        handlers.publishStatus = options.publishStatus
+
     end
 
     if options then
-        if options.publishStatus then
-            handlers.publishStatus = options.publishStatus
-        end
+
         mergeConfig(options)
+
     end
 
-    local eventName = config.event_name
-        or (_G.APP_EVENTS and _G.APP_EVENTS.DEVICE_OTA_REQUEST)
-        or "APP_DEVICE_OTA_REQUEST"
 
-    sys.subscribe(eventName, runOtaTask)
+
+    local evt = (_G.APP_EVENTS and _G.APP_EVENTS.DEVICE_OTA_REQUEST) or "APP_DEVICE_OTA_REQUEST"
+
+    sys.subscribe(evt, autoOta)
+
+    sys.subscribe("REST_SEND_OTA", autoOta)
+
     started = true
-    log.info(LOG_TAG, "已启动，订阅", eventName)
+
+    log.info(LOG_TAG, "已启动", evt, "mode=合宙IoT", "PRODUCT_KEY", _G.PRODUCT_KEY or "?")
+
     return true
+
 end
+
+
 
 function getState()
+
     return {
+
         started = started,
+
         busy = busy,
+
         request_count = requestCount,
-        last_request_time = lastRequestTime,
+
         last_result = lastResult,
-        product_key = _G.FOTA_CFG and _G.FOTA_CFG.product_key,
+
+        product_key = _G.PRODUCT_KEY,
+
+        iot_version = _G.IOT_VERSION,
+
     }
+
 end
 
+
+
 return _M
+

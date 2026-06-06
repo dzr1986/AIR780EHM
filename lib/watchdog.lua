@@ -1,4 +1,4 @@
---- Air780EHM 模组侧硬件看门狗（LuatOS wdt，非 t3x 协处理器）
+--- Air780EHM 模组侧硬件看门狗（LuatOS wdt，非 T3x 协处理器）
 -- 全工程唯一 wdt.init / wdt.feed 入口；由 app 在启动早期调用
 -- @module watchdog
 -- @release 2026.5.18

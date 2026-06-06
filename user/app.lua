@@ -1,4 +1,4 @@
-﻿--- 应用核心编排模块（方案1）
+--- 应用核心编排模块（方案1）
 -- 串口：仅通过 lib/uart_bridge；见 config.UART_CFG / APP_STACK.uart
 -- @module app
 -- @release 2026.5.18
@@ -78,11 +78,35 @@ local function setLowPowerMode(enabled)
     return true
 end
 
-local function sendWakePulse(evt, channel)
-    local sid = channel or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+--- 低功耗产品能力总开关（FEATURE_CFG.low_power / LOW_POWER_CFG / MODULE_FLAGS.low_power）
+local function isLowPowerFeatureEnabled()
+    local fc = _G.FEATURE_CFG
+    if fc and fc.low_power == false then
+        return false
+    end
+    local lp = _G.LOW_POWER_CFG
+    if lp and lp.enabled == false then
+        return false
+    end
+    if _G.MODULE_FLAGS and _G.MODULE_FLAGS.low_power == false then
+        return false
+    end
+    return true
+end
+
+local function requestT3xWake(reason, sid, evt, opts)
+    sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+    evt = evt or 0
     wakeValue = string.format("%d,%d", sid, evt)
     state.last_wake_event = evt
-    log.info("app", "t3x 唤醒", wakeValue)
+    log.info("app", "t3x wake req", reason, wakeValue)
+
+    local okPol, policy = pcall(require, "t3x_policy")
+    if okPol and type(policy) == "table" and policy.requestT3xWake
+        and (_G.MODULE_FLAGS.t3x_policy ~= false) then
+        return policy.requestT3xWake(reason, sid, evt, opts)
+    end
+
     if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
         if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table"
             and time_sync.pushBeforeNotifyAsync then
@@ -93,22 +117,35 @@ local function sendWakePulse(evt, channel)
     elseif t3xModule and t3xModule.pulseWakeup then
         t3xModule.pulseWakeup()
     end
+    return true
 end
 
 local function onMqttOffline()
-    log.info("app", "MQTT离线")
-    sendWakePulse(2, 0)
+    log.info("app", "mqtt offline")
+    local okPol, policy = pcall(require, "t3x_policy")
+    if okPol and type(policy) == "table" and policy.shouldWakeOnMqttOffline
+        and (_G.MODULE_FLAGS.t3x_policy ~= false) then
+        if not policy.shouldWakeOnMqttOffline() then
+            log.info("app", "mqtt off, skip wake", policy.getDenyReason and policy.getDenyReason() or "")
+            return
+        end
+    end
+    requestT3xWake("mqtt_offline", 2, 0)
 end
 
-local function doEnterLowPowerBody()
+local function doEnterLowPowerBody(reason)
+    reason = reason or "unknown"
     if not setLowPowerMode(true) then return end
-    log.info("app", "进入低功耗")
+    _G.APP_RUNTIME.last_rest_reason = reason
     sys.publish(E.POWER_ENTERED_REST)
     if t3xModule and t3xModule.enterSleep then
-        t3xModule.enterSleep({ modemHibernate = false })
+        local lp = _G.LOW_POWER_CFG or {}
+        t3xModule.enterSleep({
+            modemHibernate = lp.modem_hibernate == true,
+        })
     end
     if state.mqtt_started and netModule and netModule.publishRest then
-        netModule.publishRest()
+        netModule.publishRest({ reason = reason, source = "enter" })
     end
     pcall(function()
         local net_tcp = require "net_tcp"
@@ -118,27 +155,46 @@ local function doEnterLowPowerBody()
     end)
 end
 
-local function onEnterLowPower()
+local function notifyT3xUsbHostIdlePolicy(inserted)
+    if not host_uart or not host_uart.push_usb_host_idle_state then
+        return
+    end
+    host_uart.push_usb_host_idle_state(inserted == true or inserted == 1)
+end
+
+local function onEnterLowPower(reason)
+    reason = reason or "unknown"
+    if not isLowPowerFeatureEnabled() then
+        log.info("app", "lp off, ignore enter", reason)
+        return
+    end
+    local usbCfg = _G.HOST_USB_CFG or {}
+    if usbCfg.block_4g_rest_when_usb ~= false and (_G.APP_RUNTIME.power_status or 0) == 1 then
+        log.info("app", "usb, ignore rest", reason)
+        return
+    end
     if type(sound_prompt) == "table" and sound_prompt.shouldPlay
         and sound_prompt.shouldPlay("shutdown_low_power") then
         sys.taskInit(function()
             if sound_prompt.playBlocking then
                 sound_prompt.playBlocking("shutdown", "shutdown_low_power")
             end
-            doEnterLowPowerBody()
+            log.info("app", "enter lp", reason)
+            doEnterLowPowerBody(reason)
         end)
         return
     end
-    doEnterLowPowerBody()
+    log.info("app", "enter lp", reason)
+    doEnterLowPowerBody(reason)
 end
 
-local function onExitLowPower()
+local function onExitLowPower(reason)
+    reason = reason or "unknown"
     if not setLowPowerMode(false) then return end
-    log.info("app", "退出低功耗")
+    _G.APP_RUNTIME.last_rest_reason = nil
+    log.info("app", "exit lp", reason)
     sys.publish(E.POWER_EXITED_REST)
-    if t3xModule then
-        sys.taskInit(function() t3xModule.wake() end)
-    end
+    requestT3xWake("exit_low_power", nil, nil, { force_wake = true })
     pcall(function()
         local ch = _G.NET_TCP_CHANNEL
         if ch and _G.MODULE_FLAGS.net_tcp ~= false then
@@ -150,13 +206,13 @@ local function onExitLowPower()
         sound_prompt.onWakeFromLowPower()
     end
     if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table"
-        and time_sync.onT31Wake then
-        time_sync.onT31Wake()
+        and time_sync.onT3xWake then
+        time_sync.onT3xWake()
     end
 end
 
 local function onReboot()
-    log.info("app", "设备重启")
+    log.info("app", "reboot")
     sys.timerStart(function()
     if pm and pm.reboot then pm.reboot() end
     end, 500)
@@ -164,7 +220,7 @@ end
 
 local function onPowerOff(reason)
     local function shutdownNow()
-        log.info("app", "设备关机", reason or "")
+        log.info("app", "shutdown", reason or "")
         pm.shutdown()
     end
     if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table"
@@ -181,7 +237,7 @@ end
 
 local function setupUartBridge()
     if _G.APP_STACK and _G.APP_STACK.uart ~= "uart_bridge" then
-        log.warn("app", "未支持的 UART 栈:", _G.APP_STACK.uart)
+        log.warn("app", "bad uart stack", _G.APP_STACK.uart)
         return false
     end
     local ok = uart_bridge.start({
@@ -196,33 +252,33 @@ local function setupUartBridge()
         _G.uart_bridge = uart_bridge
         local uc = _G.UART_CFG
         if type(uc) == "table" then
-            log.info("app", "串口驱动已启", uc.id, uc.baud)
+            log.info("app", "uart on", uc.id, uc.baud)
         else
-            log.info("app", "串口驱动已启")
+            log.info("app", "uart on")
         end
         if _G.MODULE_FLAGS.t3x_app ~= false then
             host_uart.start({
                 t3x = t3xModule,
-                on_enter_low_power = onEnterLowPower,
-                on_exit_low_power = onExitLowPower,
+                on_enter_low_power = function() onEnterLowPower("at") end,
+                on_exit_low_power = function() onExitLowPower("at") end,
                 on_reboot = onReboot,
                 on_power_off = function()
                     onPowerOff("user")
                 end,
                 on_mqtt_cfg = function(cfg)
                     if not netModule or not netModule.setMqttConfig then
-                        log.warn("app", "net 未就绪，忽略 MQTTCFG")
+                        log.warn("app", "net not ready, skip mqttcfg")
                         return
                     end
                     if not netModule.setMqttConfig(cfg) then
-                        log.warn("app", "MQTTCFG 无效")
+                        log.warn("app", "mqttcfg bad")
                         return
                     end
-                    log.info("app", "t3x 覆盖 MQTT", cfg.host, cfg.port)
+                    log.info("app", "t3x mqtt cfg", cfg.host, cfg.port)
                     if state.mqtt_started and netModule.restart then
                         netModule.restart()
                     elseif startMqtt() then
-                        log.info("app", "MQTT 已按 t3x 配置连接")
+                        log.info("app", "mqtt t3x cfg")
                     end
                 end,
                 on_servcreate = function(ch)
@@ -234,7 +290,7 @@ local function setupUartBridge()
                     net_tcp.closeChannel(sid)
                 end,
                 on_plain_line = function(line)
-                    log.info("app", "UART 行", line)
+                    log.info("app", "uart line", line)
                 end,
             })
         end
@@ -251,6 +307,43 @@ end
 -- PMD / USB
 -- ============================================================
 
+--- GPIO27 拔出后的 rest 策略（须在 applyUsbInsertState 已写入 power_status 之后调用）
+-- ① battery_guard.onUsbRemoved：按电量重算（≤10% → reason=battery）
+-- ② 若仍未 rest：产品规则拔座进 rest（reason=usb_remove）
+-- RNDIS 调试时不进 rest。见 doc/LOW_BATTERY_AND_LOW_POWER.md §2
+local function enterRestIfNeededAfterUsbRemove(source)
+    if not isLowPowerFeatureEnabled() then
+            log.info("app", "lp off, skip usb rest", source or "")
+        return
+    end
+    local rndisOn = _G.MODULE_FLAGS.rndis
+        and type(usbRndis) == "table"
+        and usbRndis.isEnabled
+        and usbRndis.isEnabled()
+    if rndisOn then
+            log.info("app", "rndis, skip gpio rest", source or "")
+        return
+    end
+    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+        battery_guard.onUsbRemoved()
+        if _G.APP_RUNTIME.low_power_mode == 0 then
+            onEnterLowPower("usb_remove")
+        end
+    elseif _G.APP_RUNTIME.low_power_mode == 0 then
+        onEnterLowPower("usb_remove")
+    end
+end
+
+--- GPIO27 插入：恢复电量保护忽略、必要时退出 rest（见 battery_guard.onUsbInserted）
+local function exitRestIfNeededAfterUsbInsert()
+    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+        battery_guard.onUsbInserted()
+    else
+        onExitLowPower("usb_insert")
+    end
+end
+
+--- USB 座状态写入口（GPIO27 / 旧 PMD）；拔插策略见上两函数
 local function applyUsbInsertState(inserted, source)
     local v = inserted and 1 or 0
     state.last_usb_state = v
@@ -259,32 +352,16 @@ local function applyUsbInsertState(inserted, source)
 
     if v == 0 then
         state.flag_usb = false
-        log.info("app", "USB拔出", source or "")
-        -- GPIO27=外壳 USB 座；PC 调试线/RNDIS 时可能仍为未插入，勿因此进低功耗
-        local rndisOn = _G.MODULE_FLAGS.rndis
-            and type(usbRndis) == "table"
-            and usbRndis.isEnabled
-            and usbRndis.isEnabled()
-        if rndisOn then
-            log.info("app", "RNDIS 已开，跳过因 GPIO27 未插入而进入低功耗")
-        elseif _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
-            battery_guard.onUsbRemoved()
-            if _G.APP_RUNTIME.low_power_mode == 0 then
-                onEnterLowPower()
-            end
-        elseif _G.APP_RUNTIME.low_power_mode == 0 then
-            onEnterLowPower()
-        end
+        log.info("app", "usb remove", source or "")
+        notifyT3xUsbHostIdlePolicy(false)
+        enterRestIfNeededAfterUsbRemove(source)
     else
         state.flag_usb = true
         state.usb_insert_tick = nowMs()
         cancelPwrKeyLongPress()
-        log.info("app", "USB插入", source or "")
-        if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
-            battery_guard.onUsbInserted()
-        else
-            onExitLowPower()
-        end
+        log.info("app", "usb insert", source or "")
+        exitRestIfNeededAfterUsbInsert()
+        notifyT3xUsbHostIdlePolicy(true)
     end
 end
 
@@ -307,7 +384,7 @@ local function setupPmd()
     if rtos and rtos.MSG_PMD then
         rtos.on(rtos.MSG_PMD, handlePmdMessage)
         pmd.init({})
-        log.info("app", "PMD已初始化")
+        log.info("app", "pmd inited")
     end
 end
 
@@ -318,7 +395,7 @@ local function setupWatchdog()
     end
     local wdtMod = _G.watchdog
     if wdtMod and wdtMod.start and wdtMod.start(_G.WDT_CFG) then
-        log.info("app", "已启用 Air780 模组看门狗")
+        log.info("app", "wdt on")
     end
 end
 
@@ -351,7 +428,7 @@ end
 
 function startMqtt()
     if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
-        log.warn("app", "t3x 烧录模式，跳过启动 MQTT")
+        log.warn("app", "burn: skip mqtt")
         return false
     end
     if state.mqtt_started then
@@ -361,41 +438,41 @@ function startMqtt()
         return false
     end
     if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "net_mqtt") then
-        log.warn("app", "MQTT 未配置")
+        log.warn("app", "no mqtt cfg")
         return false
     end
     state.mqtt_started = true
     netModule.start()
-    log.info("app", "MQTT任务已启动")
+    log.info("app", "mqtt task on")
     return true
 end
 
 --- 上电后等待蜂窝网就绪再启 MQTT（常电联网，不依赖 USB 拔出）
 local function bootMqtt()
     if not _G.MODULE_FLAGS.mqtt then
-        log.warn("app", "MODULE_FLAGS.mqtt=false，跳过 MQTT")
+        log.warn("app", "mqtt flag off")
         return
     end
     if not netModule then
-        log.error("app", "net 模块未注入，无法启动 MQTT")
+        log.error("app", "no net mod")
         return
     end
     -- 蜂窝入网由 main.lua bootstrapNetwork() 尽早启动（同 pwrkey_rndis_boot）
     sys.taskInit(function()
-        log.info("app", "等待 net_ready...")
+        log.info("app", "wait net_ready")
         local ready, deviceId = sys.waitUntil("net_ready", 300000)
         if ready then
             log.info("app", "net_ready OK", deviceId or "")
         else
-            log.warn("app", "net_ready 超时，仍尝试 startMqtt")
+            log.warn("app", "net_ready timeout, try mqtt")
         end
         logImeiBanner()
         if startMqtt() then
-            log.info("app", "MQTT 已按常电策略启动")
+            log.info("app", "mqtt always-on start")
         elseif state.mqtt_started then
-            log.info("app", "MQTT 已由其他路径启动，跳过重复 startMqtt")
+            log.info("app", "mqtt already started")
         else
-            log.warn("app", "startMqtt 失败")
+            log.warn("app", "startMqtt fail")
         end
     end)
 end
@@ -407,7 +484,7 @@ local function setupFota()
     end
     local fotaMod = fota or _G.fota
     if not fotaMod or not fotaMod.start then
-        log.warn("app", "FOTA 模块不可用，跳过")
+        log.warn("app", "fota unavailable")
         return
     end
     fotaMod.start({
@@ -417,7 +494,7 @@ local function setupFota()
             end
             end,
         })
-    log.info("app", "FOTA 已对接 MQTT 2004")
+    log.info("app", "fota 2004 hooked")
 end
 
 local function setupRndis()
@@ -425,7 +502,7 @@ local function setupRndis()
         return
     end
     if type(usbRndis) ~= "table" or not usbRndis.isStarted then
-        log.warn("app", "usb_rndis 模块无效，跳过 RNDIS")
+        log.warn("app", "usb_rndis invalid")
         return
     end
     -- main.lua 已 taskInit(open)；未启动时补一次
@@ -436,7 +513,7 @@ local function setupRndis()
         sys.wait(3000)
         if type(usbRndis.getStatus) == "function" then
             local st = usbRndis.getStatus()
-            log.info("app", "RNDIS 状态",
+            log.info("app", "rndis state",
                 "enabled", st.enabled and 1 or 0,
                 "mode", st.usb_ethernet_mode or "--",
                 "ip", st.ip or "--",
@@ -464,7 +541,7 @@ local function getBatteryPercentForBurn()
 end
 
 local function logT3xBurnCheck(name, passed, detail)
-    log.info("app", "t3x烧录条件", name, passed and "通过" or "失败", detail or "")
+    log.info("app", "burn chk", name, passed and "ok" or "fail", detail or "")
 end
 
 --- 单次条件判断（由 checkT3xBurnPreconditions 轮询调用）
@@ -475,12 +552,8 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
     local failReason = nil
     local pct = getBatteryPercentForBurn()
 
-    log.info("app", "---------- t3x 烧录条件检查",
-        "第", attemptIndex or 1, "/", attemptTotal or 1, "次", "----------")
-    log.info("app", "t3x烧录配置",
-        "min_battery", minPct, "%",
-        "require_battery_valid", cfg.require_battery_valid ~= false,
-        "allow_repeat_enter_boot", allowRepeat)
+    log.info("app", "burn checks", attemptIndex or 1, attemptTotal or 1)
+    log.info("app", "burn cfg", "min", minPct, "req_valid", cfg.require_battery_valid ~= false, "allow_repeat", allowRepeat)
 
     logT3xBurnCheck("runtime.APP_RUNTIME.battery_percent",
         pct ~= nil,
@@ -490,68 +563,58 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
 
     if cfg.require_battery_valid ~= false then
         if not pct then
-            logT3xBurnCheck("电量", false,
-                string.format("未知(需≥%d%%)，请等待 bat_adc 采样", minPct))
-            failReason = failReason or "电量未知，请等待 bat_adc 采样"
+            logT3xBurnCheck("bat", false, string.format("need>=%d wait adc", minPct))
+            failReason = failReason or "bat unknown"
         elseif pct < minPct then
-            logT3xBurnCheck("电量", false, string.format("%d%% < 要求 %d%%", pct, minPct))
-            failReason = failReason or string.format("电量 %d%% 低于 %d%%", pct, minPct)
+            logT3xBurnCheck("bat", false, string.format("%d<%d", pct, minPct))
+            failReason = failReason or string.format("bat %d < %d", pct, minPct)
         else
-            logT3xBurnCheck("电量", true, string.format("%d%% >= %d%%", pct, minPct))
+            logT3xBurnCheck("bat", true, string.format("%d>=%d", pct, minPct))
         end
     else
-        logT3xBurnCheck("电量", true, "已关闭 require_battery_valid")
+        logT3xBurnCheck("bat", true, "req_valid=off")
     end
 
     if pir_ctrl.isRecording and pir_ctrl.isRecording() then
-        logT3xBurnCheck("PIR录像中", true, "进入后将 suspend 并停录")
+        logT3xBurnCheck("pir_rec", true, "will suspend")
     else
-        logT3xBurnCheck("PIR录像中", true, "未在录像")
+        logT3xBurnCheck("pir_rec", true, "idle")
     end
 
-    logT3xBurnCheck("MQTT状态", true,
-        state.mqtt_started and "mqtt_started=true(进入后将 stop)" or "mqtt_started=false")
+    logT3xBurnCheck("mqtt", true,
+        state.mqtt_started and "on" or "off")
 
-    logT3xBurnCheck("烧录标志",
+    logT3xBurnCheck("burn_flag",
         not (_G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active),
-        string.format("T3X_BURN_MODE_ACTIVE=%s t3x_burn_active=%s",
+        string.format("BURN=%s active=%s",
             tostring(_G.T3X_BURN_MODE_ACTIVE), tostring(state.t3x_burn_active)))
 
     if not t3xModule or not t3xModule.getState then
-        logT3xBurnCheck("t3x_ctrl", false, "模块未注入或无 getState")
-        failReason = failReason or "t3x_ctrl 不可用"
+        logT3xBurnCheck("t3x", false, "no module")
+        failReason = failReason or "no t3x_ctrl"
     else
         local st = t3xModule.getState() or {}
-        log.info("app", "t3x烧录条件 t3x状态",
-            "in_boot_mode", tostring(st.in_boot_mode),
-            "powered_on", tostring(st.powered_on),
-            "power_state", tostring(st.power_state),
-            "last_action", tostring(st.last_action))
+        log.info("app", "burn t3xst", tostring(st.in_boot_mode), tostring(st.powered_on), tostring(st.power_state))
         if st.pins then
-            log.info("app", "t3x烧录条件 t3x引脚",
-                "pwr", tostring(st.pins.pwr),
-                "boot", tostring(st.pins.boot),
-                "ota", tostring(st.pins.ota))
+            log.info("app", "burn pins", tostring(st.pins.pwr), tostring(st.pins.boot), tostring(st.pins.ota))
         end
         if st.in_boot_mode then
             if allowRepeat then
-                logT3xBurnCheck("未在BOOT模式", true,
-                    "in_boot_mode=true 但 allow_repeat_enter_boot，允许再次 enterBootMode")
+                logT3xBurnCheck("bootmode", true, "repeat allowed")
             else
-                logT3xBurnCheck("未在BOOT模式", false,
-                    "in_boot_mode=true（需 coproc_ready 退出 BOOT 或开 allow_repeat_enter_boot）")
-                failReason = failReason or "已在 BOOT 模式"
+                logT3xBurnCheck("bootmode", false, "already in boot")
+                failReason = failReason or "in boot"
             end
         else
-            logT3xBurnCheck("未在BOOT模式", true, "in_boot_mode=false")
+            logT3xBurnCheck("bootmode", true, "not in boot")
         end
     end
 
     if failReason then
-        log.warn("app", "本次判断结果: 失败", "第", attemptIndex or 1, "次", failReason)
+        log.warn("app", "burn fail", attemptIndex or 1, failReason)
         return false, failReason
     end
-    log.info("app", "本次判断结果: 通过", "第", attemptIndex or 1, "次", "battery", pct, "%")
+    log.info("app", "burn pass", attemptIndex or 1, "bat", pct)
     return true, pct
 end
 
@@ -571,10 +634,7 @@ local function checkT3xBurnPreconditions()
     local executed = 0
     local finalOk = false
 
-    log.info("app", "========== t3x 烧录条件轮询 ==========",
-        "最多", maxAttempts, "次",
-        "失败间隔", retryMs, "ms",
-        "额外重试", retryCount, "次")
+    log.info("app", "burn poll", maxAttempts, retryMs, retryCount)
 
     for attempt = 1, maxAttempts do
         executed = attempt
@@ -583,31 +643,24 @@ local function checkT3xBurnPreconditions()
             passCount = passCount + 1
             lastPassPct = detail
             finalOk = true
-            log.info("app", "累计统计", "已执行", executed, "次",
-                "通过", passCount, "次", "失败", failCount, "次")
+            log.info("app", "burn stats", executed, passCount, failCount)
             break
         end
         failCount = failCount + 1
         lastFailReason = detail
-        log.warn("app", "累计统计", "已执行", executed, "次",
-            "通过", passCount, "次", "失败", failCount, "次", "最近失败", detail or "")
+        log.warn("app", "burn stats", executed, passCount, failCount, detail or "")
         if attempt < maxAttempts then
-            log.info("app", "条件未满足，", retryMs, "ms 后进行第", attempt + 1, "/", maxAttempts, "次判断")
+            log.info("app", "burn retry", retryMs, attempt + 1, maxAttempts)
             sys.wait(retryMs)
         end
     end
 
-    log.info("app", "========== t3x 烧录条件综合 ==========",
-        "配置最多", maxAttempts, "次",
-        "实际执行", executed, "次",
-        "通过计数", passCount,
-        "失败计数", failCount,
-        "最终结果", finalOk and "通过" or "拒绝")
+    log.info("app", "burn sum", maxAttempts, executed, passCount, failCount, finalOk and 1 or 0)
     if finalOk then
-        log.info("app", "综合结论: 允许进入烧录", "电量", lastPassPct, "%")
+        log.info("app", "burn allow", lastPassPct)
         return true, lastPassPct
     end
-    log.warn("app", "综合结论: 拒绝进入烧录", "最近原因", lastFailReason or "未知")
+    log.warn("app", "burn deny", lastFailReason or "?")
     return false, lastFailReason
 end
 
@@ -617,7 +670,7 @@ local function shutdownServicesForT3xBurn(cfg)
     state.t3x_burn_active = true
     state.heartbeat_paused = true
 
-    log.info("app", "关停业务：准备 t3x 烧录")
+    log.info("app", "stop for burn")
 
     if cfg.suspend_pir ~= false and pir_ctrl.suspend then
         pir_ctrl.suspend()
@@ -639,9 +692,9 @@ local function shutdownServicesForT3xBurn(cfg)
         if type(usbRndis) == "table" and usbRndis.disable then
             local rndisOk, rndisErr = usbRndis.disable()
             if rndisOk then
-                log.info("app", "烧录前 RNDIS 已停止")
+                log.info("app", "rndis stopped preburn")
             else
-                log.warn("app", "烧录前 RNDIS 停止失败", rndisErr or "")
+                log.warn("app", "rndis stop fail preburn", rndisErr or "")
             end
         end
     end
@@ -656,29 +709,29 @@ end
 
 local function tryEnterT3xBurnMode()
     local cfg = _G.T3X_BURN_CFG or {}
-    log.info("app", "========== t3x 烧录模式（GPIO28 长按）==========")
+    log.info("app", "burn mode gpio28")
 
     local ok, detail = checkT3xBurnPreconditions()
     if not ok then
-        log.warn("app", "t3x 烧录条件不满足:", detail)
+        log.warn("app", "burn cond fail", detail)
         if gpioModule and gpioModule.runLedPattern then
             gpioModule.runLedPattern("blink_red")
         end
         return false
     end
-    log.info("app", "电量 OK", detail, "%")
+    log.info("app", "bat ok", detail)
 
     shutdownServicesForT3xBurn(cfg)
 
     if not t3xModule or not t3xModule.enterBootMode then
-        log.warn("app", "t3x_ctrl 不可用")
+        log.warn("app", "no t3x_ctrl")
         return false
     end
     if not t3xModule.enterBootMode() then
-        log.warn("app", "t3x_ctrl.enterBootMode 失败")
+        log.warn("app", "enterBoot fail")
         return false
     end
-    log.info("app", "t3x 烧录时序已启动，等待协处理器就绪(GPIO_COPROC_READY 退出 BOOT)")
+    log.info("app", "burn seq start, wait coproc ready")
     return true
 end
 
@@ -686,46 +739,91 @@ local function onPirMediaAction(action, uploadMode, quality)
     if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
         return
     end
-    log.info("app", "PIR动作", action, uploadMode, quality)
+    log.info("app", "pir act", action, uploadMode, quality)
     if (uploadMode == "auto" or uploadMode == nil) and netModule and netModule.publishWakeup then
         netModule.publishWakeup()
     end
-    if _G.MODULE_FLAGS.t3x_app ~= false then
-        local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
-        host_uart.notify_host(sid, 0)
-    elseif t3xModule then
-        sys.taskInit(function() t3xModule.wake() end)
+    local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+    requestT3xWake("pir_media", sid, 0)
+end
+
+local function t3xRecActive()
+    if host_uart and host_uart.getT3xRecActive then
+        return host_uart.getT3xRecActive() == 1
     end
+    return false
 end
 
 local function onPirStopRecording(reason, uploadMode, quality)
-    log.info("app", "PIR停录", reason)
-    if netModule and netModule.publishPirRecordStop then
-        netModule.publishPirRecordStop(reason, uploadMode, quality)
+    log.info("app", "pir stop", reason)
+    local preferT3x = (reason == "timer" or reason == "cloud" or reason == "manual")
+        and t3xRecActive()
+    if not preferT3x and netModule and netModule.publishPirRecordStop then
+        netModule.publishPirRecordStop(reason, uploadMode, quality, { source = "4g" })
+    elseif preferT3x then
+        log.info("app", "t3x rec active, 1011 to t3x", reason)
     end
     if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
         local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
-        host_uart.notify_host(sid, 0)
+        requestT3xWake("pir_stop", sid, 0)
     end
 end
 
 local function setupEventHandlers()
     pir_ctrl.start()
-    sys.subscribe(E.POWER_ENTER_REST, onEnterLowPower)
-    sys.subscribe(E.POWER_EXIT_REST, onExitLowPower)
+    sys.subscribe(E.POWER_ENTER_REST, function()
+        if not isLowPowerFeatureEnabled() then
+            return
+        end
+        local usbCfg = _G.HOST_USB_CFG or {}
+        if usbCfg.block_4g_rest_when_usb ~= false and (_G.APP_RUNTIME.power_status or 0) == 1 then
+            log.info("app", "usb, ignore 2002 rest")
+            return
+        end
+        onEnterLowPower("mqtt_2002")
+    end)
+    sys.subscribe(E.POWER_EXIT_REST, function()
+        if isLowPowerFeatureEnabled() or (_G.APP_RUNTIME and _G.APP_RUNTIME.low_power_mode == 1) then
+            onExitLowPower("mqtt_2002")
+        end
+    end)
     sys.subscribe(E.DEVICE_REBOOT_REQUEST, onReboot)
     sys.subscribe(E.DEVICE_POWER_OFF_REQUEST, function()
         onPowerOff("mqtt")
     end)
 
-    sys.subscribe(E.PIR_TAKE_PHOTO, function(uploadMode, quality)
-        onPirMediaAction("photo", uploadMode, quality)
+    sys.subscribe(E.PIR_WAKE_T3X, function(action, uploadMode, quality)
+        onPirMediaAction(action, uploadMode, quality)
     end)
-    sys.subscribe(E.PIR_RECORD_VIDEO, function(uploadMode, quality)
-        onPirMediaAction("video", uploadMode, quality)
+    sys.subscribe(E.PIR_REQUEST_T3X_STOP, function(reason, uploadMode, quality)
+        log.info("app", "req t3x stop rec", reason)
+        local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+        requestT3xWake("pir_stop_" .. tostring(reason), sid, 0)
+    end)
+    sys.subscribe(E.T3X_SNAPSHOT_DONE, function(path)
+        log.info("app", "t3x snap done", path)
+        if netModule and netModule.publishPirSnapshotDone then
+            netModule.publishPirSnapshotDone(path)
+        end
     end)
     sys.subscribe(E.PIR_STOP_RECORDING, function(reason, uploadMode, quality)
         onPirStopRecording(reason, uploadMode, quality)
+    end)
+    sys.subscribe(E.T3X_RECORD_ACTIVE, function()
+        if netModule and netModule.publishPirRecordActive then
+            netModule.publishPirRecordActive()
+        end
+    end)
+    sys.subscribe(E.T3X_RECORD_STOP, function(reason, uploadMode, quality)
+        log.info("app", "t3x rec end", reason)
+        if netModule and netModule.publishT3xRecordStop then
+            netModule.publishT3xRecordStop(reason, uploadMode, quality)
+        end
+    end)
+    sys.subscribe(E.PIR_TIMER_EXPIRED, function(uploadMode, quality)
+        local stopTimer = (_G.APP_PIR_CONFIG and _G.APP_PIR_CONFIG.STOP_REASON
+            and _G.APP_PIR_CONFIG.STOP_REASON.TIMER) or "timer"
+        pir_ctrl.publishStopRecording(stopTimer)
     end)
     sys.subscribe(E.GPIO_PIR_TRIGGERED, function(pirStatus, action, uploadMode, quality)
         log.info("app", "PIR GPIO", pirStatus, action)
@@ -743,35 +841,35 @@ local function setupEventHandlers()
     end)
 
     sys.subscribe(E.GPIO_PWRKEY_SHORT, function()
-        log.info("app", "电源键短按")
+        log.info("app", "pwr short")
     end)
     sys.subscribe(E.GPIO_PWRKEY_LONG, function()
-        log.info("app", "电源键长按")
+        log.info("app", "pwr long")
         if state.usb_insert_tick > 0 then
             local elapsed = nowMs() - state.usb_insert_tick
             if _G.APP_RUNTIME.power_status == 1 and elapsed < USB_PWRKEY_GRACE_MS then
-                log.warn("app", "USB刚插入", elapsed, "ms，忽略误触关机")
+                log.warn("app", "usb just inserted, ignore pwr long", elapsed)
                 return
             end
         end
         onPowerOff("user")
     end)
     sys.subscribe(E.GPIO_BOOTKEY_SHORT, function()
-        log.info("app", "BOOT键短按")
+        log.info("app", "boot short")
     end)
     sys.subscribe(E.GPIO_BOOTKEY_LONG, function()
-        log.info("app", "BOOT键长按")
+        log.info("app", "boot long")
         sys.taskInit(tryEnterT3xBurnMode)
     end)
     sys.subscribe(E.GPIO_COPROC_READY, function()
-        log.info("app", "协处理器就绪")
+        log.info("app", "coproc ready")
         if t3xModule then t3xModule.exitBootMode() end
         if pir_ctrl.resume and state.t3x_burn_active then
             pir_ctrl.resume()
             _G.T3X_BURN_MODE_ACTIVE = false
             state.t3x_burn_active = false
             state.heartbeat_paused = false
-            log.info("app", "t3x 烧录流程结束，PIR 已恢复（MQTT/串口需按需重启或复位）")
+            log.info("app", "burn end, pir resume")
         end
     end)
     sys.subscribe(E.GPIO_VBUS_CHANGED, function(powerStatus)
@@ -781,7 +879,7 @@ local function setupEventHandlers()
         applyUsbInsertState(inserted == 1, "GPIO27")
         if inserted == 1 and _G.MODULE_FLAGS.rndis and not state.t3x_burn_active
             and type(usbRndis) == "table" and usbRndis.enableAsync then
-            log.info("app", "USB 插入，重新启用 RNDIS（修复 PC 网卡媒体断开）")
+            log.info("app", "usb, re-en rndis")
             usbRndis.enableAsync()
         end
         if inserted == 1 and state.mqtt_started and netModule and netModule.publishStatus then
@@ -793,32 +891,30 @@ local function setupEventHandlers()
         end
     end)
     sys.subscribe(E.GPIO_CHG_STATE_CHANGED, function(charging)
-        log.info("app", "CHG_STATE GPIO17", charging == 1 and "充电中" or "未充电/充满",
-            "（充电板：充电=CHG_RED 硬件红灯，充满=CHG_BLUE 硬件蓝灯）")
+        log.info("app", "chg17", charging == 1 and "chg" or "no")
         if state.mqtt_started and netModule and netModule.publishStatus and _G.APP_RUNTIME.online_status == 1 then
             netModule.publishStatus()
         end
     end)
 
     sys.subscribe("BATTERY_UPDATE", function(pct, mv)
-        log.info("app", "电量", pct, "%", mv, "mV",
-            "（模组LED：>70%蓝常亮，20~70%蓝闪，<20%红闪）")
+        log.info("app", "bat", pct, mv)
         if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
             battery_guard.onBatteryUpdate(pct, mv)
         end
     end)
     sys.subscribe(E.MQTT_OFFLINE, onMqttOffline)
     sys.subscribe(E.MQTT_SERVER_DATA, function(_topic, payload)
-        log.info("app", "MQTT下行", payload)
+        log.info("app", "mqtt dl", payload)
     end)
     sys.subscribe(E.MQTT_PUBLISH_WAKEUP, function(topic, payload)
-        log.info("app", "MQTT已发唤醒", topic, payload)
+        log.info("app", "mqtt pub wake", topic)
     end)
     sys.subscribe(E.MQTT_PUBLISH_REST, function(topic, payload)
-        log.info("app", "MQTT已发休眠", topic, payload)
+        log.info("app", "mqtt pub rest", topic)
     end)
     sys.subscribe(E.MQTT_OTA_STATUS, function(stage, retCode, message)
-        log.info("app", "OTA状态", stage, retCode, message)
+        log.info("app", "ota st", stage, retCode, message)
     end)
 end
 
@@ -833,25 +929,25 @@ local function setupGpio()
         pwrkeyPin = gin and gin.pwr_key and gin.pwr_key.pin,
         bootkeyPin = gin and gin.boot_key and gin.boot_key.pin,
         readyPin = gin and gin.coproc_ready and gin.coproc_ready.pin,
-        ledRedPin = gout and gout.led_red and gout.led_red.pin,
+        ledRedPin = (gout and gout.led_red and gout.led_red.enabled ~= false) and gout.led_red.pin or nil,
         ledBluePin = gout and gout.bat_stat_led and gout.bat_stat_led.pin,
     })
 end
 
 local function startBackgroundServices()
     if _G.MODULE_FLAGS.battery then
-        log.info("app", "电量模块", "vbat", "v2-divider")
+        log.info("app", "bat mod v2")
         if type(batAdc) == "table" and batAdc.start then
             batAdc.start()
         else
-            log.error("app", "bat_adc 模块无效，跳过电量采样")
+            log.error("app", "no bat_adc, skip")
         end
     end
     if _G.MODULE_FLAGS.charge then
         if type(usbCharge) == "table" and usbCharge.start then
             usbCharge.start()
         else
-            log.error("app", "usb_charge 模块无效，跳过充电检测")
+            log.error("app", "no usb_charge, skip")
         end
     end
     if _G.MODULE_FLAGS.sntp then sntp_sync.start() end
@@ -862,25 +958,47 @@ local function initPowerStatus()
     local inserted
     if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
         inserted = usbCharge.isUsbInserted()
-        log.info("app", "USB_DET GPIO27", inserted and "插入" or "未插入")
+        log.info("app", "usb_det27", inserted and 1 or 0)
     else
         inserted = (gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1) or false
-        log.info("app", "USB VBUS", inserted and "插入" or "未插入")
+        log.info("app", "vbus", inserted and 1 or 0)
     end
-    _G.APP_RUNTIME.power_status = inserted and 1 or 0
-    state.flag_usb = inserted
-    sys.publish(E.GPIO_VBUS_CHANGED, _G.APP_RUNTIME.power_status)
-    if not inserted and not _G.MODULE_FLAGS.pmd_runtime and not _G.MODULE_FLAGS.charge then
-        if _G.MODULE_FLAGS.mqtt then
-            setLowPowerMode(true)
-            if t3xModule and t3xModule.enterSleep then
-                t3xModule.enterSleep({ modemHibernate = false })
-            end
-            log.info("app", "无USB，MQTT常电：仅 t3x 休眠，等待蜂窝/MQTT")
+    if not inserted and not isLowPowerFeatureEnabled() then
+        _G.APP_RUNTIME.power_status = 0
+        state.flag_usb = false
+        sys.publish(E.GPIO_VBUS_CHANGED, 0)
+        log.info("app", "lp off, no usb keep t3x")
+        return
+    end
+    if not _G.MODULE_FLAGS.pmd_runtime then
+        -- 拔插策略、T3x +CAT1:USB 通知、进/出 rest 均走统一入口
+        applyUsbInsertState(inserted, "boot")
+    else
+        _G.APP_RUNTIME.power_status = inserted and 1 or 0
+        state.flag_usb = inserted
+        sys.publish(E.GPIO_VBUS_CHANGED, _G.APP_RUNTIME.power_status)
+    end
+end
+
+local function scheduleBootUsbPolicySync()
+    local usbCfg = _G.HOST_USB_CFG or {}
+    local notify = usbCfg.notify_t3x_usb_state
+    if notify == false then
+        return
+    end
+    local delayMs = tonumber(usbCfg.boot_notify_delay_ms)
+        or tonumber((_G.TIME_SYNC_CFG or {}).host_boot_wait_ms)
+        or 1500
+    sys.timerStart(function()
+        -- 延迟补发也优先读真实的 USB_DET 物理插入状态，避免早期读数与实际不一致时误报 USB
+        local inserted = false
+        if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
+            inserted = usbCharge.isUsbInserted() == true
         else
-            onEnterLowPower()
+            inserted = (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status or 0) == 1
         end
-    end
+        notifyT3xUsbHostIdlePolicy(inserted)
+    end, delayMs)
 end
 
 local function startHeartbeat()
@@ -889,14 +1007,14 @@ local function startHeartbeat()
             return
         end
         state.heartbeat_count = state.heartbeat_count + 1
-        local mqttHint = "未启"
+        local mqttHint = "mqtt-off"
         if state.mqtt_started then
             if _G.APP_RUNTIME.online_status == 1 then
-                mqttHint = "已连接"
+                mqttHint = "mqtt-ok"
             else
-                local ip = (socket and socket.localIP and socket.localIP()) or "无IP"
+                local ip = (socket and socket.localIP and socket.localIP()) or "noip"
                 local csq = (mobile and mobile.csq and mobile.csq()) or "?"
-                mqttHint = string.format("已启未连 ip=%s csq=%s", ip, csq)
+                mqttHint = string.format("mqtt-up ip=%s csq=%s", ip, csq)
             end
         end
         local batPct = _G.APP_RUNTIME.battery_percent
@@ -930,19 +1048,19 @@ end
 
 function start(gpio, net, t3x_ctrl)
     if started then
-        log.warn("app", "已启动")
+        log.warn("app", "started")
         return false
     end
     if led.isBatStatBreathTestEnabled() then
         led.startBatStatBreathTest()
         started = true
-        log.info("app", "BAT_STAT_LED 测试模式，已跳过业务启动")
+        log.info("app", "led test, skip boot")
         return true
     end
     gpioModule, netModule, t3xModule = gpio, net, t3x_ctrl
 
-    log.info("app", "========== 应用启动 ==========")
-    log.info("app", "栈", json.encode(_G.APP_STACK or {}))
+    log.info("app", "app start ====")
+    log.info("app", "stack", json.encode(_G.APP_STACK or {}))
     logImeiBanner()
 
     setupEventHandlers()
@@ -954,9 +1072,7 @@ function start(gpio, net, t3x_ctrl)
                 onPowerOff("battery")
             end,
             wake_t3x = function()
-                if t3xModule and t3xModule.wake then
-                    sys.taskInit(function() t3xModule.wake() end)
-                end
+                requestT3xWake("battery_usb", nil, nil, { force_wake = true })
             end,
             is_usb_inserted = function()
                 if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
@@ -971,6 +1087,14 @@ function start(gpio, net, t3x_ctrl)
     end
     if _G.MODULE_FLAGS.watchdog then setupWatchdog() end
     if _G.MODULE_FLAGS.uart_bridge then setupUartBridge() end
+    do
+        local evt = E.HOST_UART_FIRST_AT or "APP_HOST_UART_FIRST_AT"
+        sys.subscribe(evt, function()
+            notifyT3xUsbHostIdlePolicy((_G.APP_RUNTIME.power_status or 0) == 1)
+        end)
+    end
+    initPowerStatus()
+    scheduleBootUsbPolicySync()
     if t3xModule then t3xModule.start() end
     if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table" then
         sound_prompt.start({ t3x = t3xModule })
@@ -984,7 +1108,6 @@ function start(gpio, net, t3x_ctrl)
     if _G.MODULE_FLAGS.gpio then setupGpio() end
     if _G.MODULE_FLAGS.pmd_runtime then setupPmd() end
     startBackgroundServices()
-    initPowerStatus()
     setupRndis()
     if _G.MODULE_FLAGS.mqtt and netModule and netModule.bootstrapNetwork then
         netModule.bootstrapNetwork()
@@ -993,7 +1116,7 @@ function start(gpio, net, t3x_ctrl)
     setupFota()
     startHeartbeat()
 
-    log.info("app", "========== 启动完成 ==========")
+    log.info("app", "app ready ====")
     started = true
     return true
 end

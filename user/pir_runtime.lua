@@ -16,11 +16,12 @@ local stats = {
     cnt_hw_accept = 0,           -- 放行，发布 PIR_HW_TRIGGERED
 
     -- pir_ctrl.lua 业务层
-    cnt_biz_ignore_suspend = 0,  -- 已 suspend（烧录等），忽略触发
+    cnt_biz_ignore_suspend = 0,  -- 已 suspend（低电量≤15% / 烧录等），忽略触发
+    cnt_biz_ignore_rest = 0,     -- rest 低功耗（T3x 断电），忽略触发
     cnt_biz_detected = 0,        -- 正常人体检测（进入拍照/录像分支）
     cnt_biz_retrigger = 0,       -- 录像中二次 PIR（stopOnSecondPir）
-    cnt_biz_photo = 0,           -- 发布 PIR_TAKE_PHOTO 次数
-    cnt_biz_video = 0,           -- 开始录像会话次数
+    cnt_biz_photo = 0,           -- action=photo/both 次数
+    cnt_biz_video = 0,           -- action=video/both（beginVideoSession）次数
 
     -- 停录原因（publishStopRecording）
     cnt_stop_timer = 0,          -- 达到 maxDurationSec
@@ -42,6 +43,12 @@ end
 function setLast(event)
     stats.last_event = event or "none"
     stats.last_ts = os.time()
+end
+
+--- 清除 host_event 可消费的 PIR 标记（不影响 cnt_* 累加计数）
+function clearConsumableMarkers()
+    stats.last_event = "none"
+    stats.last_ts = 0
 end
 
 function resetCounters()
@@ -95,6 +102,7 @@ function buildAtBody()
         "cnt_hw_ignore_burn=" .. stats.cnt_hw_ignore_burn,
         "cnt_hw_accept=" .. stats.cnt_hw_accept,
         "cnt_biz_ignore_suspend=" .. stats.cnt_biz_ignore_suspend,
+        "cnt_biz_ignore_rest=" .. stats.cnt_biz_ignore_rest,
         "cnt_biz_detected=" .. stats.cnt_biz_detected,
         "cnt_biz_retrigger=" .. stats.cnt_biz_retrigger,
         "cnt_biz_photo=" .. stats.cnt_biz_photo,

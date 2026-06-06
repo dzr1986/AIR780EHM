@@ -1,5 +1,8 @@
 # 780EHM_PJ
 
+技术文档：**[`doc/README.md`](doc/README.md)** · 命名约定：**[`doc/T3X_NAMING.md`](doc/T3X_NAMING.md)**（含 [T3X_RECORD_MQTT_FLOW.md](doc/T3X_RECORD_MQTT_FLOW.md) 录像 MQTT 流程）
+
+
 Air780EHM + t3x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`）。
 
 ## 架构一览
@@ -8,9 +11,9 @@ Air780EHM + t3x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`
 main.lua
   └─ app.start(peripheral, net_mqtt, t3x_ctrl)
        ├─ lib/uart_bridge   UART 驱动（参数 UART_CFG）
-       ├─ user/host_uart     T31 串口协议 + 唤醒（AT/HEX/STR，挂 uart_bridge）
+       ├─ user/host_uart     T3x 串口协议 + 唤醒（AT/HEX/STR，挂 uart_bridge）
        ├─ net_mqtt          唯一 MQTT（2003–2011 ↓ / 1001–1011 ↑）
-       ├─ net_tcp           T31 低功耗 TCP 通道（AT+SERVCREATE）
+       ├─ net_tcp           T3x 低功耗 TCP 通道（AT+SERVCREATE）
        ├─ fota              MQTT 2004 OTA → libfota2
        ├─ pir_ctrl + lib/pir
        ├─ t3x_ctrl           协处理器电源 / 唤醒
@@ -57,11 +60,11 @@ main.lua
 | `key_config.lua` | `KEY_CONFIG` |
 | `app.lua` | 编排中心 |
 | `net_mqtt.lua` | MQTT |
-| `net_tcp.lua` | T31 TCP 业务通道 |
+| `net_tcp.lua` | T3x TCP 业务通道 |
 | `pir_ctrl.lua` / `led_ctrl.lua` | PIR 业务 / LED |
 | `peripheral.lua` | 外设聚合 |
 | `t3x_ctrl.lua` / `bat_adc.lua` | 协处理器 / 电池采样 |
-| `host_uart.lua` | T31 串口协议与 GPIO 唤醒 |
+| `host_uart.lua` | T3x 串口协议与 GPIO 唤醒 |
 
 ## GPIO 配置速查
 

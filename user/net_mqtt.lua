@@ -18,6 +18,8 @@ local DT = {
     UL_STATUS = "1003",
     UL_CONTROL = "1004",
     UL_SIM = "1005",
+    UL_DEVICE_ID = "1006",
+    UL_TF_CARD = "1007",
     UL_PIR_DETECT = "1010",
     UL_PIR_STOP = "1011",
     DL_WAKEUP = "2001",
@@ -25,6 +27,8 @@ local DT = {
     DL_STATUS = "2003",
     DL_CONTROL = "2004",
     DL_SIM = "2005",
+    DL_DEVICE_ID = "2006",
+    DL_TF_CARD = "2007",
     DL_PIR_CFG = "2010",
     DL_PIR_STOP = "2011",
 }
@@ -33,6 +37,10 @@ local DT = {
 local started = false
 local mqttClient = nil
 local isConnected = false
+local batteryStatusSubscribed = false
+local lastBatteryStatusPublishSec = 0
+local identityPublished = false
+local identityAutoHooked = false
 
 local callbacks = {
     onOffline = nil,
@@ -43,6 +51,14 @@ local state = {
     last_event = nil,
     reconnect_count = 0,
     last_publish_topic = nil,
+}
+
+--- 需 T3x 在线才能完成的下行（T3x 休眠时入队，hasPendingHostWork 阻塞休眠）
+local pendingHostQueue = {}
+local pendingHostDrainHooked = false
+local HOST_DL_NEEDS_T3X = {
+    [DT.DL_DEVICE_ID] = true,
+    [DT.DL_TF_CARD] = true,
 }
 
 -- ============================================================
@@ -68,12 +84,34 @@ local function escJson(s)
     return tostring(s or ""):gsub('"', '\\"')
 end
 
+local function getHostUart()
+    if _G.host_uart then
+        return _G.host_uart
+    end
+    local ok, mod = pcall(require, "host_uart")
+    if ok then
+        return mod
+    end
+    return nil
+end
+
 -- ============================================================
 -- 蜂窝入网
 -- ============================================================
 
 local netReadyPublished = false
 local bootstrapStarted = false
+
+local function getWledState()
+    local hu = getHostUart()
+    if hu and hu.getWled then
+        return hu.getWled() == 1 and 1 or 0
+    end
+    if _G.APP_RUNTIME and _G.APP_RUNTIME.wled_on ~= nil then
+        return _G.APP_RUNTIME.wled_on == 1 and 1 or 0
+    end
+    return 0
+end
 
 local function getCellular()
     local ok, mod = pcall(require, "cellular_bootstrap")
@@ -93,10 +131,10 @@ function bootstrapNetwork()
         local ipOk, ip
 
         if cellular and cellular.waitForNetwork and (_G.MODULE_FLAGS.cellular ~= false) then
-            log.info("net_mqtt", "蜂窝入网：cellular_bootstrap...")
+            log.info("net_mqtt", "cellular bootstrap...")
             ipOk, ip = cellular.waitForNetwork()
         else
-            log.info("net_mqtt", "蜂窝入网：等待 IP_READY...")
+            log.info("net_mqtt", "wait IP_READY")
             ipOk = sys.waitUntil("IP_READY", 300000)
             ip = (socket and socket.localIP and socket.localIP()) or nil
         end
@@ -133,7 +171,7 @@ local function waitForNetworkReady()
             return true, getDeviceId()
         end
     end
-    log.info("net_mqtt", "等待 net_ready / IP_READY...")
+    log.info("net_mqtt", "wait net_ready / IP")
     local gotReady, deviceId = sys.waitUntil("net_ready", 300000)
     if not gotReady then
         gotReady = sys.waitUntil("IP_READY", 120000)
@@ -176,46 +214,105 @@ local function collectSimSnapshot()
         operator = "",
         operator_name = "",
     }
+    local okApn, apn = pcall(mobile.apn, 0, 1)
+    if okApn and apn then
+        snap.apn = apn
+    end
     local okCell, cellular = pcall(require, "cellular_bootstrap")
-    if okCell and cellular and cellular.detectOperator then
-        snap.operator = cellular.detectOperator(snap.imsi, snap.iccid)
+    if okCell and cellular and cellular.resolveOperator then
+        snap.operator, snap.operator_name = cellular.resolveOperator(snap.imsi, snap.iccid, snap.apn)
+    elseif okCell and cellular and cellular.detectOperator then
+        snap.operator = cellular.detectOperator(snap.imsi, snap.iccid, snap.apn)
         local names = { mobile = "移动", telecom = "电信", unicom = "联通", unknown = "未知" }
         snap.operator_name = names[snap.operator] or "未知"
     end
     local rt = _G.APP_RUNTIME
-    if rt and rt.sim_operator and rt.sim_operator ~= "" then
+    if snap.operator == "unknown" and rt and rt.sim_operator and rt.sim_operator ~= "" and rt.sim_operator ~= "unknown" then
         snap.operator = rt.sim_operator
         snap.operator_name = rt.sim_operator_name or snap.operator_name
     end
-    local ok, apn = pcall(mobile.apn, 0, 1)
-    if ok and apn then
-        snap.apn = apn
-    elseif rt and rt.cellular_apn then
+    if not snap.apn and rt and rt.cellular_apn then
         snap.apn = rt.cellular_apn
     end
     return snap
 end
 
+local function collectBatterySnapshot()
+    local rt = _G.APP_RUNTIME or {}
+    local snap = {
+        power_status = tonumber(rt.power_status) or 0,
+        battery_percent = rt.battery_percent or "--",
+        battery_mv = rt.battery_mv or "--",
+        low_power_mode = (rt.low_power_mode == 1) and "rest" or "normal",
+        usb_inserted = 0,
+        charging = 0,
+    }
+    snap.usb_inserted = snap.power_status == 1 and 1 or 0
+
+    local ok, uc = pcall(require, "usb_charge")
+    if ok and type(uc) == "table" then
+        if type(uc.isUsbInserted) == "function" then
+            snap.usb_inserted = uc.isUsbInserted() and 1 or 0
+            snap.power_status = snap.usb_inserted
+        end
+        if type(uc.isCharging) == "function" then
+            snap.charging = uc.isCharging() and 1 or 0
+        end
+    end
+    return snap
+end
+
+local function setupBatteryStatusReport()
+    if batteryStatusSubscribed then
+        return
+    end
+    batteryStatusSubscribed = true
+    sys.subscribe("BATTERY_UPDATE", function()
+        if not isConnected then
+            return
+        end
+        local minSec = tonumber((_G.BATTERY_CFG or {}).mqtt_battery_report_min_sec) or 30
+        local now = os.time()
+        if now - lastBatteryStatusPublishSec < minSec then
+            return
+        end
+        lastBatteryStatusPublishSec = now
+        publishStatus()
+    end)
+end
+
 -- [2001] 唤醒查询 → 1001
 local function handleDownlink2001(data)
-    log.info("net_mqtt", "[2001] 唤醒查询")
+    log.info("net_mqtt", "2001 wake")
     if data.messageId then
-        log.info("net_mqtt", "[2001] messageId", data.messageId)
+        log.info("net_mqtt", "2001 mid", data.messageId)
     end
     publishWakeup()
 end
 
 -- [2002] 休眠/低功耗 → 1002（进入成功后由 app 上报，此处 exit 仅执行）
+local function usbBlocks4gRest()
+    local usbCfg = _G.HOST_USB_CFG or {}
+    if usbCfg.block_4g_rest_when_usb == false then
+        return false
+    end
+    return (_G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.power_status) == 1) or false
+end
+
 local function handleDownlink2002(data)
     local action = data.action
     if data.lowPowerMode == "enter" or action == 1 or action == "1" or action == "enter" then
-        log.info("net_mqtt", "[2002] 进入低功耗")
+        if usbBlocks4gRest() then
+            log.info("net_mqtt", "2002 usb block rest")
+            return
+        end
+        log.info("net_mqtt", "2002 enter rest")
         sys.publish(APP_EVENTS.POWER_ENTER_REST)
     elseif data.lowPowerMode == "exit" or action == 0 or action == "0" or action == "exit" then
-        log.info("net_mqtt", "[2002] 退出低功耗")
+        log.info("net_mqtt", "2002 exit rest")
         sys.publish(APP_EVENTS.POWER_EXIT_REST)
     else
-        log.warn("net_mqtt", "[2002] 无法识别 enter/exit", data.lowPowerMode, action)
+        log.warn("net_mqtt", "2002 bad", data.lowPowerMode, action)
     end
 end
 
@@ -226,7 +323,7 @@ local function handleDownlink2003(data)
         if _G.APP_RUNTIME then
             _G.APP_RUNTIME.low_power_interval_sec = interval
         end
-        log.info("net_mqtt", "[2003] 低功耗间隔", interval)
+        log.info("net_mqtt", "2003 interval", interval)
     end
     publishStatus()
 end
@@ -236,35 +333,254 @@ local function handleDownlink2004(data)
     local action = data.action or data.cmd or data.command
     local messageId = data.messageId or data.msgId or ""
 
-    local function reply(ret, msg, act)
-        publishControlReply(act or action, ret, msg, { messageId = messageId })
+    local function reply(ret, msg, act, extraFields)
+        local extra = { messageId = messageId }
+        if type(extraFields) == "table" then
+            for k, v in pairs(extraFields) do
+                extra[k] = v
+            end
+        end
+        publishControlReply(act or action, ret, msg, extra)
     end
 
     if action == "reboot" or action == "restart" then
-        log.info("net_mqtt", "[2004] 重启")
+        log.info("net_mqtt", "2004 reboot")
         reply(0, "ok", "reboot")
         sys.publish(APP_EVENTS.DEVICE_REBOOT_REQUEST)
     elseif action == "off" or action == "shutdown" or action == "poweroff" then
-        log.info("net_mqtt", "[2004] 关机")
+        log.info("net_mqtt", "2004 shutdown")
         reply(0, "ok", "off")
         sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
     elseif action == "ota" or action == "upgrade" or action == "fota" or hasOtaFields(data) then
-        log.info("net_mqtt", "[2004] OTA")
+        log.info("net_mqtt", "2004 ota")
+        if _G.validateBuildVersion then
+            for _, key in ipairs({ "version", "targetVersion", "firmwareVersion" }) do
+                local v = data[key]
+                if v and v ~= "" then
+                    local ok = _G.validateBuildVersion(tostring(v))
+                    if not ok then
+                        log.warn("net_mqtt", "[2004] OTA bad ver", key, v)
+                        reply(-1, "invalid_version_format", "ota")
+                        return
+                    end
+                    data[key] = ok
+                end
+            end
+        end
         reply(0, "ota_accepted", "ota")
         publishAppEvent("DEVICE_OTA_REQUEST", data)
+    elseif action == "wled_query" or action == "wled?"
+        or (action == "wled" and (data.query == 1 or data.query == true)) then
+        local on = getWledState()
+        log.info("net_mqtt", "2004 wled q", on)
+        reply(0, "ok", "wled", { enable = on })
+    elseif action == "wled" or action == "wled_on" or action == "wled_off" then
+        local on
+        if action == "wled_on" then
+            on = 1
+        elseif action == "wled_off" then
+            on = 0
+        else
+            on = tonumber(data.enable) or tonumber(data.state) or tonumber(data.on)
+            if on == nil and data.value ~= nil then
+                on = (data.value == true or data.value == "1" or data.value == 1) and 1 or 0
+            end
+        end
+        if on ~= 0 and on ~= 1 then
+            log.warn("net_mqtt", "2004 wled bad en", tostring(on))
+            reply(-1, "invalid_wled", "wled")
+        else
+            log.info("net_mqtt", "2004 wled", on)
+            local hu = getHostUart()
+            if hu and hu.setWled then
+                hu.setWled(on)
+            elseif _G.APP_RUNTIME then
+                _G.APP_RUNTIME.wled_on = on
+            end
+            reply(0, "ok", "wled", { enable = on })
+        end
     else
-        log.warn("net_mqtt", "[2004] 未知 action", action)
+        log.warn("net_mqtt", "2004 bad act", action)
         reply(-1, "unknown_action", action or "")
     end
 end
 
 -- [2005] SIM 查询 → 1005
 local function handleDownlink2005(data)
-    log.info("net_mqtt", "[2005] SIM 查询")
+    log.info("net_mqtt", "2005 sim q")
     if data.messageId then
-        log.info("net_mqtt", "[2005] messageId", data.messageId)
+        log.info("net_mqtt", "2005 mid", data.messageId)
     end
     publishSimInfo()
+end
+
+local function identityCfg()
+    return _G.HOST_IDENTITY_CFG or {}
+end
+
+local function identityEnabled()
+    if identityCfg().enabled == false then
+        return false
+    end
+    return true
+end
+
+local function refreshDeviceIdentity(messageId)
+    local hu = getHostUart()
+    local imei = (hu and hu.getDeviceImei and hu.getDeviceImei()) or getDeviceId()
+    local gb28181Id
+
+    if hu and hu.queryHostGb28181 then
+        gb28181Id = hu.queryHostGb28181(identityCfg().query_timeout_ms)
+    elseif hu and hu.getCachedHostGb28181Id then
+        gb28181Id = hu.getCachedHostGb28181Id()
+    end
+
+    publishDeviceIdentity(imei, gb28181Id, messageId)
+end
+
+local function isT3xHostReady()
+    local hu = getHostUart()
+    if hu and hu.isHostAtReady then
+        return hu.isHostAtReady() == true
+    end
+    local ok, t3x = pcall(require, "t3x_ctrl")
+    if ok and t3x and t3x.getState then
+        local st = t3x.getState()
+        return st and st.powered_on == true
+    end
+    return false
+end
+
+local function enqueuePendingHostWork(dtype, data)
+    pendingHostQueue[#pendingHostQueue + 1] = {
+        dtype = dtype,
+        data = data,
+        ts = os.time(),
+    }
+    log.info("net_mqtt", "host q in", dtype, #pendingHostQueue)
+end
+
+local function wakeT3xForPendingHost()
+    sys.taskInit(function()
+        local ok, ts = pcall(require, "time_sync")
+        if ok and ts and ts.pushBeforeNotifyAsync then
+            ts.pushBeforeNotifyAsync((_G.HOST_WAKE_CFG or {}).default_sid or 1, 0)
+        else
+            local hu = getHostUart()
+            if hu and hu.notify_host then
+                hu.notify_host((_G.HOST_WAKE_CFG or {}).default_sid or 1, 0)
+            end
+        end
+    end)
+end
+
+function drainPendingHostWork()
+    if #pendingHostQueue == 0 then
+        return 0
+    end
+    if not isT3xHostReady() then
+        return 0
+    end
+    local batch = pendingHostQueue
+    pendingHostQueue = {}
+    log.info("net_mqtt", "host q out", #batch)
+    for _, item in ipairs(batch) do
+        local handler = DOWNLINK_HANDLERS[item.dtype]
+        if handler and item.data then
+            handler(item.data)
+        end
+    end
+    return #batch
+end
+
+local function handleHostDownlink(dtype, data, runFn)
+    if HOST_DL_NEEDS_T3X[dtype] and not isT3xHostReady() then
+        enqueuePendingHostWork(dtype, data)
+        wakeT3xForPendingHost()
+        return
+    end
+    runFn()
+end
+
+-- [2006] IMEI + GB28181 查询 → 1006
+local function handleDownlink2006(data)
+    log.info("net_mqtt", "2006 id q")
+    if data.messageId then
+        log.info("net_mqtt", "2006 mid", data.messageId)
+    end
+    handleHostDownlink(DT.DL_DEVICE_ID, data, function()
+        sys.taskInit(function()
+            refreshDeviceIdentity(data.messageId)
+        end)
+    end)
+end
+
+local function tfCardCfg()
+    return _G.HOST_TFCARD_CFG or {}
+end
+
+local function tfCardEnabled()
+    if tfCardCfg().enabled == false then
+        return false
+    end
+    return true
+end
+
+local function refreshTfCardStatus(messageId)
+    local hu = getHostUart()
+    local snap
+    if hu and hu.queryHostTfCard then
+        snap = hu.queryHostTfCard(tfCardCfg().query_timeout_ms)
+    elseif hu and hu.getCachedHostTfCard then
+        snap = hu.getCachedHostTfCard()
+    end
+    publishTfCardStatus(snap, messageId)
+end
+
+-- [2007] TF/SD 卡状态查询 → 1007
+local function handleDownlink2007(data)
+    log.info("net_mqtt", "2007 tf q")
+    if data.messageId then
+        log.info("net_mqtt", "2007 mid", data.messageId)
+    end
+    handleHostDownlink(DT.DL_TF_CARD, data, function()
+        sys.taskInit(function()
+            refreshTfCardStatus(data.messageId)
+        end)
+    end)
+end
+
+local function maybeAutoPublishIdentity()
+    if not identityEnabled() or identityCfg().auto_publish_on_ready == false then
+        return
+    end
+    if identityPublished or not isConnected then
+        return
+    end
+    local hu = getHostUart()
+    if not hu or not hu.isHostAtReady or not hu.isHostAtReady() then
+        return
+    end
+    identityPublished = true
+    sys.taskInit(function()
+        sys.wait(tonumber(identityCfg().auto_publish_delay_ms) or 500)
+        refreshDeviceIdentity(nil)
+    end)
+end
+
+local function setupIdentityAutoPublish()
+    if identityAutoHooked or not identityEnabled() then
+        return
+    end
+    identityAutoHooked = true
+    local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+    sys.subscribe(evt, function()
+        maybeAutoPublishIdentity()
+    end)
+    sys.subscribe("APP_MQTT_CONNECTED", function()
+        maybeAutoPublishIdentity()
+    end)
 end
 
 local function buildPirDetectExtra(pirStatus, action, uploadMode, quality, recording)
@@ -282,7 +598,7 @@ end
 local function handleDownlink2010(data)
     if data.query == 1 or data.query == true
         or data.action == "query" or data.action == "status" then
-        log.info("net_mqtt", "[2010] PIR 状态查询")
+        log.info("net_mqtt", "2010 pir q")
         publishPirDetect(buildPirDetectExtra("query", nil, nil, nil, nil))
         return
     end
@@ -302,19 +618,19 @@ local function handleDownlink2010(data)
             stopOnCloud = data.stopOnCloud,
         })
         local pirState = pir_ctrl.getState()
-        log.info("net_mqtt", "[2010] PIR 配置已更新",
-            "media", json.encode(pirState.mediaConfig),
-            "policy", json.encode(pirState.recordPolicy))
+        log.info("net_mqtt", "2010 pir cfg",
+            json.encode(pirState.mediaConfig),
+            json.encode(pirState.recordPolicy))
     else
-        log.warn("net_mqtt", "[2010] 无配置字段，仅日志")
+        log.warn("net_mqtt", "2010 no cfg")
     end
 end
 
 local function handleDownlink2011(data)
     if data.messageId then
-        log.info("net_mqtt", "[2011] 停录 messageId", data.messageId)
+        log.info("net_mqtt", "2011 stop mid", data.messageId)
     else
-        log.info("net_mqtt", "[2011] 云端停录")
+        log.info("net_mqtt", "2011 cloud stop")
     end
     pir_ctrl.requestStopFromCloud()
 end
@@ -325,16 +641,18 @@ local DOWNLINK_HANDLERS = {
     [DT.DL_STATUS] = handleDownlink2003,
     [DT.DL_CONTROL] = handleDownlink2004,
     [DT.DL_SIM] = handleDownlink2005,
+    [DT.DL_DEVICE_ID] = handleDownlink2006,
+    [DT.DL_TF_CARD] = handleDownlink2007,
     [DT.DL_PIR_CFG] = handleDownlink2010,
     [DT.DL_PIR_STOP] = handleDownlink2011,
 }
 
 local function handleServerMessage(topic, payload)
-    log.info("net_mqtt", "收到消息:", topic, payload)
+    log.info("net_mqtt", "rx", topic, payload)
 
     local ok, data = pcall(json.decode, payload)
     if not ok then
-        log.error("net_mqtt", "JSON解析失败:", data)
+        log.error("net_mqtt", "json parse fail:", data)
         return
     end
 
@@ -344,9 +662,9 @@ local function handleServerMessage(topic, payload)
     if handler then
         handler(data)
     elseif dataType then
-        log.warn("net_mqtt", "未知 dataType", dataType)
+        log.warn("net_mqtt", "unknown dataType", dataType)
     else
-        log.warn("net_mqtt", "缺少 dataType 字段")
+        log.warn("net_mqtt", "no dataType")
     end
 
     publishAppEvent("MQTT_SERVER_DATA", data, payload)
@@ -371,7 +689,7 @@ function setMqttConfig(cfg)
         password = cfg.password or "",
         client_id = cfg.client_id,
     }
-    log.info("net_mqtt", "MQTT 配置已更新", _G.MQTT_CFG.host, _G.MQTT_CFG.port)
+    log.info("net_mqtt", "cfg updated", _G.MQTT_CFG.host, _G.MQTT_CFG.port)
     return true
 end
 
@@ -381,7 +699,7 @@ end
 
 function restart()
     sys.taskInit(function()
-        log.info("net_mqtt", "MQTT 重启...")
+        log.info("net_mqtt", "restarting")
         stop()
         sys.wait(800)
         start()
@@ -396,35 +714,35 @@ end
 local function mqttTask()
     local gotReady, deviceId = waitForNetworkReady()
     if not gotReady then
-        log.warn("net_mqtt", "蜂窝未就绪，仍尝试 MQTT 连接")
+        log.warn("net_mqtt", "cell not ready, try mqtt")
     end
     local mcfg = _G.MQTT_CFG or {}
     if not mcfg.host or mcfg.host == "" then
-        log.error("net_mqtt", "MQTT_CFG.host 未配置")
+        log.error("net_mqtt", "no host cfg")
         return
     end
     local clientId = (mcfg.client_id and mcfg.client_id ~= "") and mcfg.client_id
         or (deviceId or getDeviceId())
 
     if not mqtt or not mqtt.create then
-        log.error("net_mqtt", "mqtt 库不可用，无法连接")
+        log.error("net_mqtt", "no mqtt lib")
         return
     end
 
-    log.info("net_mqtt", "========== MQTT启动 ==========")
-    log.info("net_mqtt", "+++++ clientId=" .. tostring(clientId) .. " ++++++")
-    log.info("net_mqtt", "服务器:", mcfg.host, mcfg.port)
+    log.info("net_mqtt", "mqtt start")
+    log.info("net_mqtt", "clientId", tostring(clientId))
+    log.info("net_mqtt", "srv", mcfg.host, mcfg.port)
 
     if socket and socket.adapter and socket.dft then
         local waitIp = 0
         while not socket.adapter(socket.dft()) and waitIp < 120 do
-            log.info("net_mqtt", "等待网络适配器...", waitIp)
+            log.info("net_mqtt", "wait adapter", waitIp)
             sys.waitUntil("IP_READY", 5000)
             waitIp = waitIp + 1
         end
         if not socket.adapter(socket.dft()) then
-            log.warn("net_mqtt", "无可用网络适配器，MQTT 可能无法连接",
-                "ip", socket.localIP and socket.localIP() or "nil")
+            log.warn("net_mqtt", "no adapter, may fail",
+                socket.localIP and socket.localIP() or "nil")
         end
     end
 
@@ -433,16 +751,24 @@ local function mqttTask()
     mqttClient:autoreconn(true, 3000)
 
     mqttClient:on(function(client, event, data, payload)
-        log.info("net_mqtt", "MQTT事件:", event, data or "")
+        log.info("net_mqtt", "evt", event, data or "")
 
         if event == "conack" then
             isConnected = true
             _G.APP_RUNTIME.online_status = 1
             state.reconnect_count = 0
-            log.info("net_mqtt", "MQTT连接成功")
+            log.info("net_mqtt", "conn ok")
             client:subscribe(getSubTopic())
-            sys.publish("APP_MQTT_CONNECTED")
-            publishWakeup()
+            local ev = (_G.APP_EVENTS or {}).MQTT_CONNECTED or "APP_MQTT_CONNECTED"
+            sys.publish(ev)
+            pcall(function()
+                local hu = getHostUart()
+                if hu and hu.push_net_led_state then
+                    hu.push_net_led_state(true)
+                end
+            end)
+            publishConnectUplink()
+            maybeAutoPublishIdentity()
 
         elseif event == "recv" then
             handleServerMessage(data, payload)
@@ -451,21 +777,28 @@ local function mqttTask()
             isConnected = false
             _G.APP_RUNTIME.online_status = 0
             state.reconnect_count = (state.reconnect_count or 0) + 1
-            log.warn("net_mqtt", "MQTT断开", "重连次数", state.reconnect_count)
+            log.warn("net_mqtt", "disconn", "reconn", state.reconnect_count)
             publishAppEvent("MQTT_OFFLINE")
+            pcall(function()
+                local hu = getHostUart()
+                if hu and hu.push_net_led_state then
+                    hu.push_net_led_state(false)
+                end
+            end)
             if callbacks.onOffline then callbacks.onOffline() end
 
         elseif event == "error" or event == "connect" then
             if payload then
-                log.warn("net_mqtt", "MQTT", event, payload)
+                log.warn("net_mqtt", "mqtt", event, payload)
             end
         end
     end)
 
     mqttClient:connect()
+    setupBatteryStatusReport()
     local conOk = sys.waitUntil("APP_MQTT_CONNECTED", 90000)
     if not conOk then
-        log.warn("net_mqtt", "MQTT 连接超时(90s)，等待 autoreconn...")
+        log.warn("net_mqtt", "conn timeout 90s, autoreconn")
     end
 
     local bcfg = _G.BATTERY_CFG or {}
@@ -495,51 +828,88 @@ end
 -- 上行发布（100x）
 -- ============================================================
 
+--- host_event：mqtt 类待处理（2006/2007 入队 + 云端停录待 T3x 同步）
+function hasPendingHostWork()
+    if #pendingHostQueue > 0 then
+        return true
+    end
+    local st = pir_ctrl.getState()
+    if st.recording and st.last_stop_reason == "cloud" then
+        return true
+    end
+    return false
+end
+
 --- 1001 唤醒
 function publishWakeup()
-    if not isConnected then log.warn("net_mqtt", "MQTT未连接"); return end
+    if not isConnected then log.warn("net_mqtt", "no conn"); return end
     local topic = getPubTopic() .. "wakeup"
     local payload = string.format(
         '{"deviceNo":"%s","dataType":"%s","time":"%s"}',
         getDeviceId(), DT.UL_WAKEUP, os.date("%Y-%m-%d %H:%M:%S"))
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布唤醒(1001):", topic)
+    log.info("net_mqtt", "pub 1001", topic)
     publishAppEvent("MQTT_PUBLISH_WAKEUP", topic, payload)
 end
 
---- 1002 休眠
-function publishRest()
-    if not isConnected then log.warn("net_mqtt", "MQTT未连接"); return end
+--- 1002 进入 rest（opts.reason 触发原因；opts.source=enter|reconnect）
+function publishRest(opts)
+    if not isConnected then log.warn("net_mqtt", "no conn"); return end
+    opts = type(opts) == "table" and opts or {}
+    local rt = _G.APP_RUNTIME or {}
+    local reason = opts.reason or rt.last_rest_reason or "unknown"
+    local source = opts.source or "enter"
     local topic = getPubTopic() .. "rest"
     local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","time":"%s"}',
-        getDeviceId(), DT.UL_REST, os.date("%Y-%m-%d %H:%M:%S"))
+        '{"deviceNo":"%s","dataType":"%s","lowPowerMode":"enter","reason":"%s","source":"%s","time":"%s"}',
+        getDeviceId(), DT.UL_REST,
+        escJson(reason), escJson(source),
+        os.date("%Y-%m-%d %H:%M:%S"))
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布休眠(1002):", topic)
+    log.info("net_mqtt", "pub 1002", topic, reason, source)
     publishAppEvent("MQTT_PUBLISH_REST", topic, payload)
 end
 
---- 1003 状态
+--- 1003 状态（电量 / USB / 充电 / 低功耗）
 function publishStatus()
     if not isConnected then return end
+    local snap = collectBatterySnapshot()
     local topic = getPubTopic() .. "status"
     local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","powerStatus":"%d","remainPower":"%s","lowPowerMode":"%s","time":"%s"}',
+        '{"deviceNo":"%s","dataType":"%s","powerStatus":"%d","usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","time":"%s"}',
         getDeviceId(),
         DT.UL_STATUS,
-        (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status) or 0,
-        (_G.APP_RUNTIME and _G.APP_RUNTIME.battery_percent) or "--",
-        (_G.APP_RUNTIME and _G.APP_RUNTIME.low_power_mode == 1) and "rest" or "normal",
+        snap.power_status,
+        snap.usb_inserted,
+        snap.charging,
+        escJson(tostring(snap.battery_percent)),
+        escJson(tostring(snap.battery_mv)),
+        escJson(snap.low_power_mode),
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布状态(1003):", topic)
+    lastBatteryStatusPublishSec = os.time()
+    log.info("net_mqtt", "pub 1003", topic,
+        "usb", snap.usb_inserted, "chg", snap.charging,
+        "bat", snap.battery_percent, "mV", snap.battery_mv)
+end
+
+--- MQTT 连接成功后的首条上行：rest 发 1002+1003，常电发 1001
+function publishConnectUplink()
+    local rt = _G.APP_RUNTIME or {}
+    if tonumber(rt.low_power_mode) == 1 then
+        log.info("net_mqtt", "rest reconn -> 1002+1003")
+        publishRest({ reason = rt.last_rest_reason or "unknown", source = "reconnect" })
+        publishStatus()
+    else
+        publishWakeup()
+    end
 end
 
 --- 1005 SIM 信息（应答 2005）
 function publishSimInfo()
     if not isConnected then
-        log.warn("net_mqtt", "MQTT未连接，跳过 SIM 上报")
+        log.warn("net_mqtt", "no conn, skip sim")
         return
     end
     local snap = collectSimSnapshot()
@@ -565,35 +935,135 @@ function publishSimInfo()
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布 SIM(1005):", topic, snap.operator_name, snap.iccid)
+    log.info("net_mqtt", "pub 1005", topic, snap.operator_name, snap.iccid)
+end
+
+--- 1006 设备标识（Cat.1 IMEI + T3x GB28181 ID，应答 2006）
+function publishDeviceIdentity(imei, gb28181Id, messageId)
+    if not isConnected then
+        log.warn("net_mqtt", "no conn, skip id")
+        return
+    end
+    local deviceNo = getDeviceId()
+    imei = imei or deviceNo
+    gb28181Id = gb28181Id or ""
+    local ret = (gb28181Id ~= "") and 0 or -1
+    local msgPart = ""
+    if messageId and messageId ~= "" then
+        msgPart = string.format(',"messageId":"%s"', escJson(tostring(messageId)))
+    end
+    local topic = getPubTopic() .. "identity"
+    local payload = string.format(
+        '{"deviceNo":"%s","dataType":"%s","imei":"%s","gb28181Id":"%s","ret":%d%s,"time":"%s"}',
+        deviceNo,
+        DT.UL_DEVICE_ID,
+        escJson(imei),
+        escJson(gb28181Id),
+        ret,
+        msgPart,
+        os.date("%Y-%m-%d %H:%M:%S")
+    )
+    mqttClient:publish(topic, payload, 1)
+    log.info("net_mqtt", "pub 1006", topic, imei, gb28181Id, ret)
+end
+
+function refreshAndPublishDeviceIdentity(messageId)
+    if not identityEnabled() then
+        log.warn("net_mqtt", "id disabled")
+        return
+    end
+    sys.taskInit(function()
+        refreshDeviceIdentity(messageId)
+    end)
+end
+
+--- 1007 TF/SD 卡状态（应答 2007）
+function publishTfCardStatus(snap, messageId)
+    if not isConnected then
+        log.warn("net_mqtt", "no conn, skip tf")
+        return
+    end
+    snap = type(snap) == "table" and snap or {}
+    local present = (snap.present == 1 or snap.present == true) and 1 or 0
+    local totalMb = tonumber(snap.total_mb) or 0
+    local usedMb = tonumber(snap.used_mb) or 0
+    local freeMb = tonumber(snap.free_mb) or 0
+    local ret = (present == 1) and 0 or -1
+    local msgPart = ""
+    if messageId and messageId ~= "" then
+        msgPart = string.format(',"messageId":"%s"', escJson(tostring(messageId)))
+    end
+    local topic = getPubTopic() .. "tfcard"
+    local payload = string.format(
+        '{"deviceNo":"%s","dataType":"%s","tfPresent":%d,"totalMb":%d,"usedMb":%d,"freeMb":%d,"ret":%d%s,"time":"%s"}',
+        getDeviceId(),
+        DT.UL_TF_CARD,
+        present,
+        totalMb,
+        usedMb,
+        freeMb,
+        ret,
+        msgPart,
+        os.date("%Y-%m-%d %H:%M:%S")
+    )
+    mqttClient:publish(topic, payload, 1)
+    log.info("net_mqtt", "pub 1007", topic,
+        "present", present, "totalMb", totalMb, "usedMb", usedMb, "freeMb", freeMb, "ret", ret)
+end
+
+function refreshAndPublishTfCardStatus(messageId)
+    if not tfCardEnabled() then
+        log.warn("net_mqtt", "TF 卡查询功能未启用")
+        return
+    end
+    sys.taskInit(function()
+        refreshTfCardStatus(messageId)
+    end)
 end
 
 --- 1004 控制回复（应答 2004；reply=1，与 OTA stage 区分）
 function publishControlReply(action, retCode, message, extra)
     if not isConnected then
-        log.warn("net_mqtt", "MQTT未连接，跳过控制回复")
+        log.warn("net_mqtt", "no conn, skip 1004")
         return
     end
     extra = type(extra) == "table" and extra or {}
     local topic = getPubTopic() .. "event"
+    local enableField = ""
+    if extra.enable ~= nil then
+        local en = (extra.enable == 1 or extra.enable == true) and 1 or 0
+        enableField = string.format(',"enable":%s', tostring(en))
+    end
     local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","reply":1,"messageId":"%s","action":"%s","ret":%s,"message":"%s","time":"%s"}',
+        '{"deviceNo":"%s","dataType":"%s","reply":1,"messageId":"%s","action":"%s","ret":%s,"message":"%s"%s,"time":"%s"}',
         getDeviceId(),
         DT.UL_CONTROL,
         escJson(extra.messageId),
         escJson(action),
         tostring(retCode ~= nil and retCode or -1),
         escJson(message),
+        enableField,
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布控制回复(1004):", action, retCode, message)
+    log.info("net_mqtt", "pub 1004", action, retCode, message)
 end
 
 --- 1004 OTA 进度/结果（stage 字段，无 reply）
+local function mqttBuildVersion(ver)
+    if ver == nil or ver == "" then
+        return ""
+    end
+    ver = tostring(ver)
+    if _G.validateBuildVersion then
+        return _G.validateBuildVersion(ver) or ver
+    end
+    return ver
+end
+
 function publishOtaStatus(stage, retCode, message, extra)
     if not isConnected then
-        log.warn("net_mqtt", "MQTT未连接，跳过 OTA 状态上报")
+        log.warn("net_mqtt", "no conn, skip ota")
         return
     end
     extra = type(extra) == "table" and extra or {}
@@ -605,26 +1075,35 @@ function publishOtaStatus(stage, retCode, message, extra)
         escJson(stage),
         tostring(retCode ~= nil and retCode or -1),
         escJson(message),
-        escJson(VERSION or _G.version or ""),
-        escJson(extra.version or extra.targetVersion or ""),
+        escJson(mqttBuildVersion(VERSION or _G.version or "")),
+        escJson(mqttBuildVersion(extra.version or extra.targetVersion or "")),
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布 OTA 状态(1004):", stage, retCode, topic)
+    log.info("net_mqtt", "pub ota", stage, retCode, topic)
     publishAppEvent("MQTT_OTA_STATUS", stage, retCode, message, extra)
 end
 
---- 1010 PIR 检测状态（2010 策略生效后硬件触发，或 2010 query）
+--- 1010 PIR 检测状态（2010 策略生效后硬件触发，或 2010 query；T3x 写盘确认时 pirStatus=t3x_active）
 function publishPirDetect(extra)
     if not isConnected then
-        log.warn("net_mqtt", "MQTT未连接，跳过 PIR 检测上报")
+        log.warn("net_mqtt", "no conn, skip pir")
         return
     end
     extra = type(extra) == "table" and extra or buildPirDetectExtra("detected")
     local rec = (extra.recording == 1 or extra.recording == true) and 1 or 0
+    local activeJson = ""
+    if extra.active ~= nil then
+        local active = (extra.active == 1 or extra.active == true) and 1 or 0
+        activeJson = string.format(',"active":%d', active)
+    end
+    local pathJson = ""
+    if extra.snapshotPath and extra.snapshotPath ~= "" then
+        pathJson = string.format(',"snapshotPath":"%s"', escJson(extra.snapshotPath))
+    end
     local topic = getPubTopic() .. "pir"
     local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s","time":"%s"}',
+        '{"deviceNo":"%s","dataType":"%s","status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s,"time":"%s"}',
         getDeviceId(),
         DT.UL_PIR_DETECT,
         escJson(extra.status or "detected"),
@@ -633,44 +1112,137 @@ function publishPirDetect(extra)
         escJson(extra.action),
         escJson(extra.uploadMode),
         escJson(extra.quality),
+        activeJson,
+        pathJson,
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布 PIR 检测(1010):", extra.pirStatus or extra.status, topic)
+    log.info("net_mqtt", "pub 1010", extra.pirStatus or extra.status, topic)
 end
 
---- 1011 PIR 录像停止（应答 2011 场景）
-function publishPirRecordStop(reason, uploadMode, quality)
+--- T3x JPEG 已写入 SD → 1010（pirStatus=snapshot_saved，附 snapshotPath，不传图内容）
+function publishPirSnapshotDone(path)
     if not isConnected then
-        log.warn("net_mqtt", "MQTT未连接，跳过录像停止上报")
+        log.warn("net_mqtt", "no conn, skip snap")
         return
     end
+    local st = pir_ctrl.getState()
+    local media = st.mediaConfig or {}
+    publishPirDetect({
+        status = "1",
+        pirStatus = "snapshot_saved",
+        action = media.action or "photo",
+        uploadMode = st.uploadMode or media.uploadMode or "auto",
+        quality = st.quality or media.quality or "high",
+        recording = st.recording and 1 or 0,
+        snapshotPath = path,
+    })
+end
+
+--- T3x 首个 I 帧写盘确认 → 1010（pirStatus=t3x_active, active=1）
+function publishPirRecordActive()
+    if not isConnected then
+        log.warn("net_mqtt", "no conn, skip rec active")
+        return
+    end
+    local st = pir_ctrl.getState()
+    local media = st.mediaConfig or {}
+    publishPirDetect({
+        status = "1",
+        pirStatus = "t3x_active",
+        recording = 1,
+        active = 1,
+        action = media.action or "video",
+        uploadMode = st.uploadMode or media.uploadMode or "auto",
+        quality = st.quality or media.quality or "high",
+    })
+end
+
+--- 1011 PIR 录像停止（4G 定时/云端停录，或 T3x AT+RECORD=0）
+function publishPirRecordStop(reason, uploadMode, quality, opts)
+    if not isConnected then
+        log.warn("net_mqtt", "no conn, skip 1011")
+        return
+    end
+    if pir_ctrl.canPublishStopMqtt and not pir_ctrl.canPublishStopMqtt() then
+        opts = type(opts) == "table" and opts or {}
+        log.info("net_mqtt", "dup 1011", reason, opts.source or "4g")
+        return
+    end
+    if pir_ctrl.markStopMqttPublished then
+        pir_ctrl.markStopMqttPublished()
+    end
+    opts = type(opts) == "table" and opts or {}
+    local source = opts.source or "4g"
     local topic = getPubTopic() .. "event"
     local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","reason":"%s","uploadMode":"%s","quality":"%s","time":"%s"}',
+        '{"deviceNo":"%s","dataType":"%s","reason":"%s","source":"%s","uploadMode":"%s","quality":"%s","time":"%s"}',
         getDeviceId(),
         DT.UL_PIR_STOP,
         escJson(reason),
+        escJson(source),
         escJson(uploadMode),
         escJson(quality),
         os.date("%Y-%m-%d %H:%M:%S")
     )
     mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "发布录像停止(1011):", reason, topic)
+    log.info("net_mqtt", "pub 1011", reason, source, topic)
+end
+
+--- T3x AT+RECORD=0 → 1011（reason 为 T3x 原值，source=t3x）
+function publishT3xRecordStop(reason, uploadMode, quality)
+    local st = pir_ctrl.getState()
+    publishPirRecordStop(
+        reason or "unknown",
+        uploadMode or st.uploadMode or "auto",
+        quality or st.quality or "high",
+        { source = "t3x" }
+    )
 end
 
 function publish(topic, data, qos)
     sys.publish("mqtt_pub", topic, data, qos or 1)
 end
 
+--- T3x 经 AT+MQTTPUB=<suffix>;<json> 委托 4G 发布；suffix 拼在 getPubTopic() 后
+function publishRaw(topicSuffix, payload, qos)
+    if not isConnected or not mqttClient then
+        log.warn("net_mqtt", "no conn, raw fail", topicSuffix)
+        return false
+    end
+    if not topicSuffix or topicSuffix == "" or not payload or payload == "" then
+        return false
+    end
+    local topic
+    if topicSuffix:sub(1, 1) == "/" then
+        topic = topicSuffix
+    else
+        topic = getPubTopic() .. topicSuffix
+    end
+    mqttClient:publish(topic, payload, qos or 1)
+    log.info("net_mqtt", "raw", topic, #payload)
+    return true
+end
+
 function start(options)
-    if started then log.warn("net_mqtt", "已启动"); return false end
+    if started then log.warn("net_mqtt", "started"); return false end
     if options then
         if options.onOffline then callbacks.onOffline = options.onOffline end
         if options.onMessage then callbacks.onMessage = options.onMessage end
     end
 
-    log.info("net_mqtt", "========== 网络模块启动 ==========")
+    log.info("net_mqtt", "net start")
+    setupIdentityAutoPublish()
+    if not pendingHostDrainHooked then
+        pendingHostDrainHooked = true
+        local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+        sys.subscribe(evt, function()
+            sys.taskInit(function()
+                sys.wait(500)
+                drainPendingHostWork()
+            end)
+        end)
+    end
     bootstrapNetwork()
     sys.taskInit(mqttTask)
     started = true
@@ -682,7 +1254,7 @@ function stop()
     if not started and not mqttClient then
         return false
     end
-    log.info("net_mqtt", "========== 停止 MQTT ==========")
+    log.info("net_mqtt", "mqtt stop")
     if isConnected and mqttClient and publishRest then
         pcall(publishRest)
         sys.wait(300)
@@ -701,7 +1273,7 @@ function stop()
     isConnected = false
     _G.APP_RUNTIME.online_status = 0
     started = false
-    log.info("net_mqtt", "MQTT 已停止")
+    log.info("net_mqtt", "stopped")
     return true
 end
 

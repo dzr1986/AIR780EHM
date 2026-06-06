@@ -1,6 +1,8 @@
-﻿# 人体检测（PIR）— GPIO30 / PIR_MCU_DET
+# 人体检测（PIR）— GPIO30 / PIR_MCU_DET
 
 本文说明 **Air780EHM** 侧 PIR 硬件引脚、中断检测、业务联动与 **MQTT 1010** 上报流程。云端策略与 JSON 字段见 [`PIR_PROTOCOL.md`](PIR_PROTOCOL.md)。
+
+> 一次 PIR → **`APP_PIR_WAKE_T3X`** 一次唤醒；`both` 由 T3x 同周期先拍后录。见 [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)。
 
 ---
 
@@ -76,11 +78,11 @@ flowchart TB
     HW[PIR 模块 PIR_MCU_DET]
     PIR[lib/pir.lua GPIO30 中断+冷却]
     CTRL[../user/pir_ctrl.lua 策略/录像会话]
-    APP[user/app.lua 唤醒 t3x / MQTT]
+    APP[user/app.lua 唤醒 T3x / MQTT]
     NET[user/net_mqtt.lua 1010 / 1011]
     HW --> PIR
     PIR -->|PIR_HW_TRIGGERED| CTRL
-    CTRL -->|PIR_TAKE_PHOTO / RECORD / STOP| APP
+    CTRL -->|PIR_WAKE_T3X / STOP / T3X_RECORD_*| APP
     APP --> NET
     CTRL -->|GPIO_PIR_TRIGGERED| APP
 ```
@@ -92,7 +94,7 @@ flowchart TB
 | 硬件 | `lib/pir.lua` | GPIO30 中断、防抖、冷却，发布 `PIR_HW_TRIGGERED` |
 | 聚合 | `peripheral.lua` | `pir.start()` |
 | 业务 | `pir_ctrl.lua` | 拍照/录像策略、录像定时、二次触发停录 |
-| 编排 | `app.lua` | 订阅事件 → `publishWakeup`、t3x 唤醒、`publishPirDetect` |
+| 编排 | `app.lua` | 订阅事件 → `publishWakeup`、T3x 唤醒、`publishPirDetect` |
 | 云端 | `net_mqtt.lua` | 下行 2010/2011，上行 1010/1011 |
 
 ---
@@ -171,18 +173,22 @@ flowchart TD
     D --> E{正在录像且 stopOnSecondPir?}
     E -->|是| F[PIR_STOP_RECORDING pir_retrigger]
     E -->|否| G[GPIO_PIR_TRIGGERED]
-    G --> H{action}
-    H -->|photo| I[PIR_TAKE_PHOTO]
-    H -->|video/both| J[PIR_RECORD_VIDEO + 定时器]
+    G --> H[publishActionEvents]
+    H --> I{video/both?}
+    I -->|是| K[beginVideoSession + 定时器]
+    I -->|否 photo| J
+    K --> J[PIR_WAKE_T3X ×1]
 ```
 
 ### 5.2 `app.lua` 联动
 
 | 事件 | 动作 |
 |------|------|
-| `GPIO_PIR_TRIGGERED` | `net.publishPirDetect()` → 上行 **1010** |
-| `PIR_TAKE_PHOTO` / `PIR_RECORD_VIDEO` | `uploadMode=auto` 时 **1001 唤醒**；`t3x_ctrl.wake()` 拉起主控拍照/录像 |
-| `PIR_STOP_RECORDING` | **1011** 停录上报；`t3x_ctrl.pulseWakeup()` |
+| `GPIO_PIR_TRIGGERED` | `net.publishPirDetect()` → 上行 **1010** `detected` |
+| `PIR_WAKE_T3X` | `uploadMode=auto` 时 **1001** + `requestT3xWake()`（photo/video/both 各仅一次） |
+| `T3X_RECORD_ACTIVE` | **1010** `t3x_active`（T3x `AT+RECORD=1`） |
+| `T3X_RECORD_STOP` | **1011** `source=t3x` |
+| `PIR_STOP_RECORDING` | **1011** `source=4g`；可选 `requestT3xWake(pir_stop)` |
 
 默认媒体策略（`pir_ctrl.lua` → `pirMediaConfig`）：
 
@@ -234,9 +240,10 @@ flowchart TD
 |----------------------|--------|------|
 | `PIR_HW_TRIGGERED` | `lib/pir` | GPIO30 有效触发（过冷却） |
 | `GPIO_PIR_TRIGGERED` | `pir_ctrl` | 业务层确认触发（含 action 等） |
-| `PIR_TAKE_PHOTO` | `pir_ctrl` | 执行拍照策略 |
-| `PIR_RECORD_VIDEO` | `pir_ctrl` | 开始录像会话 |
-| `PIR_STOP_RECORDING` | `pir_ctrl` | 停止录像 |
+| `PIR_WAKE_T3X` | `pir_ctrl` | 一次 PIR 一次唤醒 T3x（含 photo/video/both） |
+| `T3X_RECORD_ACTIVE` / `T3X_RECORD_STOP` | `host_uart` | T3x `AT+RECORD=` → MQTT 1010/1011 |
+| `PIR_STOP_RECORDING` | `pir_ctrl` | Luat 侧停止录像会话 |
+| `PIR_TIMER_EXPIRED` | `pir_ctrl` | max_sec 到期 → `timer` 停录 |
 
 ---
 
@@ -255,7 +262,7 @@ flowchart TD
 
 ## 9. 相关文档
 
-- [`T31_CAT1_GPIO.md`](../T31_CAT1_GPIO.md) §2.9 — 原理图网络名  
+- [`T3X_CAT1_GPIO.md`](../T3X_CAT1_GPIO.md) §2.9 — 原理图网络名  
 - [`PIR_PROTOCOL.md`](PIR_PROTOCOL.md) — 2010 / 2011 / 1010 / 1011  
 - [`MQTT_DOWNLINK.md`](MQTT_DOWNLINK.md) §8 — 下行 PIR 配置示例  
 - [`CONFIG.md`](CONFIG.md) — 配置分层  

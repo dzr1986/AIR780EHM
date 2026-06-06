@@ -1,8 +1,9 @@
-﻿# user/ 代码整体分析（780EHM_PJ）
+# user/ 代码整体分析（780EHM_PJ）
 
-> Air780EHM + t3x 摄像头 · LuatOS 方案1（扁平架构）  
+> Air780EHM + T3x 摄像头 · LuatOS 方案1（扁平架构）  
 > 分析日期：2026-05-18（第二轮：全量源码对照）  
-> 配置真源：[`CONFIG.md`](CONFIG.md) · 协议见 `MQTT_PROTOCOL.md` / `UART_PROTOCOL.md` / `PIR_PROTOCOL.md`
+> 配置真源：[`CONFIG.md`](CONFIG.md) · 协议见 `MQTT_PROTOCOL.md` / `UART_PROTOCOL.md` / `PIR_PROTOCOL.md`  
+> Cat.1 录像/MQTT：**`PIR_WAKE_T3X`**、1011 会话去重 — [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)
 
 ---
 
@@ -25,7 +26,7 @@
 
 ## 1. 总体定位
 
-`user/` 共 **11 个 Lua 模块**（约 2.4k 行业务代码，不含 lib），实现 **4G 模组 + t3x 协处理器摄像头** 物联网终端：
+`user/` 共 **11 个 Lua 模块**（约 2.4k 行业务代码，不含 lib），实现 **4G 模组 + T3x 协处理器摄像头** 物联网终端：
 
 | 能力 | 主模块 | 行数级 |
 |------|--------|--------|
@@ -170,17 +171,20 @@ bootMqtt (sys.taskInit)
 ### 4.1 PIR：硬件 → 云端 / t3x
 
 ```text
-GPIO30 上升沿 (lib/pir, 默认 cooldown=10s)
+GPIO30 上升沿 (lib/pir)
   → APP_PIR_HW_TRIGGERED
   → pir_ctrl.onPirTriggered
-      若录像中且 stopOnSecondPir → PIR_STOP_RECORDING(reason=pir_retrigger)
-      否则 → GPIO_PIR_TRIGGERED + PIR_TAKE_PHOTO / PIR_RECORD_VIDEO
-  → app:
-        uploadMode=auto → net.publishWakeup(1001) + t3x_ctrl.wake()
-  → PIR_STOP_RECORDING → publishPirRecordStop(1011) + t3x_ctrl.pulseWakeup()
+      若录像中且 stopOnSecondPir → PIR_STOP_RECORDING(pir_retrigger)
+      否则 → GPIO_PIR_TRIGGERED(1010 detected)
+             → publishActionEvents → PIR_WAKE_T3X ×1
+                 video/both → beginVideoSession
+  → app: uploadMode=auto → publishWakeup(1001) + requestT3xWake()
+  → T3x: media_dispatch（both 同周期先拍后录）
+  → AT+RECORD=1/0 → T3X_RECORD_* → MQTT 1010/1011 source=t3x
+  → PIR_STOP_RECORDING → publishPirRecordStop(source=4g) + requestT3xWake(pir_stop)
 ```
 
-`pulseWakeup`：GPIO22 拉低 120ms 再拉高，与供电同脚；**无**专用 UART 停录帧。
+`requestT3xWake`：经 `t3x_policy`/`t3x_ctrl` GPIO 脉冲唤醒 T3x；停录无专用 UART 帧，靠 `AT+PIRSTAT`/`AT+RECORD` 同步。
 
 ### 4.2 低功耗触发与退出
 
@@ -232,8 +236,10 @@ lib/key 中断（pwrkey / bootkey / ready）
 |------|--------|----------------|
 | `PIR_HW_TRIGGERED` | lib/pir | pir_ctrl |
 | `GPIO_PIR_TRIGGERED` | pir_ctrl | app（日志） |
-| `PIR_TAKE_PHOTO` / `PIR_RECORD_VIDEO` | pir_ctrl | app → net + t3x_ctrl |
-| `PIR_STOP_RECORDING` | pir_ctrl | app → 1011 + pulse |
+| `PIR_WAKE_T3X` | pir_ctrl | app → 1001 + requestT3xWake |
+| `T3X_RECORD_ACTIVE` / `T3X_RECORD_STOP` | host_uart | app → 1010/1011 source=t3x |
+| `PIR_STOP_RECORDING` | pir_ctrl | app → 1011 source=4g |
+| `PIR_TIMER_EXPIRED` | pir_ctrl | → publishStopRecording(timer) |
 | `GPIO_PWRKEY_*` | lib/key pwrkey | app |
 | `GPIO_BOOTKEY_*` / `GPIO_COPROC_READY` | lib/key | app |
 | `GPIO_VBUS_CHANGED` | PMD、initPowerStatus | app（日志） |
@@ -335,9 +341,9 @@ lib/key 中断（pwrkey / bootkey / ready）
 |------|------|------|------|
 | 1 | `t3x_ctrl.enterSleep` 调 `pm.hibernate` | 业务低功耗可能牵动整机休眠，与 MQTT 并发未文档化 | 实机测 MQTT 是否仍在线；或改为仅脉冲/标记，深睡走独立流程 |
 | 2 | 双重 `net_ready` 等待 | `bootMqtt` 120s + `mqttTask` 90s，略冗余 | 可让 `net.start` 跳过二次等待或缩短超时 |
-| 3 | OTA 版本格式 | 合宙 IoT 要求 `x.y.z` | 平台与脚本 `VERSION` 对齐 |
+| 3 | OTA 版本格式 | 合宙 IoT 要求 `内核号.XXX.ZZZ`（如 `2034.001.002`） | 平台、MQTT、脚本 `VERSION` 一致 |
 | 4 | MQTT 密码明文 | `config.lua` | 生产用参数下发或编译保护 |
-| 5 | t3x 停录 | 仅 `pulseWakeup` | 按 t3x UART 协议补停录命令 |
+| 5 | Luat 停录 vs T3x 写盘 | Luat `PIR_STOP_RECORDING` 与 T3x `AT+RECORD=0` 可能竞态 | 已用 1011 会话去重；停录可 `requestT3xWake(pir_stop)`；平台以 `source=t3x` 为准 |
 | 6 | `APP_MQTT_CONNECTED` 未入 APP_EVENTS | 外部无法统一订阅连接成功 | 并入 `APP_EVENTS` 或文档标明内部用 |
 | 7 | 归档 powerMode | 与 uart_bridge 争 UART1 | 若接模组级低功耗，需合并 UART 唤醒设计 |
 
@@ -402,7 +408,7 @@ lib/pir          →  lib/gpio_util
 
 ## 12. 总结
 
-工程是以 **`app.lua` 为核心的事件驱动应用**：`config` 定规则，`peripheral`+`lib` 管硬件与 OTA，`pir_ctrl` 管 PIR 会话，`net`/`uart_bridge` 管对外通道，`t3x_ctrl` 管协处理器。主路径含 **常电 MQTT**、**FOTA（2004/1004）**；后续可重点验证 **`t3x_ctrl.enterSleep` 与 MQTT 并发**、**t3x 停录 UART 协议**。
+工程是以 **`app.lua` 为核心的事件驱动应用**：`config` 定规则，`peripheral`+`lib` 管硬件与 OTA，`pir_ctrl` 管 PIR 会话，`net`/`uart_bridge` 管对外通道，`t3x_ctrl` 管协处理器。主路径含 **常电 MQTT**、**FOTA（2004/1004）**；后续可重点验证 **`t3x_ctrl.enterSleep` 与 MQTT 并发**、**T3x 停录 UART 协议**。
 
 ---
 

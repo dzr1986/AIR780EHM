@@ -1,4 +1,4 @@
---- t3x AT+SERVCREATE / SERVCLOSE 对应：TCP 长连接、登录、心跳、wake_hex 唤醒 t3x
+--- t3x AT+SERVCREATE / SERVCLOSE 对应：TCP 长连接、登录、心跳、wake_hex 唤醒 T3x
 -- 与 MQTT（AT+MQTTCFG / net_mqtt.lua）独立
 -- @module net_tcp
 
@@ -49,7 +49,16 @@ local function notify_t3x(evt)
     if not ch then
         return
     end
-    local host_uart = package.loaded.host_uart
+    local okPol, policy = pcall(require, "t3x_policy")
+    if okPol and type(policy) == "table" and policy.requestT3xWake then
+        policy.requestT3xWake("tcp_wake", ch.sid, evt)
+        return
+    end
+    local host_uart = _G.host_uart
+    if not host_uart then
+        local ok, mod = pcall(require, "host_uart")
+        if ok then host_uart = mod end
+    end
     if host_uart and host_uart.notify_host then
         host_uart.notify_host(ch.sid, evt)
     end

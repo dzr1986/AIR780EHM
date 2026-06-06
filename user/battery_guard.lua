@@ -1,6 +1,6 @@
 --- 电池电量保护（仅在外壳 USB 未插入时生效）
--- ≤15% 暂停 PIR；≤10% 发 MQTT 1002 + 断 T31；≤5% 延时关机
--- USB 插入（GPIO27）时忽略电量，并恢复 T31/PIR
+-- ≤15% suspend PIR（T3x 可能仍上电）；≤10% 回调 on_enter_low_power → app 进 rest（1002/断 T3x）
+-- ≤5% 延时关机；USB 插入（GPIO27）时忽略电量并恢复 T3x/PIR
 -- @module battery_guard
 -- @release v1_20260528
 
@@ -39,6 +39,10 @@ local function pctThreshold(key)
 end
 
 local function enabled()
+    local fc = _G.FEATURE_CFG
+    if fc and fc.low_power == false then
+        return false
+    end
     local c = cfg()
     if c.enabled == false then
         return false
@@ -118,9 +122,9 @@ local function enterBatteryRest(pct)
         return
     end
     guard.rest_by_battery = true
-    log.warn(LOG_TAG, "电量", pct, "% ≤ 休眠阈值，发 1002 并断 T31")
+    log.warn(LOG_TAG, "电量", pct, "% ≤ 休眠阈值，请求进 rest（app 上报 1002 + 断 T3x）")
     if type(hooks.on_enter_low_power) == "function" then
-        hooks.on_enter_low_power()
+        hooks.on_enter_low_power("battery")
     end
 end
 
@@ -129,9 +133,9 @@ local function exitBatteryRest(pct)
         return
     end
     guard.rest_by_battery = false
-    log.info(LOG_TAG, "电量", pct, "% 已恢复，退出电量休眠并上电 T31")
+    log.info(LOG_TAG, "电量", pct, "% 已恢复，退出电量休眠并上电 T3x")
     if type(hooks.on_exit_low_power) == "function" then
-        hooks.on_exit_low_power()
+        hooks.on_exit_low_power("battery_recover")
     end
 end
 
@@ -186,7 +190,7 @@ function evaluate(pct, mv)
     end
 
     local shutdownPct = pctThreshold("shutdown_percent")
-    local restPct = pctThreshold("t31_rest_percent")
+    local restPct = pctThreshold("t3x_rest_percent")
     local recoverPct = pctThreshold("recover_rest_percent")
     local pirSuspendPct = pctThreshold("pir_suspend_percent")
     local pirResumePct = pctThreshold("pir_resume_percent")
@@ -217,7 +221,7 @@ function evaluate(pct, mv)
     end
 end
 
---- USB 插入：忽略电量策略，保持 T31 运行
+--- USB 插入：忽略电量策略，保持 T3x 运行
 function onUsbInserted()
     cancelShutdownTimer()
     local wasRest = guard.rest_by_battery
@@ -227,13 +231,16 @@ function onUsbInserted()
     if wasPir then
         resumePir()
     end
-    log.info(LOG_TAG, "USB 插入，忽略低电量限制，保持 T31 上电")
+    log.info(LOG_TAG, "USB 插入，忽略低电量限制，保持 T3x 上电")
+    local exitedRest = false
     if wasRest or (_G.APP_RUNTIME and _G.APP_RUNTIME.low_power_mode == 1) then
         if type(hooks.on_exit_low_power) == "function" then
-            hooks.on_exit_low_power()
+            hooks.on_exit_low_power("usb_insert")
+            exitedRest = true
         end
     end
-    if type(hooks.wake_t3x) == "function" then
+    -- 已走 on_exit_low_power → requestT3xWake，勿再 wake_t3x 重复脉冲
+    if not exitedRest and type(hooks.wake_t3x) == "function" then
         hooks.wake_t3x()
     end
 end
@@ -264,7 +271,7 @@ function start(opts)
     hooks = type(opts) == "table" and opts or {}
     local c = cfg()
     log.info(LOG_TAG, "已启动",
-        "rest<=" .. tostring(c.t31_rest_percent) .. "%",
+        "rest<=" .. tostring(c.t3x_rest_percent) .. "%",
         "off<=" .. tostring(c.shutdown_percent) .. "%",
         "pir<=" .. tostring(c.pir_suspend_percent) .. "%",
         "usb_ignore=" .. tostring(c.ignore_when_usb_inserted ~= false))

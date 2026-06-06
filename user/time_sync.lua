@@ -1,4 +1,4 @@
---- CAT1 → T31 时间同步（UART AT+TIMESET；T31 可 AT+TIME? 拉取）
+--- CAT1 → T3x 时间同步（UART AT+TIMESET；T3x 可 AT+TIME? 拉取）
 -- 见 doc/TIME_SYNC.md
 -- @module time_sync
 -- @release v1_20260529
@@ -70,6 +70,12 @@ local function getHostUart()
 end
 
 local function ensureT3xPowered()
+    local okPol, policy = pcall(require, "t3x_policy")
+    if okPol and type(policy) == "table" and policy.mayPowerT3x
+        and not policy.mayPowerT3x("time_sync") then
+        log.info(LOG_TAG, "低功耗/低电量，跳过 T3x 上电")
+        return false
+    end
     if not t3xModule then
         local ok, mod = pcall(require, "t3x_ctrl")
         if ok then
@@ -144,7 +150,7 @@ function pushToHost(force)
     local ok = waitTimesetAck(timeoutMs)
     if ok then
         lastPushedUnix = t
-        log.info(LOG_TAG, "T31 时间已同步", t)
+        log.info(LOG_TAG, "T3x 时间已同步", t)
     else
         log.warn(LOG_TAG, "TIMESET 超时", t)
     end
@@ -169,15 +175,22 @@ function onSntpSuccess(unix, server)
     pushToHostAsync(true)
 end
 
-function onT31Wake()
+function onT3xWake()
     if not enabled() or cfg().sync_on_wake == false then
         return
     end
     pushToHostAsync(false)
 end
 
---- 唤醒 T31 前推送时间（须在 task 内）；随后调用 host_uart.notify_host
+--- 唤醒 T3x 前推送时间（须在 task 内）；随后调用 host_uart.notify_host
 function pushBeforeNotify(sid, evt)
+    local okPol, policy = pcall(require, "t3x_policy")
+    if okPol and type(policy) == "table" and policy.requestT3xWake then
+        if not policy.mayPowerT3x("time_sync_notify") then
+            log.info(LOG_TAG, "TIMESET/唤醒跳过", policy.getDenyReason and policy.getDenyReason() or "")
+            return
+        end
+    end
     if not enabled() or cfg().sync_before_wake == false then
         local hu = getHostUart()
         if hu and hu.notify_host then
@@ -185,7 +198,7 @@ function pushBeforeNotify(sid, evt)
         end
         return
     end
-    if isTimeValid() then
+    if isTimeValid() and ensureT3xPowered() then
         pushToHost(false)
     end
     local hu = getHostUart()
