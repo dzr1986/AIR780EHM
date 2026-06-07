@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<title>LOW_BATTERY_AND_LOW_POWER</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  @page { margin: 18mm 16mm; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-size: 11pt;
+    line-height: 1.55;
+    color: #222;
+    max-width: 100%;
+    padding: 0 8px;
+  }
+  h1 { font-size: 20pt; border-bottom: 2px solid #333; padding-bottom: 6px; }
+  h2 { font-size: 15pt; margin-top: 1.2em; color: #1a5276; }
+  h3 { font-size: 12.5pt; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 10pt; }
+  th, td { border: 1px solid #bbb; padding: 6px 8px; }
+  th { background: #eef2f7; }
+  code { background: #f4f4f4; padding: 1px 4px; font-size: 9.5pt; }
+  pre { background: #f6f8fa; padding: 10px; overflow-x: auto; font-size: 9pt; }
+  pre.mermaid { background: #fff; border: 1px dashed #ccc; }
+  blockquote { border-left: 4px solid #ccc; margin-left: 0; padding-left: 12px; color: #555; }
+  a { color: #1565c0; }
+</style>
+</head>
+<body>
+<h1>低电量、USB、低功耗与 T3x 供电</h1>
+<blockquote>
+<p>代码：<code>app</code>（rest 状态）· <code>battery_guard</code>（电量）· <code>t3x_policy</code>（T3x 门禁）· <code>t3x_ctrl</code>（GPIO22）<br />
+详表与配置见文末 <strong>附录</strong> · 架构：<a href="POWER_USB_BATTERY_T3X_LOGIC.md">POWER_USB_BATTERY_T3X_LOGIC.md</a></p>
+</blockquote>
+<hr />
+<h2>一分钟看懂</h2>
+<p>设备平时只有两种「工作姿态」：</p>
+<table>
+<thead>
+<tr>
+<th>姿态</th>
+<th><code>low_power_mode</code></th>
+<th>MQTT 1003</th>
+<th>T3x（GPIO22）</th>
+<th>4G</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>正常</strong></td>
+<td><code>normal</code> (0)</td>
+<td>可录像/PIR</td>
+<td><strong>上电/可唤醒</strong></td>
+<td>联网</td>
+</tr>
+<tr>
+<td><strong>休眠 rest</strong></td>
+<td><code>rest</code> (1)</td>
+<td>上报 1002</td>
+<td><strong>断电</strong></td>
+<td><strong>仍联网</strong></td>
+</tr>
+</tbody>
+</table>
+<p>记住三句话：</p>
+<ol>
+<li><strong>插 USB（GPIO27）</strong> → 当作「有外部电」，低电量保护暂停，尽量让 T3x 保持/恢复运行。  </li>
+<li><strong>拔 USB</strong> → 先按电量算账，再按规则进 rest（RNDIS 调试除外）。  </li>
+<li><strong>已在 rest 时</strong> → 不要随便唤醒 T3x；要醒须「退出 rest」或 <code>force_wake</code>（插 USB、云端 2002 退出等）。</li>
+</ol>
+<hr />
+<h2>总览：状态怎么来回跳</h2>
+<pre class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> 正常: 上电且允许运行
+    正常 --> rest: 进休眠(见下表)
+    rest --> 正常: 出休眠(见下表)
+
+    note right of rest
+        T3x 断电
+        4G 仍联网
+    end note
+</pre>
+
+<h3>什么情况下进入 rest？</h3>
+<table>
+<thead>
+<tr>
+<th>谁触发</th>
+<th>典型原因（日志 <code>进入低功耗</code>）</th>
+<th>常见吗</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>拔 USB 座</td>
+<td><code>usb_remove</code></td>
+<td>★★★</td>
+</tr>
+<tr>
+<td>电量 ≤10%（未插 USB）</td>
+<td><code>battery</code></td>
+<td>★★★</td>
+</tr>
+<tr>
+<td>云端 MQTT 2002</td>
+<td><code>mqtt_2002</code></td>
+<td>★★</td>
+</tr>
+<tr>
+<td>AT+LOWPOWER=ENTER</td>
+<td><code>at</code></td>
+<td>★</td>
+</tr>
+<tr>
+<td>启动无 USB（旧配置）</td>
+<td><code>boot_no_usb</code></td>
+<td>少见</td>
+</tr>
+</tbody>
+</table>
+<h3>什么情况下退出 rest？</h3>
+<table>
+<thead>
+<tr>
+<th>谁触发</th>
+<th>日志 <code>退出低功耗</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>插 USB 座</td>
+<td><code>usb_insert</code></td>
+</tr>
+<tr>
+<td>电量恢复到 &gt;18%（曾电量休眠）</td>
+<td><code>battery_recover</code></td>
+</tr>
+<tr>
+<td>云端 2002 退出</td>
+<td><code>mqtt_2002</code></td>
+</tr>
+<tr>
+<td>AT+LOWPOWER=EXIT</td>
+<td><code>at</code></td>
+</tr>
+</tbody>
+</table>
+<p>进入、退出 rest 的<strong>具体动作永远相同</strong>（只是 <code>reason</code> 不同）：</p>
+<pre><code class="language-text">【进 rest】onEnterLowPower(reason)
+    → low_power_mode = 1
+    → T3x enterSleep（断 GPIO22）
+    → MQTT 发 1002
+
+【出 rest】onExitLowPower(reason)
+    → low_power_mode = 0
+    → requestT3xWake(force_wake) 拉起 T3x
+</code></pre>
+<hr />
+<h2>场景流程（按日常使用顺序看）</h2>
+<h3>场景 A：用户把设备插上 USB 座</h3>
+<pre class="mermaid">
+flowchart TD
+    A[GPIO27 检测到插入] --> B[applyUsbInsertState 插入]
+    B --> C[power_status = 1]
+    C --> D[exitRestIfNeededAfterUsbInsert]
+    D --> E{之前在 rest?}
+    E -->|是| F[退出低功耗 usb_insert]
+    E -->|否| G[可能只恢复 PIR]
+    F --> H[requestT3xWake 拉起 T3xx]
+    D --> I[电量保护暂停 不断 T3x 不自动关机]
+</pre>
+
+<p><strong>你可以理解成</strong>：插电 = 充电 + 允许 T3x 干活，即使 <code>remainPower</code> 还很低。</p>
+<hr />
+<h3>场景 B：用户从座上拿走设备（拔 USB）</h3>
+<pre class="mermaid">
+flowchart TD
+    A[GPIO27 检测到拔出] --> B[applyUsbInsertState 拔出]
+    B --> C[power_status = 0]
+    C --> D{PC 开了 RNDIS?}
+    D -->|是| E[不进 rest 仅日志]
+    D -->|否| F[enterRestIfNeededAfterUsbRemove]
+    F --> G[battery_guard 按当前电量评估]
+    G --> H{电量 ≤10%?}
+    H -->|是| I[进入低功耗 battery]
+    H -->|否| J{已是 rest?}
+    J -->|否| K[进入低功耗 usb_remove]
+    J -->|是| L[不再重复进 rest]
+    I --> M[T3x 断电 + 1002]
+    K --> M
+</pre>
+
+<p><strong>两条线（最容易混）</strong>：</p>
+<ol>
+<li><strong>电量线</strong>：≤10% → <code>battery</code> 进 rest。  </li>
+<li><strong>拔座线</strong>：电量还高也会 <code>usb_remove</code> 进 rest（产品规则：离座就休眠）。</li>
+</ol>
+<hr />
+<h3>场景 C：不插 USB，电量慢慢掉（仅电池）</h3>
+<pre class="mermaid">
+flowchart TD
+    A[vbat 每 10s 更新电量] --> B[BATTERY_UPDATE]
+    B --> C[battery_guard.evaluate]
+    C --> D{USB 插着?}
+    D -->|是| Z[忽略 结束]
+    D -->|否| E{电量}
+    E -->|≤5%| F[进 rest + 约 3s 后关机]
+    E -->|≤10%| G[进 rest battery]
+    E -->|≤15%| H[停 PIR 不断 T3xx]
+    E -->|>18% 且曾电量休眠| I[退出 rest battery_recover]
+    E -->|>20%| J[恢复 PIR]
+</pre>
+
+<p>与场景 B 的区别：<strong>没有拔座事件</strong>，纯靠百分比阶梯。</p>
+<hr />
+<h3>场景 D：已在 rest，又来了「唤醒」请求</h3>
+<pre class="mermaid">
+flowchart TD
+    A[PIR / MQTT离线 / notify_host / TCP...] --> B{t3x_policy}
+    B --> C{烧录或 USB 插入?}
+    C -->|是| OK[允许]
+    C -->|否| D{force_wake?}
+    D -->|是| OK
+    D -->|否| E{low_power_mode=1?}
+    E -->|是| DENY[拒绝 日志: rest 门禁]
+    E -->|否| F{未插USB 且 ≤15%?}
+    F -->|是| DENY2[拒绝 低电量]
+    F -->|否| OK
+</pre>
+
+<p><strong>典型现象</strong>：<code>remainPower=12</code>、<code>lowPowerMode=rest</code> 时 MQTT 离线 <strong>不会</strong> 再把 T3x 拉起来（v1.2 已修）。</p>
+<hr />
+<h3>场景 E：冷启动上电</h3>
+<pre><code class="language-text">1. initPowerStatus()     → 读 GPIO27，写入 power_status
+2. t3x_ctrl.start()      → t3x_policy.bootPowerOn()
+       插 USB              → T3x 上电
+       未插 USB 且电量&gt;15% → T3x 上电
+       未插 USB 且低电/rest → 跳过 T3x 上电（等充电或插座）
+3. battery_guard 延迟评估一次电量
+</code></pre>
+<hr />
+<h2>一张表：能不能动 T3xx？</h2>
+<table>
+<thead>
+<tr>
+<th>条件</th>
+<th>T3x 上电/唤醒</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T3x 烧录中</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>USB 座插入</strong></td>
+<td>✅（低电也尽量保持）</td>
+</tr>
+<tr>
+<td>未插 USB，电量 <strong>≤15%</strong></td>
+<td>❌（policy）</td>
+</tr>
+<tr>
+<td><strong><code>lowPowerMode=rest</code></strong></td>
+<td>❌ 除非 <code>force_wake</code></td>
+</tr>
+<tr>
+<td>正常 + 电量够 + 非 rest</td>
+<td>✅ PIR/业务等</td>
+</tr>
+<tr>
+<td>rest 下 <strong>MQTT 离线</strong></td>
+<td>❌ 不硬唤醒</td>
+</tr>
+</tbody>
+</table>
+<p>优先级口诀：<code>烧录 &gt; USB &gt; 电量(未插USB) &gt; rest门禁 &gt; 平常唤醒</code></p>
+<hr />
+<h2>和 MQTT 1003 的对应关系</h2>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>表示什么</th>
+<th>注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>remainPower</code></td>
+<td>电池 ADC%</td>
+<td>与 USB <strong>无关</strong>；插电后仍可能很低</td>
+</tr>
+<tr>
+<td><code>powerStatus</code></td>
+<td>USB 座是否插入</td>
+<td>1=插入</td>
+</tr>
+<tr>
+<td><code>lowPowerMode</code></td>
+<td>业务休眠 rest/normal</td>
+<td><strong>不是</strong>「低电量」本身</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>日志怎么对流程</h2>
+<table>
+<thead>
+<tr>
+<th>看到这条日志</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>USB拔出</code> → <code>进入低功耗 usb_remove</code></td>
+<td>场景 B 拔座线</td>
+</tr>
+<tr>
+<td><code>进入低功耗 battery</code></td>
+<td>场景 C ≤10%</td>
+</tr>
+<tr>
+<td><code>退出低功耗 usb_insert</code></td>
+<td>场景 A</td>
+</tr>
+<tr>
+<td><code>t3x_policy 跳过唤醒</code> + <code>low_power_mode=rest</code></td>
+<td>场景 D，正常</td>
+</tr>
+<tr>
+<td><code>MQTT离线 跳过硬唤醒</code></td>
+<td>rest 下不拉 T3xx</td>
+</tr>
+<tr>
+<td><code>启动跳过 T3x 上电</code></td>
+<td>场景 E 低电未插 USB</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>附录 A：三层代码模型（查代码用）</h2>
+<pre><code class="language-text">① 状态  APP_RUNTIME（电量 / USB / rest）
+② 策略  app + battery_guard（要不要进 rest）
+③ 执行  t3x_policy + t3x_ctrl（能不能动 T3x）
+</code></pre>
+<p>USB 函数：<code>applyUsbInsertState</code> → 拔出 <code>enterRestIfNeededAfterUsbRemove</code> / 插入 <code>exitRestIfNeededAfterUsbInsert</code>。</p>
+<hr />
+<h2>附录 B：事件 → 代码路径</h2>
+<table>
+<thead>
+<tr>
+<th>事件</th>
+<th>代码入口</th>
+<th>reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPIO27 拔出</td>
+<td><code>enterRestIfNeededAfterUsbRemove</code></td>
+<td><code>battery</code> 或 <code>usb_remove</code></td>
+</tr>
+<tr>
+<td>GPIO27 插入</td>
+<td><code>exitRestIfNeededAfterUsbInsert</code></td>
+<td><code>usb_insert</code></td>
+</tr>
+<tr>
+<td>电量 ≤10%</td>
+<td><code>battery_guard.evaluate</code></td>
+<td><code>battery</code></td>
+</tr>
+<tr>
+<td>电量 &gt;18% 恢复</td>
+<td><code>exitBatteryRest</code></td>
+<td><code>battery_recover</code></td>
+</tr>
+<tr>
+<td>MQTT 2002</td>
+<td><code>POWER_ENTER/EXIT_REST</code></td>
+<td><code>mqtt_2002</code></td>
+</tr>
+<tr>
+<td>AT+LOWPOWER</td>
+<td><code>host_uart</code></td>
+<td><code>at</code></td>
+</tr>
+<tr>
+<td>启动无 USB</td>
+<td><code>initPowerStatus</code></td>
+<td><code>boot_no_usb</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>附录 C：电量分级（未插 USB）</h2>
+<table>
+<thead>
+<tr>
+<th>电量</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≤15%</td>
+<td>停 PIR</td>
+</tr>
+<tr>
+<td>≤10%</td>
+<td>进 rest（<code>battery</code>）</td>
+</tr>
+<tr>
+<td>≤5%</td>
+<td>约 3s 后关机</td>
+</tr>
+<tr>
+<td>&gt;18%</td>
+<td>可退出电量 rest</td>
+</tr>
+<tr>
+<td>&gt;20%</td>
+<td>恢复 PIR</td>
+</tr>
+</tbody>
+</table>
+<p>配置：<code>BATTERY_CFG.guard</code> · 开关：<code>MODULE_FLAGS.battery_guard</code></p>
+<hr />
+<h2>附录 D：配置与变更</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>项</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.lua</code></td>
+<td><code>BATTERY_CFG.guard</code>、<code>T3X_POLICY_CFG</code></td>
+</tr>
+<tr>
+<td><code>app_config.lua</code></td>
+<td><code>battery_guard</code>、<code>t3x_policy</code>、<code>charge</code></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>变更</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>v1.2+</td>
+<td>易懂流程章节；USB 拔插独立函数；<code>onEnter/Exit</code> 带 reason</td>
+</tr>
+<tr>
+<td>v1.2</td>
+<td><code>t3x_policy</code>；rest/MQTT 离线不误唤醒 T3x</td>
+</tr>
+</tbody>
+</table>
+<p>关机：PWRKEY / MQTT·AT 2004；自动仅 <strong>≤5% 未插 USB</strong>。</p>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>
