@@ -16,11 +16,14 @@ local RNDIS_ENABLE = 1
 local LOW_POWER_ENABLE = 1
 -- HOST_EVT_ENABLE: 1=PIRSTAT 扩展 has_work + HOSTIDLE 休眠查询 | 0=关闭（与 T3x WITH_T3X_HOSTEVT_SLEEP 对齐）
 local HOST_EVT_ENABLE = 1
+-- USB_REENUM_ENABLE: 1=响应 T3x AT+USBRESET 重绑 RNDIS | 0=返回 +USBRESET:DISABLED
+local USB_REENUM_ENABLE = 1
 
 _G.FEATURE_CFG = {
     rndis = (RNDIS_ENABLE == 1),
     low_power = (LOW_POWER_ENABLE == 1),
     host_evt = (HOST_EVT_ENABLE == 1),
+    usb_reenum = (USB_REENUM_ENABLE == 1),
 }
 
 -- 低功耗运行策略（编译能力见 FEATURE_CFG.low_power；T3x 侧 WITH_T3X_LOW_POWER）
@@ -47,13 +50,18 @@ _G.HOST_USB_CFG = {
     notify_t3x_usb_state = true,       -- 拔插、开机、T3x 首条 AT 后推送 +CAT1:USB,0/1
     t3x_usb_ursp = "+CAT1:USB,%d",
     boot_notify_delay_ms = 1500,       -- 开机后延迟同步 USB 态（等 UART/T3x 就绪）
+    -- T3x mismatch 超时 AT+USBRESET（见 doc/T3X_USB_HOSTIDLE.md §USB 重枚举）
+    allow_t3x_usb_reset = (_G.FEATURE_CFG.usb_reenum ~= false),
+    block_usb_reset_when_t3x_rest = true, -- low_power_mode=1 且 T3x 断电 → +USBRESET:REST，不 rebind
+    usb_reset_min_interval_sec = 60,   -- 两次 AT+USBRESET 最小间隔
+    usb_reset_notify_after_ms = 800,   -- 重绑后延迟再推 +CAT1:USB,1
 }
 
 -- ============================================================
 -- 应用元数据 / 栈 / 运行时（版本见 main.lua 顶部 VERSION）
 -- ============================================================
 _G.APP_META = {
-    version = _G.BUILD_TAG or _G.VERSION or "",
+    version = _G.VERSION or "",
     log_enabled = false,
     device_model = "awake_normal",
     cmd_ext = "",

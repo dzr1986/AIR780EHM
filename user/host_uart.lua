@@ -802,6 +802,87 @@ local function uart_wled(cmd)
     return string.format(CRLF .. "+WLED:%d" .. CRLF, n) .. ok_tail()
 end
 
+local usb_reset_guard = {
+    busy = false,
+    last_sec = 0,
+    count = 0,
+}
+
+--- 防御：4G rest 且 T3x 已断电时不 rebind（正常 rest 下 T3x 不会发 AT+USBRESET）
+local function t3x_rest_blocks_usb_reset()
+    local cfg = host_usb_cfg()
+    if cfg.block_usb_reset_when_t3x_rest == false then
+        return false
+    end
+    local rt = _G.APP_RUNTIME or {}
+    if tonumber(rt.low_power_mode) ~= 1 then
+        return false
+    end
+    local ok, t3x = pcall(require, "t3x_ctrl")
+    if not ok or type(t3x) ~= "table" or not t3x.getState then
+        return false
+    end
+    local st = t3x.getState()
+    return st ~= nil and st.powered_on == false
+end
+
+local function uart_usbreset(cmd)
+    local cfg = host_usb_cfg()
+    if cfg.allow_t3x_usb_reset == false then
+        return CRLF .. "+USBRESET:DISABLED" .. CRLF
+    end
+    if cmd == "AT+USBRESET?" then
+        return string.format(
+            CRLF .. "+USBRESET:busy=%d,count=%d,last=%d" .. CRLF,
+            usb_reset_guard.busy and 1 or 0,
+            usb_reset_guard.count or 0,
+            usb_reset_guard.last_sec or 0
+        ) .. ok_tail()
+    end
+    if cmd ~= "AT+USBRESET" then
+        return RSP_ERROR
+    end
+    if usb_reset_guard.busy then
+        return CRLF .. "+USBRESET:BUSY" .. CRLF
+    end
+    local min_iv = tonumber(cfg.usb_reset_min_interval_sec) or 60
+    local now = os.time()
+    if usb_reset_guard.last_sec > 0 and (now - usb_reset_guard.last_sec) < min_iv then
+        return CRLF .. "+USBRESET:BUSY" .. CRLF
+    end
+    if t3x_rest_blocks_usb_reset() then
+        log.info(LOG_TAG, "USBRESET blocked: low_power_mode=1, T3x powered_off")
+        return CRLF .. "+USBRESET:REST" .. CRLF
+    end
+
+    local okMod, usb_rndis = pcall(require, "usb_rndis")
+    if not okMod or type(usb_rndis) ~= "table" then
+        return CRLF .. "+USBRESET:ERROR" .. CRLF
+    end
+
+    usb_reset_guard.busy = true
+    sys.taskInit(function()
+        local notify_ms = tonumber(cfg.usb_reset_notify_after_ms) or 800
+        local ok = false
+        if usb_rndis.rebind then
+            ok = usb_rndis.rebind({ wait_ms = 500 })
+        elseif usb_rndis.disable and usb_rndis.open then
+            usb_rndis.disable()
+            sys.wait(500)
+            ok = usb_rndis.open() and true or false
+        end
+        if ok and cfg.notify_t3x_usb_state ~= false and is_usb_inserted() then
+            sys.wait(notify_ms)
+            push_usb_host_idle_state(1)
+        end
+        usb_reset_guard.busy = false
+        usb_reset_guard.last_sec = os.time()
+        usb_reset_guard.count = (usb_reset_guard.count or 0) + 1
+        log.info(LOG_TAG, "USBRESET", ok and "done" or "failed", "count", usb_reset_guard.count)
+    end)
+    return CRLF .. "+USBRESET:OK" .. CRLF .. ok_tail()
+end
+
 local function uart_rndis(cmd)
     local okMod, usb_rndis = pcall(require, "usb_rndis")
     if not okMod or type(usb_rndis) ~= "table" then
@@ -937,6 +1018,7 @@ local AT_CMD_TABLE = {
     uart_cmd_entry(nil, "AT+HOSTIDLE=", uart_hostidle),
     uart_cmd_entry({ "AT+RNDIS", "AT+RNDIS?" }, nil, uart_rndis),
     uart_cmd_entry(nil, "AT+RNDIS=", uart_rndis),
+    uart_cmd_entry({ "AT+USBRESET", "AT+USBRESET?" }, nil, uart_usbreset),
     uart_cmd_entry("AT+REBOOT", nil, uart_reboot),
     uart_cmd_entry("AT+POWEROFF", nil, uart_poweroff),
     uart_cmd_entry({ "AT+OTA", "AT+OTACHECK" }, nil, uart_ota),

@@ -213,6 +213,36 @@ function stop()
     return disable()
 end
 
+--- T3x AT+USBRESET：关 RNDIS 再开，促使 Host 侧重枚举网卡
+function rebind(opts)
+    opts = type(opts) == "table" and opts or {}
+    if not mobileReady() then
+        runtime.status = "unsupported"
+        runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
+        return false, runtime.last_error
+    end
+    local wait_ms = tonumber(opts.wait_ms) or 500
+    log.info(LOG_TAG, "rebind RNDIS for T3x host")
+    mobile.flymode(0, true)
+    sys.wait(FLYMODE_WAIT_MS)
+    mobile.config(mobile.CONF_USB_ETHERNET, 0)
+    sys.wait(wait_ms)
+    rndisOpenCore()
+    hookIpReadyForRndis()
+    runtime.status = "enabled"
+    runtime.configured_at = os.time()
+    ipReadyRefreshed = false
+    local ip = readCellularIp()
+    log.info(LOG_TAG, "RNDIS rebind done", "cell_ip", ip or "--")
+    if ip then
+        sys.taskInit(function()
+            sys.wait(500)
+            refreshAfterCellularIp()
+        end)
+    end
+    return true
+end
+
 function enableAsync(opts)
     sys.taskInit(function()
         local ok, err

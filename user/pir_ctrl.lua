@@ -97,8 +97,62 @@ end
 
 _G.normalizePirMediaConfig = normalizePirMediaConfig
 _G.normalizePirRecordPolicy = normalizePirRecordPolicy
+
+local PIR_CFG_PATH = "/pir_mqtt_cfg.json"
+local json
+pcall(function() json = require "json" end)
+
+local function loadPersistedConfig()
+    if not json then
+        return
+    end
+    local f = io.open(PIR_CFG_PATH, "r")
+    if not f then
+        return
+    end
+    local body = f:read("*a")
+    f:close()
+    if not body or body == "" then
+        return
+    end
+    local ok, data = pcall(json.decode, body)
+    if not ok or type(data) ~= "table" then
+        log.warn("pir_ctrl", "persist cfg decode fail", PIR_CFG_PATH)
+        return
+    end
+    if data.mediaConfig then
+        _G.pirMediaConfig = normalizePirMediaConfig(data.mediaConfig)
+    end
+    if data.recordPolicy then
+        _G.pirRecordPolicy = normalizePirRecordPolicy(data.recordPolicy)
+    end
+    log.info("pir_ctrl", "loaded persisted cfg", PIR_CFG_PATH)
+end
+
+local function savePersistedConfig()
+    if not json then
+        return
+    end
+    local payload = json.encode({
+        mediaConfig = normalizePirMediaConfig(_G.pirMediaConfig),
+        recordPolicy = normalizePirRecordPolicy(_G.pirRecordPolicy),
+    })
+    if not payload then
+        return
+    end
+    local f = io.open(PIR_CFG_PATH, "w")
+    if not f then
+        log.warn("pir_ctrl", "save cfg failed", PIR_CFG_PATH)
+        return
+    end
+    f:write(payload)
+    f:close()
+    log.info("pir_ctrl", "saved cfg", PIR_CFG_PATH)
+end
+
 _G.pirMediaConfig = normalizePirMediaConfig(PIR_MEDIA.DEFAULT_CONFIG)
 _G.pirRecordPolicy = normalizePirRecordPolicy(DEFAULT_RECORD_POLICY)
+loadPersistedConfig()
 
 local function getRecordPolicy()
     return normalizePirRecordPolicy(_G.pirRecordPolicy)
@@ -241,6 +295,7 @@ function setRecordPolicy(cfg)
         stopOnSecondPir = cfg.stopOnSecondPir ~= nil and cfg.stopOnSecondPir or old.stopOnSecondPir,
         stopOnCloud = cfg.stopOnCloud ~= nil and cfg.stopOnCloud or old.stopOnCloud,
     })
+    savePersistedConfig()
     return _G.pirRecordPolicy
 end
 

@@ -72,6 +72,8 @@ sequenceDiagram
 | `AT+HOSTIDLE?` | `+HOSTIDLE:lowpower=0,usb=1,host_idle_allow=0 OK` |
 | `AT+HOSTIDLE=1` | `+HOSTIDLE:USB`（拒绝 T3x 断电，**非** BUSY） |
 | `AT+LOWPOWER=ENTER` | `+LOWPOWER:USB`（拒绝 4G 进 rest） |
+| `AT+USBRESET` | `+USBRESET:OK`：异步 `usb_rndis.rebind()`；`+USBRESET:REST`：rest 且 T3x 断电，仅日志不 rebind |
+| `AT+USBRESET?` | `+USBRESET:busy,count,last,rest_blk,t3x_pwr` |
 
 | 字段 | 含义 |
 |------|------|
@@ -87,6 +89,9 @@ _G.HOST_USB_CFG = {
     block_host_idle_when_usb = true,   -- HOSTIDLE=1 → +HOSTIDLE:USB
     block_4g_rest_when_usb = true,     -- 4G onEnterLowPower / MQTT 2002 / LOWPOWER=ENTER 拦截
     notify_t3x_usb_state = true,      -- 串口推 +CAT1:USB,n
+    allow_t3x_usb_reset = true,       -- AT+USBRESET → usb_rndis.rebind（FEATURE_CFG.usb_reenum）
+    usb_reset_min_interval_sec = 60,
+    usb_reset_notify_after_ms = 800,
     t3x_usb_ursp = "+CAT1:USB,%d",
     boot_notify_delay_ms = 1500,       -- 冷启动补发 USB 态
 }
@@ -108,6 +113,8 @@ _G.HOST_USB_CFG = {
 | `host_uart.lua` | `push_usb_host_idle_state` | 发 `+CAT1:USB,n` |
 | `host_uart.lua` | `uart_hostidle` | `HOSTIDLE:USB` / `HOSTIDLE?` 扩展字段 |
 | `host_uart.lua` | `uart_lowpower` | `LOWPOWER:USB` |
+| `host_uart.lua` | `uart_usbreset` | `AT+USBRESET` → `usb_rndis.rebind`（**不** `requestT3xWake`） |
+| `lib/usb_rndis.lua` | `rebind` | RNDIS 关→开，供 T3x mismatch 恢复 |
 
 ### T3x（`app/cat1/`）
 
@@ -118,6 +125,8 @@ _G.HOST_USB_CFG = {
 | `host_event.c` | `client_sync_usb_policy_from_cat1()` bootstrap 同步 |
 | `api.c` | bootstrap 调用 USB 策略同步 |
 | `runtime.c` | 日志：`HOSTIDLE USB block`（返回码 3） |
+| `cat1_usb_reenum.c` | mismatch 超时发 `AT+USBRESET`（`NET_LINK_4G_USB_REENUM`） |
+| `net_link_rtnl.c` | watchdog / mismatch；网卡恢复后 `cat1_usb_reenum_reset` |
 
 ---
 
@@ -128,13 +137,43 @@ _G.HOST_USB_CFG = {
 - [ ] 拔 USB：串口 `+CAT1:USB,0`；4G 可 `进入低功耗 usb_remove`
 - [ ] 拔 USB：`has_event=0` 后 T3x `HOSTIDLE accepted`
 - [ ] 冷启动插 USB：T3x 首 AT 后收到 `+CAT1:USB,1` 或 bootstrap `HOSTIDLE?` 中 `usb=1`
+- [ ] mismatch：`[4G_USB] reenum` + 4G `USBRESET done`；**无** `t3x wake` / `powerOn` 日志
+- [ ] T3x 已 `enterSleep` 断电：无持续 `AT+USBRESET`（IPC 已停）
 
 ---
 
-## 7. 相关文档
+## 7. USB 恢复与 4G rest / T3x 休眠
+
+> T3x 侧全文：[usb_4g_recovery.md](usb_4g_recovery.md) §11（IPC 仓库 `docs/`）
+
+### 7.1 结论
+
+**4G `low_power_mode=1` 且 T3x 已按 `enterSleep` 断电时，不会因 USB mismatch / `AT+USBRESET` 流程而随便启动 T3x。**
+
+### 7.2 原因摘要
+
+1. **发起方是 T3x IPC**：`AT+USBRESET` 仅由已上电的 T3x 发出；`enterSleep` 成功后 IPC 停止，watchdog 不存在。
+2. **4G 处理不上电**：`uart_usbreset` 只做 `usb_rndis.rebind()` 与可选 `+CAT1:USB,1`；**不调用** `requestT3xWake` / `powerOn`。
+3. **USB 插入互斥 rest**：`block_4g_rest_when_usb` 使 USB 座插入时 4G 不进 rest；恢复场景与「4G 已 rest」通常不重叠。
+
+### 7.3 与唤醒路径对比
+
+| 路径 | rest 门禁 | 拉 T3x 电 |
+|------|-----------|-----------|
+| PIR / MQTT → `requestT3xWake` | `t3x_policy.mayPowerT3x` | 可能 |
+| `AT+USBRESET` → `uart_usbreset` | 不走唤醒链 | **否** |
+
+### 7.4 rest 防御门禁
+
+`HOST_USB_CFG.block_usb_reset_when_t3x_rest=true`（默认）时，若 `low_power_mode=1` 且 `t3x_ctrl.getState().powered_on=false`，`AT+USBRESET` 返回 **`+USBRESET:REST`**，仅日志、不 `usb_rndis.rebind`。
+
+---
+
+## 8. 相关文档
 
 | 文档 | 说明 |
 |------|------|
 | [T3X_LOW_POWER.md](T3X_LOW_POWER.md) | rest / MQTT 1002、§2.1 摘要 |
 | [T3X_IPC_4G_INTERACTION.md](T3X_IPC_4G_INTERACTION.md) | 端到端总览 |
+| T3x `docs/usb_4g_recovery.md` | USB 恢复 + §11 低功耗互斥 |
 | T3x `docs/T3X_USB_HOSTIDLE.md` | T3x 侧索引 |

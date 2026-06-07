@@ -81,6 +81,8 @@ AT → ATI → AT+RIL=0 → AT+SERVCREATE=… → AT+MQTTCFG=… → AT+GETCFG
 | `AT+POWEROFF` | `+POWEROFF:OK` | ~500ms 后关机 |
 | `AT+OTA` / `AT+OTACHECK` | `+OTA:STARTING` | 触发 FOTA |
 | `AT+RNDIS=1` / `AT+RNDIS=0` | `+RNDIS:OK` / `ERROR` | 开/关 RNDIS |
+| `AT+USBRESET` | `+USBRESET:OK` / `BUSY` / `DISABLED` / `REST` | T3x mismatch 恢复：重绑 RNDIS 后再推 `+CAT1:USB,1`；`REST`=4G rest 且 T3x 已断电，不 rebind |
+| `AT+USBRESET?` | `+USBRESET:busy,count,last,rest_blk,t3x_pwr` | 查询重枚举状态 |
 
 ### 2.5 白光灯（T3x 也可经 4G 控制）
 

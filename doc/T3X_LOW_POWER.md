@@ -80,6 +80,8 @@ GPIO27 **USB 插入**时（`APP_RUNTIME.power_status=1`）：
 
 配置：`user/config.lua` → `HOST_USB_CFG`（`block_host_idle_when_usb` / `notify_t3x_usb_state`）。
 
+**USB RNDIS 恢复与 rest**：T3x mismatch 时发 `AT+USBRESET` 仅重绑 RNDIS，**不** `requestT3xWake`；T3x 已 `enterSleep` 断电则 IPC 停发 AT。详见 [T3X_USB_HOSTIDLE.md](T3X_USB_HOSTIDLE.md) §7、T3x `docs/usb_4g_recovery.md` §11。
+
 **`AT+HOSTIDLE?` 扩展**（查询用）：
 
 ```text
