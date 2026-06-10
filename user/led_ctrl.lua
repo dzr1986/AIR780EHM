@@ -290,6 +290,10 @@ function _M.start(cfg)
         log.info(LOG_TAG, "single_blue GPIO21 常亮/慢闪/快闪")
         ledStatusSingleBlueTask()
     else
+        local okDual = pcall(require, "led_dual")
+        if not okDual then
+            log.warn(LOG_TAG, "dual 需 lib/led_dual.lua，见 archive/slim/lib/led_dual.lua")
+        end
         log.info(LOG_TAG, "dual GPIO20+21")
         LED_CONFIG.startupSequence = LED_CONFIG.startupSequence or {
             enabled = true,

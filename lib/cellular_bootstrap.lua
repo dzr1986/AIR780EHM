@@ -299,6 +299,13 @@ local function requestCellInfo(timeoutSec)
     return true
 end
 
+local function cellInfoRefreshWanted()
+    if _G.MODULE_FLAGS and _G.MODULE_FLAGS.mobile_info == true then
+        return true
+    end
+    return cfg().cell_info_refresh_on_start == true
+end
+
 local function startCellInfoRefresh()
     if cellInfoRefreshStarted or not mobile or not mobile.getCellInfo or not mobile.reqCellInfo then
         return
@@ -534,7 +541,9 @@ function start()
     end
     started = true
 
-    startCellInfoRefresh()
+    if cellInfoRefreshWanted() then
+        startCellInfoRefresh()
+    end
     sys.subscribe("SIM_IND", onSimInd)
     setupSetAuto()
 

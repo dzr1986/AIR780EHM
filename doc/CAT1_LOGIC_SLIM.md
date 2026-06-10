@@ -268,6 +268,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 2026-06-10 | **已落地阶段 0 + 阶段 1**：`t3x_ctrl` 去重 `pulseUsbDebugEn`；`peripheral` 修 `led_ctrl`；`archive/slim/README` 修正 `net_tcp` 路径；`host_uart` 新增 `run_host_query`、`build_pir_wake_context`、`setHostEncode` |
 | 2026-06-10 | **已落地阶段 2**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t3x_ipc.ensurePowered` |
 | 2026-06-10 | **已落地阶段 3**：`publishUplink`、`debug_checks`、`subscribePirMqttBridge` |
+| 2026-06-10 | **已落地阶段 4**：`withRndisReopen`、`led_dual` 归档、`cellInfoRefreshWanted` |
 
 ---
 
@@ -290,4 +291,6 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 3 | `T3X_BURN_CFG.debug_checks` 烧录明细日志 | `user/config.lua`、`user/app.lua` |
 | 3 | PIR/MQTT 桥接表驱动 + `wakeT3xForPir` | `user/app.lua` |
 
-**待做（阶段 4 起）**：`usb_rndis` 内部去重、`led` dual 路径外置。
+| 4 | `usb_rndis.withRndisReopen` 去重 switch/rebind | `lib/usb_rndis.lua` |
+| 4 | `led_dual` 归档，single_blue 减 Flash | `lib/led.lua` → `archive/slim/lib/led_dual.lua` |
+| 4 | `cellular_bootstrap` 按需 `startCellInfoRefresh` | `lib/cellular_bootstrap.lua` |

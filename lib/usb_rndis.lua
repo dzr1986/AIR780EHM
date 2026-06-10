@@ -107,6 +107,47 @@ local function rndisOpenCore()
     applyPmUsb()
 end
 
+local function scheduleRefreshIfIp()
+    local ip = readCellularIp()
+    if ip then
+        sys.taskInit(function()
+            sys.wait(500)
+            refreshAfterCellularIp()
+        end)
+    end
+    return ip
+end
+
+--- 关 RNDIS → 等待 → 重开（switch / rebind 共用）
+local function withRndisReopen(opts, logTag)
+    opts = type(opts) == "table" and opts or {}
+    if not mobileReady() then
+        runtime.status = "unsupported"
+        runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
+        return false, runtime.last_error
+    end
+    local off_ms = tonumber(opts.off_ms) or tonumber(opts.wait_ms) or 500
+    log.info(LOG_TAG, logTag or "rndis reopen", "off_ms", off_ms)
+    mobile.flymode(0, true)
+    sys.wait(FLYMODE_WAIT_MS)
+    mobile.config(mobile.CONF_USB_ETHERNET, 0)
+    if off_ms > 0 then
+        sys.wait(off_ms)
+    end
+    rndisOpenCore()
+    hookIpReadyForRndis()
+    runtime.status = "enabled"
+    runtime.configured_at = os.time()
+    ipReadyRefreshed = false
+    local post_ms = tonumber(opts.on_wait_ms) or 0
+    if post_ms > 0 then
+        sys.wait(post_ms)
+    end
+    local ip = scheduleRefreshIfIp()
+    log.info(LOG_TAG, logTag or "rndis reopen", "done", "cell_ip", ip or "--")
+    return true
+end
+
 --- IP 就绪后重配 USB 网卡，触发 PC 侧 DHCP/NAT（解决有网卡无 IP）
 local function refreshAfterCellularIp()
     if not mobileReady() or ipReadyRefreshed then
@@ -168,15 +209,9 @@ function open()
 
     runtime.status = "enabled"
     runtime.configured_at = os.time()
-    local ip = readCellularIp()
+    local ip = scheduleRefreshIfIp()
     log.info(LOG_TAG, "RNDIS 已开启，PC 连接 USB 网卡 DHCP 即可",
         "cell_ip", ip or "--")
-    if ip then
-        sys.taskInit(function()
-            sys.wait(500)
-            refreshAfterCellularIp()
-        end)
-    end
     return true
 end
 
@@ -216,65 +251,16 @@ end
 --- T3x AT+USBSWITCH：更长关断时间，配合 T31 PA9 VBUS 切换
 function switch(opts)
     opts = type(opts) == "table" and opts or {}
-    if not mobileReady() then
-        runtime.status = "unsupported"
-        runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
-        return false, runtime.last_error
-    end
-    local off_ms = tonumber(opts.off_ms) or 800
-    local on_wait_ms = tonumber(opts.on_wait_ms) or 500
-    log.info(LOG_TAG, "switch RNDIS for T3x host", "off_ms", off_ms)
-    mobile.flymode(0, true)
-    sys.wait(FLYMODE_WAIT_MS)
-    mobile.config(mobile.CONF_USB_ETHERNET, 0)
-    sys.wait(off_ms)
-    rndisOpenCore()
-    hookIpReadyForRndis()
-    runtime.status = "enabled"
-    runtime.configured_at = os.time()
-    ipReadyRefreshed = false
-    if on_wait_ms > 0 then
-        sys.wait(on_wait_ms)
-    end
-    local ip = readCellularIp()
-    log.info(LOG_TAG, "RNDIS switch done", "cell_ip", ip or "--")
-    if ip then
-        sys.taskInit(function()
-            sys.wait(500)
-            refreshAfterCellularIp()
-        end)
-    end
-    return true
+    opts.off_ms = tonumber(opts.off_ms) or 800
+    opts.on_wait_ms = tonumber(opts.on_wait_ms) or 500
+    return withRndisReopen(opts, "switch RNDIS for T3x host")
 end
 
 --- T3x AT+USBRESET：关 RNDIS 再开，促使 Host 侧重枚举网卡
 function rebind(opts)
     opts = type(opts) == "table" and opts or {}
-    if not mobileReady() then
-        runtime.status = "unsupported"
-        runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
-        return false, runtime.last_error
-    end
-    local wait_ms = tonumber(opts.wait_ms) or 500
-    log.info(LOG_TAG, "rebind RNDIS for T3x host")
-    mobile.flymode(0, true)
-    sys.wait(FLYMODE_WAIT_MS)
-    mobile.config(mobile.CONF_USB_ETHERNET, 0)
-    sys.wait(wait_ms)
-    rndisOpenCore()
-    hookIpReadyForRndis()
-    runtime.status = "enabled"
-    runtime.configured_at = os.time()
-    ipReadyRefreshed = false
-    local ip = readCellularIp()
-    log.info(LOG_TAG, "RNDIS rebind done", "cell_ip", ip or "--")
-    if ip then
-        sys.taskInit(function()
-            sys.wait(500)
-            refreshAfterCellularIp()
-        end)
-    end
-    return true
+    opts.wait_ms = tonumber(opts.wait_ms) or 500
+    return withRndisReopen(opts, "rebind RNDIS for T3x host")
 end
 
 function enableAsync(opts)
