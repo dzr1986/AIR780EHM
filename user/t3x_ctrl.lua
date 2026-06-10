@@ -239,36 +239,6 @@ function pulseUsbDebugEn(opts)
     lastAction = "pulseUsbDebugEn"
     log.info(LOG_TAG, "USB_DEBUG_EN GPIO32 复位", "pin", entry_ota.pin,
         "high_ms", high_ms, "off", otaOff)
-  logGpioSet("USB_DEBUG_EN", entry_pwr, entry_boot, entry_ota,
-        currentPowerLevel, currentBootLevel, otaOff)
-    return true
-end
-
---- USB 恢复：GPIO32 USB_DEBUG_EN 拉高保持后再拉回 init（配合 AT+USBRESET / RNDIS rebind）
-function pulseUsbDebugEn(opts)
-    opts = type(opts) == "table" and opts or {}
-    local entry_pwr, _, entry_boot, entry_ota = getEntries()
-    ensurePins()
-    if not t3xOtaPin or not entry_ota or not entry_ota.pin then
-        log.warn(LOG_TAG, "USB_DEBUG_EN 未初始化", "pin", entry_ota and entry_ota.pin)
-        return false
-    end
-    local usbCfg = _G.HOST_USB_CFG or {}
-    local high_ms = tonumber(opts.high_ms) or tonumber(usbCfg.usb_debug_en_pulse_ms) or 300
-    if high_ms < 0 then
-        high_ms = 0
-    end
-    local otaOff = entry_ota.init_level or 0
-    t3xOtaPin(otaModeLevel)
-    currentOtaLevel = otaModeLevel
-    if high_ms > 0 then
-        sys.wait(high_ms)
-    end
-    t3xOtaPin(otaOff)
-    currentOtaLevel = otaOff
-    lastAction = "pulseUsbDebugEn"
-    log.info(LOG_TAG, "USB_DEBUG_EN GPIO32 复位", "pin", entry_ota.pin,
-        "high_ms", high_ms, "off", otaOff)
     logGpioSet("USB_DEBUG_EN", entry_pwr, entry_boot, entry_ota,
         currentPowerLevel, currentBootLevel, otaOff)
     return true

@@ -252,16 +252,26 @@ local function build_hostevt_media_suffix(pirBody)
         pir_field_str(pirBody, "last_stop", "none"))
 end
 
-local function build_hostevt_body()
+local function build_pir_wake_context()
     local pirBody = ""
     local ok, pir_runtime = pcall(require, "pir_runtime")
     if ok and pir_runtime and pir_runtime.buildAtBody then
         pirBody = pir_runtime.buildAtBody()
     end
     local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
-    local okHe, he = pcall(require, "host_event")
-    if okHe and he and he.summarize then
-        local sum = he.summarize(pirBody, wakeValid, wakeSid, wakeEvt)
+    local sum
+    local he
+    local okHe, heMod = pcall(require, "host_event")
+    if okHe and heMod and heMod.summarize then
+        he = heMod
+        sum = heMod.summarize(pirBody, wakeValid, wakeSid, wakeEvt)
+    end
+    return pirBody, wakeValid, wakeSid, wakeEvt, sum, he
+end
+
+local function build_hostevt_body()
+    local pirBody, _, _, _, sum = build_pir_wake_context()
+    if sum then
         return string.format("has_event=%d,pending=%s,types=%s,sid=%d,evt=%d%s",
             sum.has_event, sum.pending, sum.types, sum.sid or 0, sum.evt or -1,
             build_hostevt_media_suffix(pirBody))
@@ -475,21 +485,15 @@ local function uart_getcfg(_cmd)
 end
 
 local function build_pirstat_body()
-    local body = ""
-    local ok, pir_runtime = pcall(require, "pir_runtime")
-    if ok and pir_runtime and pir_runtime.buildAtBody then
-        body = pir_runtime.buildAtBody()
-    end
-    local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
+    local pirBody, wakeValid, wakeSid, wakeEvt, sum, he = build_pir_wake_context()
+    local body = pirBody
     if wakeValid then
         body = body .. string.format(",pending_wake=1,pending_sid=%d,pending_evt=%d",
             wakeSid, wakeEvt)
     else
         body = body .. ",pending_wake=0"
     end
-    local okHe, he = pcall(require, "host_event")
-    if okHe and he and he.isEnabled and he.isEnabled() and he.summarize then
-        local sum = he.summarize(body, wakeValid, wakeSid, wakeEvt)
+    if he and he.isEnabled and he.isEnabled() and sum then
         body = body .. string.format(",has_work=%d,work_types=%s,work_pending=%s,work_sid=%d,work_evt=%d",
             sum.has_event, sum.types, sum.pending, sum.sid or 0, sum.evt or -1)
     else
@@ -1525,54 +1529,110 @@ local function ensure_t3x_for_host_query(policy_tag, cfg)
     return false
 end
 
+local function host_boot_wait_ms(cfg)
+    return tonumber(cfg.host_boot_wait_ms)
+        or tonumber((_G.TIME_SYNC_CFG or {}).host_boot_wait_ms)
+        or 1500
+end
+
+--- 通用 T3x AT 查询（须在 task 内调用）
+local function run_host_query(opts)
+    if state[opts.busy_key] then
+        if opts.busy_log then
+            log.warn(LOG_TAG, opts.busy_log)
+        end
+        if opts.busy_return ~= nil then
+            return opts.busy_return
+        end
+        if opts.cache_key then
+            return state[opts.cache_key]
+        end
+    end
+    state[opts.busy_key] = true
+
+    local cfg = opts.cfg or identity_cfg()
+    local result = opts.default_result
+    local ok, err = pcall(function()
+        local timeoutMs = tonumber(opts.timeout_ms)
+            or tonumber(cfg[opts.timeout_cfg_key or "query_timeout_ms"])
+            or opts.default_timeout
+            or 3000
+        if opts.when_disabled then
+            local early = opts.when_disabled(cfg)
+            if early ~= nil then
+                result = early
+                return
+            end
+        end
+        if not ensure_t3x_for_host_query(opts.policy_tag, cfg) then
+            if opts.on_no_t3x then
+                result = opts.on_no_t3x()
+            end
+            return
+        end
+        if opts.wait_boot ~= false and not state.host_at_ready then
+            sys.wait(host_boot_wait_ms(cfg))
+        end
+        if not uart_bridge.sendString then
+            if opts.no_uart_log then
+                log.warn(LOG_TAG, opts.no_uart_log)
+            end
+            if opts.on_no_uart then
+                result = opts.on_no_uart()
+            end
+            return
+        end
+        log.info(LOG_TAG, opts.at_cmd, timeoutMs, opts.log_extra or "")
+        uart_bridge.sendString(opts.at_cmd, true)
+        local got, val = sys.waitUntil(opts.ack_event, timeoutMs)
+        result = opts.on_response(got, val, timeoutMs) or result
+    end)
+
+    state[opts.busy_key] = false
+    if not ok then
+        if opts.err_log then
+            log.warn(LOG_TAG, opts.err_log, err)
+        end
+        if opts.on_error then
+            return opts.on_error(err)
+        end
+        return opts.default_result
+    end
+    return result
+end
+
 function getCachedHostGb28181Id()
     return state.host_gb28181_id
 end
 
 --- 须在 task 内调用；向 T3x 发 AT+GB28181? 并等待 +GB28181:
 function queryHostGb28181(timeoutMs)
-    if state.gb28181_query_busy then
-        log.warn(LOG_TAG, "gb28181 busy")
-        return state.host_gb28181_id
-    end
-    state.gb28181_query_busy = true
-
-    local id
-    local ok, err = pcall(function()
-        timeoutMs = tonumber(timeoutMs) or tonumber(identity_cfg().query_timeout_ms) or 3000
-        if not ensure_t3x_for_host_query("host_identity", identity_cfg()) then
-            return
-        end
-        local bootWait = tonumber(identity_cfg().host_boot_wait_ms)
-            or tonumber((_G.TIME_SYNC_CFG or {}).host_boot_wait_ms)
-            or 1500
-        if not state.host_at_ready then
-            sys.wait(bootWait)
-        end
-
-        if not uart_bridge.sendString then
-            log.warn(LOG_TAG, "gb28181 no uart")
-            return
-        end
-
-        log.info(LOG_TAG, "AT+GB28181?", timeoutMs)
-        uart_bridge.sendString("AT+GB28181?", true)
-        local got
-        got, id = sys.waitUntil(GB28181_ACK_EVENT, timeoutMs)
-        if got and id ~= nil then
-            state.host_gb28181_id = id
-            log.info(LOG_TAG, "gb28181", id ~= "" and id or "")
-        else
-            log.warn(LOG_TAG, "gb28181 timeout", timeoutMs)
-        end
-    end)
-
-    state.gb28181_query_busy = false
-    if not ok then
-        log.warn(LOG_TAG, "gb28181 err", err)
-        return nil
-    end
-    return state.host_gb28181_id
+    return run_host_query({
+        busy_key = "gb28181_query_busy",
+        cache_key = "host_gb28181_id",
+        busy_log = "gb28181 busy",
+        policy_tag = "host_identity",
+        cfg = identity_cfg(),
+        timeout_ms = timeoutMs,
+        timeout_cfg_key = "query_timeout_ms",
+        default_timeout = 3000,
+        at_cmd = "AT+GB28181?",
+        ack_event = GB28181_ACK_EVENT,
+        no_uart_log = "gb28181 no uart",
+        err_log = "gb28181 err",
+        on_response = function(got, id, tmo)
+            if got and id ~= nil then
+                state.host_gb28181_id = id
+                log.info(LOG_TAG, "gb28181", id ~= "" and id or "")
+                return state.host_gb28181_id
+            end
+            log.warn(LOG_TAG, "gb28181 timeout", tmo)
+            return state.host_gb28181_id
+        end,
+        on_error = function()
+            return nil
+        end,
+    })
 end
 
 function getCachedHostTfCard()
@@ -1592,50 +1652,46 @@ end
 
 --- 须在 task 内调用；向 T3x 发 AT+IPCSTATUS?，超时视为 idle（T3x 未上电或无应答）
 function queryHostIpcStatus(timeoutMs)
-    if state.ipc_status_query_busy then
-        log.warn(LOG_TAG, "ipcst busy")
-        return state.host_ipc_status or "idle"
-    end
-    state.ipc_status_query_busy = true
-
-    local status
-    local cfg = ipc_cfg()
-    local ok, err = pcall(function()
-        timeoutMs = tonumber(timeoutMs) or tonumber(cfg.status_query_timeout_ms) or 2000
-        if cfg.enabled == false then
-            status = state.host_at_ready and "ready" or "idle"
-            return
-        end
-        if not ensure_t3x_for_host_query("host_ipc", cfg) then
-            status = "idle"
-            return
-        end
-        if not uart_bridge.sendString then
-            log.warn(LOG_TAG, "ipcst no uart")
-            status = "idle"
-            return
-        end
-
-        log.info(LOG_TAG, "AT+IPCSTATUS?", timeoutMs)
-        uart_bridge.sendString("AT+IPCSTATUS?", true)
-        local got, st = sys.waitUntil(IPCSTATUS_ACK_EVENT, timeoutMs)
-        if got and st then
-            state.host_ipc_status = st
-            status = st
-            log.info(LOG_TAG, "ipcst", st)
-        else
-            status = "idle"
+    return run_host_query({
+        busy_key = "ipc_status_query_busy",
+        busy_log = "ipcst busy",
+        busy_return = state.host_ipc_status or "idle",
+        policy_tag = "host_ipc",
+        cfg = ipc_cfg(),
+        timeout_ms = timeoutMs,
+        timeout_cfg_key = "status_query_timeout_ms",
+        default_timeout = 2000,
+        wait_boot = false,
+        at_cmd = "AT+IPCSTATUS?",
+        ack_event = IPCSTATUS_ACK_EVENT,
+        default_result = "idle",
+        no_uart_log = "ipcst no uart",
+        err_log = "ipcst err",
+        when_disabled = function(cfg)
+            if cfg.enabled == false then
+                return state.host_at_ready and "ready" or "idle"
+            end
+        end,
+        on_no_t3x = function()
+            return "idle"
+        end,
+        on_no_uart = function()
+            return "idle"
+        end,
+        on_response = function(got, st)
+            if got and st then
+                state.host_ipc_status = st
+                log.info(LOG_TAG, "ipcst", st)
+                return st
+            end
             state.host_ipc_status = "idle"
             log.info(LOG_TAG, "ipcst no rsp")
-        end
-    end)
-
-    state.ipc_status_query_busy = false
-    if not ok then
-        log.warn(LOG_TAG, "ipcst err", err)
-        return "idle"
-    end
-    return status
+            return "idle"
+        end,
+        on_error = function()
+            return "idle"
+        end,
+    })
 end
 
 --- 须在 task 内调用；T3x 在线时发 AT+IPCPOWEROFF，等待 +IPCPOWEROFF:OK
@@ -1729,103 +1785,73 @@ end
 
 --- 须在 task 内调用；向 T3x 发 AT+RECORD? 查询真实写盘状态
 function queryHostRecord(timeoutMs)
-    if state.record_query_busy then
-        return state.host_record
-    end
-    state.record_query_busy = true
-
-    local snap
-    local cfg = record_cfg()
-    local ok, err = pcall(function()
-        timeoutMs = tonumber(timeoutMs) or tonumber(cfg.query_timeout_ms) or 3000
-        if cfg.enabled == false then
-            return
-        end
-        if not ensure_t3x_for_host_query("host_record", cfg) then
-            return
-        end
-        local bootWait = tonumber(cfg.host_boot_wait_ms)
-            or tonumber((_G.TIME_SYNC_CFG or {}).host_boot_wait_ms)
-            or 1500
-        if not state.host_at_ready then
-            sys.wait(bootWait)
-        end
-        if not uart_bridge.sendString then
-            log.warn(LOG_TAG, "rec q no uart")
-            return
-        end
-
-        log.info(LOG_TAG, "AT+RECORD?", timeoutMs, "ms")
-        uart_bridge.sendString("AT+RECORD?", true)
-        local got
-        got, snap = sys.waitUntil(RECORD_ACK_EVENT, timeoutMs)
-        if got and type(snap) == "table" then
-            state.host_record = snap
-            log.info(LOG_TAG, "T3x RECORD",
-                "running", snap.running,
-                "active", snap.active,
-                "ch", snap.ch,
-                "reason", snap.reason)
-        else
-            log.warn(LOG_TAG, "rec q timeout", timeoutMs)
-        end
-    end)
-
-    state.record_query_busy = false
-    if not ok then
-        log.warn(LOG_TAG, "rec q err", err)
-        return nil
-    end
-    return state.host_record
+    return run_host_query({
+        busy_key = "record_query_busy",
+        cache_key = "host_record",
+        policy_tag = "host_record",
+        cfg = record_cfg(),
+        timeout_ms = timeoutMs,
+        default_timeout = 3000,
+        at_cmd = "AT+RECORD?",
+        ack_event = RECORD_ACK_EVENT,
+        log_extra = "ms",
+        no_uart_log = "rec q no uart",
+        err_log = "rec q err",
+        when_disabled = function(cfg)
+            if cfg.enabled == false then
+                return state.host_record
+            end
+        end,
+        on_response = function(got, snap, tmo)
+            if got and type(snap) == "table" then
+                state.host_record = snap
+                log.info(LOG_TAG, "T3x RECORD",
+                    "running", snap.running,
+                    "active", snap.active,
+                    "ch", snap.ch,
+                    "reason", snap.reason)
+                return state.host_record
+            end
+            log.warn(LOG_TAG, "rec q timeout", tmo)
+            return state.host_record
+        end,
+        on_error = function()
+            return nil
+        end,
+    })
 end
 
 function queryHostTfCard(timeoutMs)
-    if state.tf_card_query_busy then
-        log.warn(LOG_TAG, "tf q busy")
-        return state.host_tf_card
-    end
-    state.tf_card_query_busy = true
-
-    local snap
-    local cfg = tf_card_cfg()
-    local ok, err = pcall(function()
-        timeoutMs = tonumber(timeoutMs) or tonumber(cfg.query_timeout_ms) or 3000
-        if not ensure_t3x_for_host_query("host_tfcard", cfg) then
-            return
-        end
-        local bootWait = tonumber(cfg.host_boot_wait_ms)
-            or tonumber((_G.TIME_SYNC_CFG or {}).host_boot_wait_ms)
-            or 1500
-        if not state.host_at_ready then
-            sys.wait(bootWait)
-        end
-        if not uart_bridge.sendString then
-            log.warn(LOG_TAG, "tf q no uart")
-            return
-        end
-
-        log.info(LOG_TAG, "AT+TFCARD?", timeoutMs, "ms")
-        uart_bridge.sendString("AT+TFCARD?", true)
-        local got
-        got, snap = sys.waitUntil(TFCARD_ACK_EVENT, timeoutMs)
-        if got and type(snap) == "table" then
-            state.host_tf_card = snap
-            log.info(LOG_TAG, "T3x TFCARD",
-                "present", snap.present,
-                "total_mb", snap.total_mb,
-                "used_mb", snap.used_mb,
-                "free_mb", snap.free_mb)
-        else
-            log.warn(LOG_TAG, "tf q timeout", timeoutMs)
-        end
-    end)
-
-    state.tf_card_query_busy = false
-    if not ok then
-        log.warn(LOG_TAG, "tf q err", err)
-        return nil
-    end
-    return state.host_tf_card
+    return run_host_query({
+        busy_key = "tf_card_query_busy",
+        cache_key = "host_tf_card",
+        busy_log = "tf q busy",
+        policy_tag = "host_tfcard",
+        cfg = tf_card_cfg(),
+        timeout_ms = timeoutMs,
+        default_timeout = 3000,
+        at_cmd = "AT+TFCARD?",
+        ack_event = TFCARD_ACK_EVENT,
+        log_extra = "ms",
+        no_uart_log = "tf q no uart",
+        err_log = "tf q err",
+        on_response = function(got, snap, tmo)
+            if got and type(snap) == "table" then
+                state.host_tf_card = snap
+                log.info(LOG_TAG, "T3x TFCARD",
+                    "present", snap.present,
+                    "total_mb", snap.total_mb,
+                    "used_mb", snap.used_mb,
+                    "free_mb", snap.free_mb)
+                return state.host_tf_card
+            end
+            log.warn(LOG_TAG, "tf q timeout", tmo)
+            return state.host_tf_card
+        end,
+        on_error = function()
+            return nil
+        end,
+    })
 end
 
 --- 供 MQTT 2006 / 唤醒前设置 PIRSTAT：action=devinfo,recording=0,max_sec=0
@@ -1910,7 +1936,7 @@ local function await_encode_set(event, timeoutMs)
     return false, "error", rsp
 end
 
-function setHostVideoEncode(opts)
+local function setHostEncode(scope, opts)
     if state.encode_set_busy then
         return false, "busy", nil
     end
@@ -1920,12 +1946,38 @@ function setHostVideoEncode(opts)
         opts = opts or {}
         local timeoutMs = encode_timeout_ms(opts)
         local cam = tonumber(opts.camera) or 0
-        local stream = tonumber(opts.stream) or 0
         if not ensure_t3x_for_host_query("host_encode_set", identity_cfg()) then
             okSet, msg = false, "t3x_unavailable"
             return
         end
         local cur
+        if scope == "audio" then
+            if opts.encoder == nil or opts.samplerate == nil then
+                local q, qerr = queryHostEncodeInner({ scope = "audio", camera = cam, timeout_ms = timeoutMs })
+                if q and q.audio and q.audio[1] then
+                    cur = q.audio[1]
+                elseif qerr then
+                    okSet, msg = false, qerr
+                    return
+                end
+            end
+            cur = cur or {}
+            local en = opts.enable
+            if en == nil then en = cur.enable or 1 end
+            local cmd = string.format("AT+AUDIOSET=%d,%d,%d,%d,%d,%d,%d,%d",
+                cam, (en == true or en == 1) and 1 or 0,
+                tonumber(opts.encoder or cur.encoder) or 4,
+                tonumber(opts.samplerate or cur.samplerate) or 8000,
+                tonumber(opts.bitwidth or cur.bitwidth) or 16,
+                tonumber(opts.soundmode or cur.soundmode) or 1,
+                tonumber(opts.volume or cur.volume) or 80,
+                tonumber(opts.gain or cur.gain) or 28)
+            uart_bridge.sendString(cmd, true)
+            local got, m, rsp = await_encode_set(AUDIO_SET_DONE, timeoutMs)
+            okSet, msg, extra = got, m, rsp
+            return
+        end
+        local stream = tonumber(opts.stream) or 0
         if opts.width == nil or opts.height == nil or opts.bitrate == nil then
             local q, qerr = queryHostEncodeInner({ camera = cam, stream = stream, timeout_ms = timeoutMs })
             if q and q.video and q.video[1] then
@@ -1957,50 +2009,12 @@ function setHostVideoEncode(opts)
     return okSet, msg, extra
 end
 
+function setHostVideoEncode(opts)
+    return setHostEncode("video", opts)
+end
+
 function setHostAudioEncode(opts)
-    if state.encode_set_busy then
-        return false, "busy", nil
-    end
-    state.encode_set_busy = true
-    local okSet, msg, extra
-    local ok, e = pcall(function()
-        opts = opts or {}
-        local timeoutMs = encode_timeout_ms(opts)
-        local cam = tonumber(opts.camera) or 0
-        if not ensure_t3x_for_host_query("host_encode_set", identity_cfg()) then
-            okSet, msg = false, "t3x_unavailable"
-            return
-        end
-        local cur
-        if opts.encoder == nil or opts.samplerate == nil then
-            local q, qerr = queryHostEncodeInner({ scope = "audio", camera = cam, timeout_ms = timeoutMs })
-            if q and q.audio and q.audio[1] then
-                cur = q.audio[1]
-            elseif qerr then
-                okSet, msg = false, qerr
-                return
-            end
-        end
-        cur = cur or {}
-        local en = opts.enable
-        if en == nil then en = cur.enable or 1 end
-        local cmd = string.format("AT+AUDIOSET=%d,%d,%d,%d,%d,%d,%d,%d",
-            cam, (en == true or en == 1) and 1 or 0,
-            tonumber(opts.encoder or cur.encoder) or 4,
-            tonumber(opts.samplerate or cur.samplerate) or 8000,
-            tonumber(opts.bitwidth or cur.bitwidth) or 16,
-            tonumber(opts.soundmode or cur.soundmode) or 1,
-            tonumber(opts.volume or cur.volume) or 80,
-            tonumber(opts.gain or cur.gain) or 28)
-        uart_bridge.sendString(cmd, true)
-        local got, m, rsp = await_encode_set(AUDIO_SET_DONE, timeoutMs)
-        okSet, msg, extra = got, m, rsp
-    end)
-    state.encode_set_busy = false
-    if not ok then
-        return false, tostring(e), nil
-    end
-    return okSet, msg, extra
+    return setHostEncode("audio", opts)
 end
 
 function start(opts)

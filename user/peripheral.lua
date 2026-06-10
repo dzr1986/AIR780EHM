@@ -73,7 +73,7 @@ end
 
 function _M.getConfig()
     return {
-        led = ledCtrl.getConfig(),
+        led = led_ctrl.getConfig(),
         key = key.getConfig(),
         pir = pir_ctrl.getMediaConfig(),
     }

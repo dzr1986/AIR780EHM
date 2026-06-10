@@ -6,7 +6,7 @@
 
 | 项 | 做法 | 约省 |
 |----|------|------|
-| `user/net_tcp.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → `net_tcp_full.lua` | ~8KB |
+| `user/net_tcp.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → `archive/slim/user/net_tcp.lua` | ~8KB |
 | `user/sound_prompt.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → 本目录 | ~7KB |
 | `lib/mobile_info.lua` | 移入本目录；`mobile_info=false` | ~5KB |
 
@@ -18,12 +18,13 @@
 |------|------|
 | `net_mqtt.lua` | MQTT 核心 |
 | `net_tcp.lua` | **桩**即可；勿删文件名 |
+| `sound_prompt.lua` | 完整版或桩均可；勿删文件名 |
 
 ## 恢复步骤
 
 ```text
 # 专有 TCP（LOW_POWER_WAKEUP_MODE=tcp）
-copy archive\slim\user\net_tcp_full.lua user\net_tcp.lua
+copy archive\slim\user\net_tcp.lua user\net_tcp.lua
 
 # 开机/关机提示音（覆盖桩文件）
 copy archive\slim\user\sound_prompt.lua user\sound_prompt.lua

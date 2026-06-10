@@ -40,6 +40,7 @@
 | [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](CAT1_LOWPWR_MQTT_TCP_STRATEGY.md) | **唤醒通道**：`LOW_POWER_WAKEUP_CFG.mode` mqtt/tcp |
 | [CAT1_SLIMMING_FLOW.md](CAT1_SLIMMING_FLOW.md) | Cat.1 精简流程（门球量产步骤） |
 | [CAT1_USER_LIB_SLIM.md](CAT1_USER_LIB_SLIM.md) | Cat.1 精简速查（`MODULE_FLAGS` / 懒加载） |
+| [CAT1_LOGIC_SLIM.md](CAT1_LOGIC_SLIM.md) | **逻辑精简规划**（`cat1_slim_logic` 分支，不减功能） |
 
 ### PIR / 录像 / 提示音
 
