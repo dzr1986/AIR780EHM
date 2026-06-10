@@ -38,7 +38,7 @@ flowchart LR
 ## 2. KEY_CONFIG 结构（`key_config.lua`）
 
 ```lua
--- 引脚来自 GPIO_IN；事件键名对应 appConfig.APP_EVENTS
+-- 引脚来自 GPIO_IN；事件键名对应 app_config.APP_EVENTS
 _G.KEY_CONFIG = {
     pwrkey = {
         pin = GPIO_IN.pwr_key.pin,    -- 46 = gpio.PWR_KEY

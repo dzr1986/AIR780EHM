@@ -12,7 +12,7 @@ local PIR_MEDIA = {
     ACTION = { PHOTO = "photo", VIDEO = "video", BOTH = "both", DEVINFO = "devinfo" },
     UPLOAD_MODE = { AUTO = "auto", MANUAL = "manual" },
     QUALITY = { HIGH = "high", LOW = "low" },
-    DEFAULT_CONFIG = { action = "photo", uploadMode = "auto", quality = "high" },
+    DEFAULT_CONFIG = { action = "video", uploadMode = "auto", quality = "high" },
     STOP_REASON = {
         TIMER = "timer",
         PIR_RETRIGGER = "pir_retrigger",
@@ -99,13 +99,48 @@ _G.normalizePirMediaConfig = normalizePirMediaConfig
 _G.normalizePirRecordPolicy = normalizePirRecordPolicy
 
 local PIR_CFG_PATH = "/pir_mqtt_cfg.json"
-local json
-pcall(function() json = require "json" end)
+--- schemaVersion 2：出厂默认 action=video；启动时一次性将旧版持久化 photo 迁为 video
+local PIR_CFG_SCHEMA_VER = 2
+local pirCfgSchemaVersion = PIR_CFG_SCHEMA_VER
 
-local function loadPersistedConfig()
-    if not json then
+local function savePersistedConfig()
+    local payload = json.encode({
+        schemaVersion = pirCfgSchemaVersion,
+        mediaConfig = normalizePirMediaConfig(_G.pirMediaConfig),
+        recordPolicy = normalizePirRecordPolicy(_G.pirRecordPolicy),
+    })
+    if not payload then
         return
     end
+    local f = io.open(PIR_CFG_PATH, "w")
+    if not f then
+        log.warn("pir_ctrl", "save cfg failed", PIR_CFG_PATH)
+        return
+    end
+    f:write(payload)
+    f:close()
+    log.info("pir_ctrl", "saved cfg", PIR_CFG_PATH, "ver", pirCfgSchemaVersion)
+end
+
+local function migratePersistedConfig(data)
+    pirCfgSchemaVersion = tonumber(data.schemaVersion) or 1
+    if pirCfgSchemaVersion >= PIR_CFG_SCHEMA_VER then
+        return false
+    end
+    if _G.pirMediaConfig.action == PIR_MEDIA.ACTION.PHOTO then
+        local old = _G.pirMediaConfig
+        _G.pirMediaConfig = normalizePirMediaConfig({
+            action = PIR_MEDIA.ACTION.VIDEO,
+            uploadMode = old.uploadMode,
+            quality = old.quality,
+        })
+        log.info("pir_ctrl", "migrate persisted action photo -> video")
+    end
+    pirCfgSchemaVersion = PIR_CFG_SCHEMA_VER
+    return true
+end
+
+local function loadPersistedConfig()
     local f = io.open(PIR_CFG_PATH, "r")
     if not f then
         return
@@ -126,28 +161,11 @@ local function loadPersistedConfig()
     if data.recordPolicy then
         _G.pirRecordPolicy = normalizePirRecordPolicy(data.recordPolicy)
     end
-    log.info("pir_ctrl", "loaded persisted cfg", PIR_CFG_PATH)
-end
-
-local function savePersistedConfig()
-    if not json then
-        return
+    if migratePersistedConfig(data) then
+        savePersistedConfig()
+    else
+        log.info("pir_ctrl", "loaded persisted cfg", PIR_CFG_PATH, "ver", pirCfgSchemaVersion)
     end
-    local payload = json.encode({
-        mediaConfig = normalizePirMediaConfig(_G.pirMediaConfig),
-        recordPolicy = normalizePirRecordPolicy(_G.pirRecordPolicy),
-    })
-    if not payload then
-        return
-    end
-    local f = io.open(PIR_CFG_PATH, "w")
-    if not f then
-        log.warn("pir_ctrl", "save cfg failed", PIR_CFG_PATH)
-        return
-    end
-    f:write(payload)
-    f:close()
-    log.info("pir_ctrl", "saved cfg", PIR_CFG_PATH)
 end
 
 _G.pirMediaConfig = normalizePirMediaConfig(PIR_MEDIA.DEFAULT_CONFIG)

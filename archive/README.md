@@ -24,7 +24,7 @@
 |------|------|
 | `fota.lua` | 旧版 FOTA 事件封装（已由 `../fota.lua` 替代） |
 | `powerMode.lua` | 模组 `pm.WORK_MODE`（与 uartBridge 冲突） |
-| `mqttSession.lua` / `mqttCommand.lua` / `mqttReport.lua` | 旧 MQTT 栈 |
+| ~~`mqttSession.lua` / `mqttCommand.lua` / `mqttReport.lua`~~ | 已删除（旧磐石 MQTT，含 `deviceVer`/`status` 等废弃字段） |
 | `netClient.lua` / `sleepMode.lua` | 旧网络/休眠 |
 | `configMerge.lua` | 配置合并工具 |
 | `pins.lua` / `gpioInput.lua` | GPIO 演示 |

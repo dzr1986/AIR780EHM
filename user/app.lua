@@ -6,19 +6,34 @@
 require "sys"
 require "sysplus"
 require "config"
-local sntp_sync = require "sntp_sync"
+
+--- MODULE_FLAGS 为 false 时不 require，减 Lua 堆与启动解析（见 doc/CAT1_USER_LIB_SLIM.md）
+local function optMod(flag, name)
+    local flags = _G.MODULE_FLAGS
+    if flags and flags[flag] == false then
+        return nil
+    end
+    local ok, m = pcall(require, name)
+    if not ok or type(m) ~= "table" then
+        log.warn("app", "require fail", name, ok and "nil module" or tostring(m))
+        return nil
+    end
+    return m
+end
+
 local uart_bridge = require "uart_bridge"
 local pir_ctrl = require "pir_ctrl"
-local batAdc = require "vbat"
-local usbCharge = require "usb_charge"
-local mobile_info = require "mobile_info"
-local fota = require "fota"
-local usbRndis = require "usb_rndis"
 local battery_guard = require "battery_guard"
-local sound_prompt = require "sound_prompt"
-local time_sync = require "time_sync"
 local led = require "led"
 local host_uart = require "host_uart"
+local batAdc = optMod("battery", "vbat")
+local usbCharge = optMod("charge", "usb_charge")
+local mobile_info = optMod("mobile_info", "mobile_info")
+local fota = optMod("fota", "fota")
+local usbRndis = optMod("rndis", "usb_rndis")
+local sntp_sync = optMod("sntp", "sntp_sync")
+local sound_prompt = optMod("sound_prompt", "sound_prompt")
+local time_sync = optMod("time_sync", "time_sync")
 -- watchdog 在 lib/ 中由工具链自动加载，勿 require（与核心 wdt 库区分）
 
 local _modname = ...
@@ -139,18 +154,23 @@ local function doEnterLowPowerBody(reason)
     _G.APP_RUNTIME.last_rest_reason = reason
     sys.publish(E.POWER_ENTERED_REST)
     if t3xModule and t3xModule.enterSleep then
-        local lp = _G.LOW_POWER_CFG or {}
-        t3xModule.enterSleep({
-            modemHibernate = lp.modem_hibernate == true,
-        })
+        local modemHibernate = false
+        local okLp, lpw = pcall(require, "low_power_wakeup")
+        if okLp and lpw and lpw.getModemHibernate then
+            modemHibernate = lpw.getModemHibernate() == true
+        else
+            local lp = _G.LOW_POWER_CFG or {}
+            modemHibernate = lp.modem_hibernate == true
+        end
+        t3xModule.enterSleep({ modemHibernate = modemHibernate })
     end
     if state.mqtt_started and netModule and netModule.publishRest then
         netModule.publishRest({ reason = reason, source = "enter" })
     end
     pcall(function()
-        local net_tcp = require "net_tcp"
-        if net_tcp.getState and net_tcp.getState().configured then
-            net_tcp.closeChannel(net_tcp.getState().sid)
+        local lpw = require "low_power_wakeup"
+        if lpw.onEnterRest then
+            lpw.onEnterRest()
         end
     end)
 end
@@ -196,9 +216,9 @@ local function onExitLowPower(reason)
     sys.publish(E.POWER_EXITED_REST)
     requestT3xWake("exit_low_power", nil, nil, { force_wake = true })
     pcall(function()
-        local ch = _G.NET_TCP_CHANNEL
-        if ch and _G.MODULE_FLAGS.net_tcp ~= false then
-            require("net_tcp").applyChannel(ch)
+        local lpw = require "low_power_wakeup"
+        if lpw.onExitRest then
+            lpw.onExitRest()
         end
     end)
     if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table"
@@ -270,6 +290,10 @@ local function setupUartBridge()
                         log.warn("app", "net not ready, skip mqttcfg")
                         return
                     end
+                    if netModule.isSameMqttConfig and netModule.isSameMqttConfig(cfg) then
+                        log.info("app", "mqttcfg unchanged, skip restart")
+                        return
+                    end
                     if not netModule.setMqttConfig(cfg) then
                         log.warn("app", "mqttcfg bad")
                         return
@@ -282,12 +306,12 @@ local function setupUartBridge()
                     end
                 end,
                 on_servcreate = function(ch)
-                    local net_tcp = require "net_tcp"
-                    net_tcp.applyChannel(ch)
+                    local lpw = require "low_power_wakeup"
+                    lpw.applyTcpChannel(ch)
                 end,
                 on_servclose = function(sid)
-                    local net_tcp = require "net_tcp"
-                    net_tcp.closeChannel(sid)
+                    local lpw = require "low_power_wakeup"
+                    lpw.closeTcpChannel(sid)
                 end,
                 on_plain_line = function(line)
                     log.info("app", "uart line", line)
@@ -740,8 +764,12 @@ local function onPirMediaAction(action, uploadMode, quality)
         return
     end
     log.info("app", "pir act", action, uploadMode, quality)
-    if (uploadMode == "auto" or uploadMode == nil) and netModule and netModule.publishWakeup then
+    local inRest = _G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.low_power_mode) == 1
+    if (uploadMode == "auto" or uploadMode == nil) and not inRest
+        and netModule and netModule.publishWakeup then
         netModule.publishWakeup()
+    elseif inRest and (uploadMode == "auto" or uploadMode == nil) then
+        log.info("app", "rest, skip pir 1001")
     end
     local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
     requestT3xWake("pir_media", sid, 0)
@@ -950,8 +978,20 @@ local function startBackgroundServices()
             log.error("app", "no usb_charge, skip")
         end
     end
-    if _G.MODULE_FLAGS.sntp then sntp_sync.start() end
-    if _G.MODULE_FLAGS.mobile_info then mobile_info.start() end
+    if _G.MODULE_FLAGS.sntp then
+        if type(sntp_sync) == "table" and sntp_sync.start then
+            sntp_sync.start()
+        else
+            log.warn("app", "no sntp_sync, skip")
+        end
+    end
+    if _G.MODULE_FLAGS.mobile_info then
+        if type(mobile_info) == "table" and mobile_info.start then
+            mobile_info.start()
+        else
+            log.warn("app", "no mobile_info, skip")
+        end
+    end
 end
 
 local function initPowerStatus()

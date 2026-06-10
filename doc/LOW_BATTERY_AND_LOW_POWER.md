@@ -2,6 +2,7 @@
 
 > 代码：`app`（rest 状态）· `battery_guard`（电量）· `t3x_policy`（T3x 门禁）· `t3x_ctrl`（GPIO22）  
 > 详表与配置见文末 **附录** · 架构：[POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md)  
+> **启停循环专题**：[T3X_BATTERY_USB_T3X_OSCILLATION.md](T3X_BATTERY_USB_T3X_OSCILLATION.md)（USB+充电抬升+T3x 耗电是否循环）  
 > **PDF**：同目录 [LOW_BATTERY_AND_LOW_POWER.pdf](LOW_BATTERY_AND_LOW_POWER.pdf)（`python scripts/md_to_pdf.py doc/LOW_BATTERY_AND_LOW_POWER.md` 可重新生成）
 
 ---

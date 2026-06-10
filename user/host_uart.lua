@@ -20,6 +20,10 @@ local TFCARD_ACK_EVENT = "HOST_UART_TFCARD_ACK"
 local RECORD_ACK_EVENT = "HOST_UART_RECORD_ACK"
 local IPCSTATUS_ACK_EVENT = "HOST_UART_IPCSTATUS_ACK"
 local IPCPOWEROFF_ACK_EVENT = "HOST_UART_IPCPOWEROFF_ACK"
+local VENC_QUERY_DONE = "HOST_UART_VENC_QUERY_DONE"
+local VENC_SET_DONE = "HOST_UART_VENC_SET_DONE"
+local AUDIO_QUERY_DONE = "HOST_UART_AUDIO_QUERY_DONE"
+local AUDIO_SET_DONE = "HOST_UART_AUDIO_SET_DONE"
 
 _M.EVT = {
     SERVER_DATA = 0,
@@ -49,6 +53,10 @@ local state = {
     host_ipc_status = nil,
     ipc_status_query_busy = false,
     ipc_poweroff_busy = false,
+    encode_venc_rows = nil,
+    encode_audio_rows = nil,
+    encode_query_busy = false,
+    encode_set_busy = false,
     t3x_rec_active = 0,
     t3x_last_reason = "idle",
 }
@@ -138,9 +146,9 @@ local function get_config_snapshot()
     local meta = _G.APP_META or {}
     local rt = _G.APP_RUNTIME or {}
     local tcp_extra = ""
-    local ok, net_tcp = pcall(require, "net_tcp")
-    if ok and net_tcp and net_tcp.appendGetCfgFields then
-        tcp_extra = net_tcp.appendGetCfgFields()
+    local okLp, lpw = pcall(require, "low_power_wakeup")
+    if okLp and lpw and lpw.appendGetCfgFields then
+        tcp_extra = lpw.appendGetCfgFields()
     end
     return {
         version = (_G.PROJECT or "780EHM") .. "_" .. (_G.VERSION or "2034.001.000"),
@@ -235,11 +243,11 @@ end
 --- 从 pir_runtime body 提取 T3x media_dispatch 所需字段（与 PIRSTAT 同源）
 local function build_hostevt_media_suffix(pirBody)
     if not pirBody or pirBody == "" then
-        return ",recording=0,action=photo,max_sec=60,last_stop=none"
+        return ",recording=0,action=video,max_sec=60,last_stop=none"
     end
     return string.format(",recording=%d,action=%s,max_sec=%d,last_stop=%s",
         pir_field_int(pirBody, "recording", 0),
-        pir_field_str(pirBody, "action", "photo"),
+        pir_field_str(pirBody, "action", "video"),
         pir_field_int(pirBody, "max_sec", 60),
         pir_field_str(pirBody, "last_stop", "none"))
 end
@@ -417,6 +425,11 @@ local function uart_mqttcfg(cmd)
 end
 
 local function uart_servcreate(cmd)
+    local okLp, lpw = pcall(require, "low_power_wakeup")
+    if okLp and lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
+        log.info(LOG_TAG, "SERVCREATE disabled, wakeup_mode=mqtt")
+        return CRLF .. "+SERVCREATE:DISABLED" .. CRLF .. ok_tail()
+    end
     local ch = parse_servcreate_args(cmd:match("^AT%+SERVCREATE=(.+)$"))
     if not ch then
         return RSP_ERROR
@@ -425,11 +438,8 @@ local function uart_servcreate(cmd)
     log.info(LOG_TAG, "SERVCREATE", ch.sid, ch.server_ip, ch.server_port)
     if hooks.on_servcreate then
         hooks.on_servcreate(ch)
-    else
-        local ok, net_tcp = pcall(require, "net_tcp")
-        if ok and net_tcp and net_tcp.applyChannel then
-            net_tcp.applyChannel(ch)
-        end
+    elseif okLp and lpw and lpw.applyTcpChannel then
+        lpw.applyTcpChannel(ch)
     end
     return string.format(CRLF .. "+SERVCREATE:%d,OK" .. CRLF, ch.sid) .. ok_tail()
 end
@@ -439,14 +449,17 @@ local function uart_servclose(cmd)
     if not sid then
         return RSP_ERROR
     end
+    local okLp, lpw = pcall(require, "low_power_wakeup")
+    if okLp and lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
+        log.info(LOG_TAG, "SERVCLOSE disabled, wakeup_mode=mqtt", sid)
+        state.channel = nil
+        return CRLF .. "+SERVCLOSE:DISABLED" .. CRLF .. ok_tail()
+    end
     log.info(LOG_TAG, "SERVCLOSE", sid)
     if hooks.on_servclose then
         hooks.on_servclose(sid)
-    else
-        local ok, net_tcp = pcall(require, "net_tcp")
-        if ok and net_tcp and net_tcp.closeChannel then
-            net_tcp.closeChannel(sid)
-        end
+    elseif okLp and lpw and lpw.closeTcpChannel then
+        lpw.closeTcpChannel(sid)
     end
     state.channel = nil
     return string.format(CRLF .. "+SERVCLOSE:%d" .. CRLF, sid) .. ok_tail()
@@ -802,7 +815,7 @@ local function uart_wled(cmd)
     return string.format(CRLF .. "+WLED:%d" .. CRLF, n) .. ok_tail()
 end
 
-local usb_reset_guard = {
+local usb_recovery_guard = {
     busy = false,
     last_sec = 0,
     count = 0,
@@ -826,33 +839,60 @@ local function t3x_rest_blocks_usb_reset()
     return st ~= nil and st.powered_on == false
 end
 
+local function usb_recovery_allowed(cfg)
+    if cfg.allow_t3x_usb_reset == false then
+        return false, "DISABLED"
+    end
+    if usb_recovery_guard.busy then
+        return false, "BUSY"
+    end
+    local min_iv = tonumber(cfg.usb_reset_min_interval_sec) or 60
+    local now = os.time()
+    if usb_recovery_guard.last_sec > 0 and (now - usb_recovery_guard.last_sec) < min_iv then
+        return false, "BUSY"
+    end
+    if t3x_rest_blocks_usb_reset() then
+        log.info(LOG_TAG, "USB recovery blocked: low_power_mode=1, T3x powered_off")
+        return false, "REST"
+    end
+    return true, nil
+end
+
+local function usb_recovery_run_async(tag, cfg, do_fn)
+    usb_recovery_guard.busy = true
+    sys.taskInit(function()
+        local notify_ms = tonumber(cfg.usb_reset_notify_after_ms) or 800
+        local ok = false
+        if do_fn then
+            ok = do_fn() and true or false
+        end
+        if ok and cfg.notify_t3x_usb_state ~= false and is_usb_inserted() then
+            sys.wait(notify_ms)
+            push_usb_host_idle_state(1)
+        end
+        usb_recovery_guard.busy = false
+        usb_recovery_guard.last_sec = os.time()
+        usb_recovery_guard.count = (usb_recovery_guard.count or 0) + 1
+        log.info(LOG_TAG, tag, ok and "done" or "failed", "count", usb_recovery_guard.count)
+    end)
+end
+
 local function uart_usbreset(cmd)
     local cfg = host_usb_cfg()
-    if cfg.allow_t3x_usb_reset == false then
-        return CRLF .. "+USBRESET:DISABLED" .. CRLF
-    end
     if cmd == "AT+USBRESET?" then
         return string.format(
             CRLF .. "+USBRESET:busy=%d,count=%d,last=%d" .. CRLF,
-            usb_reset_guard.busy and 1 or 0,
-            usb_reset_guard.count or 0,
-            usb_reset_guard.last_sec or 0
+            usb_recovery_guard.busy and 1 or 0,
+            usb_recovery_guard.count or 0,
+            usb_recovery_guard.last_sec or 0
         ) .. ok_tail()
     end
     if cmd ~= "AT+USBRESET" then
         return RSP_ERROR
     end
-    if usb_reset_guard.busy then
-        return CRLF .. "+USBRESET:BUSY" .. CRLF
-    end
-    local min_iv = tonumber(cfg.usb_reset_min_interval_sec) or 60
-    local now = os.time()
-    if usb_reset_guard.last_sec > 0 and (now - usb_reset_guard.last_sec) < min_iv then
-        return CRLF .. "+USBRESET:BUSY" .. CRLF
-    end
-    if t3x_rest_blocks_usb_reset() then
-        log.info(LOG_TAG, "USBRESET blocked: low_power_mode=1, T3x powered_off")
-        return CRLF .. "+USBRESET:REST" .. CRLF
+    local allowed, deny = usb_recovery_allowed(cfg)
+    if not allowed then
+        return CRLF .. "+USBRESET:" .. deny .. CRLF
     end
 
     local okMod, usb_rndis = pcall(require, "usb_rndis")
@@ -860,25 +900,20 @@ local function uart_usbreset(cmd)
         return CRLF .. "+USBRESET:ERROR" .. CRLF
     end
 
-    usb_reset_guard.busy = true
-    sys.taskInit(function()
-        local notify_ms = tonumber(cfg.usb_reset_notify_after_ms) or 800
-        local ok = false
+    usb_recovery_run_async("USBRESET", cfg, function()
+        local okCtrl, t3x = pcall(require, "t3x_ctrl")
+        if okCtrl and type(t3x) == "table" and t3x.pulseUsbDebugEn then
+            t3x.pulseUsbDebugEn({ high_ms = cfg.usb_debug_en_pulse_ms })
+        end
         if usb_rndis.rebind then
-            ok = usb_rndis.rebind({ wait_ms = 500 })
-        elseif usb_rndis.disable and usb_rndis.open then
+            return usb_rndis.rebind({ wait_ms = 500 })
+        end
+        if usb_rndis.disable and usb_rndis.open then
             usb_rndis.disable()
             sys.wait(500)
-            ok = usb_rndis.open() and true or false
+            return usb_rndis.open()
         end
-        if ok and cfg.notify_t3x_usb_state ~= false and is_usb_inserted() then
-            sys.wait(notify_ms)
-            push_usb_host_idle_state(1)
-        end
-        usb_reset_guard.busy = false
-        usb_reset_guard.last_sec = os.time()
-        usb_reset_guard.count = (usb_reset_guard.count or 0) + 1
-        log.info(LOG_TAG, "USBRESET", ok and "done" or "failed", "count", usb_reset_guard.count)
+        return false
     end)
     return CRLF .. "+USBRESET:OK" .. CRLF .. ok_tail()
 end
@@ -944,6 +979,8 @@ local function uart_setcfg(cmd)
     local meta = _G.APP_META
     if key == "interval" and tonumber(val) and rt then
         rt.low_power_interval_sec = tonumber(val)
+        local ev = (_G.APP_EVENTS or {}).MQTT_STATUS_INTERVAL_CHANGED or "APP_MQTT_STATUS_INTERVAL_CHANGED"
+        sys.publish(ev)
         return RSP_SETCFG_OK
     elseif key == "devicemodel" and meta then
         meta.device_model = val
@@ -1190,6 +1227,110 @@ local function try_record_line(line)
     return true
 end
 
+local function parse_venc_row(line)
+    local cam, stream, en, w, h, br, fps, rc, enc = line:match(
+        "^%+VENC:(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)$")
+    if not cam then
+        return nil
+    end
+    return {
+        camera = tonumber(cam) or 0,
+        stream = tonumber(stream) or 0,
+        enable = tonumber(en) or 0,
+        width = tonumber(w) or 0,
+        height = tonumber(h) or 0,
+        bitrate = tonumber(br) or 0,
+        framerate = tonumber(fps) or 0,
+        rcmode = tonumber(rc) or 0,
+        encoder = tonumber(enc) or 0,
+    }
+end
+
+local function parse_audio_row(line)
+    local cam, en, enc, sr, bw, sm, vol, gain = line:match(
+        "^%+AUDIO:(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)$")
+    if not cam then
+        return nil
+    end
+    return {
+        camera = tonumber(cam) or 0,
+        enable = tonumber(en) or 0,
+        encoder = tonumber(enc) or 0,
+        samplerate = tonumber(sr) or 0,
+        bitwidth = tonumber(bw) or 0,
+        soundmode = tonumber(sm) or 0,
+        volume = tonumber(vol) or 0,
+        gain = tonumber(gain) or 0,
+    }
+end
+
+local function try_venc_line(line)
+    if line == "+VENC:END" then
+        local rows = state.encode_venc_rows or {}
+        state.encode_venc_rows = nil
+        sys.publish(VENC_QUERY_DONE, rows)
+        return true
+    end
+    local row = parse_venc_row(line)
+    if not row then
+        return false
+    end
+    state.encode_venc_rows = state.encode_venc_rows or {}
+    state.encode_venc_rows[#state.encode_venc_rows + 1] = row
+    return true
+end
+
+local function try_vencset_line(line)
+    if line and line:match("^%+VENCSET:ERROR") then
+        sys.publish(VENC_SET_DONE, { ok = false })
+        return true
+    end
+    local cam, stream, reboot = line:match("^%+VENCSET:OK,cam=(%d+),stream=(%d+),needReboot=(%d+)$")
+    if not cam then
+        return false
+    end
+    sys.publish(VENC_SET_DONE, {
+        ok = true,
+        camera = tonumber(cam) or 0,
+        stream = tonumber(stream) or 0,
+        needReboot = (tonumber(reboot) or 0) == 1,
+    })
+    return true
+end
+
+local function try_audioset_line(line)
+    if line and line:match("^%+AUDIOSET:ERROR") then
+        sys.publish(AUDIO_SET_DONE, { ok = false })
+        return true
+    end
+    local cam, reboot = line:match("^%+AUDIOSET:OK,cam=(%d+),needReboot=(%d+)$")
+    if not cam then
+        return false
+    end
+    sys.publish(AUDIO_SET_DONE, {
+        ok = true,
+        camera = tonumber(cam) or 0,
+        needReboot = (tonumber(reboot) or 0) == 1,
+    })
+    return true
+end
+
+local function try_audio_line(line)
+    if line == "+AUDIO:END" then
+        local rows = state.encode_audio_rows or {}
+        state.encode_audio_rows = nil
+        sys.publish(AUDIO_QUERY_DONE, rows)
+        return true
+    end
+    local row = parse_audio_row(line)
+    if not row then
+        return false
+    end
+    state.encode_audio_rows = state.encode_audio_rows or {}
+    state.encode_audio_rows[#state.encode_audio_rows + 1] = row
+    return true
+end
+
 local function try_ipcstatus_line(line)
     if not line then
         return false
@@ -1242,6 +1383,18 @@ local function host_process_line(line)
         return nil
     end
     if try_record_line(line) then
+        return nil
+    end
+    if try_venc_line(line) then
+        return nil
+    end
+    if try_vencset_line(line) then
+        return nil
+    end
+    if try_audio_line(line) then
+        return nil
+    end
+    if try_audioset_line(line) then
         return nil
     end
     if try_ipcstatus_line(line) then
@@ -1684,6 +1837,170 @@ function setPirActionDevinfo()
         return true
     end
     return false
+end
+
+local function encode_timeout_ms(opts)
+    opts = opts or {}
+    local cfg = _G.HOST_ENCODE_CFG or {}
+    return tonumber(opts.timeout_ms) or tonumber(cfg.query_timeout_ms) or 4000
+end
+
+local function queryHostEncodeInner(opts)
+    local result
+    local err
+    opts = opts or {}
+    local timeoutMs = encode_timeout_ms(opts)
+    if not ensure_t3x_for_host_query("host_encode", identity_cfg()) then
+        return nil, "t3x_unavailable"
+    end
+    if not uart_bridge.sendString then
+        return nil, "no_uart"
+    end
+    if opts.scope == "audio" then
+        state.encode_audio_rows = {}
+        local cmd = (opts.camera ~= nil) and ("AT+AUDIO?=" .. tonumber(opts.camera))
+            or "AT+AUDIO?"
+        uart_bridge.sendString(cmd, true)
+        local got, rows = sys.waitUntil(AUDIO_QUERY_DONE, timeoutMs)
+        if got then
+            return { audio = rows or {} }, nil
+        end
+        return nil, "timeout"
+    end
+    state.encode_venc_rows = {}
+    local cmd = "AT+VENC?"
+    if opts.camera ~= nil and opts.stream ~= nil then
+        cmd = string.format("AT+VENC?=%d,%d", tonumber(opts.camera), tonumber(opts.stream))
+    elseif opts.camera ~= nil then
+        cmd = "AT+VENC?=" .. tonumber(opts.camera)
+    end
+    uart_bridge.sendString(cmd, true)
+    local got, rows = sys.waitUntil(VENC_QUERY_DONE, timeoutMs)
+    if got then
+        return { video = rows or {} }, nil
+    end
+    return nil, "timeout"
+end
+
+--- 查询 T3x 编码参数（video / audio）；须在 task 内调用
+function queryHostEncode(opts)
+    if state.encode_query_busy then
+        return nil, "busy"
+    end
+    state.encode_query_busy = true
+    local result, err
+    local ok, e = pcall(function()
+        result, err = queryHostEncodeInner(opts)
+    end)
+    state.encode_query_busy = false
+    if not ok then
+        return nil, tostring(e)
+    end
+    return result, err
+end
+
+local function await_encode_set(event, timeoutMs)
+    local got, rsp = sys.waitUntil(event, timeoutMs)
+    if not got or type(rsp) ~= "table" then
+        return false, "timeout", nil
+    end
+    if rsp.ok then
+        return true, "ok", rsp
+    end
+    return false, "error", rsp
+end
+
+function setHostVideoEncode(opts)
+    if state.encode_set_busy then
+        return false, "busy", nil
+    end
+    state.encode_set_busy = true
+    local okSet, msg, extra
+    local ok, e = pcall(function()
+        opts = opts or {}
+        local timeoutMs = encode_timeout_ms(opts)
+        local cam = tonumber(opts.camera) or 0
+        local stream = tonumber(opts.stream) or 0
+        if not ensure_t3x_for_host_query("host_encode_set", identity_cfg()) then
+            okSet, msg = false, "t3x_unavailable"
+            return
+        end
+        local cur
+        if opts.width == nil or opts.height == nil or opts.bitrate == nil then
+            local q, qerr = queryHostEncodeInner({ camera = cam, stream = stream, timeout_ms = timeoutMs })
+            if q and q.video and q.video[1] then
+                cur = q.video[1]
+            elseif qerr then
+                okSet, msg = false, qerr
+                return
+            end
+        end
+        cur = cur or {}
+        local en = opts.enable
+        if en == nil then en = cur.enable or 1 end
+        local cmd = string.format("AT+VENCSET=%d,%d,%d,%d,%d,%d,%d,%d,%d",
+            cam, stream, (en == true or en == 1) and 1 or 0,
+            tonumber(opts.width or cur.width) or 1920,
+            tonumber(opts.height or cur.height) or 1080,
+            tonumber(opts.bitrate or cur.bitrate) or 1200,
+            tonumber(opts.framerate or cur.framerate) or 25,
+            tonumber(opts.rcmode or cur.rcmode) or 2,
+            tonumber(opts.encoder or cur.encoder) or 4)
+        uart_bridge.sendString(cmd, true)
+        local got, m, rsp = await_encode_set(VENC_SET_DONE, timeoutMs)
+        okSet, msg, extra = got, m, rsp
+    end)
+    state.encode_set_busy = false
+    if not ok then
+        return false, tostring(e), nil
+    end
+    return okSet, msg, extra
+end
+
+function setHostAudioEncode(opts)
+    if state.encode_set_busy then
+        return false, "busy", nil
+    end
+    state.encode_set_busy = true
+    local okSet, msg, extra
+    local ok, e = pcall(function()
+        opts = opts or {}
+        local timeoutMs = encode_timeout_ms(opts)
+        local cam = tonumber(opts.camera) or 0
+        if not ensure_t3x_for_host_query("host_encode_set", identity_cfg()) then
+            okSet, msg = false, "t3x_unavailable"
+            return
+        end
+        local cur
+        if opts.encoder == nil or opts.samplerate == nil then
+            local q, qerr = queryHostEncodeInner({ scope = "audio", camera = cam, timeout_ms = timeoutMs })
+            if q and q.audio and q.audio[1] then
+                cur = q.audio[1]
+            elseif qerr then
+                okSet, msg = false, qerr
+                return
+            end
+        end
+        cur = cur or {}
+        local en = opts.enable
+        if en == nil then en = cur.enable or 1 end
+        local cmd = string.format("AT+AUDIOSET=%d,%d,%d,%d,%d,%d,%d,%d",
+            cam, (en == true or en == 1) and 1 or 0,
+            tonumber(opts.encoder or cur.encoder) or 4,
+            tonumber(opts.samplerate or cur.samplerate) or 8000,
+            tonumber(opts.bitwidth or cur.bitwidth) or 16,
+            tonumber(opts.soundmode or cur.soundmode) or 1,
+            tonumber(opts.volume or cur.volume) or 80,
+            tonumber(opts.gain or cur.gain) or 28)
+        uart_bridge.sendString(cmd, true)
+        local got, m, rsp = await_encode_set(AUDIO_SET_DONE, timeoutMs)
+        okSet, msg, extra = got, m, rsp
+    end)
+    state.encode_set_busy = false
+    if not ok then
+        return false, tostring(e), nil
+    end
+    return okSet, msg, extra
 end
 
 function start(opts)

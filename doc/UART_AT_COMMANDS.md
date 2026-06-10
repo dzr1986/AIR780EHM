@@ -196,6 +196,10 @@ T3x → Cat.1: +RECORD:running=1,active=0,ch=0,reason=idle OK
 | `AT+TFCARD?` / `AT+TFCARD` | `+TFCARD:present,n,total_mb,used_mb,free_mb` `OK` | 读 T3x TF/SD 卡（MQTT 1007） |
 | `AT+IPCSTATUS?` / `AT+IPCSTATUS` | `+IPCSTATUS:ready\|idle\|shutting_down` `OK` | T3x 生命周期（§3.4） |
 | `AT+RECORD?` / `AT+RECORD` | `+RECORD:running=,active=,ch=,reason=` `OK` | T3x 真实录像状态（§2.9） |
+| `AT+VENC?` / `AT+VENC?=<cam>` / `AT+VENC?=<cam>,<stream>` | 多行 `+VENC:` … `+VENC:END` `OK` | MQTT **2020** 查询视频编码（§3.5） |
+| `AT+VENCSET=<cam>,<stream>,<en>,<w>,<h>,<br>,<fps>,<rc>,<enc>` | `+VENCSET:OK,cam=,stream=,needReboot=` 或 `+VENCSET:ERROR` | MQTT **2012** 设置视频编码 |
+| `AT+AUDIO?` / `AT+AUDIO?=<cam>` | 多行 `+AUDIO:` … `+AUDIO:END` `OK` | MQTT **2020** `scope=audio` |
+| `AT+AUDIOSET=<cam>,<en>,<enc>,<sr>,<bw>,<sm>,<vol>,<gain>` | `+AUDIOSET:OK,cam=,needReboot=` 或 `+AUDIOSET:ERROR` | MQTT **2012** `scope=audio` |
 | `AT+IPCPOWEROFF` / `=1` / `=0` | `+IPCPOWEROFF:OK`（单行 URC，无尾缀 `OK`） | 优雅关机：播音/停流/退出 GB28181/sync |
 | `AT+PLAYSOUND=<name>` | 先 `OK`，播完后 `+SOUNDACK:<name>` `OK` | 开关机提示音；冷启动 `boot` 见 §3.3 |
 | `AT+PLAYSOUND?` | `+PLAYSOUND:<状态>` `OK` | 查询播放模块状态 |
@@ -292,6 +296,8 @@ Cat.1 → T3x: AT+PLAYSOUND=boot （可选，sound_prompt 冷启动）
 | TF 卡（T3x） | `cat1_host/tf_card.c` |
 | 2006/1006 标识 | `user/net_mqtt.lua` + `host_uart.queryHostGb28181()` |
 | 2007/1007 TF 卡 | `user/net_mqtt.lua` + `host_uart.queryHostTfCard()` |
+| 2012/2020 编码 | `user/net_mqtt.lua` + `host_uart.queryHostEncode` / `setHost*Encode` |
+| T31x 编码落地 | `app/cat1/encode_remote.c` + `uart_host_cmd.c` |
 | WLED GPIO（T3x） | `cat1_host/wled.c` |
 | 对时 | `user/time_sync.lua` ↔ T3x `time_sync.c` |
 | 提示音 | `user/sound_prompt.lua` ↔ T3x `audio_prompt.c` |

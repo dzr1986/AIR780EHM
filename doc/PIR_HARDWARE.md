@@ -194,7 +194,7 @@ flowchart TD
 
 | 字段 | 默认 |
 |------|------|
-| `action` | `photo` |
+| `action` | `video` |
 | `uploadMode` | `auto` |
 | `quality` | `high` |
 
@@ -215,7 +215,7 @@ flowchart TD
   "status": "1",
   "pirStatus": "detected",
   "recording": 0,
-  "action": "photo",
+  "action": "video",
   "uploadMode": "auto",
   "quality": "high",
   "time": "2026-05-19 12:00:00"

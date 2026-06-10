@@ -1,7 +1,7 @@
 ﻿# PIR 媒体与录像停止协议
 
 > 适用工程：780EHM_PJ（方案1：`lib/pir.lua` → `pir_ctrl.lua` → `app.lua` / `net_mqtt.lua`）  
-> 更新日期：2026-05-18
+> 更新日期：2026-05-24
 
 ---
 
@@ -18,8 +18,8 @@ PIR 人体感应触发后，设备根据 `pirMediaConfig` 决定拍照/录像，
 
 | 字段 | 类型 | 取值 | 说明 |
 |------|------|------|------|
-| `action` | string | `photo` / `video` / `both` | 触发后的媒体动作 |
-| `uploadMode` | string | `auto` / `manual` | `auto` 时应用层自动 MQTT wakeup |
+| `action` | string | `photo` / `video` / `both` / `devinfo` | 触发后的媒体动作；**默认 `video`**（持久化与迁移见 **§2.4**） |
+| `uploadMode` | string | `auto` / `manual` | `auto` 时常电自动 MQTT **1001**；**rest 不发 1001**（`pir_ctrl` 亦忽略 PIR） |
 | `quality` | string | `high` / `low` | 画质档位（下发 t3x 时使用） |
 
 ### 2.2 硬件触发间隔 `PIR_CFG.cooldown_ms`（`config.lua`）
@@ -37,6 +37,67 @@ PIR 人体感应触发后，设备根据 `pirMediaConfig` 决定拍照/录像，
 | `maxDurationSec` | number | `60` | **条件1：定时停止**。录像开始后最长秒数（1～3600），到时 `reason=timer` |
 | `stopOnSecondPir` | bool/0/1 | `true` | **条件2：二次 PIR**。录像中再次触发 PIR 则 `reason=pir_retrigger`，且**不再**启动新的拍照/录像 |
 | `stopOnCloud` | bool/0/1 | `true` | **条件3：云端命令**。是否响应下行 `2011` |
+
+### 2.4 配置来源与持久化迁移
+
+运行时生效的 `pirMediaConfig` / `pirRecordPolicy` 按下列优先级叠加（实现：`user/pir_ctrl.lua`）：
+
+```mermaid
+flowchart TD
+    A["① 代码默认<br/>DEFAULT_CONFIG.action = video"] --> B["② 读 /pir_mqtt_cfg.json<br/>覆盖内存"]
+    B --> C{"schemaVersion < 2 ?"}
+    C -->|是| D["一次性迁移<br/>photo → video<br/>写回 schemaVersion=2"]
+    C -->|否| E["直接用文件中的 action"]
+    D --> F["③ 运行时 pirMediaConfig"]
+    E --> F
+    G["云端 MQTT 2010"] --> H["setMediaConfig + setRecordPolicy"]
+    H --> I["写回 /pir_mqtt_cfg.json"]
+    I --> F
+```
+
+| 层级 | 来源 | 何时生效 | 当前默认 |
+|------|------|----------|----------|
+| ① 出厂默认 | `pir_ctrl.lua` → `DEFAULT_CONFIG` | 无持久化文件时 | `action=video`，`uploadMode=auto`，`quality=high` |
+| ② 本地持久化 | `/pir_mqtt_cfg.json` | 每次上电 `loadPersistedConfig()` | 见下表迁移规则 |
+| ③ 云端覆盖 | MQTT **2010** | 收到后立即改内存并写文件 | 平台自定 |
+
+**OTA 后一次性迁移**（`schemaVersion` 当前为 **2**；仅首次跑新固件时执行）：
+
+```mermaid
+flowchart TD
+    S[上电 / pir_ctrl 加载] --> INIT["内存先设默认 video"]
+    INIT --> LOAD{存在 pir_mqtt_cfg.json?}
+    LOAD -->|否| DONE["保持默认 video"]
+    LOAD -->|是| PARSE[解析 JSON 覆盖内存]
+    PARSE --> VER{schemaVersion >= 2?}
+    VER -->|是| OK["不迁移"]
+    VER -->|否| PHOTO{action == photo?}
+    PHOTO -->|是| MIG["改为 video"]
+    PHOTO -->|否| BUMP["action 不变"]
+    MIG --> SAVE
+    BUMP --> SAVE["写回 schemaVersion=2"]
+    SAVE --> DONE2[后续启动不再迁移]
+```
+
+| 设备情况 | 迁移前文件 | 迁移后 `action` | 是否写文件 |
+|----------|------------|-----------------|------------|
+| 新设备，从未配过 | 无文件 | `video` | 否 |
+| 旧版出厂默认 | `action=photo`，无 `schemaVersion` | `video` | 是 |
+| 旧版已是 `video` / `both` | 任意旧版本号 | 不变 | 是，仅补 `schemaVersion=2` |
+| 已迁移过 | `schemaVersion=2` | 不变 | 否 |
+| 迁移后云端 2010 设 `photo` | `schemaVersion=2`，`action=photo` | **保持 photo** | 2010 触发保存 |
+
+持久化文件示例（迁移后）：
+
+```json
+{
+  "schemaVersion": 2,
+  "mediaConfig": { "action": "video", "uploadMode": "auto", "quality": "high" },
+  "recordPolicy": { "maxDurationSec": 60, "stopOnSecondPir": true, "stopOnCloud": true }
+}
+```
+
+日志关键字：`migrate persisted action photo -> video` 或 `loaded persisted cfg ... ver 2`。
 
 ---
 
@@ -78,7 +139,43 @@ sys.publish(APP_EVENTS.PIR_STOP_RECORDING, reason, uploadMode, quality)
 
 ## 4. 流程说明
 
-### 4.1 开始录像
+### 4.0 端到端总览（`action=video`，常电）
+
+```mermaid
+sequenceDiagram
+    participant HW as PIR 硬件
+    participant LIB as lib/pir.lua
+    participant PC as pir_ctrl
+    participant APP as app.lua
+    participant MQTT as net_mqtt
+    participant T3x as T3x 主控
+
+    HW->>LIB: 上升沿（受 cooldown_ms 节流）
+    LIB->>PC: PIR_HW_TRIGGERED
+    PC->>PC: 读 pirMediaConfig.action=video
+    PC->>MQTT: GPIO_PIR_TRIGGERED → 1010 detected
+    PC->>PC: beginVideoSession（maxDurationSec 定时器）
+    PC->>APP: PIR_WAKE_T3X
+    APP->>MQTT: 1001 wakeup（rest 时跳过）
+    APP->>T3x: GPIO 唤醒 + HOSTEVT
+    T3x->>T3x: action=video → 开 MP4 录制
+    T3x->>MQTT: 1010 t3x_active（首个 I 帧写盘）
+    Note over PC: 定时 / 二次PIR / 云端2011
+    PC->>APP: PIR_STOP_RECORDING
+    APP->>MQTT: 1011 reason=timer|pir_retrigger|cloud
+    T3x->>T3x: 停录
+```
+
+### 4.1 `action` 与行为对照
+
+| `action` | Cat.1（Luat） | T3x |
+|----------|---------------|-----|
+| `photo` | 唤醒 T3x，**不开**录像会话 | JPEG 抓拍 |
+| `video` | `beginVideoSession` + 唤醒 T3x | MP4 录制 |
+| `both` | 录像会话 + 唤醒（一次） | 同周期先拍后录 |
+| `devinfo` | 不唤醒 T3x | 不拍不录；Cat.1 自行查 GB28181 上报 **1006** |
+
+### 4.2 开始录像（`video` / `both`）
 
 ```mermaid
 sequenceDiagram
@@ -89,12 +186,12 @@ sequenceDiagram
 
     PIR->>CFG: PIR_HW_TRIGGERED → onPirTriggered()
     CFG->>CFG: beginVideoSession() 启动定时器
-    CFG->>APP: publish PIR_RECORD_VIDEO
-    APP->>NET: publishWakeup() 若 uploadMode=auto
-    APP->>APP: t3x_ctrl.wake()
+    CFG->>APP: PIR_WAKE_T3X（一次唤醒）
+    APP->>NET: publishWakeup() 若 uploadMode=auto 且非 rest
+    APP->>APP: requestT3xWake(pir_media)
 ```
 
-### 4.2 停止录像（三种条件）
+### 4.3 停止录像（三种条件）
 
 ```mermaid
 flowchart TD
@@ -112,11 +209,19 @@ flowchart TD
     APP2 --> W
 ```
 
-### 4.3 二次 PIR 行为（`stopOnSecondPir=true`）
+### 4.4 二次 PIR 行为（`stopOnSecondPir=true`）
 
 1. 第一次 PIR：`PIR_WAKE_T3X` 一次唤醒；T3x 按 `PIRSTAT action=` 执行（`both` 先拍后录）。  
 2. 录像未结束前第二次 PIR：`requestT3xStopRecord(pir_retrigger)` → `PIR_REQUEST_T3X_STOP` 唤醒 T3x（**保持** `recording=1`）；`GPIO_PIR_TRIGGERED(retrigger)`；**不**发 4G 侧 1011。  
 3. PIR 冷却期（`lib/pir.lua` 默认 5s）过后，可再次全新触发。
+
+### 4.5 特殊状态（不触发或抑制 PIR 业务）
+
+| 状态 | 行为 |
+|------|------|
+| **rest** 低功耗 | `pir_ctrl` 忽略硬件 PIR；`app.onPirMediaAction` 不发 **1001**；云端以 **1003.lowPowerMode** 判态 |
+| **suspend**（低电量、T3x 烧录等） | 忽略 PIR |
+| 录像中二次 PIR（`stopOnSecondPir=true`） | `reason=pir_retrigger` 停录，**不**再开新会话 |
 
 ---
 
@@ -270,6 +375,8 @@ require "pir_ctrl".requestStopManual()
 
 实机验证清单：
 
+- [ ] OTA 后日志含 `migrate persisted action photo -> video` 或 `loaded persisted cfg ... ver 2`
+- [ ] **2010 query** 应答 `action=video`（已部署设备迁移后）
 - [ ] `action=video`，默认 60s 后收到 `1011` 且 `reason=timer`（或 T3x 先到 `source=t3x,reason=done`）
 - [ ] 首个 I 帧后收到 **1010** `pirStatus=t3x_active, active=1`
 - [ ] T3x 失败时收到 **1011** `source=t3x`（如 `time_sync`、`no_iframe`）

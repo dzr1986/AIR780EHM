@@ -1,11 +1,20 @@
---- MQTT 通信模块（蜂窝 Broker，与 net_tcp 独立）
--- 协议：下行 200x ↔ 上行 100x，见 user/MQTT_PROTOCOL.md
+--- MQTT 低功耗长连接（LOW_POWER_WAKEUP_CFG.mode="mqtt" 时为唤醒主通道）
+-- 与 net_tcp.lua 二选一；策略见 lib/low_power_wakeup.lua
+-- 协议：下行 200x ↔ 上行 100x，见 doc/MQTT_PROTOCOL.md
 -- @module net_mqtt
 -- @release 2026.5.19
 
 require "sys"
 require "config"
 local pir_ctrl = require "pir_ctrl"
+local host_uart_enc
+local function encodeHost()
+    if host_uart_enc == nil then
+        local ok, m = pcall(require, "host_uart")
+        host_uart_enc = ok and m or false
+    end
+    return host_uart_enc or nil
+end
 
 local _modname = ...
 module(_modname, package.seeall)
@@ -22,6 +31,8 @@ local DT = {
     UL_TF_CARD = "1007",
     UL_PIR_DETECT = "1010",
     UL_PIR_STOP = "1011",
+    UL_ENCODE_SET = "1012",
+    UL_ENCODE_QUERY = "1020",
     DL_WAKEUP = "2001",
     DL_REST = "2002",
     DL_STATUS = "2003",
@@ -31,6 +42,8 @@ local DT = {
     DL_TF_CARD = "2007",
     DL_PIR_CFG = "2010",
     DL_PIR_STOP = "2011",
+    DL_ENCODE_SET = "2012",
+    DL_ENCODE_QUERY = "2020",
 }
 
 -- 模块状态
@@ -39,6 +52,7 @@ local mqttClient = nil
 local isConnected = false
 local batteryStatusSubscribed = false
 local lastBatteryStatusPublishSec = 0
+local statusReportTimerStarted = false
 local identityPublished = false
 local identityAutoHooked = false
 
@@ -262,6 +276,40 @@ local function collectBatterySnapshot()
     return snap
 end
 
+--- 1003 周期（秒）：2003 interval / AT+SETCFG=interval → low_power_interval_sec；未设时回退 mqtt_report_interval_sec
+local function getStatusReportIntervalSec()
+    local rt = _G.APP_RUNTIME or {}
+    local sec = tonumber(rt.low_power_interval_sec)
+    if sec and sec > 0 then
+        return sec
+    end
+    local bcfg = _G.BATTERY_CFG or {}
+    return tonumber(bcfg.mqtt_report_interval_sec) or 60
+end
+
+local function notifyStatusReportIntervalChanged()
+    local ev = (_G.APP_EVENTS or {}).MQTT_STATUS_INTERVAL_CHANGED or "APP_MQTT_STATUS_INTERVAL_CHANGED"
+    sys.publish(ev)
+end
+
+local function startStatusReportTimer()
+    if statusReportTimerStarted then
+        return
+    end
+    statusReportTimerStarted = true
+    sys.taskInit(function()
+        while true do
+            local intervalSec = getStatusReportIntervalSec()
+            local changed = sys.waitUntil(
+                (_G.APP_EVENTS or {}).MQTT_STATUS_INTERVAL_CHANGED or "APP_MQTT_STATUS_INTERVAL_CHANGED",
+                intervalSec * 1000)
+            if not changed and isConnected then
+                publishStatus()
+            end
+        end
+    end)
+end
+
 local function setupBatteryStatusReport()
     if batteryStatusSubscribed then
         return
@@ -323,7 +371,8 @@ local function handleDownlink2003(data)
         if _G.APP_RUNTIME then
             _G.APP_RUNTIME.low_power_interval_sec = interval
         end
-        log.info("net_mqtt", "2003 interval", interval)
+        log.info("net_mqtt", "2003 interval", interval, "1003 period", getStatusReportIntervalSec())
+        notifyStatusReportIntervalChanged()
     end
     publishStatus()
 end
@@ -635,6 +684,79 @@ local function handleDownlink2011(data)
     pir_ctrl.requestStopFromCloud()
 end
 
+local function publishEncodeReply(dlType, retCode, message, body, messageId)
+    if not isConnected then
+        log.warn("net_mqtt", "no conn, skip encode reply")
+        return
+    end
+    local ulType = (dlType == DT.DL_ENCODE_QUERY) and DT.UL_ENCODE_QUERY or DT.UL_ENCODE_SET
+    local topic = getPubTopic() .. "encode"
+    local bodyJson = ""
+    if type(body) == "table" then
+        local ok, encoded = pcall(json.encode, body)
+        if ok and encoded then
+            bodyJson = ',"body":' .. encoded
+        end
+    end
+    local needReboot = ""
+    if type(body) == "table" and body.needReboot ~= nil then
+        needReboot = string.format(',"needReboot":%s',
+            (body.needReboot == true or body.needReboot == 1) and "1" or "0")
+    end
+    local payload = string.format(
+        '{"deviceNo":"%s","dataType":"%s","reply":1,"messageId":"%s","ret":%s,"message":"%s"%s%s,"time":"%s"}',
+        getDeviceId(), ulType, escJson(messageId or ""),
+        tostring(retCode ~= nil and retCode or -1), escJson(message or ""),
+        needReboot, bodyJson, os.date("%Y-%m-%d %H:%M:%S"))
+    mqttClient:publish(topic, payload, 1)
+    log.info("net_mqtt", "pub", ulType, retCode, message)
+end
+
+local function handleDownlink2020(data)
+    sys.taskInit(function()
+        local hu = encodeHost()
+        if not hu or not hu.queryHostEncode then
+            publishEncodeReply(DT.DL_ENCODE_QUERY, -1, "no_host_uart", nil, data.messageId)
+            return
+        end
+        local result, err = hu.queryHostEncode({
+            scope = data.scope,
+            camera = data.camera,
+            stream = data.stream,
+            timeout_ms = data.timeoutMs or data.timeout_ms,
+        })
+        if result then
+            publishEncodeReply(DT.DL_ENCODE_QUERY, 0, "ok", result, data.messageId)
+        else
+            publishEncodeReply(DT.DL_ENCODE_QUERY, -1, err or "query_fail", nil, data.messageId)
+        end
+    end)
+end
+
+local function handleDownlink2012(data)
+    sys.taskInit(function()
+        local hu = encodeHost()
+        if not hu then
+            publishEncodeReply(DT.DL_ENCODE_SET, -1, "no_host_uart", nil, data.messageId)
+            return
+        end
+        local ok, msg, extra
+        if data.scope == "audio" and hu.setHostAudioEncode then
+            ok, msg, extra = hu.setHostAudioEncode(data)
+        elseif hu.setHostVideoEncode then
+            ok, msg, extra = hu.setHostVideoEncode(data)
+        else
+            ok, msg, extra = false, "unsupported", nil
+        end
+        local body = extra or {}
+        if ok and extra and extra.needReboot ~= nil then
+            body.needReboot = extra.needReboot
+        end
+        publishEncodeReply(DT.DL_ENCODE_SET, ok and 0 or -1, msg or (ok and "ok" or "fail"),
+            body, data.messageId)
+    end)
+end
+
 local DOWNLINK_HANDLERS = {
     [DT.DL_WAKEUP] = handleDownlink2001,
     [DT.DL_REST] = handleDownlink2002,
@@ -645,6 +767,8 @@ local DOWNLINK_HANDLERS = {
     [DT.DL_TF_CARD] = handleDownlink2007,
     [DT.DL_PIR_CFG] = handleDownlink2010,
     [DT.DL_PIR_STOP] = handleDownlink2011,
+    [DT.DL_ENCODE_SET] = handleDownlink2012,
+    [DT.DL_ENCODE_QUERY] = handleDownlink2020,
 }
 
 local function handleServerMessage(topic, payload)
@@ -677,18 +801,45 @@ end
 -- MQTT 配置（t3x 经 AT+MQTTCFG 下发后覆盖 _G.MQTT_CFG）
 -- ============================================================
 
-function setMqttConfig(cfg)
+local function normMqttCfg(cfg)
     if not cfg or not cfg.host or cfg.host == "" then
-        return false
+        return nil
     end
-    _G.MQTT_CFG = {
+    local cid = cfg.client_id
+    if cid == nil or cid == "" then
+        cid = nil
+    end
+    return {
         host = cfg.host,
         port = tonumber(cfg.port) or 1883,
         ssl = cfg.ssl == true or cfg.ssl == 1,
         username = cfg.username or "",
         password = cfg.password or "",
-        client_id = cfg.client_id,
+        client_id = cid,
     }
+end
+
+--- 与当前 _G.MQTT_CFG 是否一致（T3x bootstrap 同参 MQTTCFG 时跳过重连）
+function isSameMqttConfig(cfg)
+    local nextCfg = normMqttCfg(cfg)
+    local cur = normMqttCfg(_G.MQTT_CFG or {})
+    if not nextCfg or not cur then
+        return false
+    end
+    return nextCfg.host == cur.host
+        and nextCfg.port == cur.port
+        and nextCfg.ssl == cur.ssl
+        and nextCfg.username == cur.username
+        and nextCfg.password == cur.password
+        and nextCfg.client_id == cur.client_id
+end
+
+function setMqttConfig(cfg)
+    local normalized = normMqttCfg(cfg)
+    if not normalized then
+        return false
+    end
+    _G.MQTT_CFG = normalized
     log.info("net_mqtt", "cfg updated", _G.MQTT_CFG.host, _G.MQTT_CFG.port)
     return true
 end
@@ -801,16 +952,7 @@ local function mqttTask()
         log.warn("net_mqtt", "conn timeout 90s, autoreconn")
     end
 
-    local bcfg = _G.BATTERY_CFG or {}
-    local statusIntervalSec = tonumber(bcfg.mqtt_report_interval_sec) or 60
-    sys.taskInit(function()
-        while true do
-            sys.wait(statusIntervalSec * 1000)
-            if isConnected then
-                publishStatus()
-            end
-        end
-    end)
+    startStatusReportTimer()
 
     while true do
         local ret, topic, data, qos = sys.waitUntil("mqtt_pub", 300000)
@@ -876,7 +1018,7 @@ function publishStatus()
     local snap = collectBatterySnapshot()
     local topic = getPubTopic() .. "status"
     local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","powerStatus":"%d","usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","time":"%s"}',
+        '{"deviceNo":"%s","dataType":"%s","powerStatus":%d,"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","time":"%s"}',
         getDeviceId(),
         DT.UL_STATUS,
         snap.power_status,

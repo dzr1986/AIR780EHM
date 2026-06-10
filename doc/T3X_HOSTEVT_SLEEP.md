@@ -42,7 +42,7 @@ media 字段与 `AT+PIRSTAT?` 中 `pir_runtime.buildAtBody()` **同源**；T3x `
 无待处理：
 
 ```
-+HOSTEVT:has_event=0,pending=none,types=,sid=0,evt=-1,recording=0,action=photo,max_sec=60,last_stop=none OK
++HOSTEVT:has_event=0,pending=none,types=,sid=0,evt=-1,recording=0,action=video,max_sec=60,last_stop=none OK
 ```
 
 ### 1.1.1 mqtt 类 pending（v1.5）

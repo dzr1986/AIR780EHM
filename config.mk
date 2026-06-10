@@ -26,3 +26,8 @@ USB_REENUM_ENABLE ?= 1
 #   local USB_REENUM_ENABLE = 1
 #   FEATURE_CFG.usb_reenum = (USB_REENUM_ENABLE == 1)
 #   HOST_USB_CFG.allow_t3x_usb_reset = ...
+#
+# ========== 以下宏仅在 user/config.lua 维护（config.mk 无对应项）==========
+# LOW_POWER_ENABLE = 1   → FEATURE_CFG.low_power → MODULE_FLAGS.low_power
+# HOST_EVT_ENABLE  = 1   → FEATURE_CFG.host_evt  → PIRSTAT.has_work 休眠查询
+# LOW_POWER_WAKEUP_CFG.mode = "mqtt" | "tcp"  （见 doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md）

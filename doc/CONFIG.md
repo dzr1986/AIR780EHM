@@ -88,6 +88,8 @@
 | `t3x_pwr_wake` | 22 | **0** | **1** | 19 | `t3x_ctrl` → `CPU_PWR_EN` |
 | `t3x_mcu_int` | 29 | 1 | 0 | 30 | `t3x_ctrl` → `MCU_INT_CPU` 脉冲 |
 
+**`USB_DEBUG_EN`（GPIO32）运行时电平**：上电/正常运行 **低**；GPIO28 长按进 T3x 烧录 **高**；`exitBootMode` 后 **低**；`AT+USBRESET` 为 **高约 300ms 再低**（见 [T3X_CAT1_GPIO §1.2](T3X_CAT1_GPIO.md#12-usb_debug_engpio32电平)）。
+
 修改 LED/协处理器默认亮灭：**只改 `init_level` / `on_level`**，无需改业务代码。
 
 ---
@@ -104,7 +106,7 @@
 | 分组 | 字段 | 默认 | 说明 |
 |------|------|------|------|
 | **adc** | `channel` | `1` | BAT_ADC / ADC1 |
-| | `mv_scale` | `4090/1311` | 引脚 mV × scale = 电芯 mV |
+| | `mv_scale` | `3326/1131` | 引脚 mV × scale = 电芯 mV |
 | | `divider` | 1000K+510K | `mv_scale` 为 nil 时自动计算 |
 | **cell** | `v_max_mv` / `v_min_mv` | 4200 / 3000 | 映射 100% / 1% |
 | | `sample_interval_ms` | 10000 | `vbat` 采样周期 |
@@ -258,10 +260,20 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `rx_line_max` | `4096` | 行缓冲上限 |
 
 - `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末  
-  - `FOTA_CFG.product_key` 默认 `F6Br8JzE5056NwGtHqAz1IMV0wrt1S2e`（合宙 IoT OTA；MQTT 2004 可省略）
+  - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`lib/fota.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段
+- **`config.mk` 与 `config.lua` 宏对照**（`config.mk` 仅覆盖部分；其余仅在 `config.lua` 顶部 `local *_ENABLE`）：
+
+| 宏 | `config.mk` | `config.lua` | 说明 |
+|----|-------------|--------------|------|
+| `RNDIS_ENABLE` | `?= 1` | `local RNDIS_ENABLE = 1` | → `FEATURE_CFG.rndis`；关 RNDIS 可移 `usb_rndis.lua` 至 `archive/slim/lib/` |
+| `USB_REENUM_ENABLE` | `?= 1` | `local USB_REENUM_ENABLE = 1` | → `FEATURE_CFG.usb_reenum` |
+| `FOTA_SERVER` | `iot` / `custom` | `FOTA_CFG.server_mode` | 合宙 IoT 需 `main.lua` `PRODUCT_KEY` |
+| `LOW_POWER_ENABLE` | — | `local LOW_POWER_ENABLE = 1` | → `FEATURE_CFG.low_power` → `MODULE_FLAGS.low_power` |
+| `HOST_EVT_ENABLE` | — | `local HOST_EVT_ENABLE = 1` | → `FEATURE_CFG.host_evt` → PIRSTAT.has_work |
+| `LOW_POWER_WAKEUP_MODE` | — | `LOW_POWER_WAKEUP_CFG.mode` | `"mqtt"` / `"tcp"`，见 [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](CAT1_LOWPWR_MQTT_TCP_STRATEGY.md) |
 
 ---
 
 ## 相关文档
 
-[README.md](README.md) · [LED_INDICATORS.md](LED_INDICATORS.md) · [CHARGE_BATTERY.md](CHARGE_BATTERY.md) · [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [T3X_CAT1_GPIO.md](T3X_CAT1_GPIO.md)
+[README.md](README.md) · [CODE_DOC_AUDIT.md](CODE_DOC_AUDIT.md) · [LED_INDICATORS.md](LED_INDICATORS.md) · [CHARGE_BATTERY.md](CHARGE_BATTERY.md) · [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [T3X_CAT1_GPIO.md](T3X_CAT1_GPIO.md)

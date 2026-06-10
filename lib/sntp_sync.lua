@@ -4,9 +4,8 @@
 -- @release 2026.5.13
 
 require "sys"
+
 local _modname = ...
-local _G_direct = _ENV
-_G_direct[_modname] = _G_direct[_modname] or {}
 module(_modname, package.seeall)
 _G[_modname] = _M
 

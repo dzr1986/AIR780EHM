@@ -1,10 +1,10 @@
 # 780EHM_PJ 项目技术文档
 
 > Air780EHM + T3x 摄像头 · LuatOS 方案1（扁平架构）  
-> **配置真源**：[`CONFIG.md`](CONFIG.md)（`config` / `appConfig` / `keyConfig`）· **调用关系**：`user/CALL_GRAPH.md`  
+> **配置真源**：[`CONFIG.md`](CONFIG.md)（`config` / `app_config` / `key_config`）· **调用关系**：[`CALL_GRAPH.md`](CALL_GRAPH.md)  
 > **协议专篇**：`MQTT_PROTOCOL.md` · `UART_PROTOCOL.md` · `PIR_PROTOCOL.md`  
 > **代码分析**：`CODE_ANALYSIS.md`  
-> Cat.1 录像 / MQTT 1010/1011：[`T3X_RECORD_MQTT_FLOW.md`](T3X_RECORD_MQTT_FLOW.md)、IPC [`docs/T3X_RECORD_MQTT_FLOW.md`](../../docs/T3X_RECORD_MQTT_FLOW.md)。
+> Cat.1 录像 / MQTT 1010/1011：[`T3X_RECORD_MQTT_FLOW.md`](T3X_RECORD_MQTT_FLOW.md)
 
 ---
 
@@ -34,8 +34,9 @@
 │ lib:  uart_bridge · pir · battery · …                    │
 │       led_ctrl · lib/key                                  │
 ├──────────────────────────────────────────────────────────┤
-│ user: bat_adc │ lib: gpio_util · key · pir · led · usb_charge · uart_bridge │
-│      sntpSync · mobileInfo · watchdog · fota             │
+│ user: vbat · host_uart · battery_guard · net_tcp        │
+│ lib:  gpio_util · key · pir · led · usb_charge · uart_bridge │
+│       sntp_sync · mobile_info · watchdog · fota · low_power_wakeup │
 ├──────────────────────────────────────────────────────────┤
 │ lib/archive: 旧 MQTT 栈、powerMode、演示库（不参与启动）   │
 └──────────────────────────────────────────────────────────┘
@@ -45,30 +46,40 @@
 
 ```
 main.lua
-  require config
-  app.start(peripheral, net, t3x_ctrl)
+  require config, app_config, key_config
+  [cellular_bootstrap] [rndis] net_mqtt.bootstrapNetwork()
+  app.start(peripheral, net_mqtt, t3x_ctrl)
   sys.run()
 ```
 
 ### 1.3 `app.start()` 顺序（与代码一致）
 
+> 真源：`user/app.lua` `start()` 1106–1157 行；维护见 [CODE_DOC_AUDIT.md §3](CODE_DOC_AUDIT.md#3-appstart-真源顺序维护时请同步三份总览文档)。
+
 | 顺序 | 条件 | 动作 |
 |------|------|------|
 | 1 | 始终 | `setupEventHandlers()`（含 `pir_ctrl.start()`） |
-| 2 | `watchdog` | `lib/watchdog.start(WDT_CFG)` |
-| 3 | `uart_bridge` | `uart_bridge.start()` → `_G.uart_bridge` |
-| 4 | 始终 | `t3x_ctrl.start()`（无 WDT） |
-| 5 | `gpio` | `peripheral.start()`（LED/按键/PIR 硬件） |
-| 6 | `pmd_runtime` | USB 插拔 PMD |
-| 7 | 后台 | bat_adc / charge / sntpSync / mobileInfo |
-| 8 | 始终 | `initPowerStatus()` |
-| 9 | 始终 | **`bootMqtt()`**（`net_ready` 最长 120s → `startMqtt`） |
-| 10 | `fota` | `setupFota()` → 订阅 OTA，上报 1004 |
-| 11 | 始终 | 10s 心跳日志 |
+| 2 | `battery_guard` | `battery_guard.start(hooks)` |
+| 3 | `watchdog` | `setupWatchdog()` |
+| 4 | `uart_bridge` | `setupUartBridge()`：`uart_bridge` + **`host_uart`** 同启 |
+| 5 | 始终 | 订阅 `HOST_UART_FIRST_AT` |
+| 6 | 始终 | **`initPowerStatus()`**（可进 rest；**早于** t3x/GPIO/电量采样） |
+| 7 | 始终 | `scheduleBootUsbPolicySync()` |
+| 8 | 始终 | `t3x_ctrl.start()` |
+| 9 | `sound_prompt` | `sound_prompt.start()` + `onAppStarted()` |
+| 10 | `time_sync` | `time_sync.start()` |
+| 11 | `gpio` | `peripheral.start()`（LED/按键/PIR） |
+| 12 | `pmd_runtime` | USB 插拔 PMD |
+| 13 | 后台 | `startBackgroundServices()`：vbat / usb_charge / sntp_sync / mobile_info |
+| 14 | `rndis` | `setupRndis()` |
+| 15 | `mqtt` | `net_mqtt.bootstrapNetwork()`（`main.lua` 已调，幂等） |
+| 16 | 始终 | **`bootMqtt()`**（`net_ready` 最长 120s → `startMqtt`） |
+| 17 | `fota` | `setupFota()` → 订阅 OTA，上报 1004 |
+| 18 | 始终 | 10s 心跳 |
 
-MQTT 在 **`bootMqtt()`** 中等待 `net_ready` 后启动，**常电联网**；USB 拔出仅触发业务低功耗与 `publishRest`，**不断开** MQTT。`net.mqttTask` 内会再次 `waitUntil("net_ready")`（通常已就绪）。
+MQTT 在 **`bootMqtt()`** 中等待 `net_ready` 后启动，**常电联网**；USB 拔出触发 `publishRest`，**不断开** MQTT。
 
-上电无 USB 时 `initPowerStatus` 可能立即 `onEnterLowPower`（含 `t3x_ctrl.enterSleep` → `pm.hibernate`），与 MQTT 启动并行，实机需验证蜂窝是否仍保持连接。
+上电无 USB 时 **`initPowerStatus`（步骤 6）** 可能立即 `onEnterLowPower`，此时 t3x/GPIO 尚未初始化；MQTT 在步骤 16 才异步拉起，与 rest 并行，实机需验证蜂窝是否仍在线。
 
 ### 1.4 栈选择 `APP_STACK`
 
@@ -94,14 +105,24 @@ APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 | MQTT | `bootMqtt` / `startMqtt` → `net.start` |
 | 串口 | 不直接操作 UART，经 `uart_bridge` + 回调 |
 
-### 2.2 `lib/uart_bridge.lua`
+### 2.2 `lib/uart_bridge.lua`（驱动层）
 
-| 能力 | API / 协议 |
-|------|------------|
-| AT | `AT+GETCFG` / `SETCFG` / `LOWPOWER` / `REBOOT` / `POWEROFF` / `SENDSTR` / `SENDHEX` |
+| 能力 | 说明 |
+|------|------|
+| 硬件 | 唯一 `uart.setup`（`UART_CFG`） |
+| 收发 | `sendString` / `sendHex` / `write` / `stop` |
 | 行协议 | `STR:...`、`HEX:...`（`\r\n` 结尾） |
-| 编程接口 | `sendString` / `sendHex` / `write` / `stop` |
-| 回调 | `onRaw` / `onString` / `onHex`；事件 `UART_RX_*` |
+| 回调 | `onRaw` → 由 `app` 转交 `host_uart.on_rx_raw` |
+
+**不解析** T3x 业务 AT；AT 清单见 `host_uart`。
+
+### 2.2b `user/host_uart.lua`（T3x AT 业务）
+
+| 能力 | 说明 |
+|------|------|
+| 入站 AT | `AT_CMD_TABLE`：`GETCFG`/`SETCFG`/`LOWPOWER`/`RECORD`/`HOSTEVT`/`MQTTCFG`/`SERVCREATE` 等 → [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) |
+| 出站 AT | 4G 主动发 T3x：`AT+VENC?`/`AT+VENCSET`/`AT+AUDIO?`/`AT+GB28181?`/`AT+IPCPOWEROFF`/`AT+TFCARD?` 等 |
+| 启动 | 在 `setupUartBridge()` 成功回调内 `host_uart.start()` |
 
 ### 2.3 `pir_ctrl.lua` + `lib/pir.lua`
 
@@ -126,8 +147,8 @@ APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 |----|------|
 | 启动 | `net.start()` → `mqttTask`；由 `app.startMqtt` 调用 |
 | 连接 | `mqtt.create` + `autoreconn`；`clientId` = IMEI |
-| 下行 | 2001–2005、2006–2007、2010–2011 → 事件或 `pir_ctrl` / `host_uart` |
-| 上行 | 1001–1007、1004 OTA、1010/1011 |
+| 下行 | 2001–2007、2010–2011、**2012/2020** → `pir_ctrl` / `host_uart` / 设备事件 |
+| 上行 | 1001–1007、1004 OTA、1010/1011、**1012/1020** 编码 |
 | 离线 | `MQTT_OFFLINE` → app `onMqttOffline` → T3x 脉冲 |
 | 扩展 | `start({ onOffline, onMessage })` 可选，当前 app 未传回调 |
 
@@ -147,20 +168,31 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 |----|------|
 | 触发 | MQTT 2004 / `DEVICE_OTA_REQUEST` / `AT+OTA` |
 | 上报 | `net.publishOtaStatus` → 1004 |
-| 配置 | `FOTA_CFG.product_key`（默认 `F6Br8JzE5056NwGtHqAz1IMV0wrt1S2e`）、`FOTA_CFG`（`config.lua`） |
+| 配置 | `_G.PRODUCT_KEY`（[`main.lua`](../user/main.lua)）、`FOTA_CFG`（`config.lua`） |
 
-### 2.8 `lib/` 主路径（9 个）
+### 2.8 `user/` 补充模块
 
 | 模块 | 用途 |
 |------|------|
-| gpio_util | GPIO 输入封装 |
-| pir | PIR 硬件 |
-| led | LED 驱动 |
-| bat_adc / usb_charge | 电量与充电 |
-| sntpSync | 授时 |
-| mobileInfo | 蜂窝信息（**无串口**） |
-| watchdog | 模组硬件 WDT（`MODULE_FLAGS.watchdog`） |
-| fota | OTA（`MODULE_FLAGS.fota`） |
+| `host_uart.lua` | T3x AT 业务（RECORD/HOSTEVT/编码/IPC 等） |
+| `battery_guard.lua` | 低电量/USB 策略门禁 |
+| `vbat.lua` | ADC 采样编排（`bat_adc.lua` 仅为兼容桩） |
+| `t3x_ipc.lua` | T3x 优雅断电 / ready 轮询 |
+| `net_tcp.lua` | 专有 TCP 长连接（`LOW_POWER_WAKEUP_CFG.mode=tcp` 时懒加载） |
+| `sound_prompt.lua` / `time_sync.lua` | 提示音 / 时间同步 |
+| `pir_runtime.lua` | PIR 运行时持久化 |
+
+### 2.9 `lib/` 主路径（18 个，节选）
+
+| 模块 | 用途 |
+|------|------|
+| gpio_util, pir, led, key | GPIO / PIR / LED / 按键 |
+| adc_lib, bat_core | ADC 与电量映射 |
+| usb_charge, usb_rndis | 充电 / RNDIS |
+| uart_bridge | 唯一 `uart.setup` |
+| sntp_sync, cellular_bootstrap | 授时 / 蜂窝拨号 |
+| low_power_wakeup, t3x_policy, host_event | 唤醒通道 / T3x 门禁 / HOSTEVT |
+| watchdog, fota | WDT / OTA |
 
 ---
 
@@ -215,7 +247,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 | 下行 | 上行 |
 |------|------|
 | 2001 唤醒 · 2002 低功耗 · 2003 状态 · 2004 电源/OTA · 2005 SIM · **2006 标识 · 2007 TF 卡** | 1001–1007 对应应答 |
-| 2010 PIR · 2011 停录 | 1004 OTA 状态 · 1010 PIR · 1011 录像结束 |
+| 2010 PIR · 2011 停录 · **2012 编码设置 · 2020 编码查询** | 1004 OTA · 1010 PIR · 1011 停录 · **1012/1020 编码** |
 
 ---
 
@@ -274,7 +306,8 @@ app.start 完成
   → bootMqtt (task)
   → net_ready (≤120s)
   → startMqtt → net.start → mqttTask
-  → conack → subscribe + publishWakeup(1001)
+  → conack → subscribe + publishConnectUplink()
+       rest → 1002+1003；常电 → 1001
 ```
 
 ### 6.4 电源键长按关机
@@ -318,7 +351,7 @@ lib/key pwrkey 长按 3s
 | `GPIO_IN.usb_det` | 27 | 16 | USB 插入 |
 | `GPIO_IN.chg_state` | 17 | 100 | 充电状态 |
 | `GPIO_IN.misc_pullup` | 7 | 7 | 预留 |
-| `GPIO_OUT.led_red` | 20 | 102 | 红灯 |
+| `GPIO_OUT.led_red` | 20 | 102 | 红灯（**`enabled=false` 本板未用**） |
 | `GPIO_OUT.bat_stat_led` | 21 | 107 | BAT_STAT_LED |
 | `GPIO_OUT.t3x_pwr_wake` | 22 | 19 | CPU_PWR_EN / 供电唤醒 |
 | `GPIO_OUT.t3x_boot` | **26** | **25** | `T3x_BOOT`（丝印 CAN_TXD） |
@@ -348,31 +381,35 @@ log.info("fota", json.encode(require("fota").getState()))
 
 ## 9. 文件清单
 
-### user/（主路径）
+### user/（19 个）
 
 | 文件 | 职责 |
 |------|------|
-| `main.lua` | 入口 |
+| `main.lua` | 入口、`PRODUCT_KEY`、cellular/rndis/MQTT 引导 |
 | `config.lua` | 硬件引脚、PIR/电池、MQTT |
 | `app_config.lua` | `MODULE_FLAGS`、`APP_EVENTS` |
 | `key_config.lua` | `KEY_CONFIG` |
 | `app.lua` | 编排中心 |
-| `net_mqtt.lua` | MQTT |
-| `lib/usb_charge.lua` | USB/充电 GPIO |
-| `t3x_ctrl.lua` | 协处理器 |
-| `pir_ctrl.lua` | PIR 业务 |
-| `peripheral.lua` | 外设聚合 |
-| `led_ctrl.lua` | LED |
+| `net_mqtt.lua` | MQTT 上下行 |
+| `net_tcp.lua` | 专有 TCP（懒加载） |
+| `host_uart.lua` | T3x AT 业务 |
+| `t3x_ctrl.lua` / `t3x_ipc.lua` | 协处理器 GPIO / IPC 断电 |
+| `pir_ctrl.lua` / `pir_runtime.lua` | PIR 业务 / 持久化 |
+| `battery_guard.lua` / `vbat.lua` | 电量保护 / ADC 采样 |
+| `bat_adc.lua` | 兼容桩 → `vbat` |
+| `peripheral.lua` / `led_ctrl.lua` | 外设聚合 / LED |
+| `sound_prompt.lua` / `time_sync.lua` | 提示音 / 时间同步 |
 
-### lib/（主路径）
+### lib/（主路径 18 个，节选）
 
-`uart_bridge` `gpio_util` `key` `pir` `led` `bat_adc` `usb_charge` `sntpSync` `mobileInfo` `watchdog` `fota`
+`uart_bridge` `gpio_util` `key` `pir` `led` `adc_lib` `bat_core` `usb_charge` `usb_rndis` `sntp_sync` `mobile_info` `cellular_bootstrap` `low_power_wakeup` `t3x_policy` `host_event` `watchdog` `fota` `libfota2`
 
 ### 文档
 
 | 文件 | 说明 |
 |------|------|
-| `CONFIG.md` | **配置分层索引**（config / appConfig / keyConfig） |
+| `CONFIG.md` | **配置分层索引**（config / app_config / key_config） |
+| `CODE_DOC_AUDIT.md` | 代码↔文档核验流程与 `app.start` 真源 |
 | `CALL_GRAPH.md` | require 与事件流 |
 | `KEY_GPIO.md` | KEY_CONFIG / lib/key 按键与就绪 |
 | `CHARGE_BATTERY.md` | USB 充电 / ADC 电量 / MQTT 1003 |
@@ -385,4 +422,4 @@ log.info("fota", json.encode(require("fota").getState()))
 
 ---
 
-**版本**: 1.0.0 · **更新**: 2026-06（`PIR_WAKE_T3X`、T3x `AT+RECORD`、1011 去重）· **平台**: Air780EHM + T3x
+**版本**: 1.2.0 · **更新**: 2026-06-10（`app.start` 真源顺序、`uart_bridge`/`host_uart` 分工）· **平台**: Air780EHM + T3x

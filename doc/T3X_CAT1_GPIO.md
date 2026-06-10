@@ -43,12 +43,34 @@
 
 | `config` 键 | Luat GPIO | 模组 Pin | 丝印 | 原理图网络 | 说明 |
 |-------------|-----------|----------|------|------------|------|
-| `led_red` | 20 | 102 | GPIO20 | LED_RED | 模组红灯 |
+| `led_red` | 20 | 102 | GPIO20 | LED_RED | **本板未用**（`enabled=false`，见 `CONFIG.md`） |
 | `bat_stat_led` | 21 | 107 | GPIO21 | BAT_STAT_LED / LED_BLUE | 电量蓝灯 |
 | `t3x_pwr_wake` | 22 | 19 | GPIO22 | CPU_PWR_EN | T3x 供电使能 + 唤醒同线 |
 | `t3x_boot` | **26** | **25** | **CAN_TXD** | **T3x_BOOT** | 进/退烧录 BOOT 脚 |
-| `t3x_ota` | 32 | 33 | GPIO32 | USB_DEBUG_EN | USB 切换，烧录时拉高 |
+| `t3x_ota` | 32 | 33 | GPIO32 | USB_DEBUG_EN | USB 切换；**正常运行低、烧录高**（见下 §1.2） |
 | `t3x_mcu_int` | 29 | 30 | GPIO29 | MCU_INT_CPU | 低脉冲唤醒 T3x `PB27` |
+
+#### 1.2 `USB_DEBUG_EN`（GPIO32）电平
+
+由 **4G 模组 Luat GPIO32** 驱动原理图网络 **`USB_DEBUG_EN`**，控制 USB 走 T3x Host 还是烧录/调试路径。配置真源：`GPIO_OUT.t3x_ota`（`init_level=0`、`on_level=1`）。
+
+| 场景 | `USB_DEBUG_EN`（GPIO32） | `T3x_BOOT`（GPIO26） | 代码 / 说明 |
+|------|--------------------------|----------------------|-------------|
+| **4G 上电 / 正常运行** | **低（0）** | **低（0）** | `gpio_util.setup_output` 用 `init_level`；`t3x_ctrl.start()` 后不改 OTA 脚 |
+| **进入 T3x 烧录**（GPIO28 长按 → `enterBootMode`） | **高（1）** | **高（1）** | 断电 500ms 后 BOOT+OTA 置 `on_level`，再 `powerOn`（GPIO22） |
+| **退出烧录**（`coproc_ready` → `exitBootMode`） | **低（0）** | **低（0）** | 拉回 `init_level` |
+| **USB 恢复**（`AT+USBRESET`） | **高约 300ms → 低** | 不变 | `pulseUsbDebugEn()`，**不是**烧录模式 |
+
+原理图（Sheet7）：进烧录需 **`T3x_BOOT` + `USB_DEBUG_EN` + `CPU_PWR_EN`** 同时为高；正常运行三者均为低（`CPU_PWR_EN` 在 T3x 上电时为高，与 USB 切换脚无关）。
+
+板端读电平（4G 侧，Luat GPIO 号）：
+
+```text
+gpio.get(32)   # 正常运行期望 0；烧录中期望 1
+gpio.get(26)   # T3x_BOOT，烧录时同为 1
+```
+
+详细时序：[T3X_BURN_MODE.md](T3X_BURN_MODE.md) · USB 拔出与休眠：[T3X_USB_HOSTIDLE.md](T3X_USB_HOSTIDLE.md) · 低功耗决策：[POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) · T3x 启停振荡分析：[T3X_BATTERY_USB_T3X_OSCILLATION.md](T3X_BATTERY_USB_T3X_OSCILLATION.md)（T3x 侧 PA9/VBUS 硬件见 IPC 仓 `docs/gpio_led_config.md`）
 
 #### 烧录 / 协处理器（常用子集）
 
@@ -256,7 +278,7 @@
 | 97      | GPIO16         | 通用 GPIO                     |
 | **100** | **GPIO17**     | **CHG_STATE**（只读；CHG 红/蓝灯由 LP4030 硬件） |
 | 101     | WAKEUP0        | 唤醒                          |
-| **102** | **GPIO20**     | 模组红灯 / 低电量（`GPIO_OUT.led_red`） |
+| **102** | **GPIO20**     | 红灯（`GPIO_OUT.led_red`，**本板 `enabled=false` 未焊接**） |
 | **107** | **GPIO21**     | **BAT_STAT_LED** / 原理图 **LED_BLUE**（`GPIO_OUT.bat_stat_led`） |
 | 106     | CAN_RXD        | CAN（本板未用）                   |
 

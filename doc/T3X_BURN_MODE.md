@@ -75,6 +75,18 @@ sequenceDiagram
 | **22** | 19 | GPIO22 | `t3x_pwr_wake` | **CPU_PWR_EN** |
 | 28 | 78 | GPIO28 | `boot_key`（输入） | 长按触发烧录流程 |
 
+### 3.2 `USB_DEBUG_EN` / `T3x_BOOT` 电平（烧录 vs 正常）
+
+`config.lua`：`t3x_boot`、`t3x_ota` 均为 `init_level=0`（上电低）、`on_level=1`（烧录高）。
+
+| 状态 | USB_DEBUG_EN GPIO32 | T3x_BOOT GPIO26 |
+|------|---------------------|-----------------|
+| 正常开机 / IPC 运行 | **低** | **低** |
+| 进入烧录 `enterBootMode` | **高** | **高** |
+| 退出烧录 `exitBootMode` | **低** | **低** |
+
+与 `AT+USBRESET` 的 GPIO32 **300ms 脉冲**不同：脉冲结束后回到**低**，且 **不拉高 GPIO26**。
+
 ---
 
 ## 4. 烧录结束恢复

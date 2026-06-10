@@ -82,6 +82,10 @@ if _G.FEATURE_CFG then
     log.info("main", "RNDIS", _G.FEATURE_CFG.rndis and "开" or "关")
     log.info("main", "低功耗", _G.FEATURE_CFG.low_power and "开" or "关")
     log.info("main", "休眠查询", _G.FEATURE_CFG.host_evt and "PIRSTAT.has_work 开" or "关")
+    local okLp, lpw = pcall(require, "low_power_wakeup")
+    if okLp and lpw and lpw.modeLabel then
+        log.info("main", "低功耗唤醒通道", lpw.modeLabel())
+    end
 end
 
 local app = require "app"

@@ -26,12 +26,20 @@ _G.FEATURE_CFG = {
     usb_reenum = (USB_REENUM_ENABLE == 1),
 }
 
+-- 低功耗云端唤醒通道（二选一，策略见 lib/low_power_wakeup.lua）
+-- 默认关闭 TCP，直接用 MQTT 做 rest 下长连接唤醒（改 "tcp" 才启用 SERVCREATE）
+local LOW_POWER_WAKEUP_MODE = "mqtt"  -- "mqtt" | "tcp"
+
+_G.LOW_POWER_WAKEUP_CFG = {
+    mode = LOW_POWER_WAKEUP_MODE,
+}
+
 -- 低功耗运行策略（编译能力见 FEATURE_CFG.low_power；T3x 侧 WITH_T3X_LOW_POWER）
 _G.LOW_POWER_CFG = {
     enabled = (_G.FEATURE_CFG.low_power ~= false),
     graceful_ipc = true,           -- enterSleep 前 AT+IPCPOWEROFF（需 T3x WITH_T3X_LOW_POWER=yes）
-    modem_hibernate = false,       -- true=整模组 pm.hibernate（MQTT 断开）
-    rest_mqtt_interval_sec = 30,   -- rest 心跳间隔（MQTT 1002 / AT+LOWPOWERINTERVAL）
+    modem_hibernate = false,       -- 由 low_power_wakeup 推导；两种模式 rest 均保持蜂窝在线
+    rest_mqtt_interval_sec = 30,   -- 初值 → APP_RUNTIME.low_power_interval_sec（1003 周期 / GETCFG interval）
 }
 
 -- T3x 休眠前查询（PIRSTAT.has_work + HOSTEVT + AT+HOSTIDLE=1）；见 doc/T3X_HOSTEVT_SLEEP.md
@@ -55,6 +63,7 @@ _G.HOST_USB_CFG = {
     block_usb_reset_when_t3x_rest = true, -- low_power_mode=1 且 T3x 断电 → +USBRESET:REST，不 rebind
     usb_reset_min_interval_sec = 60,   -- 两次 AT+USBRESET 最小间隔
     usb_reset_notify_after_ms = 800,   -- 重绑后延迟再推 +CAT1:USB,1
+    usb_debug_en_pulse_ms = 300,       -- AT+USBRESET 前 GPIO32 USB_DEBUG_EN 拉高保持
 }
 
 -- ============================================================
@@ -334,7 +343,7 @@ _G.BATTERY_CFG = {
         v_min_mv = 3000,
     },
     sample_interval_ms = 10 * 1000,
-    mqtt_report_interval_sec = 60,
+    mqtt_report_interval_sec = 60, -- 1003 周期回退（low_power_interval_sec 未设或 ≤0 时）
     mqtt_battery_report_min_sec = 30,
 
     -- 模组蓝灯 GPIO21（single_blue 模式；led_ctrl → lib/led.runUnifiedBlueCycle）
@@ -382,7 +391,7 @@ _G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
 -- 开机/关机提示音（T3x 播放，4G 发 AT+PLAYSOUND）；见 doc/BOOT_SHUTDOWN_SOUND.md
 -- boot_wait_host_ms：等 T3x bootstrap 首条 AT（如 AT）后再播开机音
 _G.SOUND_CFG = {
-    enabled = true,
+    enabled = true,   -- 与 MODULE_FLAGS.sound_prompt 同步
     boot_on_cold_start = true,
     boot_on_wake = false,
     shutdown_on_user_off = true,
@@ -433,6 +442,13 @@ _G.HOST_RECORD_CFG = {
     t3x_power_wait_ms = 800,
 }
 
+-- T3x 远程编码参数（MQTT 2012/2020 → AT+VENC/AT+AUDIO）；见 doc/REMOTE_ENCODE_CONFIG.md
+_G.HOST_ENCODE_CFG = {
+    query_timeout_ms = 4000,
+    host_boot_wait_ms = 1500,
+    t3x_power_wait_ms = 800,
+}
+
 -- T3x 电源管理（AT+IPCSTATUS? / AT+IPCPOWEROFF）；见 doc/T3X_LOW_POWER.md
 _G.HOST_IPC_CFG = {
     enabled = _G.LOW_POWER_CFG.enabled and _G.LOW_POWER_CFG.graceful_ipc,
@@ -468,7 +484,10 @@ _G.WDT_CFG = {
     feed_interval_ms = 3000,
 }
 
--- 4G 上电默认 Broker；t3x 经 AT+MQTTCFG 可覆盖并重连（t3x_linux/client.ini [mqtt] 与之保持一致）
+-- MQTT 架构（见 doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md）
+-- · LOW_POWER_WAKEUP_CFG.mode="mqtt"：单 Broker 长连接，T3x 休眠后 4G 维持 MQTT
+-- · mode="tcp"：唤醒走 net_tcp，SERVCREATE 可用；MQTT 仍可跑业务但非唤醒主通道
+-- · T3x [cat1_mqtt] enable=0 推荐：不推 MQTTCFG，减轻 bootstrap 重连
 _G.MQTT_CFG = {
     host = "112.86.146.218",
     port = 2123,

@@ -1,6 +1,7 @@
 # T3x 低功耗可配置产品能力
 
-> **双端对齐**：T3x 用 `build/config.mk` 宏管**编译能力**，4G 用 `FEATURE_CFG.low_power` 管**运行策略**。两处开关注释同名，改产品能力时**两边一起改**。
+> **双端对齐**：T3x 用 `build/config.mk` 宏管**编译能力**，4G 用 `FEATURE_CFG.low_power` 管**运行策略**。两处开关注释同名，改产品能力时**两边一起改**。  
+> **MQTT / TCP / rest 分工**：[CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](./CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)
 
 ---
 
@@ -168,8 +169,8 @@ flowchart TD
 | 类型 | dataType | 含义 | 何时发 |
 |------|----------|------|--------|
 | 事件 | **1002** | 进入 rest | `doEnterLowPowerBody` 且 MQTT 已连；或 **conack 时已在 rest**（`source=reconnect`） |
-| 状态 | **1003** | 当前设备态，`lowPowerMode=rest\|normal` | 周期 60s / 电量变化 / 2003 / **rest 下 conack 补一条** |
-| 事件 | **1001** | 唤醒 | **仅常电**且 MQTT conack / 2001 |
+| 状态 | **1003** | 当前设备态，`lowPowerMode=rest\|normal` | 周期 `low_power_interval_sec`（初值 **30s**）/ 电量变化 / 2003 / **rest 下 conack 补一条** |
+| 事件 | **1001** | 唤醒 | **仅常电**且 MQTT conack / 2001 / PIR `uploadMode=auto`（rest 禁发） |
 
 **1002 示例**（向后兼容，新增字段）：
 
@@ -201,7 +202,7 @@ flowchart TD
 | **1003** | `.../status` | 状态 | 当前快照：电量、USB、`lowPowerMode=rest\|normal` 等 |
 
 - **1002** 回答：「什么时候 / 为什么进了 rest？」（事件）
-- **1003** 回答：「现在是不是 rest、电量多少？」（状态，周期默认约 60s 也会发）
+- **1003** 回答：「现在是不是 rest、电量多少？」（状态，周期默认约 **30s** 也会发）
 
 #### conack 分支逻辑
 
@@ -221,6 +222,8 @@ flowchart TD
 | **常电**（`low_power_mode=0`） | 仅 **1001** | 设备在线且非 rest，可业务 |
 
 **为何 rest 不发 1001？** 旧逻辑 conack 固定发 1001，rest 重连时后台会误以为「已唤醒」，与 T3x 实际断电矛盾。
+
+**PIR 与 1001**：`pir_ctrl` 在 rest（`low_power_mode=1`）下忽略硬件 PIR（`ignore_rest`）；`app.onPirMediaAction` 亦在 rest 时跳过 `publishWakeup`，即使将来放开 rest 下 PIR 业务，**仍不发 1001**。rest 期间云端以 **1003.lowPowerMode=rest** 判态，勿依赖 1001。
 
 #### 为何 rest 时要发 1002？
 
@@ -246,10 +249,10 @@ flowchart TD
 
 #### 为何 rest 时要再发 1003？
 
-1003 除 conack 外，主要靠**周期任务**（默认约 60s）。若 conack 只发 1002：
+1003 除 conack 外，主要靠**周期任务**（默认约 **30s**，见 `low_power_interval_sec`）。若 conack 只发 1002：
 
 - 后台知道「有 rest 事件」
-- 但要等最多 ~60s 才能从 1003 拿到电量、USB、`lowPowerMode` 等完整态
+- 但要等最多一个周期（默认 ~30s）才能从 1003 拿到电量、USB、`lowPowerMode` 等完整态
 
 因此在 rest 的 conack **紧接着发一条 1003**，立即同步 `lowPowerMode:"rest"` 及电量等字段。
 
@@ -272,7 +275,7 @@ flowchart TD
 {
   "deviceNo": "862323084068124",
   "dataType": "1003",
-  "powerStatus": "0",
+  "powerStatus": 0,
   "usbInserted": 0,
   "charging": 0,
   "remainPower": "85",
@@ -282,13 +285,15 @@ flowchart TD
 }
 ```
 
+字段类型与 [MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) §5.3 一致：`powerStatus` / `usbInserted` / `charging` 为 **数字** 0/1；`remainPower` / `batteryMv` 为字符串（或 `"--"`）。周期默认 **30s**（`low_power_interval_sec`，非 60s）。
+
 #### 后台处理建议
 
 | 数据 | 用途 |
 |------|------|
 | **1003.lowPowerMode** | **主**：判断设备当前是否在 rest |
 | **1002** | **辅**：记录进 rest 时刻与 `reason`；`source=reconnect` 为补发 |
-| **1001** | 仅当 conack 时设备**非常电 rest**；rest 下不应依赖 1001 判断在线 |
+| **1001** | 仅常电 conack / 2001 / PIR auto；**rest 禁发**（含 PIR `uploadMode=auto`） |
 
 代码位置：`user/net_mqtt.lua`（`publishConnectUplink` / `publishRest` / `publishStatus`）、`user/app.lua`（`doEnterLowPowerBody` 写 `last_rest_reason`）。
 
@@ -297,7 +302,9 @@ flowchart TD
 | 层级 | 条件 | 行为 | 计数 |
 |------|------|------|------|
 | suspend | 电量 ≤15% / 烧录 | 停 PIR 业务，T3x **可能仍上电** | `cnt_biz_ignore_suspend` |
-| rest | `low_power_mode=1` | 丢弃 PIR，**不** `requestT3xWake` | `cnt_biz_ignore_rest` |
+| rest | `low_power_mode=1` | 丢弃 PIR，**不** `requestT3xWake`、**不** MQTT 1001 | `cnt_biz_ignore_rest` |
+
+`app.onPirMediaAction` 在 rest 时亦跳过 `publishWakeup`（防御竞态；实现见 `user/app.lua`）。
 
 电量 ≤10% 时两者可能同时生效（先命中 suspend）；USB 拔座进 rest 时通常只命中 rest。
 
@@ -382,7 +389,9 @@ T3x 可保持 `WITH_T3X_LOW_POWER=yes`（其它场景仍可用 IPCSTATUS）；`e
 - [ ] `LOW_POWER_ENABLE=0`：拔 USB **不**进 rest，日志见「低功耗能力已关闭」
 - [ ] `LOW_POWER_ENABLE=1`：拔 USB 进 rest，MQTT 1002 含 `reason=usb_remove`，1003 `lowPowerMode=rest`
 - [ ] 冷启动无 USB 进 rest：MQTT conack 发 **1002+1003**（不发 1001）
-- [ ] rest 中 PIR 不唤醒 T3x（`ignore_rest` 日志）
+- [ ] **1003 周期**约 **30s**（`low_power_interval_sec` 初值；非 60s）；`2003 interval:60` 后约 60s
+- [ ] **1003** 中 `powerStatus` / `usbInserted` / `charging` 为 JSON **数字** 0/1（非字符串）
+- [ ] rest 中 PIR 不唤醒 T3x（`ignore_rest` 日志）；无 1001 / 1010
 - [ ] `AT+LOWPOWER=ENTER/EXIT` 在开关关闭时 `NOT_SUPPORTED`
 - [ ] IPC `WITH_T3X_LOW_POWER=no`：`AT+IPCPOWEROFF` → `NOT_SUPPORTED`
 - [ ] 两边都开：进 rest 前收到 `+IPCPOWEROFF:OK` 再断电
