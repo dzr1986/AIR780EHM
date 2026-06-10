@@ -70,29 +70,12 @@ local function getHostUart()
 end
 
 local function ensureT3xPowered()
-    local okPol, policy = pcall(require, "t3x_policy")
-    if okPol and type(policy) == "table" and policy.mayPowerT3x
-        and not policy.mayPowerT3x("time_sync") then
-        log.info(LOG_TAG, "低功耗/低电量，跳过 T3x 上电")
-        return false
-    end
-    if not t3xModule then
-        local ok, mod = pcall(require, "t3x_ctrl")
-        if ok then
-            t3xModule = mod
-        end
-    end
-    if type(t3xModule) ~= "table" then
-        return false
-    end
-    local st = t3xModule.getState and t3xModule.getState() or {}
-    if st.powered_on then
-        return true
-    end
-    if t3xModule.powerOn then
-        t3xModule.powerOn()
-        sys.wait(tonumber(cfg().t3x_power_wait_ms) or 800)
-        return true
+    local ok, ipc = pcall(require, "t3x_ipc")
+    if ok and type(ipc) == "table" and ipc.ensurePowered then
+        return ipc.ensurePowered("time_sync", {
+            t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
+            log_skip = "低功耗/低电量，跳过 T3x 上电",
+        })
     end
     return false
 end

@@ -265,7 +265,8 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 日期 | 说明 |
 |------|------|
 | 2026-06-10 | 初版：`cat1_slim_logic` 分支逻辑精简规划 |
-| 2026-06-10 | **已落地阶段 0 + 阶段 1（部分）**：`t3x_ctrl` 去重 `pulseUsbDebugEn`；`peripheral` 修 `led_ctrl`；`archive/slim/README` 修正 `net_tcp` 路径；`host_uart` 新增 `run_host_query`、`build_pir_wake_context`、`setHostEncode` |
+| 2026-06-10 | **已落地阶段 0 + 阶段 1**：`t3x_ctrl` 去重 `pulseUsbDebugEn`；`peripheral` 修 `led_ctrl`；`archive/slim/README` 修正 `net_tcp` 路径；`host_uart` 新增 `run_host_query`、`build_pir_wake_context`、`setHostEncode` |
+| 2026-06-10 | **已落地阶段 2**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t3x_ipc.ensurePowered` |
 
 ---
 
@@ -280,4 +281,8 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 1 | `build_pir_wake_context` 统一 HOSTEVT/PIRSTAT | `user/host_uart.lua` |
 | 1 | `setHostEncode` 合并 video/audio | `user/host_uart.lua` |
 
-**待做（阶段 2 起）**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t3x_ipc.ensurePowered`、MQTT 上行表驱动。
+| 2 | `lib/usb_policy.lua` USB/rest 门禁单点 | `lib/usb_policy.lua`，`app`/`net_mqtt`/`host_uart` |
+| 2 | `lib/device_id.lua` IMEI 单点 | `lib/device_id.lua`，`app`/`net_mqtt`/`host_uart` |
+| 2 | `t3x_ipc.ensurePowered(tag)` | `user/t3x_ipc.lua`，`sound_prompt`/`time_sync`/`host_uart` |
+
+**待做（阶段 3 起）**：MQTT 上行表驱动、烧录检查日志开关。

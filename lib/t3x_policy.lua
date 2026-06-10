@@ -27,13 +27,13 @@ function getDenyReason()
 end
 
 function isUsbInserted()
+    local ok, up = pcall(require, "usb_policy")
+    if ok and type(up) == "table" and up.isUsbInserted then
+        return up.isUsbInserted()
+    end
     local rt = _G.APP_RUNTIME
     if rt and tonumber(rt.power_status) == 1 then
         return true
-    end
-    local ok, bg = pcall(require, "battery_guard")
-    if ok and bg and bg.isUsbInserted then
-        return bg.isUsbInserted()
     end
     return false
 end

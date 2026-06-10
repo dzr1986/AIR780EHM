@@ -43,6 +43,45 @@ local function inTask()
     return coroutine.running() ~= nil
 end
 
+--- T3x 上电门禁 + GPIO22（须在 task 内调用且需 wait 时）
+--- @param tag string t3x_policy 标签，如 host_identity / sound_prompt / wled
+--- @param opts table|nil power_wait_ms / t3x_power_wait_ms；0 表示不 wait
+function ensurePowered(tag, opts)
+    opts = type(opts) == "table" and opts or {}
+    local okPol, policy = pcall(require, "t3x_policy")
+    if okPol and type(policy) == "table" and policy.mayPowerT3x
+        and not policy.mayPowerT3x(tag or "t3x_ipc") then
+        if opts.log_skip then
+            log.info(LOG_TAG, opts.log_skip)
+        end
+        return false
+    end
+    local t3x = getT3x()
+    if not t3x then
+        return false
+    end
+    local st = t3x.getState and t3x.getState() or {}
+    if st.powered_on then
+        return true
+    end
+    if not t3x.powerOn then
+        return false
+    end
+    t3x.powerOn()
+    local waitMs = tonumber(opts.power_wait_ms)
+    if waitMs == nil then
+        waitMs = tonumber(opts.t3x_power_wait_ms)
+            or tonumber(cfg().t3x_power_wait_ms)
+            or tonumber((_G.TIME_SYNC_CFG or {}).t3x_power_wait_ms)
+            or tonumber((_G.SOUND_CFG or {}).t3x_power_wait_ms)
+            or 800
+    end
+    if waitMs > 0 and inTask() then
+        sys.wait(waitMs)
+    end
+    return true
+end
+
 --- 关机（T3x 在线）：IPCSTATUS=ready → IPCPOWEROFF → GPIO22 断电
 function gracefulPowerOff(opts)
     opts = type(opts) == "table" and opts or {}

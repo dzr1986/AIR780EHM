@@ -119,25 +119,27 @@ local function host_usb_cfg()
     return _G.HOST_USB_CFG or {}
 end
 
-local function is_usb_inserted()
-    -- 优先使用真实的 USB_DET GPIO 状态（物理是否有 USB 座子插入），
-    -- 而非仅依赖 power_status 缓存。满足“判断的是有没有usb插入的状态”。
-    local ok, mod = pcall(require, "usb_charge")
-    if ok and type(mod) == "table" and type(mod.isUsbInserted) == "function" then
-        local ok2, v = pcall(mod.isUsbInserted)
-        if ok2 then
-            return v == true
-        end
+local function usb_policy_mod()
+    local ok, mod = pcall(require, "usb_policy")
+    if ok and type(mod) == "table" then
+        return mod
     end
-    -- 回退：历史 power_status（低功耗策略仍可能用到）
+    return nil
+end
+
+local function is_usb_inserted()
+    local up = usb_policy_mod()
+    if up and up.isUsbInserted then
+        return up.isUsbInserted()
+    end
     local rt = _G.APP_RUNTIME or {}
     return tonumber(rt.power_status) == 1
 end
 
 local function usb_blocks_host_idle()
-    local cfg = host_usb_cfg()
-    if cfg.block_host_idle_when_usb == false then
-        return false
+    local up = usb_policy_mod()
+    if up and up.blocksHostIdle then
+        return up.blocksHostIdle()
     end
     return is_usb_inserted()
 end
@@ -308,8 +310,9 @@ local function uart_time_query(_cmd)
 end
 
 local function get_device_imei()
-    if _G.device_imei and _G.device_imei ~= "" and _G.device_imei ~= "unknown" then
-        return tostring(_G.device_imei)
+    local ok, did = pcall(require, "device_id")
+    if ok and type(did) == "table" and did.getImei then
+        return did.getImei()
     end
     if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then
         return tostring(_G.aliyuncs_imei)
@@ -663,8 +666,8 @@ local function uart_lowpower(cmd)
     end
     local rt = _G.APP_RUNTIME or {}
     if cmd == "AT+LOWPOWER=ENTER" then
-        local usbCfg = host_usb_cfg()
-        if usbCfg.block_4g_rest_when_usb ~= false and is_usb_inserted() then
+        local up = usb_policy_mod()
+        if up and up.blocks4gRest and up.blocks4gRest() then
             log.info(LOG_TAG, "lowp usb block")
             return CRLF .. "+LOWPOWER:USB" .. CRLF
         end
@@ -725,21 +728,9 @@ local function wled_export_runtime(on)
 end
 
 local function wled_ensure_t3x_powered()
-    local okPol, policy = pcall(require, "t3x_policy")
-    if okPol and type(policy) == "table" and policy.mayPowerT3x
-        and not policy.mayPowerT3x("wled") then
-        return false
-    end
-    local t3x = t3xModule
-    if not t3x then
-        local ok, mod = pcall(require, "t3x_ctrl")
-        if ok then t3x = mod end
-    end
-    if t3x and t3x.getState and t3x.getState().powered_on then
-        return true
-    end
-    if t3x and t3x.powerOn then
-        return t3x.powerOn() ~= false
+    local ok, ipc = pcall(require, "t3x_ipc")
+    if ok and type(ipc) == "table" and ipc.ensurePowered then
+        return ipc.ensurePowered("wled", { power_wait_ms = 0 })
     end
     return false
 end
@@ -1501,30 +1492,13 @@ end
 
 local function ensure_t3x_for_host_query(policy_tag, cfg)
     cfg = cfg or identity_cfg()
-    local okPol, policy = pcall(require, "t3x_policy")
-    if okPol and type(policy) == "table" and policy.mayPowerT3x
-        and not policy.mayPowerT3x(policy_tag or "host_identity") then
-        return false
-    end
-    if not t3xModule then
-        local ok, mod = pcall(require, "t3x_ctrl")
-        if ok then
-            t3xModule = mod
-        end
-    end
-    if type(t3xModule) ~= "table" then
-        return false
-    end
-    local st = t3xModule.getState and t3xModule.getState() or {}
-    if st.powered_on then
-        return true
-    end
-    if t3xModule.powerOn then
-        t3xModule.powerOn()
-        sys.wait(tonumber(cfg.t3x_power_wait_ms)
-            or tonumber((_G.TIME_SYNC_CFG or {}).t3x_power_wait_ms)
-            or 800)
-        return true
+    local ok, ipc = pcall(require, "t3x_ipc")
+    if ok and type(ipc) == "table" and ipc.ensurePowered then
+        return ipc.ensurePowered(policy_tag or "host_identity", {
+            t3x_power_wait_ms = tonumber(cfg.t3x_power_wait_ms)
+                or tonumber((_G.TIME_SYNC_CFG or {}).t3x_power_wait_ms)
+                or 800,
+        })
     end
     return false
 end

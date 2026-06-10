@@ -80,7 +80,13 @@ local HOST_DL_NEEDS_T3X = {
 -- ============================================================
 
 local function getDeviceId()
-    if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then return _G.aliyuncs_imei end
+    local ok, did = pcall(require, "device_id")
+    if ok and type(did) == "table" and did.getDeviceId then
+        return did.getDeviceId()
+    end
+    if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then
+        return _G.aliyuncs_imei
+    end
     return mobile.imei() or "unknown_device"
 end
 
@@ -340,9 +346,9 @@ end
 
 -- [2002] 休眠/低功耗 → 1002（进入成功后由 app 上报，此处 exit 仅执行）
 local function usbBlocks4gRest()
-    local usbCfg = _G.HOST_USB_CFG or {}
-    if usbCfg.block_4g_rest_when_usb == false then
-        return false
+    local ok, up = pcall(require, "usb_policy")
+    if ok and type(up) == "table" and up.blocks4gRest then
+        return up.blocks4gRest()
     end
     return (_G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.power_status) == 1) or false
 end

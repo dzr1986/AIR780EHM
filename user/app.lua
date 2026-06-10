@@ -188,8 +188,8 @@ local function onEnterLowPower(reason)
         log.info("app", "lp off, ignore enter", reason)
         return
     end
-    local usbCfg = _G.HOST_USB_CFG or {}
-    if usbCfg.block_4g_rest_when_usb ~= false and (_G.APP_RUNTIME.power_status or 0) == 1 then
+    local okUp, up = pcall(require, "usb_policy")
+    if okUp and type(up) == "table" and up.blocks4gRest and up.blocks4gRest() then
         log.info("app", "usb, ignore rest", reason)
         return
     end
@@ -428,6 +428,10 @@ end
 -- ============================================================
 
 local function getImei()
+    local ok, did = pcall(require, "device_id")
+    if ok and type(did) == "table" and did.getDisplayId then
+        return did.getDisplayId()
+    end
     if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then
         return tostring(_G.aliyuncs_imei)
     end
@@ -803,8 +807,8 @@ local function setupEventHandlers()
         if not isLowPowerFeatureEnabled() then
             return
         end
-        local usbCfg = _G.HOST_USB_CFG or {}
-        if usbCfg.block_4g_rest_when_usb ~= false and (_G.APP_RUNTIME.power_status or 0) == 1 then
+        local okUp, up = pcall(require, "usb_policy")
+        if okUp and type(up) == "table" and up.blocks4gRest and up.blocks4gRest() then
             log.info("app", "usb, ignore 2002 rest")
             return
         end
