@@ -128,6 +128,7 @@ _G.T3X_BURN_CFG = {
     min_battery_percent = 20,
     require_battery_valid = true,
     allow_repeat_enter_boot = true,
+    debug_checks = false,  -- true=烧录前条件明细日志（调试）
     burn_check_retry_count = 2,
     burn_check_retry_interval_ms = 800,
     stop_mqtt = true,

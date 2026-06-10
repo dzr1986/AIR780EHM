@@ -568,7 +568,21 @@ local function getBatteryPercentForBurn()
     return nil
 end
 
+local function burnDebugEnabled()
+    local cfg = _G.T3X_BURN_CFG or {}
+    return cfg.debug_checks == true
+end
+
+local function logBurnDebug(...)
+    if burnDebugEnabled() then
+        log.info(...)
+    end
+end
+
 local function logT3xBurnCheck(name, passed, detail)
+    if not burnDebugEnabled() then
+        return
+    end
     log.info("app", "burn chk", name, passed and "ok" or "fail", detail or "")
 end
 
@@ -580,8 +594,8 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
     local failReason = nil
     local pct = getBatteryPercentForBurn()
 
-    log.info("app", "burn checks", attemptIndex or 1, attemptTotal or 1)
-    log.info("app", "burn cfg", "min", minPct, "req_valid", cfg.require_battery_valid ~= false, "allow_repeat", allowRepeat)
+    logBurnDebug("app", "burn checks", attemptIndex or 1, attemptTotal or 1)
+    logBurnDebug("app", "burn cfg", "min", minPct, "req_valid", cfg.require_battery_valid ~= false, "allow_repeat", allowRepeat)
 
     logT3xBurnCheck("runtime.APP_RUNTIME.battery_percent",
         pct ~= nil,
@@ -622,9 +636,9 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
         failReason = failReason or "no t3x_ctrl"
     else
         local st = t3xModule.getState() or {}
-        log.info("app", "burn t3xst", tostring(st.in_boot_mode), tostring(st.powered_on), tostring(st.power_state))
+        logBurnDebug("app", "burn t3xst", tostring(st.in_boot_mode), tostring(st.powered_on), tostring(st.power_state))
         if st.pins then
-            log.info("app", "burn pins", tostring(st.pins.pwr), tostring(st.pins.boot), tostring(st.pins.ota))
+            logBurnDebug("app", "burn pins", tostring(st.pins.pwr), tostring(st.pins.boot), tostring(st.pins.ota))
         end
         if st.in_boot_mode then
             if allowRepeat then
@@ -642,7 +656,7 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
         log.warn("app", "burn fail", attemptIndex or 1, failReason)
         return false, failReason
     end
-    log.info("app", "burn pass", attemptIndex or 1, "bat", pct)
+    logBurnDebug("app", "burn pass", attemptIndex or 1, "bat", pct)
     return true, pct
 end
 
@@ -662,7 +676,7 @@ local function checkT3xBurnPreconditions()
     local executed = 0
     local finalOk = false
 
-    log.info("app", "burn poll", maxAttempts, retryMs, retryCount)
+    logBurnDebug("app", "burn poll", maxAttempts, retryMs, retryCount)
 
     for attempt = 1, maxAttempts do
         executed = attempt
@@ -671,21 +685,21 @@ local function checkT3xBurnPreconditions()
             passCount = passCount + 1
             lastPassPct = detail
             finalOk = true
-            log.info("app", "burn stats", executed, passCount, failCount)
+            logBurnDebug("app", "burn stats", executed, passCount, failCount)
             break
         end
         failCount = failCount + 1
         lastFailReason = detail
         log.warn("app", "burn stats", executed, passCount, failCount, detail or "")
         if attempt < maxAttempts then
-            log.info("app", "burn retry", retryMs, attempt + 1, maxAttempts)
+            logBurnDebug("app", "burn retry", retryMs, attempt + 1, maxAttempts)
             sys.wait(retryMs)
         end
     end
 
-    log.info("app", "burn sum", maxAttempts, executed, passCount, failCount, finalOk and 1 or 0)
+    logBurnDebug("app", "burn sum", maxAttempts, executed, passCount, failCount, finalOk and 1 or 0)
     if finalOk then
-        log.info("app", "burn allow", lastPassPct)
+        logBurnDebug("app", "burn allow", lastPassPct)
         return true, lastPassPct
     end
     log.warn("app", "burn deny", lastFailReason or "?")
@@ -763,6 +777,13 @@ local function tryEnterT3xBurnMode()
     return true
 end
 
+local function wakeT3xForPir(tag, sid, evt)
+    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
+        local wakeSid = sid or ((_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1)
+        requestT3xWake(tag, wakeSid, evt or 0)
+    end
+end
+
 local function onPirMediaAction(action, uploadMode, quality)
     if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
         return
@@ -775,8 +796,7 @@ local function onPirMediaAction(action, uploadMode, quality)
     elseif inRest and (uploadMode == "auto" or uploadMode == nil) then
         log.info("app", "rest, skip pir 1001")
     end
-    local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
-    requestT3xWake("pir_media", sid, 0)
+    wakeT3xForPir("pir_media")
 end
 
 local function t3xRecActive()
@@ -795,9 +815,89 @@ local function onPirStopRecording(reason, uploadMode, quality)
     elseif preferT3x then
         log.info("app", "t3x rec active, 1011 to t3x", reason)
     end
-    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
-        local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
-        requestT3xWake("pir_stop", sid, 0)
+    wakeT3xForPir("pir_stop")
+end
+
+local function subscribePirMqttBridge()
+    local handlers = {
+        { E.PIR_WAKE_T3X, function(action, uploadMode, quality)
+            onPirMediaAction(action, uploadMode, quality)
+        end },
+        { E.PIR_REQUEST_T3X_STOP, function(reason)
+            log.info("app", "req t3x stop rec", reason)
+            wakeT3xForPir("pir_stop_" .. tostring(reason))
+        end },
+        { E.PIR_STOP_RECORDING, function(reason, uploadMode, quality)
+            onPirStopRecording(reason, uploadMode, quality)
+        end },
+        { E.T3X_SNAPSHOT_DONE, function(path)
+            log.info("app", "t3x snap done", path)
+            if netModule and netModule.publishPirSnapshotDone then
+                netModule.publishPirSnapshotDone(path)
+            end
+        end },
+        { E.T3X_RECORD_ACTIVE, function()
+            if netModule and netModule.publishPirRecordActive then
+                netModule.publishPirRecordActive()
+            end
+        end },
+        { E.T3X_RECORD_STOP, function(reason, uploadMode, quality)
+            log.info("app", "t3x rec end", reason)
+            if netModule and netModule.publishT3xRecordStop then
+                netModule.publishT3xRecordStop(reason, uploadMode, quality)
+            end
+        end },
+        { E.PIR_TIMER_EXPIRED, function()
+            local stopTimer = (_G.APP_PIR_CONFIG and _G.APP_PIR_CONFIG.STOP_REASON
+                and _G.APP_PIR_CONFIG.STOP_REASON.TIMER) or "timer"
+            pir_ctrl.publishStopRecording(stopTimer)
+        end },
+        { E.GPIO_PIR_TRIGGERED, function(pirStatus, action, uploadMode, quality)
+            log.info("app", "PIR GPIO", pirStatus, action)
+            if netModule and netModule.publishPirDetect then
+                local st = pir_ctrl.getState()
+                netModule.publishPirDetect({
+                    status = "1",
+                    pirStatus = pirStatus or "detected",
+                    action = action,
+                    uploadMode = uploadMode,
+                    quality = quality,
+                    recording = st.recording and 1 or 0,
+                })
+            end
+        end },
+    }
+    for _, item in ipairs(handlers) do
+        sys.subscribe(item[1], item[2])
+    end
+end
+
+local function subscribeDebugLogHandlers()
+    local handlers = {
+        { E.MQTT_SERVER_DATA, function(_topic, payload)
+            log.info("app", "mqtt dl", payload)
+        end },
+        { E.MQTT_PUBLISH_WAKEUP, function(topic)
+            log.info("app", "mqtt pub wake", topic)
+        end },
+        { E.MQTT_PUBLISH_REST, function(topic)
+            log.info("app", "mqtt pub rest", topic)
+        end },
+        { E.MQTT_OTA_STATUS, function(stage, retCode, message)
+            log.info("app", "ota st", stage, retCode, message)
+        end },
+        { E.GPIO_PWRKEY_SHORT, function()
+            log.info("app", "pwr short")
+        end },
+        { E.GPIO_VBUS_CHANGED, function(powerStatus)
+            log.info("app", "VBUS", powerStatus)
+        end },
+        { E.GPIO_BOOTKEY_SHORT, function()
+            log.info("app", "boot short")
+        end },
+    }
+    for _, item in ipairs(handlers) do
+        sys.subscribe(item[1], item[2])
     end
 end
 
@@ -824,57 +924,7 @@ local function setupEventHandlers()
         onPowerOff("mqtt")
     end)
 
-    sys.subscribe(E.PIR_WAKE_T3X, function(action, uploadMode, quality)
-        onPirMediaAction(action, uploadMode, quality)
-    end)
-    sys.subscribe(E.PIR_REQUEST_T3X_STOP, function(reason, uploadMode, quality)
-        log.info("app", "req t3x stop rec", reason)
-        local sid = (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
-        requestT3xWake("pir_stop_" .. tostring(reason), sid, 0)
-    end)
-    sys.subscribe(E.T3X_SNAPSHOT_DONE, function(path)
-        log.info("app", "t3x snap done", path)
-        if netModule and netModule.publishPirSnapshotDone then
-            netModule.publishPirSnapshotDone(path)
-        end
-    end)
-    sys.subscribe(E.PIR_STOP_RECORDING, function(reason, uploadMode, quality)
-        onPirStopRecording(reason, uploadMode, quality)
-    end)
-    sys.subscribe(E.T3X_RECORD_ACTIVE, function()
-        if netModule and netModule.publishPirRecordActive then
-            netModule.publishPirRecordActive()
-        end
-    end)
-    sys.subscribe(E.T3X_RECORD_STOP, function(reason, uploadMode, quality)
-        log.info("app", "t3x rec end", reason)
-        if netModule and netModule.publishT3xRecordStop then
-            netModule.publishT3xRecordStop(reason, uploadMode, quality)
-        end
-    end)
-    sys.subscribe(E.PIR_TIMER_EXPIRED, function(uploadMode, quality)
-        local stopTimer = (_G.APP_PIR_CONFIG and _G.APP_PIR_CONFIG.STOP_REASON
-            and _G.APP_PIR_CONFIG.STOP_REASON.TIMER) or "timer"
-        pir_ctrl.publishStopRecording(stopTimer)
-    end)
-    sys.subscribe(E.GPIO_PIR_TRIGGERED, function(pirStatus, action, uploadMode, quality)
-        log.info("app", "PIR GPIO", pirStatus, action)
-        if netModule and netModule.publishPirDetect then
-            local st = pir_ctrl.getState()
-            netModule.publishPirDetect({
-                status = "1",
-                pirStatus = pirStatus or "detected",
-                action = action,
-                uploadMode = uploadMode,
-                quality = quality,
-                recording = st.recording and 1 or 0,
-            })
-        end
-    end)
-
-    sys.subscribe(E.GPIO_PWRKEY_SHORT, function()
-        log.info("app", "pwr short")
-    end)
+    subscribePirMqttBridge()
     sys.subscribe(E.GPIO_PWRKEY_LONG, function()
         log.info("app", "pwr long")
         if state.usb_insert_tick > 0 then
@@ -885,9 +935,6 @@ local function setupEventHandlers()
             end
         end
         onPowerOff("user")
-    end)
-    sys.subscribe(E.GPIO_BOOTKEY_SHORT, function()
-        log.info("app", "boot short")
     end)
     sys.subscribe(E.GPIO_BOOTKEY_LONG, function()
         log.info("app", "boot long")
@@ -903,9 +950,6 @@ local function setupEventHandlers()
             state.heartbeat_paused = false
             log.info("app", "burn end, pir resume")
         end
-    end)
-    sys.subscribe(E.GPIO_VBUS_CHANGED, function(powerStatus)
-        log.info("app", "VBUS", powerStatus)
     end)
     sys.subscribe(E.GPIO_USB_DET_CHANGED, function(inserted)
         applyUsbInsertState(inserted == 1, "GPIO27")
@@ -936,18 +980,7 @@ local function setupEventHandlers()
         end
     end)
     sys.subscribe(E.MQTT_OFFLINE, onMqttOffline)
-    sys.subscribe(E.MQTT_SERVER_DATA, function(_topic, payload)
-        log.info("app", "mqtt dl", payload)
-    end)
-    sys.subscribe(E.MQTT_PUBLISH_WAKEUP, function(topic, payload)
-        log.info("app", "mqtt pub wake", topic)
-    end)
-    sys.subscribe(E.MQTT_PUBLISH_REST, function(topic, payload)
-        log.info("app", "mqtt pub rest", topic)
-    end)
-    sys.subscribe(E.MQTT_OTA_STATUS, function(stage, retCode, message)
-        log.info("app", "ota st", stage, retCode, message)
-    end)
+    subscribeDebugLogHandlers()
 end
 
 -- ============================================================

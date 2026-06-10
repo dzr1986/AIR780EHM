@@ -104,6 +104,43 @@ local function escJson(s)
     return tostring(s or ""):gsub('"', '\\"')
 end
 
+local function mqttTimestamp()
+    return os.date("%Y-%m-%d %H:%M:%S")
+end
+
+--- @param fields string 以逗号开头的扩展字段，如 ',"powerStatus":1'
+local function formatUplink(dataType, fields)
+    fields = fields or ""
+    return string.format(
+        '{"deviceNo":"%s","dataType":"%s"%s,"time":"%s"}',
+        getDeviceId(), dataType, fields, mqttTimestamp())
+end
+
+local function publishUplink(opts)
+    opts = opts or {}
+    if not isConnected then
+        if opts.warn ~= false then
+            log.warn("net_mqtt", opts.no_conn or "no conn")
+        end
+        return false
+    end
+    local topic = getPubTopic() .. (opts.suffix or "event")
+    local payload = opts.payload or formatUplink(opts.dataType, opts.fields)
+    mqttClient:publish(topic, payload, opts.qos or 1)
+    if opts.log then
+        log.info("net_mqtt", opts.log, topic, table.unpack(opts.log_args or {}))
+    end
+    if opts.app_event_fn then
+        opts.app_event_fn(topic, payload)
+    elseif opts.app_event then
+        publishAppEvent(opts.app_event, topic, payload)
+    end
+    if opts.on_published then
+        opts.on_published(topic, payload)
+    end
+    return true
+end
+
 local function getHostUart()
     if _G.host_uart then
         return _G.host_uart
@@ -990,56 +1027,56 @@ end
 
 --- 1001 唤醒
 function publishWakeup()
-    if not isConnected then log.warn("net_mqtt", "no conn"); return end
-    local topic = getPubTopic() .. "wakeup"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","time":"%s"}',
-        getDeviceId(), DT.UL_WAKEUP, os.date("%Y-%m-%d %H:%M:%S"))
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1001", topic)
-    publishAppEvent("MQTT_PUBLISH_WAKEUP", topic, payload)
+    publishUplink({
+        suffix = "wakeup",
+        dataType = DT.UL_WAKEUP,
+        log = "pub 1001",
+        app_event = "MQTT_PUBLISH_WAKEUP",
+    })
 end
 
 --- 1002 进入 rest（opts.reason 触发原因；opts.source=enter|reconnect）
 function publishRest(opts)
-    if not isConnected then log.warn("net_mqtt", "no conn"); return end
     opts = type(opts) == "table" and opts or {}
     local rt = _G.APP_RUNTIME or {}
     local reason = opts.reason or rt.last_rest_reason or "unknown"
     local source = opts.source or "enter"
-    local topic = getPubTopic() .. "rest"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","lowPowerMode":"enter","reason":"%s","source":"%s","time":"%s"}',
-        getDeviceId(), DT.UL_REST,
-        escJson(reason), escJson(source),
-        os.date("%Y-%m-%d %H:%M:%S"))
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1002", topic, reason, source)
-    publishAppEvent("MQTT_PUBLISH_REST", topic, payload)
+    publishUplink({
+        suffix = "rest",
+        dataType = DT.UL_REST,
+        fields = string.format(
+            ',"lowPowerMode":"enter","reason":"%s","source":"%s"',
+            escJson(reason), escJson(source)),
+        log = "pub 1002",
+        log_args = { reason, source },
+        app_event = "MQTT_PUBLISH_REST",
+    })
 end
 
 --- 1003 状态（电量 / USB / 充电 / 低功耗）
 function publishStatus()
-    if not isConnected then return end
     local snap = collectBatterySnapshot()
-    local topic = getPubTopic() .. "status"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","powerStatus":%d,"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","time":"%s"}',
-        getDeviceId(),
-        DT.UL_STATUS,
-        snap.power_status,
-        snap.usb_inserted,
-        snap.charging,
-        escJson(tostring(snap.battery_percent)),
-        escJson(tostring(snap.battery_mv)),
-        escJson(snap.low_power_mode),
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    lastBatteryStatusPublishSec = os.time()
-    log.info("net_mqtt", "pub 1003", topic,
-        "usb", snap.usb_inserted, "chg", snap.charging,
-        "bat", snap.battery_percent, "mV", snap.battery_mv)
+    publishUplink({
+        suffix = "status",
+        dataType = DT.UL_STATUS,
+        warn = false,
+        fields = string.format(
+            ',"powerStatus":%d,"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s"',
+            snap.power_status,
+            snap.usb_inserted,
+            snap.charging,
+            escJson(tostring(snap.battery_percent)),
+            escJson(tostring(snap.battery_mv)),
+            escJson(snap.low_power_mode)),
+        log = "pub 1003",
+        log_args = {
+            "usb", snap.usb_inserted, "chg", snap.charging,
+            "bat", snap.battery_percent, "mV", snap.battery_mv,
+        },
+        on_published = function()
+            lastBatteryStatusPublishSec = os.time()
+        end,
+    })
 end
 
 --- MQTT 连接成功后的首条上行：rest 发 1002+1003，常电发 1001
@@ -1056,42 +1093,33 @@ end
 
 --- 1005 SIM 信息（应答 2005）
 function publishSimInfo()
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip sim")
-        return
-    end
     local snap = collectSimSnapshot()
-    local deviceNo = getDeviceId()
-    local topic = getPubTopic() .. "sim"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","imei":"%s","imsi":"%s","iccid":"%s","operator":"%s","operatorName":"%s","status":"%s","csq":"%s","rssi":"%s","rsrp":"%s","snr":"%s","simid":"%s","ip":"%s","apn":"%s","time":"%s"}',
-        deviceNo,
-        DT.UL_SIM,
-        escJson(snap.imei),
-        escJson(snap.imsi),
-        escJson(snap.iccid),
-        escJson(snap.operator),
-        escJson(snap.operator_name),
-        escJson(snap.status),
-        escJson(snap.csq),
-        escJson(snap.rssi),
-        escJson(snap.rsrp),
-        escJson(snap.snr),
-        escJson(snap.simid),
-        escJson(snap.ip),
-        escJson(snap.apn),
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1005", topic, snap.operator_name, snap.iccid)
+    publishUplink({
+        suffix = "sim",
+        dataType = DT.UL_SIM,
+        no_conn = "no conn, skip sim",
+        fields = string.format(
+            ',"imei":"%s","imsi":"%s","iccid":"%s","operator":"%s","operatorName":"%s","status":"%s","csq":"%s","rssi":"%s","rsrp":"%s","snr":"%s","simid":"%s","ip":"%s","apn":"%s"',
+            escJson(snap.imei),
+            escJson(snap.imsi),
+            escJson(snap.iccid),
+            escJson(snap.operator),
+            escJson(snap.operator_name),
+            escJson(snap.status),
+            escJson(snap.csq),
+            escJson(snap.rssi),
+            escJson(snap.rsrp),
+            escJson(snap.snr),
+            escJson(snap.simid),
+            escJson(snap.ip),
+            escJson(snap.apn)),
+        log = "pub 1005",
+        log_args = { snap.operator_name, snap.iccid },
+    })
 end
 
 --- 1006 设备标识（Cat.1 IMEI + T3x GB28181 ID，应答 2006）
 function publishDeviceIdentity(imei, gb28181Id, messageId)
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip id")
-        return
-    end
     local deviceNo = getDeviceId()
     imei = imei or deviceNo
     gb28181Id = gb28181Id or ""
@@ -1100,19 +1128,16 @@ function publishDeviceIdentity(imei, gb28181Id, messageId)
     if messageId and messageId ~= "" then
         msgPart = string.format(',"messageId":"%s"', escJson(tostring(messageId)))
     end
-    local topic = getPubTopic() .. "identity"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","imei":"%s","gb28181Id":"%s","ret":%d%s,"time":"%s"}',
-        deviceNo,
-        DT.UL_DEVICE_ID,
-        escJson(imei),
-        escJson(gb28181Id),
-        ret,
-        msgPart,
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1006", topic, imei, gb28181Id, ret)
+    publishUplink({
+        suffix = "identity",
+        dataType = DT.UL_DEVICE_ID,
+        no_conn = "no conn, skip id",
+        fields = string.format(
+            ',"imei":"%s","gb28181Id":"%s","ret":%d%s',
+            escJson(imei), escJson(gb28181Id), ret, msgPart),
+        log = "pub 1006",
+        log_args = { imei, gb28181Id, ret },
+    })
 end
 
 function refreshAndPublishDeviceIdentity(messageId)
@@ -1127,10 +1152,6 @@ end
 
 --- 1007 TF/SD 卡状态（应答 2007）
 function publishTfCardStatus(snap, messageId)
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip tf")
-        return
-    end
     snap = type(snap) == "table" and snap or {}
     local present = (snap.present == 1 or snap.present == true) and 1 or 0
     local totalMb = tonumber(snap.total_mb) or 0
@@ -1141,22 +1162,16 @@ function publishTfCardStatus(snap, messageId)
     if messageId and messageId ~= "" then
         msgPart = string.format(',"messageId":"%s"', escJson(tostring(messageId)))
     end
-    local topic = getPubTopic() .. "tfcard"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","tfPresent":%d,"totalMb":%d,"usedMb":%d,"freeMb":%d,"ret":%d%s,"time":"%s"}',
-        getDeviceId(),
-        DT.UL_TF_CARD,
-        present,
-        totalMb,
-        usedMb,
-        freeMb,
-        ret,
-        msgPart,
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1007", topic,
-        "present", present, "totalMb", totalMb, "usedMb", usedMb, "freeMb", freeMb, "ret", ret)
+    publishUplink({
+        suffix = "tfcard",
+        dataType = DT.UL_TF_CARD,
+        no_conn = "no conn, skip tf",
+        fields = string.format(
+            ',"tfPresent":%d,"totalMb":%d,"usedMb":%d,"freeMb":%d,"ret":%d%s',
+            present, totalMb, usedMb, freeMb, ret, msgPart),
+        log = "pub 1007",
+        log_args = { "present", present, "totalMb", totalMb, "usedMb", usedMb, "freeMb", freeMb, "ret", ret },
+    })
 end
 
 function refreshAndPublishTfCardStatus(messageId)
@@ -1171,30 +1186,26 @@ end
 
 --- 1004 控制回复（应答 2004；reply=1，与 OTA stage 区分）
 function publishControlReply(action, retCode, message, extra)
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip 1004")
-        return
-    end
     extra = type(extra) == "table" and extra or {}
-    local topic = getPubTopic() .. "event"
     local enableField = ""
     if extra.enable ~= nil then
         local en = (extra.enable == 1 or extra.enable == true) and 1 or 0
         enableField = string.format(',"enable":%s', tostring(en))
     end
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","reply":1,"messageId":"%s","action":"%s","ret":%s,"message":"%s"%s,"time":"%s"}',
-        getDeviceId(),
-        DT.UL_CONTROL,
-        escJson(extra.messageId),
-        escJson(action),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message),
-        enableField,
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1004", action, retCode, message)
+    publishUplink({
+        suffix = "event",
+        dataType = DT.UL_CONTROL,
+        no_conn = "no conn, skip 1004",
+        fields = string.format(
+            ',"reply":1,"messageId":"%s","action":"%s","ret":%s,"message":"%s"%s',
+            escJson(extra.messageId),
+            escJson(action),
+            tostring(retCode ~= nil and retCode or -1),
+            escJson(message),
+            enableField),
+        log = "pub 1004",
+        log_args = { action, retCode, message },
+    })
 end
 
 --- 1004 OTA 进度/结果（stage 字段，无 reply）
@@ -1210,34 +1221,28 @@ local function mqttBuildVersion(ver)
 end
 
 function publishOtaStatus(stage, retCode, message, extra)
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip ota")
-        return
-    end
     extra = type(extra) == "table" and extra or {}
-    local topic = getPubTopic() .. "event"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","stage":"%s","ret":%s,"message":"%s","currentVersion":"%s","targetVersion":"%s","time":"%s"}',
-        getDeviceId(),
-        DT.UL_CONTROL,
-        escJson(stage),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message),
-        escJson(mqttBuildVersion(VERSION or _G.version or "")),
-        escJson(mqttBuildVersion(extra.version or extra.targetVersion or "")),
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub ota", stage, retCode, topic)
-    publishAppEvent("MQTT_OTA_STATUS", stage, retCode, message, extra)
+    publishUplink({
+        suffix = "event",
+        dataType = DT.UL_CONTROL,
+        no_conn = "no conn, skip ota",
+        fields = string.format(
+            ',"stage":"%s","ret":%s,"message":"%s","currentVersion":"%s","targetVersion":"%s"',
+            escJson(stage),
+            tostring(retCode ~= nil and retCode or -1),
+            escJson(message),
+            escJson(mqttBuildVersion(VERSION or _G.version or "")),
+            escJson(mqttBuildVersion(extra.version or extra.targetVersion or ""))),
+        log = "pub ota",
+        log_args = { stage, retCode },
+        app_event_fn = function()
+            publishAppEvent("MQTT_OTA_STATUS", stage, retCode, message, extra)
+        end,
+    })
 end
 
 --- 1010 PIR 检测状态（2010 策略生效后硬件触发，或 2010 query；T3x 写盘确认时 pirStatus=t3x_active）
 function publishPirDetect(extra)
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip pir")
-        return
-    end
     extra = type(extra) == "table" and extra or buildPirDetectExtra("detected")
     local rec = (extra.recording == 1 or extra.recording == true) and 1 or 0
     local activeJson = ""
@@ -1249,23 +1254,23 @@ function publishPirDetect(extra)
     if extra.snapshotPath and extra.snapshotPath ~= "" then
         pathJson = string.format(',"snapshotPath":"%s"', escJson(extra.snapshotPath))
     end
-    local topic = getPubTopic() .. "pir"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s,"time":"%s"}',
-        getDeviceId(),
-        DT.UL_PIR_DETECT,
-        escJson(extra.status or "detected"),
-        escJson(extra.pirStatus or extra.status or "detected"),
-        tostring(rec),
-        escJson(extra.action),
-        escJson(extra.uploadMode),
-        escJson(extra.quality),
-        activeJson,
-        pathJson,
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1010", extra.pirStatus or extra.status, topic)
+    publishUplink({
+        suffix = "pir",
+        dataType = DT.UL_PIR_DETECT,
+        no_conn = "no conn, skip pir",
+        fields = string.format(
+            ',"status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s',
+            escJson(extra.status or "detected"),
+            escJson(extra.pirStatus or extra.status or "detected"),
+            tostring(rec),
+            escJson(extra.action),
+            escJson(extra.uploadMode),
+            escJson(extra.quality),
+            activeJson,
+            pathJson),
+        log = "pub 1010",
+        log_args = { extra.pirStatus or extra.status },
+    })
 end
 
 --- T3x JPEG 已写入 SD → 1010（pirStatus=snapshot_saved，附 snapshotPath，不传图内容）
@@ -1322,19 +1327,16 @@ function publishPirRecordStop(reason, uploadMode, quality, opts)
     end
     opts = type(opts) == "table" and opts or {}
     local source = opts.source or "4g"
-    local topic = getPubTopic() .. "event"
-    local payload = string.format(
-        '{"deviceNo":"%s","dataType":"%s","reason":"%s","source":"%s","uploadMode":"%s","quality":"%s","time":"%s"}',
-        getDeviceId(),
-        DT.UL_PIR_STOP,
-        escJson(reason),
-        escJson(source),
-        escJson(uploadMode),
-        escJson(quality),
-        os.date("%Y-%m-%d %H:%M:%S")
-    )
-    mqttClient:publish(topic, payload, 1)
-    log.info("net_mqtt", "pub 1011", reason, source, topic)
+    publishUplink({
+        suffix = "event",
+        dataType = DT.UL_PIR_STOP,
+        no_conn = "no conn, skip 1011",
+        fields = string.format(
+            ',"reason":"%s","source":"%s","uploadMode":"%s","quality":"%s"',
+            escJson(reason), escJson(source), escJson(uploadMode), escJson(quality)),
+        log = "pub 1011",
+        log_args = { reason, source },
+    })
 end
 
 --- T3x AT+RECORD=0 → 1011（reason 为 T3x 原值，source=t3x）

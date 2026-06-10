@@ -267,6 +267,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 2026-06-10 | 初版：`cat1_slim_logic` 分支逻辑精简规划 |
 | 2026-06-10 | **已落地阶段 0 + 阶段 1**：`t3x_ctrl` 去重 `pulseUsbDebugEn`；`peripheral` 修 `led_ctrl`；`archive/slim/README` 修正 `net_tcp` 路径；`host_uart` 新增 `run_host_query`、`build_pir_wake_context`、`setHostEncode` |
 | 2026-06-10 | **已落地阶段 2**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t3x_ipc.ensurePowered` |
+| 2026-06-10 | **已落地阶段 3**：`publishUplink`、`debug_checks`、`subscribePirMqttBridge` |
 
 ---
 
@@ -285,4 +286,8 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 2 | `lib/device_id.lua` IMEI 单点 | `lib/device_id.lua`，`app`/`net_mqtt`/`host_uart` |
 | 2 | `t3x_ipc.ensurePowered(tag)` | `user/t3x_ipc.lua`，`sound_prompt`/`time_sync`/`host_uart` |
 
-**待做（阶段 3 起）**：MQTT 上行表驱动、烧录检查日志开关。
+| 3 | `formatUplink` / `publishUplink` 上行表驱动 | `user/net_mqtt.lua` |
+| 3 | `T3X_BURN_CFG.debug_checks` 烧录明细日志 | `user/config.lua`、`user/app.lua` |
+| 3 | PIR/MQTT 桥接表驱动 + `wakeT3xForPir` | `user/app.lua` |
+
+**待做（阶段 4 起）**：`usb_rndis` 内部去重、`led` dual 路径外置。
