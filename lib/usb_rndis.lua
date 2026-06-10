@@ -107,6 +107,44 @@ local function rndisOpenCore()
     applyPmUsb()
 end
 
+--- IP 就绪后重配 USB 网卡，触发 PC 侧 DHCP/NAT（解决有网卡无 IP）
+local function refreshAfterCellularIp()
+    if not mobileReady() or ipReadyRefreshed then
+        return false
+    end
+    local ip = readCellularIp()
+    if not ip then
+        return false
+    end
+    ipReadyRefreshed = true
+    log.info(LOG_TAG, "蜂窝 IP 就绪，刷新 RNDIS DHCP/NAT", "cell_ip", ip)
+    mobile.flymode(0, true)
+    sys.wait(FLYMODE_WAIT_MS)
+    mobile.config(mobile.CONF_USB_ETHERNET, 0)
+    sys.wait(500)
+    mobile.config(mobile.CONF_USB_ETHERNET, RNDIS_USB_ETHERNET_MODE)
+    mobile.flymode(0, false)
+    applyPmUsb()
+    log.info(LOG_TAG, "RNDIS 已刷新，请在 PC 执行 ipconfig /renew")
+    return true
+end
+
+local function hookIpReadyForRndis()
+    if ipReadyHooked or not sys or not sys.subscribe then
+        return
+    end
+    ipReadyHooked = true
+    sys.subscribe("IP_READY", function()
+        if runtime.status ~= "enabled" then
+            return
+        end
+        sys.taskInit(function()
+            sys.wait(1500)
+            refreshAfterCellularIp()
+        end)
+    end)
+end
+
 local function scheduleRefreshIfIp()
     local ip = readCellularIp()
     if ip then
@@ -146,44 +184,6 @@ local function withRndisReopen(opts, logTag)
     local ip = scheduleRefreshIfIp()
     log.info(LOG_TAG, logTag or "rndis reopen", "done", "cell_ip", ip or "--")
     return true
-end
-
---- IP 就绪后重配 USB 网卡，触发 PC 侧 DHCP/NAT（解决有网卡无 IP）
-local function refreshAfterCellularIp()
-    if not mobileReady() or ipReadyRefreshed then
-        return false
-    end
-    local ip = readCellularIp()
-    if not ip then
-        return false
-    end
-    ipReadyRefreshed = true
-    log.info(LOG_TAG, "蜂窝 IP 就绪，刷新 RNDIS DHCP/NAT", "cell_ip", ip)
-    mobile.flymode(0, true)
-    sys.wait(FLYMODE_WAIT_MS)
-    mobile.config(mobile.CONF_USB_ETHERNET, 0)
-    sys.wait(500)
-    mobile.config(mobile.CONF_USB_ETHERNET, RNDIS_USB_ETHERNET_MODE)
-    mobile.flymode(0, false)
-    applyPmUsb()
-    log.info(LOG_TAG, "RNDIS 已刷新，请在 PC 执行 ipconfig /renew")
-    return true
-end
-
-local function hookIpReadyForRndis()
-    if ipReadyHooked or not sys or not sys.subscribe then
-        return
-    end
-    ipReadyHooked = true
-    sys.subscribe("IP_READY", function()
-        if runtime.status ~= "enabled" then
-            return
-        end
-        sys.taskInit(function()
-            sys.wait(1500)
-            refreshAfterCellularIp()
-        end)
-    end)
 end
 
 --- 尽早开启 RNDIS（须在 task 内调用）
