@@ -9,7 +9,7 @@
 | `user/net_tcp.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → `archive/slim/user/net_tcp.lua` | ~8KB |
 | `user/sound_prompt.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → 本目录 | ~7KB |
 | `lib/mobile_info.lua` | 移入本目录；`mobile_info=false` | ~5KB |
-| `lib/led_dual.lua` | dual 红蓝灯效；门球 `single_blue` 不需编入 `lib/` | ~4KB |
+| `lib/led_dual.lua` | dual 红蓝灯效参考（勿 require；门球用 `single_blue`） | ~4KB |
 
 移出后 `user+lib` 源码约 **330KB**（较满负荷约省 **20KB+**）。
 
@@ -35,8 +35,7 @@ copy archive\slim\user\sound_prompt.lua user\sound_prompt.lua
 copy archive\slim\lib\mobile_info.lua lib\
 # app_config.lua: mobile_info=true
 
-# dual 红蓝灯（LED_CFG.mode=dual）
-copy archive\slim\lib\led_dual.lua lib\led_dual.lua
+# dual 红蓝灯（LED_CFG.mode=dual）：将 archive\slim\lib\led_dual.lua 实现合并进 lib\led.lua
 ```
 
 ## 仍不够时

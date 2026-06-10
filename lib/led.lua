@@ -55,47 +55,37 @@ function turnOff(redPin, bluePin)
     return setPair(redPin, bluePin, 0, 0)
 end
 
-local dualLib
+-- dual 红蓝灯效见 archive/slim/lib/led_dual.lua（门球 single_blue 不编入 lib/）
 
-local function dualLed()
-    if dualLib == nil then
-        local ok, mod = pcall(require, "led_dual")
-        dualLib = ok and mod or false
-    end
-    return dualLib or nil
-end
-
-local function forwardDual(name, ...)
+local function dualStub(name)
     state.call_count = state.call_count + 1
     state.last_action = name
-    local d = dualLed()
-    if d and d[name] then
-        state.last_ok = true
-        return d[name](...)
-    end
     state.last_ok = false
+end
+
+function runSteps(_redPin, _bluePin, _steps, _rounds)
+    dualStub("runSteps")
     return false
 end
 
-function runSteps(redPin, bluePin, steps, rounds)
-    return forwardDual("runSteps", redPin, bluePin, steps, rounds)
+function runStartupSequence(redPin, bluePin, _startupConfig)
+    dualStub("runStartupSequence")
+    turnOff(redPin, bluePin)
+    return false
 end
 
-function runStartupSequence(redPin, bluePin, startupConfig)
-    return forwardDual("runStartupSequence", redPin, bluePin, startupConfig)
+function runSinglePattern(redPin, bluePin, _activePin, _patternConfig)
+    dualStub("runSinglePattern")
+    turnOff(redPin, bluePin)
+    return false
 end
 
-function runSinglePattern(redPin, bluePin, activePin, patternConfig)
-    return forwardDual("runSinglePattern", redPin, bluePin, activePin, patternConfig)
-end
-
-function runBatteryPattern(redPin, bluePin, batteryPercent, batteryConfig)
-    local r = forwardDual("runBatteryPattern", redPin, bluePin, batteryPercent, batteryConfig)
-    if r == false and dualLed() == nil then
-        turnOff(redPin, bluePin)
-        return "unknown"
-    end
-    return r
+function runBatteryPattern(redPin, bluePin, _batteryPercent, batteryConfig)
+    dualStub("runBatteryPattern")
+    turnOff(redPin, bluePin)
+    local battery = type(batteryConfig) == "table" and batteryConfig or {}
+    sys.wait(battery.unknown_hold or 0)
+    return "unknown"
 end
 
 --- 闪烁指示灯
@@ -129,12 +119,14 @@ function blinkPwm(ledPin, light, dark)
     return true
 end
 
-function levelLed(ledPin, bl, bd, cnt, gap)
-    return forwardDual("levelLed", ledPin, bl, bd, cnt, gap)
+function levelLed(_ledPin, _bl, _bd, _cnt, _gap)
+    dualStub("levelLed")
+    return false
 end
 
-function breateLed(ledPin)
-    return forwardDual("breateLed", ledPin)
+function breateLed(_ledPin)
+    dualStub("breateLed")
+    return false
 end
 
 function getState()
