@@ -7,13 +7,20 @@
 require "sys"
 require "config"
 local pir_ctrl = require "pir_ctrl"
-local host_uart_enc
-local function encodeHost()
-    if host_uart_enc == nil then
-        local ok, m = pcall(require, "host_uart")
-        host_uart_enc = ok and m or false
+local hostUartMod
+local function getHostUart()
+    if hostUartMod == nil then
+        if _G.host_uart then
+            hostUartMod = _G.host_uart
+        else
+            local ok, m = pcall(require, "host_uart")
+            hostUartMod = ok and m or false
+        end
     end
-    return host_uart_enc or nil
+    return hostUartMod or nil
+end
+local function encodeHost()
+    return getHostUart()
 end
 
 local _modname = ...
@@ -143,17 +150,6 @@ local function publishUplink(opts)
         opts.on_published(topic, payload)
     end
     return true
-end
-
-local function getHostUart()
-    if _G.host_uart then
-        return _G.host_uart
-    end
-    local ok, mod = pcall(require, "host_uart")
-    if ok then
-        return mod
-    end
-    return nil
 end
 
 -- ============================================================
@@ -820,14 +816,9 @@ local function handleDownlink2010(data)
             json.encode(pirState.mediaConfig),
             json.encode(pirState.recordPolicy))
         local media = pirState.mediaConfig or {}
-        publishPirDetect({
-            status = "1",
+        publishPirFromState({
             pirStatus = "config_ok",
             action = media.action or "video",
-            uploadMode = pirState.uploadMode or media.uploadMode or "auto",
-            quality = pirState.quality or media.quality or "high",
-            recording = pirState.recording and 1 or 0,
-            messageId = data.messageId,
         })
     else
         log.warn("net_mqtt", "2010 no cfg")
@@ -878,32 +869,30 @@ local function publishEncodeReply(dlType, retCode, message, body, messageId)
     log.info("net_mqtt", "pub", ulType, retCode, message)
 end
 
-local function handleDownlink2020(data)
+local function handleDownlinkEncode(data, isQuery)
     sys.taskInit(function()
         local hu = encodeHost()
-        if not hu or not hu.queryHostEncode then
-            publishEncodeReply(DT.DL_ENCODE_QUERY, -1, "no_host_uart", nil, data.messageId)
+        local dlType = isQuery and DT.DL_ENCODE_QUERY or DT.DL_ENCODE_SET
+        if not hu then
+            publishEncodeReply(dlType, -1, "no_host_uart", nil, data.messageId)
             return
         end
-        local result, err = hu.queryHostEncode({
-            scope = data.scope,
-            camera = data.camera,
-            stream = data.stream,
-            timeout_ms = data.timeoutMs or data.timeout_ms,
-        })
-        if result then
-            publishEncodeReply(DT.DL_ENCODE_QUERY, 0, "ok", result, data.messageId)
-        else
-            publishEncodeReply(DT.DL_ENCODE_QUERY, -1, err or "query_fail", nil, data.messageId)
-        end
-    end)
-end
-
-local function handleDownlink2012(data)
-    sys.taskInit(function()
-        local hu = encodeHost()
-        if not hu then
-            publishEncodeReply(DT.DL_ENCODE_SET, -1, "no_host_uart", nil, data.messageId)
+        if isQuery then
+            if not hu.queryHostEncode then
+                publishEncodeReply(dlType, -1, "no_host_uart", nil, data.messageId)
+                return
+            end
+            local result, err = hu.queryHostEncode({
+                scope = data.scope,
+                camera = data.camera,
+                stream = data.stream,
+                timeout_ms = data.timeoutMs or data.timeout_ms,
+            })
+            if result then
+                publishEncodeReply(dlType, 0, "ok", result, data.messageId)
+            else
+                publishEncodeReply(dlType, -1, err or "query_fail", nil, data.messageId)
+            end
             return
         end
         local ok, msg, extra
@@ -918,9 +907,16 @@ local function handleDownlink2012(data)
         if ok and extra and extra.needReboot ~= nil then
             body.needReboot = extra.needReboot
         end
-        publishEncodeReply(DT.DL_ENCODE_SET, ok and 0 or -1, msg or (ok and "ok" or "fail"),
-            body, data.messageId)
+        publishEncodeReply(dlType, ok and 0 or -1, msg or (ok and "ok" or "fail"), body, data.messageId)
     end)
+end
+
+local function handleDownlink2012(data)
+    handleDownlinkEncode(data, false)
+end
+
+local function handleDownlink2020(data)
+    handleDownlinkEncode(data, true)
 end
 
 local DOWNLINK_HANDLERS = {
@@ -1321,13 +1317,14 @@ function publishControlReply(action, retCode, message, extra)
         local en = (extra.enable == 1 or extra.enable == true) and 1 or 0
         enableField = string.format(',"enable":%s', tostring(en))
     end
+    local mid = extra.messageId
     publishUplink({
         suffix = "event",
         dataType = DT.UL_CONTROL,
         no_conn = "no conn, skip 1004",
         fields = string.format(
             ',"reply":1,"messageId":"%s","action":"%s","ret":%s,"message":"%s"%s',
-            escJson(extra.messageId),
+            escJson(mid),
             escJson(action),
             tostring(retCode ~= nil and retCode or -1),
             escJson(message),
@@ -1399,6 +1396,11 @@ local function publishPirFromState(overrides)
         snapshotPath = overrides.snapshotPath,
         personCount = overrides.personCount,
     })
+end
+
+--- 1010 统一入口（app / 2010 配置等）
+function publishPirEvent(overrides)
+    publishPirFromState(overrides)
 end
 
 function publishPirDetect(extra)

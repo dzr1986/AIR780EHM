@@ -819,24 +819,20 @@ local function onPirStopRecording(reason, uploadMode, quality)
 end
 
 local function subscribePirMqttBridge()
+    local function pirPub(overrides)
+        if netModule and netModule.publishPirEvent then
+            netModule.publishPirEvent(overrides)
+        elseif netModule and netModule.publishPirDetect then
+            netModule.publishPirDetect(overrides)
+        end
+    end
     local handlers = {
         { E.PIR_WAKE_T3X, function(action, uploadMode, quality)
             onPirMediaAction(action, uploadMode, quality)
         end },
         { E.PIR_MEDIA_EFFECTIVE, function(action)
             log.info("app", "pir media sync", action)
-            if netModule and netModule.publishPirDetect then
-                local st = pir_ctrl.getState()
-                local media = st.mediaConfig or {}
-                netModule.publishPirDetect({
-                    status = "1",
-                    pirStatus = "media_sync",
-                    action = action,
-                    uploadMode = st.uploadMode or media.uploadMode or "auto",
-                    quality = st.quality or media.quality or "high",
-                    recording = st.recording and 1 or 0,
-                })
-            end
+            pirPub({ pirStatus = "media_sync", action = action })
         end },
         { E.PIR_REQUEST_T3X_STOP, function(reason)
             log.info("app", "req t3x stop rec", reason)
@@ -858,19 +854,7 @@ local function subscribePirMqttBridge()
         end },
         { E.T3X_PERSON_CNT, function(count)
             log.info("app", "t3x person cnt", count)
-            if netModule and netModule.publishPirDetect then
-                local st = pir_ctrl.getState()
-                local media = st.mediaConfig or {}
-                netModule.publishPirDetect({
-                    status = "1",
-                    pirStatus = "person_update",
-                    personCount = tonumber(count) or 0,
-                    action = media.action or "video",
-                    uploadMode = st.uploadMode or media.uploadMode or "auto",
-                    quality = st.quality or media.quality or "high",
-                    recording = st.recording and 1 or 0,
-                })
-            end
+            pirPub({ pirStatus = "person_update", personCount = tonumber(count) or 0 })
         end },
         { E.T3X_RECORD_STOP, function(reason, uploadMode, quality)
             log.info("app", "t3x rec end", reason)
@@ -885,17 +869,12 @@ local function subscribePirMqttBridge()
         end },
         { E.GPIO_PIR_TRIGGERED, function(pirStatus, action, uploadMode, quality)
             log.info("app", "PIR GPIO", pirStatus, action)
-            if netModule and netModule.publishPirDetect then
-                local st = pir_ctrl.getState()
-                netModule.publishPirDetect({
-                    status = "1",
-                    pirStatus = pirStatus or "detected",
-                    action = action,
-                    uploadMode = uploadMode,
-                    quality = quality,
-                    recording = st.recording and 1 or 0,
-                })
-            end
+            pirPub({
+                pirStatus = pirStatus or "detected",
+                action = action,
+                uploadMode = uploadMode,
+                quality = quality,
+            })
         end },
     }
     for _, item in ipairs(handlers) do
