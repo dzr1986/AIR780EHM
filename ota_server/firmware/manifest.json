@@ -1,0 +1,16 @@
+{
+  "releases": [
+    {
+      "id": "001002-to-001003",
+      "firmwareName": "PANSHI_CAT1_LuatOS-SoC_Air780EHM",
+      "sourceVersion": "2034.001.002",
+      "targetVersion": "2034.001.003",
+      "file": "dfota_001002_to_001003.bin",
+      "enabled": true,
+      "comment": "001.000.002 → 001.000.003 差分包（Luatools 制作后重命名放入 firmware/）"
+    }
+  ],
+  "deviceTargets": {
+    "862323084068124": "2034.001.003"
+  }
+}

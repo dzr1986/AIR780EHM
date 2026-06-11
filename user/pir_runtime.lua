@@ -77,6 +77,12 @@ function buildAtBody()
     local biz = (pir_ctrl and pir_ctrl.getState and pir_ctrl.getState()) or {}
     local cfg = _G.PIR_CFG or {}
     local media = biz.mediaConfig or {}
+    if pir_ctrl and pir_ctrl.getEffectiveMediaAction then
+        local eff = pir_ctrl.getEffectiveMediaAction()
+        if eff then
+            media = { action = eff, uploadMode = media.uploadMode, quality = media.quality }
+        end
+    end
     local policy = biz.recordPolicy or {}
 
     local rt = _G.APP_RUNTIME or {}

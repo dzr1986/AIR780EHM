@@ -605,6 +605,32 @@ local function uart_record_notify(cmd)
     return string.format(CRLF .. "+RECORD:0,reason=%s" .. CRLF, reason) .. ok_tail()
 end
 
+--- T3x IVS 人形个数：AT+PERSONCNT=N（PIR 录像会话内）
+local function uart_person_cnt_notify(cmd)
+    local cnt = cmd:match("^AT%+PERSONCNT=(%d+)$")
+    if not cnt then
+        return RSP_ERROR
+    end
+    local n = tonumber(cnt) or 0
+    log.info(LOG_TAG, "T3x PERSONCNT", n)
+    local E = _G.APP_EVENTS or {}
+    sys.publish(E.T3X_PERSON_CNT or "APP_T3X_PERSON_CNT", n)
+    return string.format(CRLF .. "+PERSONCNT:ok,count=%d" .. CRLF, n) .. ok_tail()
+end
+
+--- T3x 归一化 PIR action：AT+PIRMEDIA=photo|video|both
+local function uart_pir_media_notify(cmd)
+    local action = cmd:match("^AT%+PIRMEDIA=(.+)$")
+    if not action or action == "" then
+        return RSP_ERROR
+    end
+    local ok_pc, pir_ctrl = pcall(require, "pir_ctrl")
+    if ok_pc and pir_ctrl and pir_ctrl.applyEffectiveMediaAction then
+        pir_ctrl.applyEffectiveMediaAction(action)
+    end
+    return string.format(CRLF .. "+PIRMEDIA:ok,action=%s" .. CRLF, action) .. ok_tail()
+end
+
 --- T3x 抓拍完成：AT+SNAPSHOT=/mnt/sdcard/snap/...
 local function uart_snapshot_notify(cmd)
     local path = cmd:match("^AT%+SNAPSHOT=(.+)$")
@@ -973,9 +999,16 @@ local function uart_setcfg(cmd)
     local rt = _G.APP_RUNTIME
     local meta = _G.APP_META
     if key == "interval" and tonumber(val) and rt then
-        rt.low_power_interval_sec = tonumber(val)
-        local ev = (_G.APP_EVENTS or {}).MQTT_STATUS_INTERVAL_CHANGED or "APP_MQTT_STATUS_INTERVAL_CHANGED"
-        sys.publish(ev)
+        local okMqtt, mqtt = pcall(require, "net_mqtt")
+        if okMqtt and type(mqtt) == "table" and mqtt.setStatusIntervalSec then
+            if not mqtt.setStatusIntervalSec(tonumber(val), true) then
+                return RSP_SETCFG_ERR
+            end
+        else
+            rt.low_power_interval_sec = tonumber(val)
+            local ev = (_G.APP_EVENTS or {}).MQTT_STATUS_INTERVAL_CHANGED or "APP_MQTT_STATUS_INTERVAL_CHANGED"
+            sys.publish(ev)
+        end
         return RSP_SETCFG_OK
     elseif key == "devicemodel" and meta then
         meta.device_model = val
@@ -1030,6 +1063,8 @@ local AT_CMD_TABLE = {
     uart_cmd_entry({ "AT+RECORD", "AT+RECORD?" }, nil, uart_record_query),
     uart_cmd_entry(nil, "AT+RECORD=", uart_record_notify),
     uart_cmd_entry(nil, "AT+SNAPSHOT=", uart_snapshot_notify),
+    uart_cmd_entry(nil, "AT+PIRMEDIA=", uart_pir_media_notify),
+    uart_cmd_entry(nil, "AT+PERSONCNT=", uart_person_cnt_notify),
     uart_cmd_entry({ "AT+HOSTEVT", "AT+HOSTEVT?" }, nil, uart_hostevt_query),
     uart_cmd_entry("AT+HOSTEVTCLR", nil, uart_hostevt_clr),
     uart_cmd_entry("AT+TIME", nil, uart_time_query),

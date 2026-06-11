@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Luat OTA 管理</title>
+  <style>
+    :root { --bg:#0f1419; --card:#1a2332; --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --ok:#3fb950; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; line-height: 1.5; }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    .sub { color: var(--muted); margin-bottom: 24px; font-size: 0.9rem; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background: var(--card); border-radius: 10px; padding: 16px; border: 1px solid #30363d; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin: 8px 0 4px; }
+    input, button, textarea { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: var(--text); }
+    button { cursor: pointer; background: var(--accent); border: none; color: #fff; font-weight: 600; margin-top: 12px; }
+    button.secondary { background: #30363d; }
+    pre { background: #0d1117; padding: 12px; border-radius: 6px; overflow: auto; font-size: 0.8rem; max-height: 280px; }
+    .ok { color: var(--ok); }
+    .tag-yes { color: #3fb950; }
+    .tag-no { color: #f85149; }
+    textarea { min-height: 60px; resize: vertical; }
+    select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: var(--text); }
+  </style>
+</head>
+<body>
+  <h1>Luat OTA 管理台</h1>
+  <p class="sub">合宙 IoT 风格固件管理 · libfota2 HTTP + MQTT 2004 · Header <code>X-Admin-Token</code></p>
+
+  <div class="card" style="margin-bottom:16px">
+    <label>Admin Token</label>
+    <input id="token" type="password" placeholder="与 application.yml 中 luat.ota.admin-token 一致">
+    <button onclick="refreshAll()">刷新全部</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>服务状态</h2>
+      <pre id="status">-</pre>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+      <h2>创建固件（合宙 IoT 风格）</h2>
+      <p style="color:var(--muted);font-size:0.85rem;margin:0 0 8px">不同功能分支请用不同固件名区分，避免误升级。dfota 请填写源版本。</p>
+      <div class="grid">
+        <div>
+          <label>bin 文件</label>
+          <input id="pkgFile" type="file" accept=".bin">
+          <label>固件名 firmwareName *</label>
+          <input id="pkgFirmwareName" placeholder="PANSHI_CAT1_LuatOS-SoC_Air780EHM">
+          <label>版本号 version *（xxx.xxx.xxx）</label>
+          <input id="pkgVersion" placeholder="2034.001.003">
+          <label>源版本 sourceVersion（dfota 必填）</label>
+          <input id="pkgSourceVersion" placeholder="2034.001.002">
+        </div>
+        <div>
+          <label>项目 project</label>
+          <select id="pkgProjectId"></select>
+          <label>core 版本号</label>
+          <input id="pkgCoreVersion" value="0">
+          <label>备注</label>
+          <textarea id="pkgRemark" placeholder="PANSHI_CAT1_2034.001.003_..."></textarea>
+          <label><input type="checkbox" id="pkgAllowUpgrade" checked> 允许升级</label>
+          <label><input type="checkbox" id="pkgUpgradeAll"> 升级全部设备</label>
+          <label>指定 IMEI（upgradeAll 未勾选时，逗号分隔）</label>
+          <input id="pkgImeis" placeholder="862323084068124">
+          <button onclick="uploadPackage()">提交固件</button>
+        </div>
+      </div>
+      <pre id="pkgUploadResult">-</pre>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+      <h2>我的固件（MySQL firmware_packages）</h2>
+      <table>
+        <thead><tr>
+          <th>固件名</th><th>版本</th><th>源版本</th><th>允许</th><th>全部</th><th>文件</th><th>指定设备</th><th>操作</th>
+        </tr></thead>
+        <tbody id="firmwarePackages"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>上传差分包（manifest legacy）</h2>
+      <label>bin 文件</label>
+      <input id="file" type="file" accept=".bin">
+      <label>源版本 sourceVersion</label>
+      <input id="sourceVersion" placeholder="2034.001.002">
+      <label>目标版本 targetVersion</label>
+      <input id="targetVersion" placeholder="2034.001.003">
+      <label>firmware_name（可留空）</label>
+      <input id="firmwareName" placeholder="PANSHI_CAT1_LuatOS-SoC_Air780EHM">
+      <button onclick="upload()">上传并写入 manifest</button>
+      <pre id="uploadResult">-</pre>
+    </div>
+    <div class="card">
+      <h2>固件文件</h2>
+      <table><thead><tr><th>文件</th><th>大小</th></tr></thead><tbody id="files"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>发布清单 manifest</h2>
+      <pre id="manifest">-</pre>
+    </div>
+    <div class="card">
+      <h2>MQTT 桥接</h2>
+      <pre id="mqttStatus">-</pre>
+    </div>
+    <div class="card">
+      <h2>MQTT 触发 OTA（2004）</h2>
+      <label>IMEI 列表（逗号分隔）</label>
+      <input id="triggerImeis" placeholder="862323084068124,862323084068125">
+      <label>目标版本</label>
+      <input id="triggerVersion" placeholder="2034.001.003">
+      <button onclick="triggerOta()">下发 OTA</button>
+      <button class="secondary" onclick="triggerOutdated()">批量升级落后设备</button>
+      <pre id="triggerResult">-</pre>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+      <h2>设备表（MySQL）</h2>
+      <table>
+        <thead><tr><th>IMEI</th><th>当前版本</th><th>目标版本</th><th>OTA状态</th><th>最后检查</th></tr></thead>
+        <tbody id="devices"></tbody>
+      </table>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+      <h2>OTA 任务（MQTT 下发记录）</h2>
+      <table>
+        <thead><tr><th>IMEI</th><th>messageId</th><th>目标版本</th><th>状态</th><th>stage</th></tr></thead>
+        <tbody id="otaTasks"></tbody>
+      </table>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+      <h2>最近 HTTP OTA 检查日志</h2>
+      <pre id="logs">-</pre>
+    </div>
+  </div>
+
+<script>
+const api = (path, opts = {}) => {
+  const token = document.getElementById('token').value.trim();
+  return fetch('/admin/api' + path, {
+    ...opts,
+    headers: { 'X-Admin-Token': token, ...(opts.headers || {}) }
+  }).then(async r => {
+    const text = await r.text();
+    let body = text;
+    try { body = JSON.parse(text); } catch (_) {}
+    if (!r.ok) throw new Error(typeof body === 'object' ? JSON.stringify(body) : body);
+    return body;
+  });
+};
+
+async function refreshAll() {
+  try {
+    document.getElementById('status').textContent = JSON.stringify(await api('/status'), null, 2);
+    document.getElementById('mqttStatus').textContent = JSON.stringify(await api('/mqtt/status'), null, 2);
+    document.getElementById('manifest').textContent = JSON.stringify(await api('/manifest'), null, 2);
+    const projects = await api('/projects');
+    document.getElementById('pkgProjectId').innerHTML = '<option value="">-- 无 --</option>' +
+      projects.map(p => `<option value="${p.id}">${p.name} (${p.projectKey})</option>`).join('');
+    const pkgs = await api('/firmware-packages');
+    document.getElementById('firmwarePackages').innerHTML = pkgs.map(p => `
+      <tr>
+        <td>${p.firmwareName}</td>
+        <td>${p.version}</td>
+        <td>${p.sourceVersion||'-'}</td>
+        <td class="${p.allowUpgrade?'tag-yes':'tag-no'}">${p.allowUpgrade?'是':'否'}</td>
+        <td class="${p.upgradeAll?'tag-yes':'tag-no'}">${p.upgradeAll?'是':'否'}</td>
+        <td><a href="${p.downloadUrl}" style="color:var(--accent)">${p.fileName}</a></td>
+        <td>${(p.assignedImeis||[]).join(', ')||'-'}</td>
+        <td><button class="secondary" onclick="deletePackage(${p.id})">删除</button></td>
+      </tr>`).join('') || '<tr><td colspan=8>暂无固件，请上方创建</td></tr>';
+    const files = await api('/firmware');
+    document.getElementById('files').innerHTML = files.map(f =>
+      `<tr><td>${f.filename}</td><td>${(f.sizeBytes/1024).toFixed(1)} KB</td></tr>`).join('') || '<tr><td colspan=2>无</td></tr>';
+    const devices = await api('/devices');
+    document.getElementById('devices').innerHTML = devices.map(d =>
+      `<tr><td>${d.imei}</td><td>${d.currentVersion||'-'}</td><td>${d.targetVersion||'-'}</td><td>${d.otaStatus||'-'}</td><td>${d.lastOtaCheckAt||'-'}</td></tr>`
+    ).join('') || '<tr><td colspan=5>无设备记录（设备首次 OTA 检查或 MQTT 上报后自动写入）</td></tr>';
+    const tasks = await api('/ota/tasks');
+    document.getElementById('otaTasks').innerHTML = tasks.map(t =>
+      `<tr><td>${t.imei}</td><td>${t.messageId}</td><td>${t.targetVersion}</td><td>${t.status}</td><td>${t.lastStage||'-'}</td></tr>`
+    ).join('') || '<tr><td colspan=5>无任务</td></tr>';
+    document.getElementById('logs').textContent = JSON.stringify(await api('/logs?limit=50'), null, 2);
+  } catch (e) {
+    alert('请求失败: ' + e.message);
+  }
+}
+
+async function triggerOta() {
+  const imeis = document.getElementById('triggerImeis').value.split(',').map(s => s.trim()).filter(Boolean);
+  const targetVersion = document.getElementById('triggerVersion').value.trim();
+  try {
+    const r = await api('/ota/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imeis, targetVersion })
+    });
+    document.getElementById('triggerResult').textContent = JSON.stringify(r, null, 2);
+    refreshAll();
+  } catch (e) { alert('触发失败: ' + e.message); }
+}
+
+async function triggerOutdated() {
+  const targetVersion = document.getElementById('triggerVersion').value.trim();
+  try {
+    const r = await api('/ota/trigger/outdated', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetVersion })
+    });
+    document.getElementById('triggerResult').textContent = JSON.stringify(r, null, 2);
+    refreshAll();
+  } catch (e) { alert('批量触发失败: ' + e.message); }
+}
+
+async function uploadPackage() {
+  const f = document.getElementById('pkgFile').files[0];
+  if (!f) return alert('请选择 .bin 文件');
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('firmwareName', document.getElementById('pkgFirmwareName').value);
+  fd.append('version', document.getElementById('pkgVersion').value);
+  fd.append('sourceVersion', document.getElementById('pkgSourceVersion').value);
+  fd.append('coreVersion', document.getElementById('pkgCoreVersion').value);
+  const pid = document.getElementById('pkgProjectId').value;
+  if (pid) fd.append('projectId', pid);
+  fd.append('allowUpgrade', document.getElementById('pkgAllowUpgrade').checked);
+  fd.append('upgradeAll', document.getElementById('pkgUpgradeAll').checked);
+  fd.append('remark', document.getElementById('pkgRemark').value);
+  fd.append('imeis', document.getElementById('pkgImeis').value);
+  try {
+    const token = document.getElementById('token').value.trim();
+    const r = await fetch('/admin/api/firmware-packages/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
+    const body = await r.json();
+    if (!r.ok) throw new Error(JSON.stringify(body));
+    document.getElementById('pkgUploadResult').textContent = JSON.stringify(body, null, 2);
+    refreshAll();
+  } catch (e) { alert('创建固件失败: ' + e.message); }
+}
+
+async function deletePackage(id) {
+  if (!confirm('确认删除固件 #' + id + '？')) return;
+  try {
+    await api('/firmware-packages/' + id, { method: 'DELETE' });
+    refreshAll();
+  } catch (e) { alert('删除失败: ' + e.message); }
+}
+
+async function upload() {
+  const f = document.getElementById('file').files[0];
+  if (!f) return alert('请选择 .bin 文件');
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('sourceVersion', document.getElementById('sourceVersion').value);
+  fd.append('targetVersion', document.getElementById('targetVersion').value);
+  fd.append('firmwareName', document.getElementById('firmwareName').value);
+  fd.append('autoRelease', 'true');
+  try {
+    const token = document.getElementById('token').value.trim();
+    const r = await fetch('/admin/api/firmware/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
+    const body = await r.json();
+    if (!r.ok) throw new Error(JSON.stringify(body));
+    document.getElementById('uploadResult').textContent = JSON.stringify(body, null, 2);
+    refreshAll();
+  } catch (e) {
+    alert('上传失败: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>

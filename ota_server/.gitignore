@@ -1,0 +1,11 @@
+target/
+.idea/
+*.iml
+.vscode/
+logs/
+deploy/nginx/certs/*.pem
+deploy/nginx/certs/*.key
+*.log
+firmware/*.bin
+!firmware/manifest.json
+!firmware/.gitkeep

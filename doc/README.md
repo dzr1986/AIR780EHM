@@ -58,6 +58,10 @@
 |------|------|
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行（含 2006/2007、2012/2020） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
+| [OTA_SERVER.md](OTA_SERVER.md) | **自建 OTA**（固件对接 + 部署清单，不改 lua） |
+| [OTA_PROTOCOL.md](OTA_PROTOCOL.md) | **OTA 协议与升级流程分析**（HTTP + MQTT） |
+| [OTA_FLOW.md](OTA_FLOW.md) | **完整流程 + 代码完整性清单** |
+| [../ota_server/README.md](../ota_server/README.md) | OTA 服务端部署手册 |
 | [REMOTE_ENCODE_CONFIG.md](REMOTE_ENCODE_CONFIG.md) | 远程视频/音频编码 2012/2020 / 1012/1020 |
 | [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T3x `AT+MQTTCFG` 下发 4G MQTT |
 | [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路 |

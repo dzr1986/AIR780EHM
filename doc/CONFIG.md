@@ -260,14 +260,15 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `rx_line_max` | `4096` | 行缓冲上限 |
 
 - `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末  
-  - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`lib/fota.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段
+  - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`lib/fota.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段  
+  - **自建 OTA 服务器**：固件 **无需改 lua**；MQTT 2004 带 `url` 即走自建 HTTP（见 [OTA_SERVER.md](OTA_SERVER.md)、[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §6.6）；服务端见 [`ota_server/README.md`](../ota_server/README.md)
 - **`config.mk` 与 `config.lua` 宏对照**（`config.mk` 仅覆盖部分；其余仅在 `config.lua` 顶部 `local *_ENABLE`）：
 
 | 宏 | `config.mk` | `config.lua` | 说明 |
 |----|-------------|--------------|------|
 | `RNDIS_ENABLE` | `?= 1` | `local RNDIS_ENABLE = 1` | → `FEATURE_CFG.rndis`；关 RNDIS 可移 `usb_rndis.lua` 至 `archive/slim/lib/` |
 | `USB_REENUM_ENABLE` | `?= 1` | `local USB_REENUM_ENABLE = 1` | → `FEATURE_CFG.usb_reenum` |
-| `FOTA_SERVER` | `iot` / `custom` | `FOTA_CFG.server_mode` | 合宙 IoT 需 `main.lua` `PRODUCT_KEY` |
+| `FOTA_SERVER` | `iot` / `custom` | `FOTA_CFG.server_mode` | 合宙 IoT 需 `main.lua` `PRODUCT_KEY`；自建 OTA 由 MQTT 2004 带 `url` 触发，不必改此项 |
 | `LOW_POWER_ENABLE` | — | `local LOW_POWER_ENABLE = 1` | → `FEATURE_CFG.low_power` → `MODULE_FLAGS.low_power` |
 | `HOST_EVT_ENABLE` | — | `local HOST_EVT_ENABLE = 1` | → `FEATURE_CFG.host_evt` → PIRSTAT.has_work |
 | `LOW_POWER_WAKEUP_MODE` | — | `LOW_POWER_WAKEUP_CFG.mode` | `"mqtt"` / `"tcp"`，见 [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](CAT1_LOWPWR_MQTT_TCP_STRATEGY.md) |

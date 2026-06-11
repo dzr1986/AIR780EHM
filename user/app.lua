@@ -823,6 +823,21 @@ local function subscribePirMqttBridge()
         { E.PIR_WAKE_T3X, function(action, uploadMode, quality)
             onPirMediaAction(action, uploadMode, quality)
         end },
+        { E.PIR_MEDIA_EFFECTIVE, function(action)
+            log.info("app", "pir media sync", action)
+            if netModule and netModule.publishPirDetect then
+                local st = pir_ctrl.getState()
+                local media = st.mediaConfig or {}
+                netModule.publishPirDetect({
+                    status = "1",
+                    pirStatus = "media_sync",
+                    action = action,
+                    uploadMode = st.uploadMode or media.uploadMode or "auto",
+                    quality = st.quality or media.quality or "high",
+                    recording = st.recording and 1 or 0,
+                })
+            end
+        end },
         { E.PIR_REQUEST_T3X_STOP, function(reason)
             log.info("app", "req t3x stop rec", reason)
             wakeT3xForPir("pir_stop_" .. tostring(reason))
@@ -839,6 +854,22 @@ local function subscribePirMqttBridge()
         { E.T3X_RECORD_ACTIVE, function()
             if netModule and netModule.publishPirRecordActive then
                 netModule.publishPirRecordActive()
+            end
+        end },
+        { E.T3X_PERSON_CNT, function(count)
+            log.info("app", "t3x person cnt", count)
+            if netModule and netModule.publishPirDetect then
+                local st = pir_ctrl.getState()
+                local media = st.mediaConfig or {}
+                netModule.publishPirDetect({
+                    status = "1",
+                    pirStatus = "person_update",
+                    personCount = tonumber(count) or 0,
+                    action = media.action or "video",
+                    uploadMode = st.uploadMode or media.uploadMode or "auto",
+                    quality = st.quality or media.quality or "high",
+                    recording = st.recording and 1 or 0,
+                })
             end
         end },
         { E.T3X_RECORD_STOP, function(reason, uploadMode, quality)

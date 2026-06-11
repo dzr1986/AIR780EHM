@@ -39,6 +39,9 @@ local session = {
     stop_mqtt_published = false,
 }
 
+--- IPC AT+PIRMEDIA= 回写的归一化 action（覆盖 PIRSTAT/HOSTEVT 直至会话结束）
+local effectiveMediaAction = nil
+
 local handlerStarted = false
 local suspended = false
 local pir_runtime = nil
@@ -207,11 +210,20 @@ function requestT3xStopRecord(reason)
     return true
 end
 
+function clearEffectiveMediaAction()
+    effectiveMediaAction = nil
+end
+
+function getEffectiveMediaAction()
+    return effectiveMediaAction
+end
+
 function publishStopRecording(reason)
     if not session.recording then return false end
     clearRecordTimer()
     session.recording = false
     session.last_stop_reason = reason
+    clearEffectiveMediaAction()
     local ck = STOP_CNT[reason]
     if ck then
         statBump(ck)
@@ -231,6 +243,7 @@ function syncStopFromT3x(reason)
     if session.recording then
         session.recording = false
         session.last_stop_reason = reason
+        clearEffectiveMediaAction()
         statLast("stop_t3x_" .. tostring(reason))
         log.info("pirCtrl", "T3x 同步停录", reason)
     end
@@ -253,6 +266,23 @@ local function beginVideoSession(uploadMode, quality)
             session.uploadMode, session.quality)
     end, policy.maxDurationSec * 1000)
     log.info("pirCtrl", "录像会话开始", policy.maxDurationSec, "s")
+end
+
+--- T3x 归一化后 action 同步：修正 MQTT 1010、补开录像会话
+function applyEffectiveMediaAction(action)
+    local media = normalizePirMediaConfig({ action = action })
+    local A = PIR_MEDIA.ACTION
+    effectiveMediaAction = media.action
+    if effectiveMediaAction == A.VIDEO or effectiveMediaAction == A.BOTH then
+        if not session.recording then
+            local cfg = getMediaConfig()
+            beginVideoSession(cfg.uploadMode, cfg.quality)
+        end
+    end
+    local E = _G.APP_EVENTS or {}
+    publishEvent(E.PIR_MEDIA_EFFECTIVE or "APP_PIR_MEDIA_EFFECTIVE", effectiveMediaAction)
+    log.info("pirCtrl", "IPC effective media", effectiveMediaAction)
+    return effectiveMediaAction
 end
 
 function requestStopFromCloud()
@@ -374,6 +404,7 @@ local function shouldIgnorePirTrigger()
 end
 
 function onPirTriggered()
+    clearEffectiveMediaAction()
     local ignore = shouldIgnorePirTrigger()
     if ignore == "suspend" then
         statBump("cnt_biz_ignore_suspend")

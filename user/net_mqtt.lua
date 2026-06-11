@@ -319,15 +319,114 @@ local function collectBatterySnapshot()
     return snap
 end
 
---- 1003 周期（秒）：2003 interval / AT+SETCFG=interval → low_power_interval_sec；未设时回退 mqtt_report_interval_sec
+local MQTT_STATUS_CFG_PATH = "/mqtt_status_cfg.json"
+local STATUS_INTERVAL_MIN_SEC = 10
+local STATUS_INTERVAL_MAX_SEC = 86400
+
+local function clampStatusIntervalSec(sec)
+    sec = tonumber(sec)
+    if not sec then
+        return nil
+    end
+    sec = math.floor(sec)
+    if sec < STATUS_INTERVAL_MIN_SEC then
+        sec = STATUS_INTERVAL_MIN_SEC
+    end
+    if sec > STATUS_INTERVAL_MAX_SEC then
+        sec = STATUS_INTERVAL_MAX_SEC
+    end
+    return sec
+end
+
+local function saveStatusIntervalPersisted(sec)
+    local payload = json.encode({
+        status_interval_sec = sec,
+        updated_at = os.time(),
+    })
+    if not payload then
+        return false
+    end
+    local f = io.open(MQTT_STATUS_CFG_PATH, "w")
+    if not f then
+        log.warn("net_mqtt", "save status cfg fail", MQTT_STATUS_CFG_PATH)
+        return false
+    end
+    f:write(payload)
+    f:close()
+    log.info("net_mqtt", "saved status interval", sec, MQTT_STATUS_CFG_PATH)
+    return true
+end
+
+local function loadStatusIntervalPersisted()
+    local f = io.open(MQTT_STATUS_CFG_PATH, "r")
+    if not f then
+        return
+    end
+    local body = f:read("*a")
+    f:close()
+    if not body or body == "" then
+        return
+    end
+    local ok, data = pcall(json.decode, body)
+    if not ok or type(data) ~= "table" then
+        log.warn("net_mqtt", "status cfg decode fail", MQTT_STATUS_CFG_PATH)
+        return
+    end
+    local sec = clampStatusIntervalSec(data.status_interval_sec)
+    if not sec then
+        return
+    end
+    if _G.APP_RUNTIME then
+        _G.APP_RUNTIME.low_power_interval_sec = sec
+    end
+    if _G.LOW_POWER_CFG then
+        _G.LOW_POWER_CFG.rest_mqtt_interval_sec = sec
+    end
+    log.info("net_mqtt", "loaded status interval", sec, MQTT_STATUS_CFG_PATH)
+end
+
+--- 应用 1003 周期（秒），同步 APP_RUNTIME / LOW_POWER_CFG
+local function applyStatusIntervalSec(sec)
+    sec = clampStatusIntervalSec(sec)
+    if not sec then
+        return nil
+    end
+    if _G.APP_RUNTIME then
+        _G.APP_RUNTIME.low_power_interval_sec = sec
+    end
+    if _G.LOW_POWER_CFG then
+        _G.LOW_POWER_CFG.rest_mqtt_interval_sec = sec
+    end
+    return sec
+end
+
+--- 2003 / AT+SETCFG=interval 统一入口；persist=true 写入 /mqtt_status_cfg.json
+function setStatusIntervalSec(sec, persist)
+    local applied = applyStatusIntervalSec(sec)
+    if not applied then
+        return false
+    end
+    if persist then
+        saveStatusIntervalPersisted(applied)
+    end
+    notifyStatusReportIntervalChanged()
+    return true
+end
+
+--- 1003 周期（秒）：持久化 → APP_RUNTIME → LOW_POWER_CFG → BATTERY 回退
 local function getStatusReportIntervalSec()
     local rt = _G.APP_RUNTIME or {}
-    local sec = tonumber(rt.low_power_interval_sec)
-    if sec and sec > 0 then
+    local sec = clampStatusIntervalSec(rt.low_power_interval_sec)
+    if sec then
+        return sec
+    end
+    local lp = _G.LOW_POWER_CFG or {}
+    sec = clampStatusIntervalSec(lp.rest_mqtt_interval_sec)
+    if sec then
         return sec
     end
     local bcfg = _G.BATTERY_CFG or {}
-    return tonumber(bcfg.mqtt_report_interval_sec) or 60
+    return clampStatusIntervalSec(bcfg.mqtt_report_interval_sec) or 30
 end
 
 local function notifyStatusReportIntervalChanged()
@@ -362,7 +461,11 @@ local function setupBatteryStatusReport()
         if not isConnected then
             return
         end
+        local intervalSec = getStatusReportIntervalSec()
         local minSec = tonumber((_G.BATTERY_CFG or {}).mqtt_battery_report_min_sec) or 30
+        if intervalSec > minSec then
+            minSec = intervalSec
+        end
         local now = os.time()
         if now - lastBatteryStatusPublishSec < minSec then
             return
@@ -392,9 +495,14 @@ end
 
 local function handleDownlink2002(data)
     local action = data.action
+    local messageId = data.messageId or data.msgId or ""
     if data.lowPowerMode == "enter" or action == 1 or action == "1" or action == "enter" then
         if usbBlocks4gRest() then
             log.info("net_mqtt", "2002 usb block rest")
+            publishControlReply("lowpower", -1, "usb_inserted", {
+                messageId = messageId,
+                lowPowerMode = "enter",
+            })
             return
         end
         log.info("net_mqtt", "2002 enter rest")
@@ -402,22 +510,37 @@ local function handleDownlink2002(data)
     elseif data.lowPowerMode == "exit" or action == 0 or action == "0" or action == "exit" then
         log.info("net_mqtt", "2002 exit rest")
         sys.publish(APP_EVENTS.POWER_EXIT_REST)
+        publishControlReply("lowpower", 0, "exit_ok", {
+            messageId = messageId,
+            lowPowerMode = "exit",
+        })
     else
         log.warn("net_mqtt", "2002 bad", data.lowPowerMode, action)
+        publishControlReply("lowpower", -1, "bad_request", {
+            messageId = messageId,
+        })
     end
 end
 
--- [2003] 状态/配置 → 1003
+-- [2003] 状态/配置 → 1003（带 interval 时落盘并回显同一 interval）
 local function handleDownlink2003(data)
-    local interval = tonumber(data.interval)
-    if interval then
-        if _G.APP_RUNTIME then
-            _G.APP_RUNTIME.low_power_interval_sec = interval
+    local messageId = data.messageId or data.msgId or ""
+    local configRet = 0
+    local configMsg = "ok"
+    if data.interval ~= nil then
+        if setStatusIntervalSec(data.interval, true) then
+            log.info("net_mqtt", "2003 interval ok", getStatusReportIntervalSec())
+        else
+            configRet = -1
+            configMsg = "invalid_interval"
+            log.warn("net_mqtt", "2003 bad interval", data.interval)
         end
-        log.info("net_mqtt", "2003 interval", interval, "1003 period", getStatusReportIntervalSec())
-        notifyStatusReportIntervalChanged()
     end
-    publishStatus()
+    publishStatus({
+        messageId = messageId,
+        configRet = configRet,
+        configMsg = configMsg,
+    })
 end
 
 -- [2004] 电源/OTA 控制 → 1004(reply) + OTA 过程 1004(stage)
@@ -620,12 +743,22 @@ local function tfCardEnabled()
 end
 
 local function refreshTfCardStatus(messageId)
+    if not tfCardEnabled() then
+        log.warn("net_mqtt", "2007 tf disabled")
+        publishTfCardStatus({ present = 0, total_mb = 0, used_mb = 0, free_mb = 0 }, messageId)
+        return
+    end
     local hu = getHostUart()
     local snap
     if hu and hu.queryHostTfCard then
         snap = hu.queryHostTfCard(tfCardCfg().query_timeout_ms)
     elseif hu and hu.getCachedHostTfCard then
         snap = hu.getCachedHostTfCard()
+    end
+    if snap == nil then
+        log.warn("net_mqtt", "2007 tf query timeout")
+        publishTfCardStatus({ present = 0, total_mb = 0, used_mb = 0, free_mb = 0 }, messageId)
+        return
     end
     publishTfCardStatus(snap, messageId)
 end
@@ -713,8 +846,21 @@ local function handleDownlink2010(data)
         log.info("net_mqtt", "2010 pir cfg",
             json.encode(pirState.mediaConfig),
             json.encode(pirState.recordPolicy))
+        local media = pirState.mediaConfig or {}
+        publishPirDetect({
+            status = "1",
+            pirStatus = "config_ok",
+            action = media.action or "video",
+            uploadMode = pirState.uploadMode or media.uploadMode or "auto",
+            quality = pirState.quality or media.quality or "high",
+            recording = pirState.recording and 1 or 0,
+            messageId = data.messageId,
+        })
     else
         log.warn("net_mqtt", "2010 no cfg")
+        publishControlReply("pir_cfg", -1, "no_cfg_fields", {
+            messageId = data.messageId,
+        })
     end
 end
 
@@ -724,7 +870,11 @@ local function handleDownlink2011(data)
     else
         log.info("net_mqtt", "2011 cloud stop")
     end
-    pir_ctrl.requestStopFromCloud()
+    local ok = pir_ctrl.requestStopFromCloud()
+    publishControlReply("pir_stop", ok and 0 or -1, ok and "ok" or "stop_rejected", {
+        messageId = data.messageId,
+        recording = pir_ctrl.isRecording() and 1 or 0,
+    })
 end
 
 local function publishEncodeReply(dlType, retCode, message, body, messageId)
@@ -1053,25 +1203,39 @@ function publishRest(opts)
     })
 end
 
---- 1003 状态（电量 / USB / 充电 / 低功耗）
-function publishStatus()
+--- 1003 状态（电量 / USB / 充电 / 低功耗 / interval 与周期定时一致）
+function publishStatus(opts)
+    opts = type(opts) == "table" and opts or {}
     local snap = collectBatterySnapshot()
+    local intervalSec = getStatusReportIntervalSec()
+    local extra = ""
+    if opts.messageId and opts.messageId ~= "" then
+        extra = extra .. string.format(',"messageId":"%s"', escJson(tostring(opts.messageId)))
+    end
+    if opts.configRet ~= nil then
+        extra = extra .. string.format(
+            ',"ret":%d,"message":"%s"',
+            tonumber(opts.configRet) or 0,
+            escJson(opts.configMsg or "ok"))
+    end
     publishUplink({
         suffix = "status",
         dataType = DT.UL_STATUS,
         warn = false,
         fields = string.format(
-            ',"powerStatus":%d,"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s"',
+            ',"powerStatus":%d,"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","interval":%d%s',
             snap.power_status,
             snap.usb_inserted,
             snap.charging,
             escJson(tostring(snap.battery_percent)),
             escJson(tostring(snap.battery_mv)),
-            escJson(snap.low_power_mode)),
+            escJson(snap.low_power_mode),
+            intervalSec,
+            extra),
         log = "pub 1003",
         log_args = {
             "usb", snap.usb_inserted, "chg", snap.charging,
-            "bat", snap.battery_percent, "mV", snap.battery_mv,
+            "bat", snap.battery_percent, "interval", intervalSec,
         },
         on_published = function()
             lastBatteryStatusPublishSec = os.time()
@@ -1254,12 +1418,16 @@ function publishPirDetect(extra)
     if extra.snapshotPath and extra.snapshotPath ~= "" then
         pathJson = string.format(',"snapshotPath":"%s"', escJson(extra.snapshotPath))
     end
+    local personJson = ""
+    if extra.personCount ~= nil then
+        personJson = string.format(',"personCount":%d', tonumber(extra.personCount) or 0)
+    end
     publishUplink({
         suffix = "pir",
         dataType = DT.UL_PIR_DETECT,
         no_conn = "no conn, skip pir",
         fields = string.format(
-            ',"status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s',
+            ',"status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s%s',
             escJson(extra.status or "detected"),
             escJson(extra.pirStatus or extra.status or "detected"),
             tostring(rec),
@@ -1267,7 +1435,8 @@ function publishPirDetect(extra)
             escJson(extra.uploadMode),
             escJson(extra.quality),
             activeJson,
-            pathJson),
+            pathJson,
+            personJson),
         log = "pub 1010",
         log_args = { extra.pirStatus or extra.status },
     })
@@ -1437,5 +1606,7 @@ function getState()
         last_publish_topic = state.last_publish_topic,
     }
 end
+
+loadStatusIntervalPersisted()
 
 return _M

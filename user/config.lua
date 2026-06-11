@@ -344,7 +344,7 @@ _G.BATTERY_CFG = {
         v_min_mv = 3000,
     },
     sample_interval_ms = 10 * 1000,
-    mqtt_report_interval_sec = 60, -- 1003 周期回退（low_power_interval_sec 未设或 ≤0 时）
+    mqtt_report_interval_sec = 30, -- 1003 周期最终回退（与 rest_mqtt_interval_sec 对齐）
     mqtt_battery_report_min_sec = 30,
 
     -- 模组蓝灯 GPIO21（single_blue 模式；led_ctrl → lib/led.runUnifiedBlueCycle）

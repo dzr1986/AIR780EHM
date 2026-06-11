@@ -14,6 +14,7 @@ _G[_modname] = _M
 
 local LOG_TAG = "usb_charge"
 local started = false
+local usb_det_ready = false
 local last_usb = nil
 local last_chg = nil
 
@@ -56,7 +57,34 @@ local function chgPin()
     return cfg().chg_state_pin
 end
 
+--- 开机读数前须配置上拉/防抖，否则 GPIO27 可能浮空误判为「已插入」
+local function ensureUsbDetPin()
+    if usb_det_ready then
+        return true
+    end
+    local entry = (_G.GPIO_IN or {}).usb_det
+    local pin = entry and entry.pin or usbPin()
+    if not pin or not gpio or not gpio.setup then
+        return false
+    end
+    gpio.setup(
+        pin,
+        function() end,
+        gpio_util.pull(entry and entry.pull or "pullup"),
+        gpio_util.trigger_mode(entry and entry.trigger_mode or "both")
+    )
+    local debounce = entry and entry.debounce_ms
+    if debounce and debounce > 0 and gpio.debounce then
+        gpio.debounce(pin, debounce)
+    end
+    usb_det_ready = true
+    return true
+end
+
 local function readUsbInserted()
+    if not ensureUsbDetPin() then
+        return false
+    end
     local pin = usbPin()
     if not pin or not gpio or not gpio.get then
         return false
@@ -129,6 +157,7 @@ function start()
     end
 
     local gin = _G.GPIO_IN or {}
+    ensureUsbDetPin()
     if not setupPinIrq(gin.usb_det, onUsbIrq) or not setupPinIrq(gin.chg_state, onChgIrq) then
         log.warn(LOG_TAG, "GPIO 中断注册失败")
         return false
