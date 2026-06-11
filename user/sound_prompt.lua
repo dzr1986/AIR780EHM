@@ -71,14 +71,19 @@ local function getUart()
     return uart_bridge
 end
 
-local function ensureT3xPowered()
-    local ok, ipc = pcall(require, "t3x_ipc")
-    if ok and type(ipc) == "table" and ipc.ensurePowered then
-        return ipc.ensurePowered("sound_prompt", {
-            t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
-        })
+local ipcMod
+
+local function t3xOn(extra)
+    if ipcMod == nil then
+        local ok, m = pcall(require, "t3x_ipc")
+        ipcMod = ok and m or false
     end
-    return false
+    if not ipcMod or not ipcMod.ensurePowered then
+        return false
+    end
+    return ipcMod.ensurePowered("sound_prompt", extra or {
+        t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
+    })
 end
 
 local function waitSoundAck(name, timeoutMs)
@@ -119,7 +124,7 @@ function playBlocking(name, scene)
         return false
     end
 
-    ensureT3xPowered()
+    t3xOn()
 
     local timeoutMs = tonumber(cfg().play_timeout_ms) or 2500
     if scene == "boot_cold" then

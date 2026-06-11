@@ -69,15 +69,21 @@ local function getHostUart()
     return host_uart
 end
 
-local function ensureT3xPowered()
-    local ok, ipc = pcall(require, "t3x_ipc")
-    if ok and type(ipc) == "table" and ipc.ensurePowered then
-        return ipc.ensurePowered("time_sync", {
-            t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
-            log_skip = "低功耗/低电量，跳过 T3x 上电",
-        })
+local ipcMod
+
+local function t3xOn(extra)
+    if ipcMod == nil then
+        local ok, m = pcall(require, "t3x_ipc")
+        ipcMod = ok and m or false
     end
-    return false
+    if not ipcMod or not ipcMod.ensurePowered then
+        return false
+    end
+    extra = extra or {
+        t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
+        log_skip = "低功耗/低电量，跳过 T3x 上电",
+    }
+    return ipcMod.ensurePowered("time_sync", extra)
 end
 
 local function waitTimesetAck(timeoutMs)
@@ -123,7 +129,7 @@ function pushToHost(force)
         return false
     end
 
-    ensureT3xPowered()
+    t3xOn()
     sys.wait(tonumber(cfg().host_boot_wait_ms) or 1500)
 
     log.info(LOG_TAG, "AT+TIMESET", t, os.date("!%Y-%m-%d %H:%M:%S UTC", t))
@@ -181,7 +187,7 @@ function pushBeforeNotify(sid, evt)
         end
         return
     end
-    if isTimeValid() and ensureT3xPowered() then
+    if isTimeValid() and t3xOn() then
         pushToHost(false)
     end
     local hu = getHostUart()

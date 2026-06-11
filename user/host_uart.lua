@@ -314,15 +314,6 @@ local function get_device_imei()
     if ok and type(did) == "table" and did.getImei then
         return did.getImei()
     end
-    if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then
-        return tostring(_G.aliyuncs_imei)
-    end
-    if mobile and mobile.imei then
-        local id = mobile.imei()
-        if id and id ~= "" then
-            return tostring(id)
-        end
-    end
     return nil
 end
 
@@ -1610,19 +1601,31 @@ local function run_host_query(opts)
     return result
 end
 
+local function host_query(timeoutMs, opts)
+    opts.timeout_ms = timeoutMs
+    return run_host_query(opts)
+end
+
+local function noop_nil()
+    return nil
+end
+
+local function noop_idle()
+    return "idle"
+end
+
 function getCachedHostGb28181Id()
     return state.host_gb28181_id
 end
 
 --- 须在 task 内调用；向 T3x 发 AT+GB28181? 并等待 +GB28181:
 function queryHostGb28181(timeoutMs)
-    return run_host_query({
+    return host_query(timeoutMs, {
         busy_key = "gb28181_query_busy",
         cache_key = "host_gb28181_id",
         busy_log = "gb28181 busy",
         policy_tag = "host_identity",
         cfg = identity_cfg(),
-        timeout_ms = timeoutMs,
         timeout_cfg_key = "query_timeout_ms",
         default_timeout = 3000,
         at_cmd = "AT+GB28181?",
@@ -1638,9 +1641,7 @@ function queryHostGb28181(timeoutMs)
             log.warn(LOG_TAG, "gb28181 timeout", tmo)
             return state.host_gb28181_id
         end,
-        on_error = function()
-            return nil
-        end,
+        on_error = noop_nil,
     })
 end
 
@@ -1661,13 +1662,12 @@ end
 
 --- 须在 task 内调用；向 T3x 发 AT+IPCSTATUS?，超时视为 idle（T3x 未上电或无应答）
 function queryHostIpcStatus(timeoutMs)
-    return run_host_query({
+    return host_query(timeoutMs, {
         busy_key = "ipc_status_query_busy",
         busy_log = "ipcst busy",
         busy_return = state.host_ipc_status or "idle",
         policy_tag = "host_ipc",
         cfg = ipc_cfg(),
-        timeout_ms = timeoutMs,
         timeout_cfg_key = "status_query_timeout_ms",
         default_timeout = 2000,
         wait_boot = false,
@@ -1681,12 +1681,8 @@ function queryHostIpcStatus(timeoutMs)
                 return state.host_at_ready and "ready" or "idle"
             end
         end,
-        on_no_t3x = function()
-            return "idle"
-        end,
-        on_no_uart = function()
-            return "idle"
-        end,
+        on_no_t3x = noop_idle,
+        on_no_uart = noop_idle,
         on_response = function(got, st)
             if got and st then
                 state.host_ipc_status = st
@@ -1697,9 +1693,7 @@ function queryHostIpcStatus(timeoutMs)
             log.info(LOG_TAG, "ipcst no rsp")
             return "idle"
         end,
-        on_error = function()
-            return "idle"
-        end,
+        on_error = noop_idle,
     })
 end
 
@@ -1794,12 +1788,11 @@ end
 
 --- 须在 task 内调用；向 T3x 发 AT+RECORD? 查询真实写盘状态
 function queryHostRecord(timeoutMs)
-    return run_host_query({
+    return host_query(timeoutMs, {
         busy_key = "record_query_busy",
         cache_key = "host_record",
         policy_tag = "host_record",
         cfg = record_cfg(),
-        timeout_ms = timeoutMs,
         default_timeout = 3000,
         at_cmd = "AT+RECORD?",
         ack_event = RECORD_ACK_EVENT,
@@ -1824,20 +1817,17 @@ function queryHostRecord(timeoutMs)
             log.warn(LOG_TAG, "rec q timeout", tmo)
             return state.host_record
         end,
-        on_error = function()
-            return nil
-        end,
+        on_error = noop_nil,
     })
 end
 
 function queryHostTfCard(timeoutMs)
-    return run_host_query({
+    return host_query(timeoutMs, {
         busy_key = "tf_card_query_busy",
         cache_key = "host_tf_card",
         busy_log = "tf q busy",
         policy_tag = "host_tfcard",
         cfg = tf_card_cfg(),
-        timeout_ms = timeoutMs,
         default_timeout = 3000,
         at_cmd = "AT+TFCARD?",
         ack_event = TFCARD_ACK_EVENT,
@@ -1857,9 +1847,7 @@ function queryHostTfCard(timeoutMs)
             log.warn(LOG_TAG, "tf q timeout", tmo)
             return state.host_tf_card
         end,
-        on_error = function()
-            return nil
-        end,
+        on_error = noop_nil,
     })
 end
 

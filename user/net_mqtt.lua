@@ -84,10 +84,7 @@ local function getDeviceId()
     if ok and type(did) == "table" and did.getDeviceId then
         return did.getDeviceId()
     end
-    if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then
-        return _G.aliyuncs_imei
-    end
-    return mobile.imei() or "unknown_device"
+    return "unknown_device"
 end
 
 local function getPubTopic() return "/panshi/app/" .. getDeviceId() .. "/" end
@@ -612,16 +609,14 @@ local function identityEnabled()
 end
 
 local function refreshDeviceIdentity(messageId)
-    local hu = getHostUart()
-    local imei = (hu and hu.getDeviceImei and hu.getDeviceImei()) or getDeviceId()
+    local imei = getDeviceId()
     local gb28181Id
-
+    local hu = getHostUart()
     if hu and hu.queryHostGb28181 then
         gb28181Id = hu.queryHostGb28181(identityCfg().query_timeout_ms)
     elseif hu and hu.getCachedHostGb28181Id then
         gb28181Id = hu.getCachedHostGb28181Id()
     end
-
     publishDeviceIdentity(imei, gb28181Id, messageId)
 end
 
