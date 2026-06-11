@@ -319,95 +319,69 @@ local function collectBatterySnapshot()
     return snap
 end
 
-local MQTT_STATUS_CFG_PATH = "/mqtt_status_cfg.json"
-local STATUS_INTERVAL_MIN_SEC = 10
-local STATUS_INTERVAL_MAX_SEC = 86400
+local IV_CFG = "/mqtt_status_cfg.json"
+local IV_MIN, IV_MAX = 10, 86400
 
-local function clampStatusIntervalSec(sec)
-    sec = tonumber(sec)
-    if not sec then
+local function clampIv(v)
+    v = tonumber(v)
+    if not v then
         return nil
     end
-    sec = math.floor(sec)
-    if sec < STATUS_INTERVAL_MIN_SEC then
-        sec = STATUS_INTERVAL_MIN_SEC
+    v = math.floor(v)
+    if v < IV_MIN then
+        return IV_MIN
     end
-    if sec > STATUS_INTERVAL_MAX_SEC then
-        sec = STATUS_INTERVAL_MAX_SEC
+    if v > IV_MAX then
+        return IV_MAX
     end
-    return sec
+    return v
 end
 
-local function saveStatusIntervalPersisted(sec)
-    local payload = json.encode({
-        status_interval_sec = sec,
-        updated_at = os.time(),
-    })
-    if not payload then
-        return false
+local function syncIv(sec)
+    local rt, lp = _G.APP_RUNTIME, _G.LOW_POWER_CFG
+    if rt then
+        rt.low_power_interval_sec = sec
     end
-    local f = io.open(MQTT_STATUS_CFG_PATH, "w")
-    if not f then
-        log.warn("net_mqtt", "save status cfg fail", MQTT_STATUS_CFG_PATH)
-        return false
+    if lp then
+        lp.rest_mqtt_interval_sec = sec
     end
-    f:write(payload)
-    f:close()
-    log.info("net_mqtt", "saved status interval", sec, MQTT_STATUS_CFG_PATH)
-    return true
 end
 
-local function loadStatusIntervalPersisted()
-    local f = io.open(MQTT_STATUS_CFG_PATH, "r")
+local function loadIvCfg()
+    local f = io.open(IV_CFG, "r")
     if not f then
         return
     end
-    local body = f:read("*a")
+    local s = f:read("*a")
     f:close()
-    if not body or body == "" then
+    if not s or s == "" then
         return
     end
-    local ok, data = pcall(json.decode, body)
-    if not ok or type(data) ~= "table" then
-        log.warn("net_mqtt", "status cfg decode fail", MQTT_STATUS_CFG_PATH)
+    local ok, d = pcall(json.decode, s)
+    if not ok or type(d) ~= "table" then
         return
     end
-    local sec = clampStatusIntervalSec(data.status_interval_sec)
-    if not sec then
-        return
+    local sec = clampIv(d.status_interval_sec)
+    if sec then
+        syncIv(sec)
     end
-    if _G.APP_RUNTIME then
-        _G.APP_RUNTIME.low_power_interval_sec = sec
-    end
-    if _G.LOW_POWER_CFG then
-        _G.LOW_POWER_CFG.rest_mqtt_interval_sec = sec
-    end
-    log.info("net_mqtt", "loaded status interval", sec, MQTT_STATUS_CFG_PATH)
 end
 
---- 应用 1003 周期（秒），同步 APP_RUNTIME / LOW_POWER_CFG
-local function applyStatusIntervalSec(sec)
-    sec = clampStatusIntervalSec(sec)
-    if not sec then
-        return nil
-    end
-    if _G.APP_RUNTIME then
-        _G.APP_RUNTIME.low_power_interval_sec = sec
-    end
-    if _G.LOW_POWER_CFG then
-        _G.LOW_POWER_CFG.rest_mqtt_interval_sec = sec
-    end
-    return sec
-end
-
---- 2003 / AT+SETCFG=interval 统一入口；persist=true 写入 /mqtt_status_cfg.json
 function setStatusIntervalSec(sec, persist)
-    local applied = applyStatusIntervalSec(sec)
-    if not applied then
+    sec = clampIv(sec)
+    if not sec then
         return false
     end
+    syncIv(sec)
     if persist then
-        saveStatusIntervalPersisted(applied)
+        local p = json.encode({ status_interval_sec = sec, updated_at = os.time() })
+        if p then
+            local wf = io.open(IV_CFG, "w")
+            if wf then
+                wf:write(p)
+                wf:close()
+            end
+        end
     end
     notifyStatusReportIntervalChanged()
     return true
@@ -415,18 +389,15 @@ end
 
 --- 1003 周期（秒）：持久化 → APP_RUNTIME → LOW_POWER_CFG → BATTERY 回退
 local function getStatusReportIntervalSec()
-    local rt = _G.APP_RUNTIME or {}
-    local sec = clampStatusIntervalSec(rt.low_power_interval_sec)
+    local sec = clampIv((_G.APP_RUNTIME or {}).low_power_interval_sec)
     if sec then
         return sec
     end
-    local lp = _G.LOW_POWER_CFG or {}
-    sec = clampStatusIntervalSec(lp.rest_mqtt_interval_sec)
+    sec = clampIv((_G.LOW_POWER_CFG or {}).rest_mqtt_interval_sec)
     if sec then
         return sec
     end
-    local bcfg = _G.BATTERY_CFG or {}
-    return clampStatusIntervalSec(bcfg.mqtt_report_interval_sec) or 30
+    return clampIv((_G.BATTERY_CFG or {}).mqtt_report_interval_sec) or 30
 end
 
 local function notifyStatusReportIntervalChanged()
@@ -1607,6 +1578,6 @@ function getState()
     }
 end
 
-loadStatusIntervalPersisted()
+loadIvCfg()
 
 return _M

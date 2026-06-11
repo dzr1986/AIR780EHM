@@ -9,6 +9,7 @@
 | `user/net_tcp.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → `archive/slim/user/net_tcp.lua` | ~8KB |
 | `user/sound_prompt.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → 本目录 | ~7KB |
 | `lib/mobile_info.lua` | 移入本目录；`mobile_info=false` | ~5KB |
+| `lib/usb_rndis.lua` | 移入本目录；`RNDIS_ENABLE=0` | ~9KB |
 | `lib/led_dual.lua` | dual 红蓝灯效参考（勿 require；门球用 `single_blue`） | ~4KB |
 
 移出后 `user+lib` 源码约 **330KB**（较满负荷约省 **20KB+**）。
@@ -34,6 +35,10 @@ copy archive\slim\user\sound_prompt.lua user\sound_prompt.lua
 # 周期蜂窝调试日志
 copy archive\slim\lib\mobile_info.lua lib\
 # app_config.lua: mobile_info=true
+
+# USB RNDIS 调试（config.lua RNDIS_ENABLE=1）
+copy archive\slim\lib\usb_rndis.lua lib\
+# config.lua: RNDIS_ENABLE=1
 
 # dual 红蓝灯（LED_CFG.mode=dual）：将 archive\slim\lib\led_dual.lua 实现合并进 lib\led.lua
 ```

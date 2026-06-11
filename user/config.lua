@@ -10,8 +10,8 @@ _G[_modname or (...)] = _M
 -- ============================================================
 -- 功能宏（与项目根 config.mk 保持一致）
 -- ============================================================
--- RNDIS_ENABLE: 1=开启 USB 网卡 | 0=关闭
-local RNDIS_ENABLE = 1
+-- RNDIS_ENABLE: 1=开启 USB 网卡 | 0=关闭（量产 flash 省 ~9KB；调试 copy archive/slim/lib/usb_rndis.lua）
+local RNDIS_ENABLE = 0
 -- LOW_POWER_ENABLE: 1=开启低功耗/rest | 0=关闭（与 ipc_device_gb28181 build/config.mk WITH_T3X_LOW_POWER 保持一致）
 local LOW_POWER_ENABLE = 1
 -- HOST_EVT_ENABLE: 1=PIRSTAT 扩展 has_work + HOSTIDLE 休眠查询 | 0=关闭（与 T3x WITH_T3X_HOSTEVT_SLEEP 对齐）
