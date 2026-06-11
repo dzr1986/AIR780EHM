@@ -101,6 +101,13 @@ local function escJson(s)
     return tostring(s or ""):gsub('"', '\\"')
 end
 
+local function msgIdPart(messageId)
+    if messageId and messageId ~= "" then
+        return string.format(',"messageId":"%s"', escJson(tostring(messageId)))
+    end
+    return ""
+end
+
 local function mqttTimestamp()
     return os.date("%Y-%m-%d %H:%M:%S")
 end
@@ -1254,17 +1261,13 @@ function publishDeviceIdentity(imei, gb28181Id, messageId)
     imei = imei or deviceNo
     gb28181Id = gb28181Id or ""
     local ret = (gb28181Id ~= "") and 0 or -1
-    local msgPart = ""
-    if messageId and messageId ~= "" then
-        msgPart = string.format(',"messageId":"%s"', escJson(tostring(messageId)))
-    end
     publishUplink({
         suffix = "identity",
         dataType = DT.UL_DEVICE_ID,
         no_conn = "no conn, skip id",
         fields = string.format(
             ',"imei":"%s","gb28181Id":"%s","ret":%d%s',
-            escJson(imei), escJson(gb28181Id), ret, msgPart),
+            escJson(imei), escJson(gb28181Id), ret, msgIdPart(messageId)),
         log = "pub 1006",
         log_args = { imei, gb28181Id, ret },
     })
@@ -1288,17 +1291,13 @@ function publishTfCardStatus(snap, messageId)
     local usedMb = tonumber(snap.used_mb) or 0
     local freeMb = tonumber(snap.free_mb) or 0
     local ret = (present == 1) and 0 or -1
-    local msgPart = ""
-    if messageId and messageId ~= "" then
-        msgPart = string.format(',"messageId":"%s"', escJson(tostring(messageId)))
-    end
     publishUplink({
         suffix = "tfcard",
         dataType = DT.UL_TF_CARD,
         no_conn = "no conn, skip tf",
         fields = string.format(
             ',"tfPresent":%d,"totalMb":%d,"usedMb":%d,"freeMb":%d,"ret":%d%s',
-            present, totalMb, usedMb, freeMb, ret, msgPart),
+            present, totalMb, usedMb, freeMb, ret, msgIdPart(messageId)),
         log = "pub 1007",
         log_args = { "present", present, "totalMb", totalMb, "usedMb", usedMb, "freeMb", freeMb, "ret", ret },
     })
@@ -1372,6 +1371,36 @@ function publishOtaStatus(stage, retCode, message, extra)
 end
 
 --- 1010 PIR 检测状态（2010 策略生效后硬件触发，或 2010 query；T3x 写盘确认时 pirStatus=t3x_active）
+local function publishPir1010(overrides)
+    overrides = type(overrides) == "table" and overrides or buildPirDetectExtra("detected")
+    publishPirDetect(overrides)
+end
+
+local function pirStateMedia()
+    local st = pir_ctrl.getState()
+    return st, st.mediaConfig or {}
+end
+
+local function publishPirFromState(overrides)
+    if not isConnected then
+        log.warn("net_mqtt", "no conn, skip pir")
+        return
+    end
+    local st, media = pirStateMedia()
+    overrides = type(overrides) == "table" and overrides or {}
+    publishPir1010({
+        status = overrides.status or "1",
+        pirStatus = overrides.pirStatus,
+        recording = overrides.recording ~= nil and overrides.recording or (st.recording and 1 or 0),
+        active = overrides.active,
+        action = overrides.action or media.action or "photo",
+        uploadMode = overrides.uploadMode or st.uploadMode or media.uploadMode or "auto",
+        quality = overrides.quality or st.quality or media.quality or "high",
+        snapshotPath = overrides.snapshotPath,
+        personCount = overrides.personCount,
+    })
+end
+
 function publishPirDetect(extra)
     extra = type(extra) == "table" and extra or buildPirDetectExtra("detected")
     local rec = (extra.recording == 1 or extra.recording == true) and 1 or 0
@@ -1410,39 +1439,20 @@ end
 
 --- T3x JPEG 已写入 SD → 1010（pirStatus=snapshot_saved，附 snapshotPath，不传图内容）
 function publishPirSnapshotDone(path)
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip snap")
-        return
-    end
-    local st = pir_ctrl.getState()
-    local media = st.mediaConfig or {}
-    publishPirDetect({
-        status = "1",
+    publishPirFromState({
         pirStatus = "snapshot_saved",
-        action = media.action or "photo",
-        uploadMode = st.uploadMode or media.uploadMode or "auto",
-        quality = st.quality or media.quality or "high",
-        recording = st.recording and 1 or 0,
+        action = nil,
         snapshotPath = path,
     })
 end
 
 --- T3x 首个 I 帧写盘确认 → 1010（pirStatus=t3x_active, active=1）
 function publishPirRecordActive()
-    if not isConnected then
-        log.warn("net_mqtt", "no conn, skip rec active")
-        return
-    end
-    local st = pir_ctrl.getState()
-    local media = st.mediaConfig or {}
-    publishPirDetect({
-        status = "1",
+    publishPirFromState({
         pirStatus = "t3x_active",
         recording = 1,
         active = 1,
-        action = media.action or "video",
-        uploadMode = st.uploadMode or media.uploadMode or "auto",
-        quality = st.quality or media.quality or "high",
+        action = "video",
     })
 end
 

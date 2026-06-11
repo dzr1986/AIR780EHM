@@ -579,7 +579,7 @@ local function logBurnDebug(...)
     end
 end
 
-local function logT3xBurnCheck(name, passed, detail)
+local function burnCheck(name, passed, detail)
     if not burnDebugEnabled() then
         return
     end
@@ -597,7 +597,7 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
     logBurnDebug("app", "burn checks", attemptIndex or 1, attemptTotal or 1)
     logBurnDebug("app", "burn cfg", "min", minPct, "req_valid", cfg.require_battery_valid ~= false, "allow_repeat", allowRepeat)
 
-    logT3xBurnCheck("runtime.APP_RUNTIME.battery_percent",
+    burnCheck("runtime.APP_RUNTIME.battery_percent",
         pct ~= nil,
         string.format("raw=%s mv=%s",
             tostring(_G.APP_RUNTIME and _G.APP_RUNTIME.battery_percent),
@@ -605,34 +605,34 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
 
     if cfg.require_battery_valid ~= false then
         if not pct then
-            logT3xBurnCheck("bat", false, string.format("need>=%d wait adc", minPct))
+            burnCheck("bat", false, string.format("need>=%d wait adc", minPct))
             failReason = failReason or "bat unknown"
         elseif pct < minPct then
-            logT3xBurnCheck("bat", false, string.format("%d<%d", pct, minPct))
+            burnCheck("bat", false, string.format("%d<%d", pct, minPct))
             failReason = failReason or string.format("bat %d < %d", pct, minPct)
         else
-            logT3xBurnCheck("bat", true, string.format("%d>=%d", pct, minPct))
+            burnCheck("bat", true, string.format("%d>=%d", pct, minPct))
         end
     else
-        logT3xBurnCheck("bat", true, "req_valid=off")
+        burnCheck("bat", true, "req_valid=off")
     end
 
     if pir_ctrl.isRecording and pir_ctrl.isRecording() then
-        logT3xBurnCheck("pir_rec", true, "will suspend")
+        burnCheck("pir_rec", true, "will suspend")
     else
-        logT3xBurnCheck("pir_rec", true, "idle")
+        burnCheck("pir_rec", true, "idle")
     end
 
-    logT3xBurnCheck("mqtt", true,
+    burnCheck("mqtt", true,
         state.mqtt_started and "on" or "off")
 
-    logT3xBurnCheck("burn_flag",
+    burnCheck("burn_flag",
         not (_G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active),
         string.format("BURN=%s active=%s",
             tostring(_G.T3X_BURN_MODE_ACTIVE), tostring(state.t3x_burn_active)))
 
     if not t3xModule or not t3xModule.getState then
-        logT3xBurnCheck("t3x", false, "no module")
+        burnCheck("t3x", false, "no module")
         failReason = failReason or "no t3x_ctrl"
     else
         local st = t3xModule.getState() or {}
@@ -642,13 +642,13 @@ local function checkT3xBurnPreconditionsOnce(attemptIndex, attemptTotal)
         end
         if st.in_boot_mode then
             if allowRepeat then
-                logT3xBurnCheck("bootmode", true, "repeat allowed")
+                burnCheck("bootmode", true, "repeat allowed")
             else
-                logT3xBurnCheck("bootmode", false, "already in boot")
+                burnCheck("bootmode", false, "already in boot")
                 failReason = failReason or "in boot"
             end
         else
-            logT3xBurnCheck("bootmode", true, "not in boot")
+            burnCheck("bootmode", true, "not in boot")
         end
     end
 

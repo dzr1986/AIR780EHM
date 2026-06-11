@@ -57,35 +57,37 @@ end
 
 -- dual 红蓝灯效见 archive/slim/lib/led_dual.lua（门球 single_blue 不编入 lib/）
 
-local function dualStub(name)
+local function dualNoop(name, redPin, bluePin, tailFn)
     state.call_count = state.call_count + 1
     state.last_action = name
     state.last_ok = false
+    if redPin and bluePin then
+        turnOff(redPin, bluePin)
+    end
+    if tailFn then
+        return tailFn()
+    end
+    return false
 end
 
-function runSteps(_redPin, _bluePin, _steps, _rounds)
-    dualStub("runSteps")
-    return false
+function runSteps(redPin, bluePin, _steps, _rounds)
+    return dualNoop("runSteps", redPin, bluePin)
 end
 
 function runStartupSequence(redPin, bluePin, _startupConfig)
-    dualStub("runStartupSequence")
-    turnOff(redPin, bluePin)
-    return false
+    return dualNoop("runStartupSequence", redPin, bluePin)
 end
 
 function runSinglePattern(redPin, bluePin, _activePin, _patternConfig)
-    dualStub("runSinglePattern")
-    turnOff(redPin, bluePin)
-    return false
+    return dualNoop("runSinglePattern", redPin, bluePin)
 end
 
 function runBatteryPattern(redPin, bluePin, _batteryPercent, batteryConfig)
-    dualStub("runBatteryPattern")
-    turnOff(redPin, bluePin)
-    local battery = type(batteryConfig) == "table" and batteryConfig or {}
-    sys.wait(battery.unknown_hold or 0)
-    return "unknown"
+    return dualNoop("runBatteryPattern", redPin, bluePin, function()
+        local battery = type(batteryConfig) == "table" and batteryConfig or {}
+        sys.wait(battery.unknown_hold or 0)
+        return "unknown"
+    end)
 end
 
 --- 闪烁指示灯
@@ -120,13 +122,11 @@ function blinkPwm(ledPin, light, dark)
 end
 
 function levelLed(_ledPin, _bl, _bd, _cnt, _gap)
-    dualStub("levelLed")
-    return false
+    return dualNoop("levelLed")
 end
 
 function breateLed(_ledPin)
-    dualStub("breateLed")
-    return false
+    return dualNoop("breateLed")
 end
 
 function getState()

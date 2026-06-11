@@ -271,14 +271,33 @@ local function build_pir_wake_context()
     return pirBody, wakeValid, wakeSid, wakeEvt, sum, he
 end
 
-local function build_hostevt_body()
-    local pirBody, _, _, _, sum = build_pir_wake_context()
-    if sum then
-        return string.format("has_event=%d,pending=%s,types=%s,sid=%d,evt=%d%s",
-            sum.has_event, sum.pending, sum.types, sum.sid or 0, sum.evt or -1,
-            build_hostevt_media_suffix(pirBody))
+local function build_pir_wake_body(hostevt)
+    local pirBody, wakeValid, wakeSid, wakeEvt, sum, he = build_pir_wake_context()
+    local media = build_hostevt_media_suffix(pirBody)
+    if hostevt then
+        if sum then
+            return string.format("has_event=%d,pending=%s,types=%s,sid=%d,evt=%d%s",
+                sum.has_event, sum.pending, sum.types, sum.sid or 0, sum.evt or -1, media)
+        end
+        return "has_event=0,pending=none,types=,sid=0,evt=-1" .. media
     end
-    return "has_event=0,pending=none,types=,sid=0,evt=-1" .. build_hostevt_media_suffix(pirBody)
+    local body = pirBody
+    if wakeValid then
+        body = body .. string.format(",pending_wake=1,pending_sid=%d,pending_evt=%d", wakeSid, wakeEvt)
+    else
+        body = body .. ",pending_wake=0"
+    end
+    if he and he.isEnabled and he.isEnabled() and sum then
+        body = body .. string.format(",has_work=%d,work_types=%s,work_pending=%s,work_sid=%d,work_evt=%d",
+            sum.has_event, sum.types, sum.pending, sum.sid or 0, sum.evt or -1)
+    else
+        body = body .. ",has_work=0,work_types=,work_pending=none,work_sid=0,work_evt=-1"
+    end
+    return body
+end
+
+local function build_hostevt_body()
+    return build_pir_wake_body(true)
 end
 
 function buildHostEvtBody()
@@ -479,21 +498,7 @@ local function uart_getcfg(_cmd)
 end
 
 local function build_pirstat_body()
-    local pirBody, wakeValid, wakeSid, wakeEvt, sum, he = build_pir_wake_context()
-    local body = pirBody
-    if wakeValid then
-        body = body .. string.format(",pending_wake=1,pending_sid=%d,pending_evt=%d",
-            wakeSid, wakeEvt)
-    else
-        body = body .. ",pending_wake=0"
-    end
-    if he and he.isEnabled and he.isEnabled() and sum then
-        body = body .. string.format(",has_work=%d,work_types=%s,work_pending=%s,work_sid=%d,work_evt=%d",
-            sum.has_event, sum.types, sum.pending, sum.sid or 0, sum.evt or -1)
-    else
-        body = body .. ",has_work=0,work_types=,work_pending=none,work_sid=0,work_evt=-1"
-    end
-    return body
+    return build_pir_wake_body(false)
 end
 
 local function uart_pirstat_query(_cmd)
