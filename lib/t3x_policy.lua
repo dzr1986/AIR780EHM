@@ -1,31 +1,20 @@
---- T3x 上电/唤醒统一门禁（电量、USB、低功耗、烧录）
--- 见 doc/LOW_BATTERY_AND_LOW_POWER.md §5
--- @module t3x_policy
--- @release v1.2
-
 require "sys"
 require "config"
-
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-
 local LOG_TAG = "t3x_policy"
 local lastDenyReason = ""
-
 local function cfg()
-    return _G.T3X_POLICY_CFG or _G.T3X_POLICY_CFG or {}
+    return _G.T3X_POLICY_CFG or {}
 end
-
 local function guardCfg()
     local root = _G.BATTERY_CFG or {}
     return root.guard or {}
 end
-
 function getDenyReason()
     return lastDenyReason
 end
-
 function isUsbInserted()
     local ok, up = pcall(require, "usb_policy")
     if ok and type(up) == "table" and up.isUsbInserted then
@@ -37,7 +26,6 @@ function isUsbInserted()
     end
     return false
 end
-
 function getBatteryPercent()
     local rt = _G.APP_RUNTIME
     if rt then
@@ -48,25 +36,19 @@ function getBatteryPercent()
     end
     return nil
 end
-
 function isLowPowerMode()
     local rt = _G.APP_RUNTIME
     return rt and tonumber(rt.low_power_mode) == 1
 end
-
 function isBurnActive()
     if _G.T3X_BURN_MODE_ACTIVE then
         return true
     end
     return false
 end
-
---- 是否允许 T3x GPIO22 上电或 notify 唤醒
--- opts.force_wake: 显式退出低功耗/USB 恢复等，仍受 USB/烧录约束，但忽略 low_power 与低电量
 function mayPowerT3x(reason, opts)
     opts = type(opts) == "table" and opts or {}
     lastDenyReason = ""
-
     if cfg().enabled == false then
         return true
     end
@@ -74,24 +56,19 @@ function mayPowerT3x(reason, opts)
     if flags and flags.t3x_policy == false then
         return true
     end
-
     if isBurnActive() then
         return true
     end
-
     if isUsbInserted() then
         return true
     end
-
     if opts.force_wake then
         return true
     end
-
     if cfg().block_wake_in_low_power ~= false and isLowPowerMode() then
         lastDenyReason = "low_power_mode=rest"
         return false
     end
-
     local pct = getBatteryPercent()
     local blockPct = tonumber(cfg().block_wake_below_percent)
     if blockPct == nil then
@@ -101,11 +78,8 @@ function mayPowerT3x(reason, opts)
         lastDenyReason = string.format("battery<=%d%%", blockPct)
         return false
     end
-
     return true
 end
-
---- 是否响应 MQTT 离线硬唤醒（evt=2）
 function shouldWakeOnMqttOffline()
     if cfg().block_mqtt_offline_wake == false then
         return mayPowerT3x("mqtt_offline")
@@ -116,19 +90,14 @@ function shouldWakeOnMqttOffline()
     end
     return mayPowerT3x("mqtt_offline")
 end
-
---- 请求唤醒 T3x：先门禁，再 host_uart / t3x_ctrl
 function requestT3xWake(reason, sid, evt, opts)
     reason = reason or "wake"
     sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
     evt = evt or 0
     opts = type(opts) == "table" and opts or {}
-
     if not mayPowerT3x(reason, opts) then
-        log.info(LOG_TAG, "skW", reason, lastDenyReason)
         return false
     end
-
     if _G.MODULE_FLAGS and _G.MODULE_FLAGS.t3x_wakeup
         and (_G.MODULE_FLAGS.t3x_app ~= false) then
         local okTs, time_sync = pcall(require, "time_sync")
@@ -146,7 +115,6 @@ function requestT3xWake(reason, sid, evt, opts)
             return hu.notify_host(sid, evt) ~= false
         end
     end
-
     local t3x = _G.t3x_ctrl
     if not t3x then
         local ok, mod = pcall(require, "t3x_ctrl")
@@ -158,11 +126,8 @@ function requestT3xWake(reason, sid, evt, opts)
     end
     return false
 end
-
---- 启动时是否给 T3x 上电
 function bootPowerOn(t3xModule)
     if not mayPowerT3x("boot") then
-        log.info(LOG_TAG, "skipPwr", lastDenyReason)
         return false
     end
     if t3xModule and t3xModule.powerOn then
@@ -170,5 +135,4 @@ function bootPowerOn(t3xModule)
     end
     return false
 end
-
 return _M

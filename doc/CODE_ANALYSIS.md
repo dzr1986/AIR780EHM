@@ -39,7 +39,7 @@
 | 外设聚合 | `peripheral.lua` + `led_ctrl.lua` | ~400 |
 | 配置 | `config.lua` | ~350 |
 
-通用库在 **`lib/`**（uart、USB、蜂窝、唤醒等）；PIR/按键/LED/电池/OTA/授时已合并进 **`user/`**。历史代码在 **`lib/archive/`**，不参与启动。
+通用库在 **`lib/`**（uart、USB、蜂窝、唤醒等）；PIR/按键/LED/电池/OTA/授时已合并进 **`user/`**。历史代码在 **`archive/`**，不参与启动。
 
 ---
 
@@ -170,7 +170,7 @@ bootMqtt (sys.taskInit)
 | **业务低功耗** | `app.onEnterLowPower` | `APP_RUNTIME.low_power_mode=1`、`t3x_ctrl.enterSleep()`、`publishRest` |
 | **t3x_ctrl.enterSleep** | 内部调用 **`pm.hibernate()`** | 会挂起 Lua 协程，属模组休眠 API，不仅是“标记 t3x 睡眠” |
 | **t3x_ctrl.enterDeepSleep** | `uart_bridge.stop` + **`pm.deepSleep()`** | 当前主路径 **未调用** |
-| **模组 WORK_MODE** | 未接 | `lib/archive/powerMode.lua` 未启用 |
+| **模组 WORK_MODE** | 未接 | `archive/powerMode.lua` 未启用 |
 
 上电无 USB 且 `pmd_runtime=false` 时，`initPowerStatus` 会直接进业务低功耗，但 **MQTT 仍由 `bootMqtt` 启动**（与旧版“USB 常插不连 MQTT”不同）。
 
@@ -383,7 +383,7 @@ user/vbat        →  自包含 ADC（不 require lib/adc_lib）
 
 PIR / 按键 / LED / 电池 / OTA 已合并至 `user/pir_ctrl`、`user/peripheral`、`user/led_ctrl`、`user/vbat`、`user/fota_svc`。
 
-**禁止**主路径 `require lib/archive/*`；复用见 `lib/archive/README.md`。
+**禁止**主路径 `require archive/*`；历史库仅供归档查阅，不参与主路径启动。
 
 ---
 
@@ -416,7 +416,7 @@ PIR / 按键 / LED / 电池 / OTA 已合并至 `user/pir_ctrl`、`user/periphera
 | [PIR_PROTOCOL.md](./PIR_PROTOCOL.md) | PIR 策略与停录 |
 | [CONFIG.md](./CONFIG.md) | 配置分层索引（勿与历史 projectConfig 混用） |
 | [../README.md](../README.md) | 工程总览 |
-| [../lib/archive/README.md](../lib/archive/README.md) | 归档库 |
+| [../archive/README.md](../archive/README.md) | 归档库 |
 
 ---
 

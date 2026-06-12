@@ -28,7 +28,7 @@ main.lua
 | 文档 | [`doc/`](doc/)（见 [doc/CONFIG.md](doc/CONFIG.md)） |
 | 栈选择 | `APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }` |
 | 核心固件 | `luatos.json` → Air780EHM SOC |
-| 脚本区 | 约 **384KB** 上限；可选模块见 [`archive/slim/README.md`](archive/slim/README.md) |
+| 脚本区 | 约 **384KB** 上限；可选模块见 [doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md) |
 
 ## 目录
 
@@ -37,7 +37,7 @@ main.lua
 | `user/` | 入口、编排、MQTT、t3x_ctrl、PIR、外设、OTA、授时 |
 | `lib/` | 串口、GPIO 工具、USB/蜂窝/唤醒/策略等公共库 |
 | `doc/` | 协议、硬件、配置说明（Markdown） |
-| `lib/archive/` | 旧栈（不参与启动） |
+| `archive/` | 历史归档（已移除，说明已并入 `doc/`） |
 
 ### lib/ 主路径（参与启动）
 

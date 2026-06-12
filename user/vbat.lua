@@ -1,38 +1,25 @@
---- 电池采样 v2：分压点 ADC → 电芯 mV → 百分比（新模块名，绕过 flash 内旧 bat_adc.lua）
--- 分压 R=1000K + Rx=510K，见 config.lua BATTERY_CFG.adc
--- @module vbat
--- @release 2026.5.26
-
 require "sys"
 require "config"
-
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-
 local LOG_TAG = "vbat"
 local BUILD_TAG = "v2-divider"
-
 local taskStarted = false
 local voltageMv, percent, consumptionRate = 0, 0, 0
 local lastPercent, lastReadTime
-
 local function getCfg()
     return _G.BATTERY_CFG or {}
 end
-
 local function getAdcCfg()
     return getCfg().adc or {}
 end
-
 local function getCellCfg()
     return getCfg().cell or {}
 end
-
 local function sampleIntervalMs()
     return getCfg().sample_interval_ms or (10 * 1000)
 end
-
 local function resolveMvScale()
     local adcCfg = getAdcCfg()
     local s = tonumber(adcCfg.mv_scale)
@@ -49,11 +36,9 @@ local function resolveMvScale()
     end
     return 1510 / 510
 end
-
 local function pinToCellMv(pinMv, scale)
     return math.floor(pinMv * scale + 0.5)
 end
-
 local function percentFromCellMv(cellMv)
     local vmax = tonumber(getCellCfg().v_max_mv) or 4200
     local vmin = tonumber(getCellCfg().v_min_mv) or 3000
@@ -70,7 +55,6 @@ local function percentFromCellMv(cellMv)
     end
     return math.floor(p)
 end
-
 local function updateConsumptionRate(currentPercent)
     local rate = 0
     local now = os.time()
@@ -85,7 +69,6 @@ local function updateConsumptionRate(currentPercent)
     lastReadTime = now
     return rate
 end
-
 local function exportGlobals(pct, cellMv, rate)
     local rt = _G.APP_RUNTIME
     if not rt then
@@ -95,7 +78,6 @@ local function exportGlobals(pct, cellMv, rate)
     rt.battery_mv = cellMv
     rt.battery_consumption_rate = tostring(rate or 0)
 end
-
 local function getChannel()
     local c = getAdcCfg().channel
     if c == nil then
@@ -103,7 +85,6 @@ local function getChannel()
     end
     return c
 end
-
 local function applyAdcRange(ad)
     if not ad or not ad.setRange then
         return
@@ -116,7 +97,6 @@ local function applyAdcRange(ad)
         ad.setRange(range)
     end
 end
-
 local function readPinOnce(ad, channel)
     if ad.read then
         local _, mv = ad.read(channel)
@@ -132,7 +112,6 @@ local function readPinOnce(ad, channel)
     end
     return nil
 end
-
 local function readPinMillivolts(ad, channel)
     local sum, n = 0, 0
     for _ = 1, 3 do
@@ -147,20 +126,15 @@ local function readPinMillivolts(ad, channel)
     end
     return math.floor(sum / n + 0.5)
 end
-
 local function batteryTask()
     if not adc or not adc.open then
-        log.warn(LOG_TAG, "ADC 不可用")
         return
     end
-
     local channel = getChannel()
     applyAdcRange(adc)
     adc.open(channel)
-
     local scale = resolveMvScale()
     log.info(LOG_TAG, BUILD_TAG, "ch", channel, "sc", string.format("%.4f", scale))
-
     while true do
         local pinMv = readPinMillivolts(adc, channel)
         if pinMv then
@@ -169,12 +143,10 @@ local function batteryTask()
             consumptionRate = updateConsumptionRate(percent)
             exportGlobals(percent, voltageMv, consumptionRate)
             sys.publish("BATTERY_UPDATE", percent, voltageMv, consumptionRate)
-            log.info(LOG_TAG, "pin", pinMv, "mv", voltageMv, "mV", percent, "%")
         end
         sys.wait(sampleIntervalMs())
     end
 end
-
 function start()
     if taskStarted then
         return false
@@ -183,19 +155,15 @@ function start()
     sys.taskInit(batteryTask)
     return true
 end
-
 function getVoltage()
     return voltageMv
 end
-
 function getPercent()
     return percent
 end
-
 function getConsumptionRate()
     return consumptionRate
 end
-
 function getState()
     return {
         started = taskStarted,
@@ -208,5 +176,4 @@ function getState()
         consumptionRate = consumptionRate,
     }
 end
-
 return _M

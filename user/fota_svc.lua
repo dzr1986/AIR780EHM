@@ -1,14 +1,11 @@
---- FOTA（MQTT 2004）；@module fota_svc
 require "sys"
 require "sysplus"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-
 local L = "fot"
 local IOT_UPGRADE_URL = "http://iot.openluat.com/api/site/firmware_upgrade?"
 local IOT_HOST = "iot.openluat.com"
-
 local started = false
 local busy = false
 local lastResult = nil
@@ -23,7 +20,6 @@ local config = {
     auto_reboot_on_success = true,
 }
 local handlers = { publishStatus = nil }
-
 local function mergeConfig(newConfig)
     if type(newConfig) ~= "table" then return end
     for k, v in pairs(newConfig) do
@@ -32,14 +28,11 @@ local function mergeConfig(newConfig)
         end
     end
 end
-
 local function reportStatus(stage, retCode, message, extra)
-    log.info(L, "st", stage, retCode, message)
     if handlers.publishStatus then
         handlers.publishStatus(stage, retCode, message, extra)
     end
 end
-
 local function waitNetworkReady(timeoutMs)
     timeoutMs = tonumber(timeoutMs) or 120000
     if socket and socket.localIP then
@@ -50,34 +43,26 @@ local function waitNetworkReady(timeoutMs)
     local ip = (socket and socket.localIP and socket.localIP()) or nil
     return ok and ip ~= nil and ip ~= "" and ip ~= "0.0.0.0", ip
 end
-
 local function resolveOtaVersion(ver)
     if _G.resolveIotOtaVersion then
         return _G.resolveIotOtaVersion(ver)
     end
     return ver
 end
-
 local function logIotHttpError(url, body)
     if not url or not url:find(IOT_HOST, 1, true) then return end
     local data, ok = json.decode(body)
-    if ok == 1 and type(data) == "table" and data.code then
-        log.info(L, "iotC", data.code)
-    end
 end
-
 local function defaultFirmwareName()
     local bsp = rtos.bsp()
     if bsp:find("-") then bsp = bsp:sub(1, bsp:find("-") - 1) end
     return (_G.PROJECT or "PANSHI_CAT1") .. "_LuatOS-SoC_" .. bsp
 end
-
 local function defaultDeviceQuery()
     if mobile then return "imei=" .. mobile.imei() end
     if wlan and wlan.getMac then return "mac=" .. wlan.getMac() end
     return "uid=" .. mcu.unique_id():toHex()
 end
-
 local function fotaHttpTask(cbFnc, opts)
     local ret = 0
     local code, _, body = http.request(
@@ -89,33 +74,27 @@ local function fotaHttpTask(cbFnc, opts)
     elseif code == -4 then ret = 1
     elseif code == -5 then ret = 3
     elseif code == 401 or code == 403 then
-        log.error(L, "http", code)
         logIotHttpError(opts.url, body)
         ret = 3
     elseif code >= 300 then
-        log.error(L, "http", code, body)
         logIotHttpError(opts.url, body)
         ret = 3
     else
-        log.error(L, "http", code, body)
         ret = 4
         logIotHttpError(opts.url, body)
     end
     cbFnc(ret)
 end
-
 local function buildIotUpgradeUrl(opts)
     if not opts.project_key then
         opts.project_key = _G.PRODUCT_KEY
         if not opts.project_key then
-            log.error(L, "noPK")
             return false
         end
     end
     if not opts.version then opts.version = _G.IOT_VERSION or _G.VERSION end
     local iotVer = resolveOtaVersion(opts.version)
     if not iotVer then
-        log.error(L, "ver?", opts.version)
         return false
     end
     if iotVer ~= opts.version then log.info(L, "iotV", opts.version, iotVer) end
@@ -132,7 +111,6 @@ local function buildIotUpgradeUrl(opts)
     end
     return true, query
 end
-
 local function httpFotaRequest(cbFnc, opts)
     opts = opts or {}
     if fota then opts.fota = true
@@ -147,10 +125,8 @@ local function httpFotaRequest(cbFnc, opts)
     end
     opts.url_done = true
     opts.method = opts.method or "GET"
-    log.info(L, "req", opts.version or opts.url)
     sys.taskInit(fotaHttpTask, cbFnc, opts)
 end
-
 local function buildIotOpts(data)
     data = type(data) == "table" and data or {}
     local url = data.url or data.otaUrl or data.firmwareUrl
@@ -170,7 +146,6 @@ local function buildIotOpts(data)
     if fw and fw ~= "" then opts.firmware_name = fw end
     return opts
 end
-
 local function validateIotConfig(opts)
     if opts.url then return true end
     if not opts.project_key or opts.project_key == "" then return false, "missing_product_key" end
@@ -178,7 +153,6 @@ local function validateIotConfig(opts)
     if not _G.PROJECT or _G.PROJECT == "" then return false, "missing_project" end
     return true
 end
-
 local FOTA_RET = {
     [0] = { "success", "download_ok", true },
     [1] = { "failed", "connect_failed" },
@@ -187,18 +161,15 @@ local FOTA_RET = {
     [4] = { "failed", "recv_error" },
     [5] = { "failed", "version_format_error" },
 }
-
 local function fota_cb(ret)
     busy = false
     lastResult = ret
-    log.info(L, "ret", ret)
     local row = FOTA_RET[ret] or { "failed", "unknown_ret_" .. tostring(ret) }
     reportStatus(row[1], ret, row[2], lastPayload)
     if ret == 0 and row[3] and config.auto_reboot_on_success ~= false then
         rtos.reboot()
     end
 end
-
 local function autoOta(data)
     sys.taskInit(function()
         if busy then
@@ -238,34 +209,28 @@ local function autoOta(data)
         end
     end)
 end
-
 function configure(newConfig)
     mergeConfig(newConfig)
     return config
 end
-
 function getConfig()
     return config
 end
-
 function request(data)
     autoOta(data)
     return true
 end
-
 function start(options)
     if started then return false end
     if _G.FOTA_CFG then mergeConfig(_G.FOTA_CFG) end
     if options and options.publishStatus then handlers.publishStatus = options.publishStatus end
     if options then mergeConfig(options) end
-    local evt = (_G.APP_EVENTS and _G.APP_EVENTS.DEVICE_OTA_REQUEST) or "APP_DEVICE_OTA_REQUEST"
+    local evt = (_G.APP_EVENTS and _G.APP_EVENTS.DEVICE_OTA_REQUEST) or "device_ota_request"
     sys.subscribe(evt, autoOta)
     sys.subscribe("REST_SEND_OTA", autoOta)
     started = true
-    log.info(L, "on", evt)
     return true
 end
-
 function getState()
     return {
         started = started,
@@ -276,5 +241,4 @@ function getState()
         iot_version = _G.IOT_VERSION,
     }
 end
-
 return _M

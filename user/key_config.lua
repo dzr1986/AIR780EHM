@@ -1,22 +1,13 @@
---- 按键业务（引脚来自 config.GPIO_IN）
--- @module key_config
--- @release 2026.5.20
-
 require "config"
-
 module(..., package.seeall)
 _G[_modname or (...)] = _M
-
 local IN = _G.GPIO_IN or {}
-
--- 优先 gpio.PWR_KEY（模组硬件开机键），与 config.GPIO_IN.pwr_key 一致
 local function pwrKeyPin()
     if gpio and gpio.PWR_KEY then
         return gpio.PWR_KEY
     end
     return IN.pwr_key and IN.pwr_key.pin
 end
-
 _G.KEY_CONFIG = {
     pwrkey = {
         pin = pwrKeyPin(),
@@ -44,5 +35,4 @@ _G.KEY_CONFIG = {
         event = "GPIO_COPROC_READY",
     },
 }
-
 return _M

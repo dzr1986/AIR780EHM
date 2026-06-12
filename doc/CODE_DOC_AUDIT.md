@@ -58,7 +58,7 @@ flowchart TD
 | 目录 | 数量 | 对照文档 |
 |------|------|----------|
 | `user/*.lua` | ~20 | `PROJECT_DOC.md` §9、`README.md` |
-| `lib/*.lua` | 18 | `lib/archive/README.md`、`CALL_GRAPH.md` §8 |
+| `lib/*.lua` | 18 | `archive/README.md`、`CALL_GRAPH.md` §8 |
 
 ---
 

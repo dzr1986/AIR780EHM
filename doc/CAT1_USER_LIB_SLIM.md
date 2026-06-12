@@ -2,7 +2,7 @@
 
 > **完整流程文档**：[CAT1_SLIMMING_FLOW.md](./CAT1_SLIMMING_FLOW.md)（推荐先看）  
 > 发布用 `luatos.json` → `only_luac_code=True`。  
-> **脚本区上限约 384KB**（Air780EHM）：`MODULE_FLAGS=false` **不减烧录体积**，须把 `.lua` 移出 `user/`/`lib/` → 见 [`archive/slim/README.md`](../archive/slim/README.md)。  
+> **脚本区上限约 384KB**（Air780EHM）：`MODULE_FLAGS=false` **不减烧录体积**，须做等价桩文件与裁剪（本页已合并原 `archive/slim/README.md` 内容）。  
 > **原则**：T3x 能做的放 T3x（编码 2021/2020、GB28181、录像）；4G 只做 MQTT + UART 编排。
 
 ---
@@ -37,15 +37,21 @@
 
 已在 `app.lua` 对 `battery/charge/mobile_info/fota/rndis/sntp/sound_prompt/time_sync` 做 **flag=false 时不 require**（仅省 RAM/启动，**不省 flash**）。
 
-### 2.1 脚本区 384KB 瘦身（`archive/slim/`）
+### 2.1 脚本区 384KB 瘦身（已并入文档）
 
 | 处理 | 约省 | 说明 |
 |------|------|------|
-| `user/net_tcp.lua` → **桩** | ~8KB | 文件名须留；完整版 `archive/slim/user/net_tcp_full.lua` |
+| `user/net_tcp.lua` → **桩** | ~8KB | 文件名须留；完整版请从历史版本标签恢复 |
 | `user/sound_prompt.lua` 移出 | ~7KB | `sound_prompt=false` |
 | `(已删除)` 移出 | ~5KB | `mobile_info=false` |
 
-**不可删**：`user/net_mqtt.lua`。详见 [`archive/slim/README.md`](../archive/slim/README.md)。
+**不可删**：`user/net_mqtt.lua`。
+
+恢复指引（archive 已移除）：
+1. 需恢复 TCP 完整版时，从历史提交恢复 `user/net_tcp.lua` 完整实现。
+2. 需恢复提示音完整版时，从历史提交恢复 `user/sound_prompt.lua` 完整实现。
+3. 需恢复 mobile_info 周期调试时，从历史提交恢复 `lib/mobile_info.lua`，并将 `mobile_info=true`。
+4. 需恢复 RNDIS 调试扩展时，保留 `RNDIS_ENABLE=1` 并恢复相关实现。
 
 ---
 

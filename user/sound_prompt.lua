@@ -1,24 +1,17 @@
---- 提示音：4G AT+PLAYSOUND → T3x 播放（见 doc/BOOT_SHUTDOWN_SOUND.md）
--- @module sound_prompt
 require "sys"
 require "config"
-
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-
 local LOG_TAG = "snd"
 local ACK_EVENT = "SOUND_PROMPT_ACK"
-
 local uart_bridge
 local t3xModule
 local coldBootPlayed = false
 local bootColdTaskStarted = false
-
 local function cfg()
     return _G.SOUND_CFG or {}
 end
-
 local function enabled()
     if cfg().enabled == false then
         return false
@@ -29,11 +22,9 @@ local function enabled()
     end
     return true
 end
-
 local function isBurnActive()
     return _G.T3X_BURN_MODE_ACTIVE
 end
-
 function shouldPlay(scene)
     if not enabled() or isBurnActive() then
         return false
@@ -52,7 +43,6 @@ function shouldPlay(scene)
     end
     return false
 end
-
 local function getUart()
     if uart_bridge then
         return uart_bridge
@@ -66,9 +56,7 @@ local function getUart()
     end
     return uart_bridge
 end
-
 local ipcMod
-
 local function t3xOn(extra)
     if ipcMod == nil then
         local ok, m = pcall(require, "t3x_ctrl")
@@ -81,7 +69,6 @@ local function t3xOn(extra)
         t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
     })
 end
-
 local function waitSoundAck(name, timeoutMs)
     local deadline = (mcu and mcu.ticks and mcu.ticks() or 0) + timeoutMs
     while true do
@@ -101,7 +88,6 @@ local function waitSoundAck(name, timeoutMs)
         end
     end
 end
-
 function playBlocking(name, scene)
     if not name or name == "" then
         return false
@@ -112,37 +98,24 @@ function playBlocking(name, scene)
     if not enabled() then
         return false
     end
-
     local ub = getUart()
     if not ub or not ub.sendString then
-        log.warn(LOG_TAG, "noUb", name)
         return false
     end
-
     t3xOn()
-
     local timeoutMs = tonumber(cfg().play_timeout_ms) or 2500
     if scene == "boot_cold" then
         coldBootPlayed = true
     end
-    log.info(LOG_TAG, "play", name, "sc", scene or "--")
     ub.sendString("AT+PLAYSOUND=" .. name, true)
-
     local ok = waitSoundAck(name, timeoutMs)
-    if ok then
-        log.info(LOG_TAG, "ok", name)
-    else
-        log.warn(LOG_TAG, "to", name, timeoutMs, "ms")
-    end
     return ok
 end
-
 function onSoundAck(name)
     if name and name ~= "" then
         sys.publish(ACK_EVENT, name)
     end
 end
-
 function onAppStarted()
     if bootColdTaskStarted or not shouldPlay("boot_cold") then
         return
@@ -160,13 +133,11 @@ function onAppStarted()
                     ready_timeout_ms = timeoutMs,
                     poll_ms = ipcCfg.ready_poll_ms,
                 }) then
-                    log.warn(LOG_TAG, "rdTo", timeoutMs)
                     return
                 end
             else
-                local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+                local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "host_uart_first_at"
                 if not sys.waitUntil(evt, timeoutMs) then
-                    log.warn(LOG_TAG, "1stTo", timeoutMs)
                     return
                 end
             end
@@ -174,7 +145,6 @@ function onAppStarted()
         playBlocking("boot", "boot_cold")
     end)
 end
-
 function onWakeFromLowPower()
     if not shouldPlay("boot_wake") then
         return
@@ -183,7 +153,6 @@ function onWakeFromLowPower()
         playBlocking("boot", "boot_wake")
     end)
 end
-
 function playShutdownThen(reason, callback)
     reason = reason or "user"
     local scene = "shutdown_user"
@@ -192,7 +161,6 @@ function playShutdownThen(reason, callback)
     elseif reason == "battery" then
         scene = "shutdown_battery"
     end
-
     sys.taskInit(function()
         if shouldPlay(scene) then
             playBlocking("shutdown", scene)
@@ -202,13 +170,10 @@ function playShutdownThen(reason, callback)
         end
     end)
 end
-
 function start(opts)
     if type(opts) == "table" and opts.t3x then
         t3xModule = opts.t3x
     end
-    log.info(LOG_TAG, "on")
     return true
 end
-
 return _M

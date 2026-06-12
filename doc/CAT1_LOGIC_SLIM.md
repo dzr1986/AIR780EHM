@@ -2,7 +2,7 @@
 
 > **分支**：`cat1_slim_logic`（基于 `lowpwr_t3x_cat1`）  
 > **原则**：合并重复逻辑、统一策略单点；**不删 MQTT/PIR/低功耗/提示音等业务能力**。  
-> **关联**：[CAT1_SLIMMING_FLOW.md](./CAT1_SLIMMING_FLOW.md)（Flash 移文件）、[CAT1_USER_LIB_SLIM.md](./CAT1_USER_LIB_SLIM.md)（开关速查）、[`archive/slim/README.md`](../archive/slim/README.md)
+> **关联**：[CAT1_SLIMMING_FLOW.md](./CAT1_SLIMMING_FLOW.md)（Flash 移文件）、[CAT1_USER_LIB_SLIM.md](./CAT1_USER_LIB_SLIM.md)（开关速查）
 
 ---
 

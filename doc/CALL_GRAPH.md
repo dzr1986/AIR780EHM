@@ -232,7 +232,7 @@ app subscribe:
 
 PIR / 按键 / LED / 电池 / OTA / SNTP 在 `user/`（`pir_ctrl`、`peripheral`、`led_ctrl`、`vbat`、`fota_svc`、`time_sync`）。
 
-| `lib/archive/` | 旧 MQTT 栈、powerMode、演示库（不参与启动） |
+| `archive/` | 旧 MQTT 栈、powerMode、演示库（不参与启动） |
 
 ---
 

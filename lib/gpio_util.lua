@@ -1,35 +1,22 @@
---- GPIO 工具：输入中断、输出上电初始化（读 config.GPIO_IN / GPIO_OUT）
--- @module gpio_util
--- @release 2026.5.21
-
 require "sys"
 require "config"
-
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-
 function trigger_mode(mode)
     return ({ rising = 0, falling = 1, both = 2 })[mode] or 0
 end
-
 function pull(pull_name)
     return ({ pullup = 1, pulldown = 2 })[pull_name] or 1
 end
-
---- 取输入项 pin 号
 function in_pin(name)
     local e = _G.GPIO_IN and _G.GPIO_IN[name]
     return e and e.pin
 end
-
---- 取输出项 pin 号
 function out_pin(name)
     local e = _G.GPIO_OUT and _G.GPIO_OUT[name]
     return e and e.pin
 end
-
---- 配置 GPIO 中断输入（opts 可覆盖 entry 内字段）
 function setup_input(pin, callback, opts)
     if not pin or not callback then
         return false
@@ -47,8 +34,6 @@ function setup_input(pin, callback, opts)
     end
     return true
 end
-
---- 按 GPIO_IN 表项注册中断
 function setup_input_entry(entry, callback, overrides)
     if not entry or not entry.pin then
         return false
@@ -65,8 +50,6 @@ function setup_input_entry(entry, callback, overrides)
     end
     return setup_input(entry.pin, callback, opts)
 end
-
---- 输出脚初始化，返回 gpio.setup 句柄（可 gpio.handle(level)）
 function setup_output(entry)
     if not entry or not entry.pin then
         return nil
@@ -77,8 +60,6 @@ function setup_output(entry)
     end
     return gpio.setup(entry.pin, level)
 end
-
---- 写到 on_level / 灭到 init_level
 function set_output(entry, on)
     if not entry or not entry.pin then
         return false
@@ -87,5 +68,4 @@ function set_output(entry, on)
     gpio.set(entry.pin, level)
     return true
 end
-
 return _M

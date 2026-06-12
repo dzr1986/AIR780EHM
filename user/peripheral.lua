@@ -1,14 +1,11 @@
---- 外设：LED + 按键 + PIR（原 peripheral + lib/key）
 require "sys"
 require "sysplus"
 require "config"
 local gpio_util = require "gpio_util"
 local led_ctrl = require "led_ctrl"
 local pir_ctrl = require "pir_ctrl"
-
 local _M = {}
 module(..., package.seeall)
-
 local LOG_TAG = "peri"
 local keyStarted = false
 local bootCfg, pwrCfg, readyCfg
@@ -16,23 +13,19 @@ local pressStates = {
     boot = { timer = nil, long_fired = false },
     pwr = { timer = nil, long_fired = false },
 }
-
 local function shallowMerge(base, over)
     local out = {}
     if base then for k, v in pairs(base) do out[k] = v end end
     if over then for k, v in pairs(over) do out[k] = v end end
     return out
 end
-
 local function loadKeySection(name, overrides)
     return shallowMerge((_G.KEY_CONFIG and _G.KEY_CONFIG[name]) or {}, overrides)
 end
-
 local function publishAppEvent(eventKey)
     local E = _G.APP_EVENTS
     if E and E[eventKey] then sys.publish(E[eventKey]) end
 end
-
 local function setupLongPressKey(cfg, state)
     if not cfg or not cfg.pin then return end
     local pressLevel = cfg.pressLevel
@@ -68,7 +61,6 @@ local function setupLongPressKey(cfg, state)
         debounce_ms = cfg.debounce or 100,
     })
 end
-
 local function setupReadySignal(cfg)
     if not cfg or not cfg.pin then return end
     local active = cfg.activeLevel
@@ -84,7 +76,6 @@ local function setupReadySignal(cfg)
         debounce_ms = cfg.debounce or 100,
     })
 end
-
 local function normalizeConfig(cfg)
     cfg = cfg or {}
     local led = cfg.led or {}
@@ -109,7 +100,6 @@ local function normalizeConfig(cfg)
     end
     return { led = led, key = keyCfg }
 end
-
 function _M.cancelLongPress(name)
     local state = pressStates[name]
     if not state then return false end
@@ -117,7 +107,6 @@ function _M.cancelLongPress(name)
     state.long_fired = false
     return true
 end
-
 function _M.start(cfg)
     local sub = normalizeConfig(cfg)
     led_ctrl.start(sub.led)
@@ -134,7 +123,6 @@ function _M.start(cfg)
     pir_ctrl.startHw()
     return true
 end
-
 function _M.getState()
     return {
         led = led_ctrl.getState(),
@@ -142,27 +130,21 @@ function _M.getState()
         pir = pir_ctrl.getState(),
     }
 end
-
 function _M.getConfig()
     return { led = led_ctrl.getConfig(), pir = pir_ctrl.getMediaConfig() }
 end
-
 function _M.setLed(red, blue)
     led_ctrl.setLed(red, blue)
 end
-
 function _M.turnOffLed()
     led_ctrl.turnOff()
 end
-
 function _M.runLedPattern(pattern)
     if pattern == "blink_red" and led_ctrl.blinkRed then
         sys.taskInit(led_ctrl.blinkRed)
     elseif pattern == "blink_blue" and led_ctrl.blinkBlue then
         sys.taskInit(led_ctrl.blinkBlue)
     else
-        log.warn(LOG_TAG, "pat?", pattern)
     end
 end
-
 return _M
