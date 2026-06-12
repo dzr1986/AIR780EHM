@@ -275,7 +275,7 @@ flowchart TD
 {
   "deviceNo": "862323084068124",
   "dataType": "1003",
-  "powerStatus": 0,
+  "usbInserted": 0,
   "usbInserted": 0,
   "charging": 0,
   "remainPower": "85",
@@ -285,7 +285,7 @@ flowchart TD
 }
 ```
 
-字段类型与 [MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) §5.3 一致：`powerStatus` / `usbInserted` / `charging` 为 **数字** 0/1；`remainPower` / `batteryMv` 为字符串（或 `"--"`）。周期默认 **30s**（`low_power_interval_sec`，非 60s）。
+字段类型与 [MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) §5.3 一致：`usbInserted` / `charging` 为 **数字** 0/1；`remainPower` / `batteryMv` 为字符串（或 `"--"`）。周期默认 **30s**（`low_power_interval_sec`，非 60s）。
 
 #### 后台处理建议
 
@@ -390,7 +390,7 @@ T3x 可保持 `WITH_T3X_LOW_POWER=yes`（其它场景仍可用 IPCSTATUS）；`e
 - [ ] `LOW_POWER_ENABLE=1`：拔 USB 进 rest，MQTT 1002 含 `reason=usb_remove`，1003 `lowPowerMode=rest`
 - [ ] 冷启动无 USB 进 rest：MQTT conack 发 **1002+1003**（不发 1001）
 - [ ] **1003 周期**约 **30s**（`low_power_interval_sec` 初值；非 60s）；`2003 interval:60` 后约 60s
-- [ ] **1003** 中 `powerStatus` / `usbInserted` / `charging` 为 JSON **数字** 0/1（非字符串）
+- [ ] **1003** 中 `usbInserted` / `charging` 为 JSON **数字** 0/1（非字符串）
 - [ ] rest 中 PIR 不唤醒 T3x（`ignore_rest` 日志）；无 1001 / 1010
 - [ ] `AT+LOWPOWER=ENTER/EXIT` 在开关关闭时 `NOT_SUPPORTED`
 - [ ] IPC `WITH_T3X_LOW_POWER=no`：`AT+IPCPOWEROFF` → `NOT_SUPPORTED`

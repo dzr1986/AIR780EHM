@@ -192,7 +192,7 @@ flowchart TD
 | 字段 | 表示什么 | 注意 |
 |------|----------|------|
 | `remainPower` | 电池 ADC% | 与 USB **无关**；插电后仍可能很低 |
-| `powerStatus` | USB 座是否插入 | 1=插入 |
+| `usbInserted` | USB 座是否插入 | 1=插入 |
 | `lowPowerMode` | 业务休眠 rest/normal | **不是**「低电量」本身 |
 
 ---

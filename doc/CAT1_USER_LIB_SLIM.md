@@ -3,7 +3,7 @@
 > **完整流程文档**：[CAT1_SLIMMING_FLOW.md](./CAT1_SLIMMING_FLOW.md)（推荐先看）  
 > 发布用 `luatos.json` → `only_luac_code=True`。  
 > **脚本区上限约 384KB**（Air780EHM）：`MODULE_FLAGS=false` **不减烧录体积**，须把 `.lua` 移出 `user/`/`lib/` → 见 [`archive/slim/README.md`](../archive/slim/README.md)。  
-> **原则**：T3x 能做的放 T3x（编码 2012/2020、GB28181、录像）；4G 只做 MQTT + UART 编排。
+> **原则**：T3x 能做的放 T3x（编码 2021/2020、GB28181、录像）；4G 只做 MQTT + UART 编排。
 
 ---
 
@@ -11,7 +11,7 @@
 
 | 文件 | 约 | 说明 |
 |------|-----|------|
-| `user/host_uart.lua` | 56K | AT 中枢；已大量 `pcall(require)` 懒加载 net_tcp/pir_runtime |
+| `user/host_uart.lua` | 56K | AT 中枢；已大量 `pcall(require)` 懒加载 net_tcp/pir_ctrl |
 | `user/net_mqtt.lua` | 44K | MQTT 协议全集 |
 | `user/app.lua` | 40K | 编排核心 |
 | `user/pir_ctrl.lua` | 16K | PIR 会话 |
@@ -43,7 +43,7 @@
 |------|------|------|
 | `user/net_tcp.lua` → **桩** | ~8KB | 文件名须留；完整版 `archive/slim/user/net_tcp_full.lua` |
 | `user/sound_prompt.lua` 移出 | ~7KB | `sound_prompt=false` |
-| `lib/mobile_info.lua` 移出 | ~5KB | `mobile_info=false` |
+| `(已删除)` 移出 | ~5KB | `mobile_info=false` |
 
 **不可删**：`user/net_mqtt.lua`。详见 [`archive/slim/README.md`](../archive/slim/README.md)。
 
@@ -53,7 +53,7 @@
 
 | 项 | 说明 |
 |----|------|
-| 删除 `encode_proxy.lua` | 2012/2020 直调 `host_uart.queryHostEncode` / `setHost*Encode` |
+| 删除 `encode_proxy.lua` | 2021/2020 直调 `host_uart.queryHostEncode` / `setHost*Encode` |
 | `LOW_POWER_WAKEUP_CFG.mode="mqtt"` | 进 rest 不建 TCP；`SERVCREATE` AT 在 `mode="tcp"` 时才真连网 |
 | MQTTCFG 去重 | 同参 bootstrap 不 `restart()` MQTT |
 | 编码参数 | 逻辑在 T3x `encode_remote.c`，4G 仅 UART 转发 |
@@ -83,8 +83,8 @@ boot_on_cold_start = false,
 
 | 模块 | 文件 | 开关 / 配置 |
 |------|------|-------------|
-| FOTA | `lib/fota.lua` | `fota = false` |
-| 周期 SIM 日志 | `lib/mobile_info.lua` | `mobile_info = false` |
+| FOTA | `fota_svc.lua` | `fota = false` |
+| 周期 SIM 日志 | `(已删除)` | `mobile_info = false` |
 | 专有 TCP | `user/net_tcp.lua` | `LOW_POWER_WAKEUP_MODE = "tcp"`（默认 `"mqtt"` 不加载） |
 
 ### 4.4 勿合并的大文件
@@ -102,11 +102,11 @@ main.lua
   → cellular_bootstrap（若 cellular≠false）
   → app.start(peripheral, net_mqtt, t3x_ctrl)
        → optMod：flag=false 的模块不 require
-       → host_uart.start（内部 pcall net_tcp / pir_runtime / host_event）
+       → host_uart.start（内部 pcall net_tcp / pir_ctrl / host_event）
        → bootMqtt
 ```
 
-`host_uart.lua` 内对 `net_tcp`、`pir_runtime`、`host_event` 均为 **用时才 require**；默认 `mode="mqtt"` 时 `net_tcp` 不会被加载。
+`host_uart.lua` 内对 `net_tcp`、`pir_ctrl`、`host_event` 均为 **用时才 require**；默认 `mode="mqtt"` 时 `net_tcp` 不会被加载。
 
 ---
 
@@ -120,7 +120,7 @@ main.lua
 | `t3x_policy` | 必需（唤醒门禁） |
 | `usb_charge` | 必需（USB/rest） |
 | `watchdog` | 建议保留 |
-| `fota` / `libfota2` | 仅 OTA 时需要 |
+| `fota` / `fota_svc` | 仅 OTA 时需要 |
 | `usb_rndis` | 仅 USB 调试时需要 |
 | `archive/` | 不参与编译 |
 

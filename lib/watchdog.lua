@@ -55,11 +55,11 @@ function start(opts)
         return false
     end
     if not wdt or not wdt.init then
-        log.warn(LOG_TAG, "当前固件无 wdt 库")
+        log.warn(LOG_TAG, "noWdt")
         return false
     end
     if not isModuleBsp() then
-        log.warn(LOG_TAG, "非 Air780 类 BSP，跳过模组 WDT", rtos.bsp and rtos.bsp() or "?")
+        log.warn(LOG_TAG, "noBsp", rtos.bsp and rtos.bsp() or "?")
         return false
     end
 
@@ -77,7 +77,7 @@ function start(opts)
     feedTimerId = sys.timerLoopStart(feedOnce, interval)
 
     started = true
-    log.info(LOG_TAG, "Air780 模组 WDT 已启动",
+    log.info(LOG_TAG, "on",
         "bsp", rtos.bsp and rtos.bsp() or "?",
         "timeout", timeout, "feed", interval)
     return true

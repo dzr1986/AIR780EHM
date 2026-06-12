@@ -99,7 +99,7 @@ isUsbInserted() == true  →  cancelShutdownTimer()
 
 **现象**：
 
-- `remainPower` 可仍很低（8%、12%），但 `powerStatus=1`，T3x **持续允许运行**；
+- `remainPower` 可仍很低（8%、12%），但 `usbInserted=1`，T3x **持续允许运行**；
 - 充电抬升 SOC 时，T3x 未必是「涨到某阈值才首次启动」——插上座子时常已 `usb_insert` 退出 rest。
 
 **若仍见 T3x 反复上下电**，更可能来自：
@@ -187,7 +187,7 @@ sequenceDiagram
 | 字段 | 含义 | 注意 |
 |------|------|------|
 | `remainPower` | ADC 映射电量 % | 与 USB **无关**；插电后仍可能很低 |
-| `powerStatus` | USB 座是否插入 | 1=GPIO27 插入 |
+| `usbInserted` | USB 座是否插入 | 1=GPIO27 插入 |
 | `lowPowerMode` | rest / normal | **业务休眠**，不等于「低电量」本身 |
 
 云端若只看 `remainPower` 低而以为 T3x 应断电，可能与设备侧「插 USB 仍允许 T3x」不一致。

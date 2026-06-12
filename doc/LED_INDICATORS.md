@@ -95,8 +95,7 @@ flowchart TD
 
 | 文件 | 作用 |
 |------|------|
-| `user/led_ctrl.lua` | `readChargeFlags()`、`runtimeSnapshot()` |
-| `lib/led.lua` | `runSimpleBlueCycle` 充电分支 |
+| `user/led_ctrl.lua` | `readChargeFlags()`、`runtimeSnapshot()`、`runSimpleBlueCycle` 充电分支 |
 | `lib/usb_charge.lua` | `isUsbInserted()` / `isCharging()` |
 
 日志示例：

@@ -44,7 +44,7 @@ sequenceDiagram
   MQTT->>OTA: Subscribe event 更新任务
 ```
 
-**固件无需改 lua**：MQTT 2004 带 `url` 时，现有 `lib/fota.lua` 直接交给 `libfota2`（[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §6.6）。
+**固件无需改 lua**：MQTT 2004 带 `url` 时，现有 `user/fota_svc.lua` 直接交给 libfota2（[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §6.6）。
 
 ---
 
@@ -82,7 +82,7 @@ GET /api/site/firmware_upgrade?imei=862323084068124&firmware_name=PANSHI_CAT1_Lu
 Host: ota.example.com
 ```
 
-固件侧（`lib/fota.lua` + `lib/libfota2.lua`）：
+固件侧（`user/fota_svc.lua` 封装 libfota2）：
 
 | `full_url` | 行为 |
 |------------|------|
@@ -191,7 +191,7 @@ Payload 示例：
 
 ```
 ① MQTT 2004（带 url）→ net_mqtt.lua
-② DEVICE_OTA_REQUEST → lib/fota.lua buildIotOpts()
+② DEVICE_OTA_REQUEST → user/fota_svc.lua buildIotOpts()
    - 有 data.url → 直接用（full_url=0 不加 ###）
 ③ libfota2.request()
    - 对 url 追加 imei、firmware_name、version（当前版本）
@@ -201,7 +201,7 @@ Payload 示例：
 ⑦ rtos.reboot()
 ```
 
-libfota2 回调码（`lib/fota.lua` fota_cb）：
+libfota2 回调码（`user/fota_svc.lua` `fota_cb`）：
 
 | ret | 含义 |
 |-----|------|
@@ -276,4 +276,4 @@ libfota2 回调码（`lib/fota.lua` fota_cb）：
 | HTTP OTA | 合宙 libfota2 第三方服务器 | 托管 dfota、manifest 匹配 |
 | MQTT 2004/1004 | 780EHM_PJ panshi 协议 | 触发升级、跟踪状态 |
 
-兼容要点：**MQTT 2004 带 `url` + `full_url=0`** → 现有固件即可工作，无需修改 `lib/fota.lua`。
+兼容要点：**MQTT 2004 带 `url` + `full_url=0`** → 现有固件即可工作，无需修改 `user/fota_svc.lua`。

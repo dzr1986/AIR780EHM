@@ -1,5 +1,5 @@
---- 提示音：4G AT+PLAYSOUND → T3x 播放（见 doc/BOOT_SHUTDOWN_SOUND.md）
--- @module sound_prompt
+--- 完整提示音（恢复：copy → user/sound_prompt.lua）
+-- 见 doc/BOOT_SHUTDOWN_SOUND.md
 require "sys"
 require "config"
 
@@ -150,28 +150,51 @@ function onAppStarted()
     bootColdTaskStarted = true
     sys.taskInit(function()
         local ipcCfg = _G.HOST_IPC_CFG or {}
+        local useIpcReady = ipcCfg.enabled ~= false and ipcCfg.boot_sound_wait_ready ~= false
         local timeoutMs = tonumber(cfg().boot_wait_host_ms)
             or tonumber(cfg().boot_delay_ms)
             or 60000
-        if ipcCfg.enabled ~= false and ipcCfg.boot_sound_wait_ready ~= false then
+        local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+        local firstCmd
+
+        if useIpcReady then
             local okIpc, ipc = pcall(require, "t3x_ctrl")
-            if okIpc and ipc and ipc.powerOnWaitReady then
-                if not ipc.powerOnWaitReady({
+            if okIpc and type(ipc) == "table" and ipc.powerOnWaitReady then
+                log.info(LOG_TAG, "wRd", timeoutMs, "ms")
+                local ready = ipc.powerOnWaitReady({
                     ready_timeout_ms = timeoutMs,
                     poll_ms = ipcCfg.ready_poll_ms,
-                }) then
-                    log.warn(LOG_TAG, "rdTo", timeoutMs)
+                })
+                if not ready then
+                    log.warn(LOG_TAG, "rdTo", timeoutMs, "ms")
                     return
                 end
+                log.info(LOG_TAG, "rdy")
             else
-                local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
-                if not sys.waitUntil(evt, timeoutMs) then
-                    log.warn(LOG_TAG, "1stTo", timeoutMs)
-                    return
-                end
+                useIpcReady = false
             end
         end
-        playBlocking("boot", "boot_cold")
+
+        if not useIpcReady then
+            local okHu, hu = pcall(require, "host_uart")
+            if okHu and hu and hu.isHostAtReady and hu.isHostAtReady() then
+                firstCmd = hu.getHostFirstAt and hu.getHostFirstAt() or ""
+                log.info(LOG_TAG, "1st", firstCmd or "")
+            else
+                log.info(LOG_TAG, "w1st", timeoutMs, "ms")
+                local got
+                got, firstCmd = sys.waitUntil(evt, timeoutMs)
+                if not got then
+                    log.warn(LOG_TAG, "1stTo", timeoutMs, "ms")
+                    return
+                end
+                log.info(LOG_TAG, "got1st", firstCmd or "")
+            end
+        end
+
+        if shouldPlay("boot_cold") then
+            playBlocking("boot", "boot_cold")
+        end
     end)
 end
 

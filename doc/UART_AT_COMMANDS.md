@@ -138,8 +138,11 @@ Cat.1 → T3x: \r\n+MQTTPUB:OK\r\n
 
 ```text
 Cat.1 → T3x: AT+TFCARD?
-T3x → Cat.1: \r\n+TFCARD:present=1,total_mb=16384,used_mb=1024,free_mb=15360\r\nOK\r\n
+T3x → Cat.1（命名格式）: \r\n+TFCARD:present=1,total_mb=16384,used_mb=1024,free_mb=15360\r\nOK\r\n
+T3x → Cat.1（紧凑格式）: \r\n+TFCARD:1,117752,1122,116630OK\r\n
 ```
+
+两种格式 Cat.1 均解析：`present,total_mb,used_mb,free_mb`（末尾 `OK` 可粘连）。
 
 T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。无卡时 `present=0`，容量字段为 0。
 
@@ -197,9 +200,9 @@ T3x → Cat.1: +RECORD:running=1,active=0,ch=0,reason=idle OK
 | `AT+IPCSTATUS?` / `AT+IPCSTATUS` | `+IPCSTATUS:ready\|idle\|shutting_down` `OK` | T3x 生命周期（§3.4） |
 | `AT+RECORD?` / `AT+RECORD` | `+RECORD:running=,active=,ch=,reason=` `OK` | T3x 真实录像状态（§2.9） |
 | `AT+VENC?` / `AT+VENC?=<cam>` / `AT+VENC?=<cam>,<stream>` | 多行 `+VENC:` … `+VENC:END` `OK` | MQTT **2020** 查询视频编码（§3.5） |
-| `AT+VENCSET=<cam>,<stream>,<en>,<w>,<h>,<br>,<fps>,<rc>,<enc>` | `+VENCSET:OK,cam=,stream=,needReboot=` 或 `+VENCSET:ERROR` | MQTT **2012** 设置视频编码 |
+| `AT+VENCSET=<cam>,<stream>,<en>,<w>,<h>,<br>,<fps>,<rc>,<enc>` | `+VENCSET:OK,cam=,stream=,needReboot=` 或 `+VENCSET:ERROR` | MQTT **2021** 设置视频编码 |
 | `AT+AUDIO?` / `AT+AUDIO?=<cam>` | 多行 `+AUDIO:` … `+AUDIO:END` `OK` | MQTT **2020** `scope=audio` |
-| `AT+AUDIOSET=<cam>,<en>,<enc>,<sr>,<bw>,<sm>,<vol>,<gain>` | `+AUDIOSET:OK,cam=,needReboot=` 或 `+AUDIOSET:ERROR` | MQTT **2012** `scope=audio` |
+| `AT+AUDIOSET=<cam>,<en>,<enc>,<sr>,<bw>,<sm>,<vol>,<gain>` | `+AUDIOSET:OK,cam=,needReboot=` 或 `+AUDIOSET:ERROR` | MQTT **2021** `scope=audio` |
 | `AT+IPCPOWEROFF` / `=1` / `=0` | `+IPCPOWEROFF:OK`（单行 URC，无尾缀 `OK`） | 优雅关机：播音/停流/退出 GB28181/sync |
 | `AT+PLAYSOUND=<name>` | 先 `OK`，播完后 `+SOUNDACK:<name>` `OK` | 开关机提示音；冷启动 `boot` 见 §3.3 |
 | `AT+PLAYSOUND?` | `+PLAYSOUND:<状态>` `OK` | 查询播放模块状态 |
@@ -236,7 +239,7 @@ T3x **不识别** 上节 2 中的 `SERVCREATE/MQTTCFG/GETCFG` 等（那些只在
 
 ### 3.4 T3x 电源（Cat.1 推荐流程）
 
-Host AT 由 T3x 实现（产品：`gb28181_dev_exit()`、`sync()` 等；桩：`cat1_host/ipc_host.c`）。Cat.1 编排见 `user/t3x_ipc.lua`。
+Host AT 由 T3x 实现（产品：`gb28181_dev_exit()`、`sync()` 等；桩：`cat1_host/ipc_host.c`）。Cat.1 编排见 `t3x_ctrl.lua`。
 
 **关机（T3x 在线）**：
 
@@ -292,11 +295,11 @@ Cat.1 → T3x: AT+PLAYSOUND=boot （可选，sound_prompt 冷启动）
 | T3x→4G 协议 | `user/host_uart.lua` |
 | 4G→T3x 协议 | `cat1_host/uart_host_cmd.c` |
 | T3x 电源桩 | `cat1_host/ipc_host.c` |
-| T3x 电源编排 | `user/t3x_ipc.lua` |
+| T3x 电源编排 | `t3x_ctrl.lua` |
 | TF 卡（T3x） | `cat1_host/tf_card.c` |
 | 2006/1006 标识 | `user/net_mqtt.lua` + `host_uart.queryHostGb28181()` |
 | 2007/1007 TF 卡 | `user/net_mqtt.lua` + `host_uart.queryHostTfCard()` |
-| 2012/2020 编码 | `user/net_mqtt.lua` + `host_uart.queryHostEncode` / `setHost*Encode` |
+| 2021/2020 编码 | `user/net_mqtt.lua` + `host_uart.queryHostEncode` / `setHost*Encode` |
 | T31x 编码落地 | `app/cat1/encode_remote.c` + `uart_host_cmd.c` |
 | WLED GPIO（T3x） | `cat1_host/wled.c` |
 | 对时 | `user/time_sync.lua` ↔ T3x `time_sync.c` |

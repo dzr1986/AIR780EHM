@@ -113,7 +113,7 @@
 | | `mqtt_report_interval_sec` | 60 | MQTT 1003 `remainPower` 周期 |
 | **led** | `high_threshold` | 70 | &gt;70% 蓝常亮（详见 [LED_INDICATORS.md](LED_INDICATORS.md)） |
 | | `medium_threshold` | 20 | 20～70% 蓝闪；≤20% 红闪 |
-| | `high_hold` / `medium_*` / `low_*` | 见 config | `led_ctrl` → `lib/led` 时序 |
+| | `high_hold` / `medium_*` / `low_*` | 见 config | `led_ctrl.lua 时序 |
 | **guard** | `enabled` | true | 总开关（另受 `MODULE_FLAGS.battery_guard`） |
 | | `ignore_when_usb_inserted` | true | **GPIO27 插入**时忽略阈值并保持 T3x 上电 |
 | | `pir_suspend_percent` | 15 | 未插 USB 且 ≤15%：暂停 PIR |
@@ -210,7 +210,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 
 ### `HOST_IPC_CFG` T3x 电源（`config.lua`）
 
-实现：`user/t3x_ipc.lua`、`user/host_uart.lua`（`queryHostIpcStatus` / `hostIpcPowerOff` / `waitHostIpcReady`）。见 [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) §3.4。
+实现：`t3x_ctrl.lua`、`user/host_uart.lua`（`queryHostIpcStatus` / `hostIpcPowerOff` / `waitHostIpcReady`）。见 [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) §3.4。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -260,7 +260,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `rx_line_max` | `4096` | 行缓冲上限 |
 
 - `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末  
-  - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`lib/fota.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段  
+  - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`user/fota_svc.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段  
   - **自建 OTA 服务器**：固件 **无需改 lua**；MQTT 2004 带 `url` 即走自建 HTTP（见 [OTA_SERVER.md](OTA_SERVER.md)、[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §6.6）；服务端见 [`ota_server/README.md`](../ota_server/README.md)
 - **`config.mk` 与 `config.lua` 宏对照**（`config.mk` 仅覆盖部分；其余仅在 `config.lua` 顶部 `local *_ENABLE`）：
 

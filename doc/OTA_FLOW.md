@@ -35,8 +35,8 @@ flowchart TB
 
   subgraph dev [Air780 780EHM_PJ]
     NM[net_mqtt.lua]
-    FOTA[lib/fota.lua]
-    LF2[libfota2]
+    FOTA[fota_svc.lua]
+    LF2[libfota2 HTTP]
   end
 
   Luatools --> Admin
@@ -124,7 +124,7 @@ sequenceDiagram
   Note over MQTT,Dev: 2004 action=ota url=... version=目标版
   Dev->>MQTT: 1004 reply=1 ota_accepted
   OTS->>OTS: ota_tasks → ACCEPTED
-  Dev->>Dev: lib/fota.lua → libfota2.request
+  Dev->>Dev: fota_svc.lua → fota_svc.request
   Dev->>NG: GET /api/site/firmware_upgrade?imei=...&version=当前版
   NG->>FS: 转发
   FS->>FS: firmware_packages 匹配
@@ -154,15 +154,15 @@ sequenceDiagram
 |------|------|------|
 | 收 2004 | `user/net_mqtt.lua` | 解析 action=ota |
 | 事件 | `user/app.lua` | `DEVICE_OTA_REQUEST` |
-| 构建 opts | `lib/fota.lua` `buildIotOpts()` | **有 url → 直接用** |
-| 下载 | `lib/libfota2.lua` | HTTP GET，自动拼 imei/version |
-| 上报 | `lib/fota.lua` `fota_cb()` | MQTT 1004 stage |
+| 构建 opts | `fota_svc.lua` `buildIotOpts()` | **有 url → 直接用** |
+| 下载 | `fota_svc.lua` | HTTP GET，自动拼 imei/version |
+| 上报 | `fota_svc.lua` `fota_cb()` | MQTT 1004 stage |
 
 ---
 
 ## 4. 流程 C：HTTP 拉包决策（设备请求时）
 
-设备 libfota2 发起：
+设备 fota_svc 发起：
 
 ```http
 GET /api/site/firmware_upgrade?imei=862323084068124&firmware_name=PANSHI_CAT1_LuatOS-SoC_Air780EHM&version=2034.001.002
@@ -319,7 +319,7 @@ com.luat.ota
 
 | 项 | 现状 | 说明 |
 |----|------|------|
-| HTTPS 模块端 | Nginx 终结 TLS | libfota2 原生 HTTP；生产必须 Nginx |
+| HTTPS 模块端 | Nginx 终结 TLS | fota_svc 原生 HTTP；生产必须 Nginx |
 | 合宙 IoT 动态差分 | 预置 dfota 文件 | 非云端实时差分 |
 | OTA 触发前固件校验 | 未强制 | 触发时不检查 DB 是否有对应包，依赖 HTTP 阶段匹配 |
 | 项目 CRUD | 仅 list/create | 无 edit/delete API（可后续加） |

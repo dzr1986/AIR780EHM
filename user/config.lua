@@ -1,22 +1,10 @@
---- 项目配置（纯数据：引脚、采样、连接）
--- GPIO：GPIO_IN / GPIO_OUT 含 init_level、on_level、pull 等，见 lib/gpio_util.lua
--- 业务：app_config.lua、key_config.lua、pir_ctrl.lua
--- @module config
--- @release 2026.5.21
 
 module(..., package.seeall)
 _G[_modname or (...)] = _M
 
--- ============================================================
--- 功能宏（与项目根 config.mk 保持一致）
--- ============================================================
--- RNDIS_ENABLE: 1=开启 USB 网卡 | 0=关闭（量产 flash 省 ~9KB；调试 copy archive/slim/lib/usb_rndis.lua）
-local RNDIS_ENABLE = 0
--- LOW_POWER_ENABLE: 1=开启低功耗/rest | 0=关闭（与 ipc_device_gb28181 build/config.mk WITH_T3X_LOW_POWER 保持一致）
+local RNDIS_ENABLE = 1
 local LOW_POWER_ENABLE = 1
--- HOST_EVT_ENABLE: 1=PIRSTAT 扩展 has_work + HOSTIDLE 休眠查询 | 0=关闭（与 T3x WITH_T3X_HOSTEVT_SLEEP 对齐）
 local HOST_EVT_ENABLE = 1
--- USB_REENUM_ENABLE: 1=响应 T3x AT+USBRESET 重绑 RNDIS | 0=返回 +USBRESET:DISABLED
 local USB_REENUM_ENABLE = 1
 
 _G.FEATURE_CFG = {
@@ -26,15 +14,16 @@ _G.FEATURE_CFG = {
     usb_reenum = (USB_REENUM_ENABLE == 1),
 }
 
--- 低功耗云端唤醒通道（二选一，策略见 lib/low_power_wakeup.lua）
--- 默认关闭 TCP，直接用 MQTT 做 rest 下长连接唤醒（改 "tcp" 才启用 SERVCREATE）
+_G.RNDIS_CFG = {
+    refresh_only_usb = true,
+}
+
 local LOW_POWER_WAKEUP_MODE = "mqtt"  -- "mqtt" | "tcp"
 
 _G.LOW_POWER_WAKEUP_CFG = {
     mode = LOW_POWER_WAKEUP_MODE,
 }
 
--- 低功耗运行策略（编译能力见 FEATURE_CFG.low_power；T3x 侧 WITH_T3X_LOW_POWER）
 _G.LOW_POWER_CFG = {
     enabled = (_G.FEATURE_CFG.low_power ~= false),
     graceful_ipc = true,           -- enterSleep 前 AT+IPCPOWEROFF（需 T3x WITH_T3X_LOW_POWER=yes）
@@ -42,7 +31,6 @@ _G.LOW_POWER_CFG = {
     rest_mqtt_interval_sec = 30,   -- 初值 → APP_RUNTIME.low_power_interval_sec（1003 周期 / GETCFG interval）
 }
 
--- T3x 休眠前查询（PIRSTAT.has_work + HOSTEVT + AT+HOSTIDLE=1）；见 doc/T3X_HOSTEVT_SLEEP.md
 _G.HOST_EVT_CFG = {
     enabled = (_G.FEATURE_CFG.host_evt ~= false),
     types_mask = 0x0F,                 -- bit0=wake bit1=pir bit2=record bit3=mqtt（net_mqtt.hasPendingHostWork）
@@ -51,14 +39,12 @@ _G.HOST_EVT_CFG = {
     allow_host_idle_sleep = true,      -- 响应 T3x AT+HOSTIDLE=1 触发 enterSleep
 }
 
--- USB 插入时：4G 不进 rest、拒绝 T3x 休眠 AT，并主动通知 T3x（+CAT1:USB,n）；见 doc/T3X_USB_HOSTIDLE.md
 _G.HOST_USB_CFG = {
     block_host_idle_when_usb = true,   -- AT+HOSTIDLE=1 → +HOSTIDLE:USB（T3x 勿让 4G/T3x 休眠）
     block_4g_rest_when_usb = true,     -- onEnterLowPower / MQTT 2002 / AT+LOWPOWER=ENTER 拦截
     notify_t3x_usb_state = true,       -- 拔插、开机、T3x 首条 AT 后推送 +CAT1:USB,0/1
     t3x_usb_ursp = "+CAT1:USB,%d",
     boot_notify_delay_ms = 1500,       -- 开机后延迟同步 USB 态（等 UART/T3x 就绪）
-    -- T3x mismatch 超时 AT+USBRESET（见 doc/T3X_USB_HOSTIDLE.md §USB 重枚举）
     allow_t3x_usb_reset = (_G.FEATURE_CFG.usb_reenum ~= false),
     block_usb_reset_when_t3x_rest = true, -- low_power_mode=1 且 T3x 断电 → +USBRESET:REST，不 rebind
     usb_reset_min_interval_sec = 60,   -- 两次 AT+USBRESET 最小间隔
@@ -66,9 +52,6 @@ _G.HOST_USB_CFG = {
     usb_debug_en_pulse_ms = 300,       -- AT+USBRESET 前 GPIO32 USB_DEBUG_EN 拉高保持
 }
 
--- ============================================================
--- 应用元数据 / 栈 / 运行时（版本见 main.lua 顶部 VERSION）
--- ============================================================
 _G.APP_META = {
     version = _G.VERSION or "",
     log_enabled = false,
@@ -101,12 +84,9 @@ if _G.LOW_POWER_CFG and _G.LOW_POWER_CFG.rest_mqtt_interval_sec then
     _G.APP_RUNTIME.low_power_interval_sec = _G.LOW_POWER_CFG.rest_mqtt_interval_sec
 end
 
--- 蜂窝/SIM/APN（参考 v2026.03.24.12/demo/mobile/mobile_test.lua）
--- 联通卡常需显式 APN；移动/电信可 apn_auto
 _G.CELLULAR_CFG = {
     enabled = true,
     apn_auto = true,
-    -- 若 IMSI/ICCID 仍识别错，可强制：sim_operator_override = "unicom",
     force_explicit_apn = { unicom = true },
     apn_by_operator = {
         unicom = "3gnet",       -- 联通公网；物联卡可改 scuiot / wnet
@@ -123,7 +103,6 @@ _G.CELLULAR_CFG = {
     reset_delay_ms = 30000,
 }
 
--- t3x 烧录模式（GPIO28 BOOT 键长按）：进入前条件与关停项，见 doc/T3X_BURN_MODE.md
 _G.T3X_BURN_CFG = {
     min_battery_percent = 20,
     require_battery_valid = true,
@@ -140,21 +119,7 @@ _G.T3X_BURN_CFG = {
     publish_rest_before_stop = true,
 }
 
--- ============================================================
--- GPIO 输入（只读 / 中断，勿 gpio.set 当输出）
--- 原理图：ps01masch260318.pdf → Air780EHM M1
---
--- 字段说明：
---   pin            模组 GPIO 号
---   net_name       原理图网络名
---   pull           pullup | pulldown
---   trigger_mode   rising | falling | both（中断边沿）
---   debounce_ms    防抖(ms)
---   active_level   有效电平 0/1（按键按下、PIR 触发、USB 插入等）
--- ============================================================
 _G.GPIO_IN = {
-    -- 按键（上拉，按下为低）
-    -- K1 → 模组 Pin7 PWRKEY（Luat: gpio.PWR_KEY=46），勿用无效 GPIO35
     pwr_key = {
         pin = 46,
         net_name = "PWRKEY",
@@ -171,7 +136,6 @@ _G.GPIO_IN = {
         debounce_ms = 100,
         active_level = 0,
     },
-    -- 协处理器就绪（下拉，就绪为高）
     coproc_ready = {
         pin = 29,
         net_name = "COPROC_READY",
@@ -180,7 +144,6 @@ _G.GPIO_IN = {
         debounce_ms = 100,
         active_level = 1,
     },
-    -- USB / 充电状态（只读）
     usb_det = {
         pin = 27,
         net_name = "USB_DET",
@@ -197,7 +160,6 @@ _G.GPIO_IN = {
         debounce_ms = 50,
         active_level = 1,
     },
-    -- PIR 人体检测（下拉，触发为高）
     pir_det = {
         pin = 30,
         net_name = "PIR_MCU_DET",
@@ -216,15 +178,7 @@ _G.GPIO_IN = {
     },
 }
 
--- ============================================================
--- GPIO 输出
---
--- 字段说明：
---   init_level     上电 gpio.setup 初始电平（0=低，1=高）
---   on_level       逻辑「开启」时电平（LED 亮、t3x 供电等）
--- ============================================================
 _G.GPIO_OUT = {
-    -- 本板未焊接 GPIO20 红灯；保留配置项供 dual 模式或调试，默认 enabled=false
     led_red = {
         pin = 20,
         net_name = "LED_RED",
@@ -238,7 +192,6 @@ _G.GPIO_OUT = {
         init_level = 1,
         on_level = 0,
     },
-    ----烧录 t3x：T3x_BOOT = Luat GPIO26 = 模组 Pin25(CAN_TXD)；USB_DEBUG_EN = GPIO32
     t3x_boot = {
         pin = 26,
         net_name = "T3X_BOOT",
@@ -251,14 +204,12 @@ _G.GPIO_OUT = {
         init_level = 0,
         on_level = 1,
     },
-    -- Cat.1 GPIO29(1.8V) → t3x PB27(3.3V 输入)：低电平脉冲唤醒，空闲高（t3x 侧上拉）
     t3x_mcu_int = {
         pin = 29,
         net_name = "MCU_INT_CPU",
         init_level = 1,
         on_level = 0,
     },
-    -- USB 切换 USB_DEBUG_EN：上电低；进入烧录拉高，退出烧录拉低
     t3x_ota = {
         pin = 32,
         net_name = "T3X_OTA",
@@ -267,14 +218,10 @@ _G.GPIO_OUT = {
     },
 }
 
--- ============================================================
--- 指示灯（本板仅 GPIO21 蓝灯；见 doc/LED_INDICATORS.md）
--- ============================================================
 _G.LED_CFG = {
     mode = "single_blue",
     red_enabled = false,
 
-    -- 上电：蓝灯闪 2 下 = 设备已启动
     startup = {
         enabled = true,
         blinks = 2,
@@ -282,7 +229,6 @@ _G.LED_CFG = {
         dark_ms = 400,
     },
 
-    -- 优先级：充电中跳过低电 > 未联网慢闪 > 正常常亮
     low_percent = 20,
     low_blink_ms = 400,
     low_blinks_per_round = 6,
@@ -290,23 +236,18 @@ _G.LED_CFG = {
     ok_hold_ms = 5000,
     check_network = true,
     unknown_hold_ms = 3000,
-    -- 插 USB 且 CHG_STATE=充电中：不报低电快闪，只显示联网态（慢闪/常亮）
     suppress_low_when_charging = true,
 
     notify_t3x_net_led = false,
     t3x_net_ursp = "+CAT1:MQTT,%d",
 }
 
--- 白光灯 WLED（4G AT+WLED / MQTT 2004 → UART 转发 T3x）；见 doc/UART_PROTOCOL.md
 _G.WLED_CFG = {
     enabled = true,
     forward_to_t3x = true,
     t3x_power_wait_ms = 800,
 }
 
--- ============================================================
--- PIR（冷却等；引脚/中断参数与 GPIO_IN.pir_det 同步）
--- ============================================================
 _G.PIR_COOLDOWN_MS = {
     frequent = 3 * 1000,
     normal = 10 * 1000,
@@ -326,17 +267,24 @@ do
     }
 end
 
--- ============================================================
--- 电池（ADC / 灯 / 电量保护）— 阈值均在此调节，见 doc/LOW_BATTERY_AND_LOW_POWER.md
--- ============================================================
+--- 录像 MQTT 1011：T3x 在写盘时 defer 上行，超时后 4G 补发（见 mqtt_2011_1011_flow.md）
+_G.PIR_RECORD_CFG = {
+    stop_mqtt_fallback_ms = 15000,
+}
+
+--- Cat.1 运行时 JSON 持久化（LuatOS 根目录可写区，重启保留；全量烧录脚本区可能清空）
+_G.APP_PERSIST_CFG = {
+    pir_mqtt = "/pir_mqtt_cfg.json",
+    mqtt_status = "/mqtt_status_cfg.json",
+    mqtt_status_schema = 1,
+    pir_mqtt_schema = 2,
+}
+
 _G.BATTERY_CFG = {
     adc = {
         channel = 1,
         range = nil,
-        -- 原理图 BAT_ADC 分压：R=1000K(上) + Rx=510K(下)；pin = Vbat * Rx/(R+Rx)
         divider = { r_kohm = 1000, rx_kohm = 510 },
-        -- 引脚 mV × mv_scale = 电芯 mV；nil 时自动用 (R+Rx)/Rx
-        -- 万用表复标：电芯 3326mV 时 pin≈1131mV → 3326/1131（原 4090/1311 偏高约 200mV）
         mv_scale = 3326 / 1131,
     },
     cell = {
@@ -347,7 +295,6 @@ _G.BATTERY_CFG = {
     mqtt_report_interval_sec = 30, -- 1003 周期最终回退（与 rest_mqtt_interval_sec 对齐）
     mqtt_battery_report_min_sec = 30,
 
-    -- 模组蓝灯 GPIO21（single_blue 模式；led_ctrl → lib/led.runUnifiedBlueCycle）
     led = {
         high_threshold = 70,
         medium_threshold = 20,
@@ -364,7 +311,6 @@ _G.BATTERY_CFG = {
         fallback_hold = 1000,
     },
 
-    -- 电量保护 battery_guard（仅 GPIO27 外壳 USB 未插入；插入 USB 忽略并保持 T3x 上电）
     guard = {
         enabled = true,
         ignore_when_usb_inserted = true,
@@ -378,7 +324,6 @@ _G.BATTERY_CFG = {
     },
 }
 
--- T3x 上电/唤醒门禁（lib/t3x_policy.lua）；见 doc/T3X_LOW_POWER.md、LOW_BATTERY_AND_LOW_POWER.md §5
 _G.T3X_POLICY_CFG = {
     enabled = _G.LOW_POWER_CFG.enabled,
     block_wake_in_low_power = true,
@@ -386,11 +331,8 @@ _G.T3X_POLICY_CFG = {
     block_wake_below_percent = 15,
 }
 
--- 兼容旧名（可选）；优先读 BATTERY_CFG.guard
 _G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
 
--- 开机/关机提示音（T3x 播放，4G 发 AT+PLAYSOUND）；见 doc/BOOT_SHUTDOWN_SOUND.md
--- boot_wait_host_ms：等 T3x bootstrap 首条 AT（如 AT）后再播开机音
 _G.SOUND_CFG = {
     enabled = true,   -- 与 MODULE_FLAGS.sound_prompt 同步
     boot_on_cold_start = true,
@@ -403,7 +345,6 @@ _G.SOUND_CFG = {
     t3x_power_wait_ms = 800,
 }
 
--- CAT1 ↔ T3x 时间同步；见 doc/TIME_SYNC.md
 _G.TIME_SYNC_CFG = {
     enabled = true,
     min_valid_unix = 1704067200,   -- 2024-01-01 UTC，低于此视为未同步
@@ -416,7 +357,6 @@ _G.TIME_SYNC_CFG = {
     resync_skew_sec = 2,           -- 同一秒内重复推送节流
 }
 
--- Cat.1 IMEI + T3x GB28181 ID；见 doc/MQTT_PROTOCOL.md §4.6 / §5.6
 _G.HOST_IDENTITY_CFG = {
     enabled = true,
     auto_publish_on_ready = true,  -- T3x 首条 AT 且 MQTT 在线后自动上报 1006
@@ -427,7 +367,6 @@ _G.HOST_IDENTITY_CFG = {
     publish_on_ipcinfo_query = false, -- true：T3x 发 AT+IPCINFO? 后 4G 额外 MQTT 上报 1006
 }
 
--- T3x TF/SD 卡状态；MQTT 2007→1007；见 doc/MQTT_PROTOCOL.md
 _G.HOST_TFCARD_CFG = {
     enabled = true,
     query_timeout_ms = 3000,
@@ -435,7 +374,6 @@ _G.HOST_TFCARD_CFG = {
     t3x_power_wait_ms = 800,
 }
 
--- T3x 录像真实状态（Host AT+RECORD?）；见 doc/T3X_RECORD_MQTT_FLOW.md
 _G.HOST_RECORD_CFG = {
     enabled = true,
     query_timeout_ms = 3000,
@@ -443,14 +381,12 @@ _G.HOST_RECORD_CFG = {
     t3x_power_wait_ms = 800,
 }
 
--- T3x 远程编码参数（MQTT 2012/2020 → AT+VENC/AT+AUDIO）；见 doc/REMOTE_ENCODE_CONFIG.md
 _G.HOST_ENCODE_CFG = {
-    query_timeout_ms = 4000,
+    query_timeout_ms = 8000,   -- AT+VENC? / AT+AUDIO?（含 T3x 唤醒）
     host_boot_wait_ms = 1500,
     t3x_power_wait_ms = 800,
 }
 
--- T3x 电源管理（AT+IPCSTATUS? / AT+IPCPOWEROFF）；见 doc/T3X_LOW_POWER.md
 _G.HOST_IPC_CFG = {
     enabled = _G.LOW_POWER_CFG.enabled and _G.LOW_POWER_CFG.graceful_ipc,
     graceful_poweroff = _G.LOW_POWER_CFG.graceful_ipc,
@@ -464,7 +400,6 @@ _G.HOST_IPC_CFG = {
     boot_sound_wait_ready = true,   -- 冷启动开机音等 +IPCSTATUS:ready
 }
 
--- 主机 PB27 唤醒（与 t3x_linux gpio 下降沿一致）
 _G.HOST_WAKE_CFG = {
     pulse_ms = 120,
     idle_level = 1,
@@ -472,7 +407,6 @@ _G.HOST_WAKE_CFG = {
     default_sid = 1,
 }
 
--- UART1 ↔ t3x；lib/uart_bridge 仅从此表读参（勿在驱动里写死波特率）
 _G.UART_CFG = {
     id = 1,
     baud = 115200,
@@ -485,10 +419,6 @@ _G.WDT_CFG = {
     feed_interval_ms = 3000,
 }
 
--- MQTT 架构（见 doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md）
--- · LOW_POWER_WAKEUP_CFG.mode="mqtt"：单 Broker 长连接，T3x 休眠后 4G 维持 MQTT
--- · mode="tcp"：唤醒走 net_tcp，SERVCREATE 可用；MQTT 仍可跑业务但非唤醒主通道
--- · T3x [cat1_mqtt] enable=0 推荐：不推 MQTTCFG，减轻 bootstrap 重连
 _G.MQTT_CFG = {
     host = "112.86.146.218",
     port = 2123,
@@ -498,8 +428,6 @@ _G.MQTT_CFG = {
     client_id = nil,
 }
 
--- FOTA：合宙 IoT（main.lua PRODUCT_KEY/PROJECT/VERSION）；MQTT 2004 可不传 version
--- 紧急绕过：MQTT 2004 带 url + full_url=1 走 CDN 直链
 _G.FOTA_CFG = {
     server_mode = "iot",
     request_delay_ms = 500,

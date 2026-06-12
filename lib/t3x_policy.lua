@@ -125,7 +125,7 @@ function requestT3xWake(reason, sid, evt, opts)
     opts = type(opts) == "table" and opts or {}
 
     if not mayPowerT3x(reason, opts) then
-        log.info(LOG_TAG, "跳过唤醒", reason, lastDenyReason)
+        log.info(LOG_TAG, "skW", reason, lastDenyReason)
         return false
     end
 
@@ -162,7 +162,7 @@ end
 --- 启动时是否给 T3x 上电
 function bootPowerOn(t3xModule)
     if not mayPowerT3x("boot") then
-        log.info(LOG_TAG, "启动跳过 T3x 上电", lastDenyReason)
+        log.info(LOG_TAG, "skipPwr", lastDenyReason)
         return false
     end
     if t3xModule and t3xModule.powerOn then
@@ -171,5 +171,4 @@ function bootPowerOn(t3xModule)
     return false
 end
 
-log.info(LOG_TAG, "loaded")
 return _M

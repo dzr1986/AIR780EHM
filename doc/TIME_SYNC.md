@@ -10,7 +10,7 @@
 | 现象 | 原因 |
 |------|------|
 | 录像文件时间为 1970-01-01 | T3x Linux 无 RTC/NTP，上电默认 Unix epoch |
-| MQTT 上报时间正常 | 4G 模组 `sntp_sync` 已同步 |
+| MQTT 上报时间正常 | 4G 模组 `time_sync` 已同步 |
 
 ---
 
@@ -100,7 +100,7 @@ sequenceDiagram
 |------|------|
 | 4G 编排 | `user/time_sync.lua` |
 | 4G AT 查询 | `user/host_uart.lua`（`AT+TIME?`） |
-| SNTP | `lib/sntp_sync.lua` |
+| SNTP | `time_sync.lua` |
 | T3x 设时 | `t3x_linux/time_sync.c` |
 | T3x 收 AT | `t3x_linux/uart_host_cmd.c` |
 | T3x 拉取 | `t3x_linux/api.c` → `client_sync_time_from_cat1` |

@@ -19,7 +19,7 @@
 | 项 | 位置 |
 |----|------|
 | `cooldown_ms` | `config.lua` → `PIR_CFG` / `PIR_COOLDOWN_MS` |
-| 判断逻辑 | `lib/pir.lua`：`cooldownUntil` 时间戳 |
+| 判断逻辑 | `pir_ctrl.lua`：`cooldownUntil` 时间戳 |
 
 ### 行为
 
@@ -50,7 +50,7 @@ GPIO 中断到达后：
 
 ### 存储
 
-`user/pir_runtime.lua` 中 `stats` 表；由 `lib/pir.lua`、`user/pir_ctrl.lua` 通过 `bump()` / `setLast()` 更新。
+`pir_ctrl.lua` 中 `stats` 表；由 `pir_ctrl.lua`、`user/pir_ctrl.lua` 通过 `bump()` / `setLast()` 更新。
 
 ### 常用计数
 
@@ -114,4 +114,4 @@ GPIO 中断到达后：
 
 - **冷却** = 短时间内的节流规则（能不能处理**这一次**）。  
 - **计数** = 各判断分支累计发生了几次（**历史统计**）。  
-- 二者都在 4G 的 `lib/pir` + `pir_runtime` 中维护，T3x 用 `AT+PIRSTAT?` 读取。
+- 二者都在 4G 的 `pir_ctrl` + `pir_ctrl` 中维护，T3x 用 `AT+PIRSTAT?` 读取。

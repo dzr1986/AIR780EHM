@@ -37,7 +37,7 @@
 
 1. **MQTT 只在 4G 建一条连接**；T31x `[cat1_mqtt] enable=0` 推荐默认。  
 2. **不需要**同 Broker 多端口、不需要 Cat.1/T31x 切换 MQTT。  
-3. **远程改分辨率/音频** → MQTT 2012/2020 → UART → T31x（不在 4G 存编码参数）。  
+3. **远程改分辨率/音频** → MQTT 2021/2020 → UART → T31x（不在 4G 存编码参数）。  
 4. **删薄文件、关开关、懒加载**；**不合并** `host_uart` / `net_mqtt` / `app.lua`。
 
 ---
@@ -121,7 +121,7 @@ local RNDIS_ENABLE = 0
 
 | 能力 | 4G | T31x |
 |------|-----|------|
-| 视频/音频编码参数 | MQTT 2012/2020 → `host_uart` | `encode_remote.c` + `AT+VENC*` / `AT+AUDIO*` |
+| 视频/音频编码参数 | MQTT 2021/2020 → `host_uart` | `encode_remote.c` + `AT+VENC*` / `AT+AUDIO*` |
 | PIR 录像策略 | MQTT 2010 | `pir_ctrl` + 媒体在 T31x |
 | GB28181 / 报警 | 无 | IPC 侧 |
 
@@ -143,7 +143,7 @@ local RNDIS_ENABLE = 0
 
 **仍启动时加载**（主路径）：`uart_bridge`、`host_uart`、`pir_ctrl`、`battery_guard`、`led`、`key`。
 
-`host_uart.lua` 内对 `net_tcp`、`pir_runtime`、`host_event` 等已是 **`pcall(require)` 用时才加载**。
+`host_uart.lua` 内对 `net_tcp`、`pir_ctrl`、`host_event` 等已是 **`pcall(require)` 用时才加载**。
 
 ```text
 main.lua
@@ -233,9 +233,9 @@ enable=0
 | 文件 | 开关 |
 |------|------|
 | `user/net_tcp.lua` | `LOW_POWER_WAKEUP_CFG.mode="mqtt"`（默认不加载） |
-| `lib/mobile_info.lua` | `mobile_info=false` |
+| `(已删除)` | `mobile_info=false` |
 | `lib/usb_rndis.lua` | `rndis=false` |
-| `lib/fota.lua` | `fota=false` |
+| `fota_svc.lua` | `fota=false` |
 | `user/sound_prompt.lua` | `sound_prompt=false` |
 
 ### 5.3 已删除 / 勿再加回
@@ -253,7 +253,7 @@ enable=0
 | `t3x_policy` | 必需（唤醒门禁） |
 | `usb_charge` | 必需（USB/rest） |
 | `watchdog` | 建议保留 |
-| `fota` / `libfota2` | 仅 OTA 时需要 |
+| `fota` / `fota_svc` | 仅 OTA 时需要 |
 | `usb_rndis` | 仅 USB 调试时需要 |
 | `archive/` | 不参与编译 |
 
@@ -268,8 +268,8 @@ enable=0
 | 3 | `rndis=false` | 无 `RNDIS taskInit`；MQTT 正常 |
 | 4 | USB 拔出进 rest | `1002`，MQTT 在线，T31x 断电 |
 | 5 | `[cat1_mqtt] enable=0` 启 T31x | 无多余 `MQTTCFG` 重连日志 |
-| 6 | 发 `2020` / `2012` | 应答 `1020` / `1012`（T31x 需唤醒） |
-| 7 | 发 `2010` PIR 策略 | 仍正常（与编码 2012 无关） |
+| 6 | 发 `2020` / `2021` | 应答 `1020` / `1021`（T31x 需唤醒） |
+| 7 | 发 `2010` PIR 策略 | 仍正常（与编码 2021 无关） |
 
 ---
 
@@ -279,7 +279,7 @@ enable=0
 |------|----------|
 | 删 `host_uart` 减小体积 | 用 `MODULE_FLAGS` + 懒加载 |
 | T31x 再建一条 MQTT | 单连接在 4G；T31x `cat1_mqtt=0` |
-| 用 2010 `quality` 改分辨率 | 用 **2012/2020** |
+| 用 2010 `quality` 改分辨率 | 用 **2021/2020** |
 | 4G 存编码参数 | 参数在 T31x `syscfg.ini` |
 | rest 关 MQTT 省电 | 默认 `modem_hibernate=false` 保持 MQTT；关的是 T31x 电和 TCP |
 

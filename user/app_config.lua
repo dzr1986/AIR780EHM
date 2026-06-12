@@ -21,7 +21,7 @@ _G.MODULE_FLAGS = {
     sound_prompt = true,
     time_sync = true,
     sntp = true,
-    mobile_info = false,  -- 门球默认关周期采集；MQTT 2005 由 net_mqtt 按需查 SIM
+    mobile_info = false,  -- 已移出 lib/；2005→1005 仍可用；恢复见 archive/slim/README.md
     cellular = true,
     fota = true,
     rndis = (_G.FEATURE_CFG and _G.FEATURE_CFG.rndis) == true,

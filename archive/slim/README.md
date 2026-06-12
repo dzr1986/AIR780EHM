@@ -7,8 +7,10 @@
 | 项 | 做法 | 约省 |
 |----|------|------|
 | `user/net_tcp.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → `archive/slim/user/net_tcp.lua` | ~8KB |
-| `user/sound_prompt.lua` | **桩文件**留在 `user/`（LuatTools 必需）；完整版 → 本目录 | ~7KB |
-| `lib/mobile_info.lua` | 移入本目录；`mobile_info=false` | ~5KB |
+| `user/sound_prompt.lua` | **桩**（~0.5KB）；完整版 → `sound_prompt_full.lua` | ~6.5KB |
+| `user/t3x_ipc.lua` | **桩**（`return require "t3x_ctrl"`）；逻辑在 `t3x_ctrl.lua` | ~4.5KB 逻辑已合并 |
+| `lib/mobile_info.lua` | **已移出** `lib/`（省 ~3KB flash）；完整版 → `archive/slim/lib/mobile_info.lua` | ~5KB |
+| `lib/led.lua` 呼吸灯测试 | 桩；完整 → `archive/slim/lib/led_breath_test.lua` | ~1KB |
 | `lib/usb_rndis.lua` | 移入本目录；`RNDIS_ENABLE=0` | ~9KB |
 | `lib/led_dual.lua` | dual 红蓝灯效参考（勿 require；门球用 `single_blue`） | ~4KB |
 
@@ -29,12 +31,13 @@
 copy archive\slim\user\net_tcp.lua user\net_tcp.lua
 
 # 开机/关机提示音（覆盖桩文件）
-copy archive\slim\user\sound_prompt.lua user\sound_prompt.lua
+copy archive\slim\user\sound_prompt_full.lua user\sound_prompt.lua
 # app_config.lua: sound_prompt=true, config.lua SOUND_CFG.enabled=true
 
-# 周期蜂窝调试日志
+# 周期蜂窝调试日志（须同时改 app.lua 加 require "mobile_info"）
 copy archive\slim\lib\mobile_info.lua lib\
 # app_config.lua: mobile_info=true
+# user/app.lua startBackgroundServices 内恢复 mobile_info.start()
 
 # USB RNDIS 调试（config.lua RNDIS_ENABLE=1）
 copy archive\slim\lib\usb_rndis.lua lib\

@@ -57,7 +57,7 @@ flowchart TD
 
 | 目录 | 数量 | 对照文档 |
 |------|------|----------|
-| `user/*.lua` | 19（含 `bat_adc` 桩） | `PROJECT_DOC.md` §9、`README.md` |
+| `user/*.lua` | ~20 | `PROJECT_DOC.md` §9、`README.md` |
 | `lib/*.lua` | 18 | `lib/archive/README.md`、`CALL_GRAPH.md` §8 |
 
 ---
@@ -67,7 +67,7 @@ flowchart TD
 | 维度 | 匹配度 | 说明 |
 |------|--------|------|
 | 配置 / GPIO / 电量 | **高** | `CONFIG.md` 与 `config.lua` 一致 |
-| MQTT dataType | **高** | 2001–2007、2010–2012、2020 ↔ 1001–1007、1010–1012、1020 |
+| MQTT dataType | **高** | 2001–2007、2010–2021、2020 ↔ 1001–1007、1010–1021、1020 |
 | AT（T3x→4G 入站） | **高** | `UART_AT_COMMANDS.md` ↔ `AT_CMD_TABLE` |
 | conack / 1003 周期 | **高** | `publishConnectUplink()`；初值 `low_power_interval_sec=30` |
 | Cat.1 精简 / TCP | **高** | `LOW_POWER_WAKEUP_CFG.mode`；无 `MODULE_FLAGS.net_tcp` |
@@ -94,7 +94,7 @@ flowchart TD
 | 10 | `time_sync` | `time_sync.start()` |
 | 11 | `gpio` | `setupGpio()` → `peripheral.start()` |
 | 12 | `pmd_runtime` | `setupPmd()` |
-| 13 | flags | `startBackgroundServices()`：`vbat` / `usb_charge` / `sntp_sync` / `mobile_info` |
+| 13 | flags | `startBackgroundServices()`：`vbat` / `usb_charge` / `time_sync` / `mobile_info` |
 | 14 | `rndis` | `setupRndis()` |
 | 15 | `mqtt` | `net_mqtt.bootstrapNetwork()`（**`main.lua` 已调一次，此处幂等再调**） |
 | 16 | 始终 | `bootMqtt()` → `startMqtt()` → `net.start()` |

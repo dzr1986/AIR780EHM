@@ -2,7 +2,7 @@
 
 > **代码**：`user/net_mqtt.lua` · **配置**：`user/config.lua`  
 > **下行手册**：[MQTT_DOWNLINK.md](./MQTT_DOWNLINK.md) · **PIR**：[PIR_PROTOCOL.md](./PIR_PROTOCOL.md)  
-> **编码参数**：[REMOTE_ENCODE_CONFIG.md](./REMOTE_ENCODE_CONFIG.md)（2012/2020/1012/1020）  
+> **编码参数**：[REMOTE_ENCODE_CONFIG.md](./REMOTE_ENCODE_CONFIG.md)（2021/2020/1021/1020）  
 > **更新**：2026-06-10（1002 reason/source；§1.2 平台对接须知）
 
 ---
@@ -29,7 +29,7 @@
 | **下发状态查询** | **Publish** | `/panshi/device/{deviceNo}/` | 与控制**同一 Topic**；载荷 `{"dataType":"2003"}` |
 | **接收设备状态** | **Subscribe** | `/panshi/app/{deviceNo}/status` | 设备应答 `1003`；也可用 `/panshi/app/{deviceNo}/#` 收全部上行 |
 | **接收控制回复** | **Subscribe** | `/panshi/app/{deviceNo}/event` | 应答 `2004` → `1004`（`reply=1`） |
-| **接收编码查询/设置应答** | **Subscribe** | `/panshi/app/{deviceNo}/encode` | 应答 `2020`→`1020`、`2012`→`1012` |
+| **接收编码查询/设置应答** | **Subscribe** | `/panshi/app/{deviceNo}/encode` | 应答 `2020`→`1020`、`2021`→`1021` |
 
 ```text
 平台 ──Publish──► /panshi/device/{IMEI}/     （控制、状态查询等所有下行）
@@ -55,8 +55,8 @@
 | **1003 周期** | 出厂默认 **30s**（`LOW_POWER_CFG.rest_mqtt_interval_sec` → `low_power_interval_sec`）；`mqtt_report_interval_sec=60` 仅在 `low_power_interval_sec≤0` 时回退 | 勿按 60s 验收；要 60s 请下发 `{"dataType":"2003","interval":60}` 或改 `config.lua` |
 | **rest 与 1001** | rest 下 conack **不发 1001**；PIR `uploadMode=auto` **不发 1001**（`pir_ctrl.ignore_rest` + `app.onPirMediaAction`） | 以 **1003.lowPowerMode** 判态，勿用 1001 判断 rest 在线 |
 | **2006 / 2007** | 见下节；T3x 未就绪时入队唤醒，**非秒回** | 发哪个回哪个（2006→1006，2007→1007）；勿与 2003/2005 秒回混淆 |
-| **2011 → 1011** | `requestStopFromCloud()` 经 PIR 状态机，停录完成后才 **1011**（`reason=cloud`） | **非**下行秒回；需正在录像且 `stopOnCloud=1` |
-| **2010 查询** | 除 `action:"query"`、`query:1` 外，同义 **`action:"status"`** | 应答 **1010**，`status`/`pirStatus` 均为 `"query"`；**rest 下仍可用** |
+| **2011 → 1011** | `requestStopFromCloud()` → `publishStopRecording(device)`；T3x 写盘中 **1011** 可能 `source=t3x` | 需正在录像且 `stopOnCloud=1` |
+| **2010 查询** | 仅 `action:"query"` | 应答 **1010**，`status`/`pirStatus` 均为 `"query"`；**rest 下仍可用** |
 | **2001 查询** | rest 下 conack 不发 1001，但 **2001 仍应答 1001** | 勿把 2001 当作「已出 rest」；以 **1003.lowPowerMode** 为准 |
 
 #### 2006 / 2007：为何有两条？为何「入队、数秒后应答」？
@@ -106,8 +106,8 @@
 | **2006** | IMEI + GB28181 ID 查询 | **1006** | 设备标识 | `identity` |
 | **2007** | TF/SD 卡状态查询 | **1007** | TF 卡容量 | `tfcard` |
 | **2010** | PIR 策略 / 状态查询 | **1010** | PIR 检测状态 | `pir` |
-| **2011** | 云端停止录像 | **1011** | 录像停止 | `event` |
-| **2012** | 设置视频/音频编码 | **1012** | 设置应答 | `encode` |
+| **2011** | 设备停录（平台下发） | **1011** | 录像停止 | `event` |
+| **2021** | 设置视频/音频编码 | **1021** | 设置应答 | `encode` |
 | **2020** | 查询视频/音频编码 | **1020** | 查询应答 | `encode` |
 
 ### 2.1 1004 两种载荷（同 dataType，靠字段区分）
@@ -165,30 +165,22 @@ app.start() → bootMqtt → net_ready → mqtt.connect
 { "dataType": "2002", "lowPowerMode": "enter" }
 ```
 
-```json
-{ "dataType": "2002", "action": 1 }
-```
-
 退出 rest：
 
 ```json
 { "dataType": "2002", "lowPowerMode": "exit" }
 ```
 
-```json
-{ "dataType": "2002", "action": 0 }
-```
-
 | 下行字段 | 说明 |
 |----------|------|
-| `lowPowerMode` | `enter` / `exit` |
-| `action` | 兼容：`1` 进入，`0` 退出 |
+| `lowPowerMode` | `enter` / `exit`（必填） |
 
 | 条件 | 设备行为 | 上行 |
 |------|----------|------|
-| enter / action=1 | 断 T3x、进 rest；**MQTT 保持** | 成功后 **1002**（含 `reason`/`source`） |
-| enter + **USB 已插入** | `block_4g_rest_when_usb` 时**忽略**，无 1002 | — |
-| exit / action=0 | 唤醒 T3x、出 rest | 无 1002（可看 **1001** 或 **1003**） |
+| enter | 断 T3x、进 rest；**MQTT 保持** | 状态切换成功后 **1002**（`lowPowerMode=enter`，含 `reason`/`source`） |
+| enter + **USB 已插入** | `block_4g_rest_when_usb` 时**忽略**，无 1002 | —（静默，日志 `d2u`） |
+| exit | 唤醒 T3x、出 rest | 状态切换成功后 **1002**（`lowPowerMode=exit`）；不发 1001 |
+| 2002 字段非法 | 忽略 | —（日志 `d2?`） |
 
 串口等价：`AT+LOWPOWER=ENTER` / `AT+LOWPOWER=EXIT`（`reason=at`）。
 
@@ -242,18 +234,16 @@ app.start() → bootMqtt → net_ready → mqtt.connect
 { "dataType": "2004", "action": "wled_query", "messageId": "wled-q1" }
 ```
 
-（查询同义：`action":"wled?"` 或 `action":"wled","query":1`）
-
 | action | 1004 回复 | 设备 |
 |--------|-----------|------|
-| `reboot` / `restart` | `reply=1`, `ret=0` | 约 500ms 重启 |
-| `off` / `shutdown` / `poweroff` | 同上 | 关机 |
-| `ota` / `upgrade` / `fota` 或含 OTA 字段 | `message=ota_accepted` | FOTA → **1004** `stage=*` |
-| `wled` / `wled_on` / `wled_off` | `reply=1`, `ret=0`, `ok`, **`enable`** | 白光灯开/关；UART 转发 T3x |
-| `wled_query` / `wled?` | `reply=1`, `ret=0`, `ok`, **`enable`** | 查询当前白光灯 0/1 |
+| `reboot` | `reply=1`, `ret=0` | 约 500ms 重启 |
+| `off` | 同上 | 关机 |
+| `ota` | `message=ota_accepted` | FOTA → **1004** `stage=*` |
+| `wled` | `reply=1`, `ret=0`, `ok`, **`enable`** | 白光灯开/关（须 `enable` 0/1） |
+| `wled_query` | `reply=1`, `ret=0`, `ok`, **`enable`** | 查询当前白光灯 0/1 |
 | 其它 | `ret=-1` | 无操作 |
 
-OTA 字段：`version`（**须 `内核号.XXX.ZZZ`**，如 `2034.001.002`，与 LuatTools / 合宙 IoT / `main.lua` `VERSION` 一致）、`url`, `product_key`, `timeout`, `full_url` 等（同 `lib/fota.lua`）。
+OTA 字段：`version`（**须 `内核号.XXX.ZZZ`**，如 `2034.001.002`，与 LuatTools / 合宙 IoT / `main.lua` `VERSION` 一致）、`url`, `product_key`, `timeout`, `full_url` 等（同 `fota_svc.lua`）。
 
 串口：`AT+REBOOT`、`AT+POWEROFF`、`AT+OTA`、`AT+WLED=0/1`。
 
@@ -372,29 +362,23 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 { "dataType": "2010", "action": "query" }
 ```
 
-```json
-{ "dataType": "2010", "query": 1 }
-```
-
-（同义：`action":"status"`）
-
 **rest 与 2010**：
 
 | 类型 | rest 下行为 |
 |------|-------------|
-| **2010 查询**（`query` / `query:1` / `action:status`） | ✅ **仍立即应答 1010**（`pirStatus=query`） |
+| **2010 查询**（`action:"query"`） | ✅ **仍立即应答 1010**（`pirStatus=query`） |
 | **2010 配置** | ✅ 写入策略，待出 rest 后 PIR 触发生效 |
 | **硬件 PIR 触发** | ❌ `pir_ctrl.ignore_rest`，无 1010 / 1001 |
 
 硬件 PIR 触发后自动上行 **1010**（无需下行，仅常电）。详见 [PIR_PROTOCOL.md](./PIR_PROTOCOL.md)。
 
-### 4.9 `2011` — 云端停录 → `1011`
+### 4.9 `2011` — 设备停录 → `1011`
 
 ```json
 { "dataType": "2011", "messageId": "optional" }
 ```
 
-条件：正在录像且 `stopOnCloud=1`（**2010** 配置）。设备调用 `pir_ctrl.requestStopFromCloud()`，经 PIR 状态机停录；**非下行秒回**，停录完成后上行 **1011**（`reason=cloud`，`source=4g`）。若 T3x 正在写盘，可能先唤醒 T3x 再收 `source=t3x` 的 1011。
+条件：正在录像且 `stopOnCloud=1`（**2010** 配置）。设备调用 `pir_ctrl.requestStopFromCloud()` → 结束本地录像会话并发布 `PIR_STOP_RECORDING`（`reason=device`）。**无即时 1004**。若 T3x 未在写盘，上行 **1011**（`source=4g`）；若 T3x 正在写盘，先唤醒同步停录，**1011** 可能为 `source=t3x`。
 
 详见 [PIR_PROTOCOL.md](./PIR_PROTOCOL.md)。
 
@@ -420,13 +404,13 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 
 ---
 
-### 4.11 `2012` — 设置视频/音频编码 → `1012`
+### 4.11 `2021` — 设置视频/音频编码 → `1021`
 
 详见 **[REMOTE_ENCODE_CONFIG.md](./REMOTE_ENCODE_CONFIG.md)**。
 
 ```json
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "camera": 0,
   "stream": 0,
   "width": 1920,
@@ -440,7 +424,7 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 
 ```json
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "scope": "audio",
   "camera": 0,
   "enable": 1,
@@ -450,7 +434,7 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 }
 ```
 
-应答：`.../encode`，`dataType":"1012"`，含 `needReboot`（`0`=仅码率热更新，`1`=将重启 T31x）。
+应答：`.../encode`，`dataType":"1021"`，含 `needReboot`（`0`=仅码率热更新，`1`=将重启 T31x）。
 
 ---
 
@@ -470,11 +454,13 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 
 ---
 
-### 5.2 `1002` — 进入 rest 事件
+### 5.2 `1002` — rest 进入/退出事件
 
 主题：`.../rest`
 
-**类型**：事件（「何时 / 为何进入 rest」）；**当前是否在 rest 以 1003.lowPowerMode 为准**。
+**类型**：事件（「何时 / 为何进入或退出 rest」）；**当前是否在 rest 以 1003.lowPowerMode 为准**。
+
+**enter 示例**：
 
 ```json
 {
@@ -487,12 +473,24 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 }
 ```
 
+**exit 示例**：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1002",
+  "lowPowerMode": "exit",
+  "reason": "mqtt_2002",
+  "time": "2026-06-11 23:01:39"
+}
+```
+
 | 字段 | 说明 |
 |------|------|
 | `dataType` | 固定 `"1002"` |
-| `lowPowerMode` | 固定 `"enter"`（表示进入 rest 事件，非当前态查询） |
+| `lowPowerMode` | `"enter"` 进入 rest 事件 / `"exit"` 退出 rest 事件（非当前态查询） |
 | `reason` | 触发原因（见下表） |
-| `source` | `enter` = 当场进 rest 时上报；`reconnect` = MQTT 连接成功时补报（设备已在 rest） |
+| `source` | 仅 **enter** 时：`enter` = 当场上报；`reconnect` = MQTT 重连补报 |
 | `time` | 上报时间 |
 
 **`reason` 常见取值**（`net_mqtt.publishRest` / `app.onEnterLowPower`）：
@@ -502,7 +500,8 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 | `usb_remove` | GPIO27 USB 拔出进 rest |
 | `battery` | 电量 ≤10% 进 rest |
 | `mqtt_2002` | 平台下发 2002 enter |
-| `at` | 串口 `AT+LOWPOWER=ENTER` |
+| `at` | 串口 `AT+LOWPOWER=ENTER` / `EXIT`（exit 时 `lowPowerMode=exit`） |
+| `usb_insert` | GPIO27 USB 插入退出 rest |
 | `boot_no_usb` | 冷启动无 USB 进 rest |
 | `unknown` | 未记录原因时的兜底 |
 
@@ -526,8 +525,8 @@ conack 补报示例：
 }
 ```
 
-**触发**：2002 enter、USB 拔出、低电量、AT+LOWPOWER、冷启动无 USB 等。  
-**不触发**：2002 exit（出 rest 无 1002）。  
+**触发**：2002 enter、USB 拔出、低电量、AT+LOWPOWER、冷启动无 USB 等（`lowPowerMode=enter`）。  
+**exit 触发**：2002 exit、USB 插入、AT+LOWPOWER=EXIT 等（`lowPowerMode=exit`）。  
 **1001 与 rest**：conack / PIR 自动不发 1001；**2001 查询仍应答 1001**（见 §4.1 对照表）。
 
 ---
@@ -540,7 +539,6 @@ conack 补报示例：
 {
   "deviceNo": "868...",
   "dataType": "1003",
-  "powerStatus": 1,
   "usbInserted": 1,
   "charging": 1,
   "remainPower": "85",
@@ -552,8 +550,7 @@ conack 补报示例：
 
 | 字段 | 说明 |
 |------|------|
-| `powerStatus` | 兼容字段，同 `usbInserted`（USB 座 GPIO27）；JSON 为 **数字** 0/1 |
-| `usbInserted` | `0` 未插 USB / `1` 已插 |
+| `usbInserted` | `0` 未插 USB / `1` 已插（GPIO27）；JSON 为 **数字** 0/1 |
 | `charging` | `0` 未充电或已满 / `1` 充电中（GPIO17） |
 | `remainPower` | 电量 %（ADC） |
 | `batteryMv` | 电芯电压 mV |
@@ -777,25 +774,25 @@ conack 补报示例：
 
 | source | 含义 |
 |--------|------|
-| `4g` | 4G 定时/云端停录（T3x 未写盘时） |
+| `4g` | 4G 定时 / 2011 设备停录（T3x 未写盘时） |
 | `t3x` | T3x `AT+RECORD=0,reason=*` |
 
 常见 T3x `reason`：`done`、`time_sync`、`no_iframe`、`open_failed`、`pir_retrigger`。详见 [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)。
 
 ---
 
-### 5.10 `1012` — 编码设置应答
+### 5.10 `1021` — 编码设置应答
 
 | 项 | 值 |
 |----|-----|
 | 主题 | `/panshi/app/{deviceNo}/encode` |
-| 函数 | `net_mqtt.publishEncodeReply()`（`dlType=2012`） |
-| 触发 | 下行 **2012** 设置视频/音频编码参数 |
+| 函数 | `net_mqtt.publishEncodeReply()`（`dlType=2021`） |
+| 触发 | 下行 **2021** 设置视频/音频编码参数 |
 
 ```json
 {
   "deviceNo": "862323084068124",
-  "dataType": "1012",
+  "dataType": "1021",
   "reply": 1,
   "messageId": "set-br-001",
   "ret": 0,
@@ -898,7 +895,7 @@ conack 补报示例：
 | 1007 | `tfcard` | 2007 |
 | 1010 | `pir` | PIR 触发 / 2010 query |
 | 1011 | `event` | 停录 |
-| 1012 | `encode` | 2012 设置应答 |
+| 1021 | `encode` | 2021 设置应答 |
 | 1020 | `encode` | 2020 查询应答 |
 
 ---
@@ -916,7 +913,7 @@ conack 补报示例：
 | 2007 | `handleDownlink2007` | `publishTfCardStatus` |
 | 2010 | `handleDownlink2010` | `publishPirDetect` |
 | 2011 | `handleDownlink2011` | `publishPirRecordStop` |
-| 2012 | `handleDownlink2012` | `publishEncodeReply` → 1012 |
+| 2021 | `handleDownlink2021` | `publishEncodeReply` → 1021 |
 | 2020 | `handleDownlink2020` | `publishEncodeReply` → 1020 |
 
 ---
@@ -924,7 +921,7 @@ conack 补报示例：
 ## 7. 验收清单
 
 - [ ] 2001 → 收到 1001
-- [ ] 2002 enter → 1002（`lowPowerMode=enter`、`reason`、`source`）；exit 可唤醒且无 1002
+- [ ] 2002 enter → 1002（`lowPowerMode=enter`、`reason`、`source`）；2002 exit → 1002（`lowPowerMode=exit`）
 - [ ] rest 重连 conack → 1002（`source=reconnect`）+ 1003，不发 1001
 - [ ] **rest 下 PIR 硬件触发** → **无** 1001、**无** 1010（`pir_ctrl.ignore_rest`）
 - [ ] **rest 下 2010 query** → 仍收 **1010**（`pirStatus=query`，`status=query`）
@@ -939,4 +936,4 @@ conack 补报示例：
 - [ ] **常电** PIR 触发 → 1010（`uploadMode=auto` 时另收 1001）；2010 query → 1010
 - [ ] 2011 停录 → 1011
 - [ ] 2020 → 1020（`body.video` / `body.audio`）
-- [ ] 2012 改码率 → 1012 `needReboot=0`；改分辨率 → `needReboot=1`
+- [ ] 2021 改码率 → 1021 `needReboot=0`；改分辨率 → `needReboot=1`

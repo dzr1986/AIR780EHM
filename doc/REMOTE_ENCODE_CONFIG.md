@@ -1,4 +1,4 @@
-# 远程视频/音频编码参数（MQTT 2012 / 2020）
+# 远程视频/音频编码参数（MQTT 2021 / 2020）
 
 > **代码**：4G `user/net_mqtt.lua` · `user/host_uart.lua` · T31x `app/cat1/encode_remote.c`  
 > **IPC 对照**：[ipc_device_gb28181/docs/remote_encode_config.md](../../../ipc_device_gb28181/docs/remote_encode_config.md)  
@@ -11,7 +11,7 @@
 | 下行 | 上行 | 主题后缀 | 含义 |
 |------|------|----------|------|
 | **2020** | **1020** | `encode` | 查询视频/音频编码参数 |
-| **2012** | **1012** | `encode` | 设置视频/音频编码参数 |
+| **2021** | **1021** | `encode` | 设置视频/音频编码参数 |
 
 - **camera**：`0`–`3`，最多 **4 路摄像头**（与 T31x `MAX_CAMERA_NUM` 一致）
 - **stream**：`0`=主码流，`1`=子码流
@@ -163,7 +163,7 @@
 
 ---
 
-## 4. `2012` — 设置 → `1012`
+## 4. `2021` — 设置 → `1021`
 
 ### 4.1 视频设置
 
@@ -171,7 +171,7 @@
 
 ```json
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "camera": 0,
   "stream": 0,
   "enable": 1,
@@ -189,7 +189,7 @@
 
 ```json
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "camera": 0,
   "stream": 0,
   "bitrate": 800,
@@ -199,7 +199,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `dataType` | string | 是 | `"2012"` |
+| `dataType` | string | 是 | `"2021"` |
 | `camera` | number | 视频时建议 | `0`–`3`，默认 `0` |
 | `stream` | number | 视频时建议 | `0` 主 / `1` 子，默认 `0` |
 | `enable` | number | 否 | `0`/`1`；子码流开关 |
@@ -215,7 +215,7 @@
 
 ```json
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "scope": "audio",
   "camera": 0,
   "enable": 1,
@@ -241,12 +241,12 @@
 
 音频参数变更后通常 **`needReboot=1`**。
 
-### 4.3 上行 `1012`
+### 4.3 上行 `1021`
 
 ```json
 {
   "deviceNo": "862323084068124",
-  "dataType": "1012",
+  "dataType": "1021",
   "reply": 1,
   "messageId": "set-v0",
   "ret": 0,
@@ -267,13 +267,13 @@
 ## 5. 数据流
 
 ```text
-平台 Publish 2020/2012
-  → 4G net_mqtt.handleDownlink2020/2012
+平台 Publish 2020/2021
+  → 4G net_mqtt.handleDownlink2020/2021
   → host_uart.queryHostEncode / setHostVideoEncode / setHostAudioEncode
   → （rest 时 t3x_ctrl 上电 + 等 ready）
   → UART: AT+VENC? / AT+VENCSET= / AT+AUDIO? / AT+AUDIOSET=
   → T31x encode_remote.c → syscfg.ini
-  → Publish 1020/1012 → .../encode
+  → Publish 1020/1021 → .../encode
 ```
 
 ---
@@ -308,6 +308,13 @@
 
 ## 7. UART AT（T31x 实现，4G 自动调用）
 
+| MQTT | 方向 | AT |
+|------|------|-----|
+| **2020** | 视频查询 | `AT+VENC?`（可选 `camera` / `stream`） |
+| **2020** | 音频查询 | `AT+AUDIO?`（可选 `camera`） |
+| **2021** | 视频设置 | `AT+VENCSET=…` |
+| **2021** | 音频设置 | `AT+AUDIOSET=…` |
+
 | AT | 说明 |
 |----|------|
 | `AT+VENC?` | 全部启用 camera 的全部码流 |
@@ -335,7 +342,7 @@ OK
 
 | 层级 | 文件 |
 |------|------|
-| MQTT 下行/上行 | `user/net_mqtt.lua` `handleDownlink2012/2020` `publishEncodeReply` |
+| MQTT 下行/上行 | `user/net_mqtt.lua` `handleDownlink2021/2020` `publishEncodeReply` |
 | UART 代理 | `user/host_uart.lua` `queryHostEncode` `setHostVideoEncode` `setHostAudioEncode` |
 | T31x AT | `app/cat1/uart_host_cmd.c` |
 | T31x 逻辑 | `app/cat1/encode_remote.c` |
@@ -347,9 +354,9 @@ OK
 
 - [ ] `2020` 无参数 → `1020` `body.video` 含已启用 camera 各码流
 - [ ] `2020` + `scope=audio` → `body.audio`
-- [ ] `2012` 仅改 `bitrate` → `1012` `needReboot=0`
-- [ ] `2012` 改 `width/height` → `needReboot=1`，T31x 重启后 GB28181 分辨率变化
-- [ ] rest 下发 `2012` → 先唤醒 T31x 再成功
+- [ ] `2021` 仅改 `bitrate` → `1021` `needReboot=0`
+- [ ] `2021` 改 `width/height` → `needReboot=1`，T31x 重启后 GB28181 分辨率变化
+- [ ] rest 下发 `2021` → 先唤醒 T31x 再成功
 - [ ] `2010 quality` 与编码分辨率无关
 
 ---

@@ -14,7 +14,7 @@
 | 问题 | 答案 |
 |------|------|
 | **当前默认多久触发一次？** | 约 **3 秒** 最多 1 次有效业务触发（`PIR_COOLDOWN_MS.frequent = 3000`） |
-| **由谁决定？** | `config.lua` → `PIR_CFG.cooldown_ms`，`lib/pir.lua` 软件冷却 |
+| **由谁决定？** | `config.lua` → `PIR_CFG.cooldown_ms`，`pir_ctrl.lua` 软件冷却 |
 | **日志里怎么看？** | `I/user.pir 已启动 30 cooldown 5000`；每次有效：`I/user.pir 触发 30` |
 | **与录像时长关系？** | **无关**。`pirRecordPolicy.maxDurationSec`（默认 60s）是单次录像上限，不是触发间隔 |
 
@@ -79,7 +79,7 @@ _G.PIR_CFG = {
 
 ---
 
-## 4. 固件实现（`lib/pir.lua`）
+## 4. 固件实现（`pir_ctrl.lua`）
 
 ```mermaid
 flowchart LR

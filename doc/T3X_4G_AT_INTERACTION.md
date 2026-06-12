@@ -25,7 +25,7 @@ flowchart LR
         APP[app.lua]
         NET[net_mqtt.lua]
         PIR[pir + pir_ctrl]
-        RT[pir_runtime 统计]
+        RT[pir_ctrl 统计]
     end
     INI --> API
     API --> AT
@@ -148,7 +148,7 @@ PIR 判断**可以且应当保存在 4G**（传感器接在 Cat.1 GPIO30）。T3
 ### 4.2 处理流水线
 
 ```text
-GPIO30 中断 (lib/pir.lua)
+GPIO30 中断 (pir_ctrl.lua)
   ├─ T3x 烧录模式 active        → cnt_hw_ignore_burn, last=ignore_burn
   ├─ 非有效电平                 → cnt_hw_ignore_level
   ├─ cooldown_ms 内             → cnt_hw_ignore_cooldown, last=ignore_cooldown
@@ -218,7 +218,7 @@ OK
 
 清计数：`AT+PIRCLR` → `+PIRCLR:OK`。
 
-实现：`user/pir_runtime.lua`（统计）+ `lib/pir.lua` / `user/pir_ctrl.lua`（埋点）+ `host_uart`（AT）。
+实现：`pir_ctrl.lua`（统计）+ `pir_ctrl.lua` / `user/pir_ctrl.lua`（埋点）+ `host_uart`（AT）。
 
 ---
 
@@ -246,7 +246,7 @@ if (client_get_pir_stat(client, resp, sizeof(resp)) == 0) {
 ```mermaid
 sequenceDiagram
     participant PIR as PIR 传感器
-    participant L as lib/pir
+    participant L as pir_ctrl
     participant C as pir_ctrl
     participant A as app
     participant H as host_uart
@@ -272,8 +272,8 @@ sequenceDiagram
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | AT 分发 | `user/host_uart.lua` | `AT+PIRSTAT?` / `AT+PIRCLR`、HOSTEVT pending 拼入 PIRSTAT |
-| 统计 | `user/pir_runtime.lua` | 计数、`buildAtBody()` |
-| 硬件 | `lib/pir.lua` | GPIO、冷却、`cnt_hw_*` |
+| 统计 | `pir_ctrl.lua` | 计数、`buildAtBody()` |
+| 硬件 | `pir_ctrl.lua` | GPIO、冷却、`cnt_hw_*` |
 | 业务 | `user/pir_ctrl.lua` | 策略、录像、`cnt_biz_*` / `cnt_stop_*` |
 | T3x API | `t3x_linux/api.c` | `client_get_pir_stat()` |
 | 示例 | `t3x_linux/main.c` | 初始化与每次唤醒后 `log_pir_stat()` |

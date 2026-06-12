@@ -204,7 +204,7 @@ gpio.get(26)   # T3x_BOOT，烧录时同为 1
 
 | 原理图网络名         | T3x 球名               | 功能说明               |
 | -------------- | -------------------- | ------------------ |
-| PIR_MCU_DET    | Air780 **GPIO30**（模组 Pin31） | PIR 人体检测 → 模组 `lib/pir.lua` |
+| PIR_MCU_DET    | Air780 **GPIO30**（模组 Pin31） | PIR 人体检测 → 模组 `pir_ctrl.lua` |
 | MCU_INT_CPU    | **`PB27`**（VDDIO3，`t3x_linux` `wake_gpio=59`） | Cat.1 **GPIO29** 低电平脉冲输入（T3x 上拉 3.3V + 下降沿）；780 `t3x_mcu_int`；供电仍用 **GPIO22** `t3x_pwr_wake` |
 | T3x_BOOT       | `BOOT_SEL0` `PC00` 等 | 启动/烧录模式控制          |
 | BOOT_SEL0      | BOOT_SEL0 `PC00`     | 67                 |

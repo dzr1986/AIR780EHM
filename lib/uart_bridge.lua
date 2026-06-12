@@ -43,16 +43,16 @@ local stats = {
 local function load_uart_cfg()
     local c = _G.UART_CFG
     if type(c) ~= "table" then
-        log.error(LOG_TAG, "UART_CFG 未定义")
+        log.error(LOG_TAG, "noCfg")
         return false
     end
 
     if c.id == nil then
-        log.error(LOG_TAG, "UART_CFG.id 未配置")
+        log.error(LOG_TAG, "noId")
         return false
     end
     if c.baud == nil then
-        log.error(LOG_TAG, "UART_CFG.baud 未配置")
+        log.error(LOG_TAG, "noBd")
         return false
     end
 
@@ -66,7 +66,7 @@ local function load_uart_cfg()
     end
 
     if c.rx_line_max == nil then
-        log.error(LOG_TAG, "UART_CFG.rx_line_max 未配置")
+        log.error(LOG_TAG, "noRx")
         return false
     end
     drv.rx_line_max = c.rx_line_max
@@ -138,7 +138,7 @@ end
 local function feed_line_buffer(chunk)
     drv.rx_line_buf = drv.rx_line_buf .. chunk
     if #drv.rx_line_buf > drv.rx_line_max then
-        log.warn(LOG_TAG, "行缓冲溢出，清空", "max", drv.rx_line_max)
+        log.warn(LOG_TAG, "ovf", "max", drv.rx_line_max)
         drv.rx_line_buf = ""
         return
     end
@@ -193,7 +193,7 @@ end
 --- @param options table|nil 仅支持 onRaw、onLine（串口参数见 UART_CFG）
 function start(options)
     if drv.started then
-        log.warn(LOG_TAG, "已启动")
+        log.warn(LOG_TAG, "on")
         return false
     end
 
@@ -207,7 +207,7 @@ function start(options)
     uart.on(drv.uart_id, "recv", on_uart_recv)
 
     drv.started = true
-    log.info(LOG_TAG, "已启用", drv.uart_id, drv.baud,
+    log.info(LOG_TAG, "on", drv.uart_id, drv.baud,
         "lineProto", drv.line_protocol, "rxMax", drv.rx_line_max)
     return true
 end
@@ -221,7 +221,7 @@ function stop()
     drv.rx_line_buf = ""
     handlers.on_raw = nil
     handlers.on_line = nil
-    log.info(LOG_TAG, "已关闭", drv.uart_id)
+    log.info(LOG_TAG, "off", drv.uart_id)
     return true
 end
 

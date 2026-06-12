@@ -159,7 +159,7 @@ local function batteryTask()
     adc.open(channel)
 
     local scale = resolveMvScale()
-    log.info(LOG_TAG, BUILD_TAG, "start ch", channel, "scale", string.format("%.4f", scale))
+    log.info(LOG_TAG, BUILD_TAG, "ch", channel, "sc", string.format("%.4f", scale))
 
     while true do
         local pinMv = readPinMillivolts(adc, channel)
@@ -169,7 +169,7 @@ local function batteryTask()
             consumptionRate = updateConsumptionRate(percent)
             exportGlobals(percent, voltageMv, consumptionRate)
             sys.publish("BATTERY_UPDATE", percent, voltageMv, consumptionRate)
-            log.info(LOG_TAG, "pin", pinMv, "mV cell", voltageMv, "mV", percent, "%")
+            log.info(LOG_TAG, "pin", pinMv, "mv", voltageMv, "mV", percent, "%")
         end
         sys.wait(sampleIntervalMs())
     end
@@ -209,5 +209,4 @@ function getState()
     }
 end
 
-log.info(LOG_TAG, "loaded", BUILD_TAG)
 return _M

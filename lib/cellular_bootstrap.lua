@@ -10,7 +10,7 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-local LOG_TAG = "cellular"
+local LOG_TAG = "cell"
 
 local started = false
 local apnApplied = false
@@ -41,13 +41,6 @@ local ICCID_PREFIXES = {
     telecom = { "898603", "898611" },
 }
 
-local IMSI_PLMN5 = {
-    unicom = { ["46001"] = true, ["46006"] = true, ["46009"] = true, ["46010"] = true },
-    mobile = { ["46000"] = true, ["46002"] = true, ["46004"] = true, ["46007"] = true, ["46008"] = true, ["46013"] = true },
-    telecom = { ["46003"] = true, ["46005"] = true, ["46011"] = true, ["46012"] = true },
-}
-
--- IMSI 前缀（长匹配优先，避免 46011 被截成 4601）
 local IMSI_PREFIX_RULES = {
     { "46011", "telecom" },
     { "46012", "telecom" },
@@ -122,19 +115,7 @@ local function matchApnOperator(apn)
 end
 
 local function operatorFromPlmn5(plmn5)
-    if not plmn5 or plmn5 == "" then
-        return nil
-    end
-    if IMSI_PLMN5.unicom[plmn5] then
-        return "unicom"
-    end
-    if IMSI_PLMN5.mobile[plmn5] then
-        return "mobile"
-    end
-    if IMSI_PLMN5.telecom[plmn5] then
-        return "telecom"
-    end
-    return nil
+    return plmn5 and matchImsiOperator(plmn5) or nil
 end
 
 local function buildPlmn5(mcc, mnc)
@@ -238,7 +219,7 @@ function resolveOperator(imsi, iccid, apn)
     local imsiOp = matchImsiOperator(imsi)
     local iccidOp = matchIccidOperator(iccid)
     if imsiOp and iccidOp and imsiOp ~= iccidOp then
-        log.warn(LOG_TAG, "imsi/iccid op mismatch", imsiOp, iccidOp, op or "unknown")
+        log.warn(LOG_TAG, "opMm", imsiOp, iccidOp, op or "unknown")
     end
 
     if not op then
@@ -464,7 +445,7 @@ local function setupSetAuto()
         tonumber(c.cell_search_ms) or 30000,
         tonumber(c.set_auto_count) or 5
     )
-    log.info(LOG_TAG, "setauto done")
+    log.info(LOG_TAG, "auto")
 end
 
 --- 等待 IP_READY，失败时 mobile.reset 重试（参考 pwrkey_rndis_boot/net.lua）
@@ -489,12 +470,12 @@ function waitForNetwork()
                 lastState.ip_ready = true
                 lastState.apn = readCurrentApn()
                 exportRuntime()
-                log.info(LOG_TAG, "have ip", curIp, lastState.operator_name)
+                log.info(LOG_TAG, "ip", curIp, lastState.operator_name)
                 return true, curIp
             end
         end
 
-        log.info(LOG_TAG, "wait ip", attempt, maxAttempts, lastState.operator_name)
+        log.info(LOG_TAG, "wIp", attempt, maxAttempts, lastState.operator_name)
         local ret = sys.waitUntil("IP_READY", timeoutMs)
         local ip = socket and socket.localIP and socket.localIP() or nil
         if ret and ip and ip ~= "" and ip ~= "0.0.0.0" then
@@ -506,7 +487,7 @@ function waitForNetwork()
             return true, ip
         end
 
-        log.warn(LOG_TAG, "net fail", attempt,
+        log.warn(LOG_TAG, "netF", attempt,
             mobile.status and mobile.status() or "?",
             mobile.csq and mobile.csq() or "?",
             readCurrentApn())
@@ -515,12 +496,12 @@ function waitForNetwork()
             if attempt == 1 and lastState.operator == "unicom" then
                 local fallback = cfg().unicom_apn_fallback
                 if fallback and fallback ~= "" and fallback ~= resolveApnName("unicom") then
-                    log.info(LOG_TAG, "unicom apn fb", fallback)
+                    log.info(LOG_TAG, "apnU", fallback)
                     applyApnExplicit(fallback)
                     lastState.apn = fallback
                 end
             end
-            log.info(LOG_TAG, resetDelayMs / 1000, "s reset")
+            log.info(LOG_TAG, resetDelayMs / 1000, "rst")
             sys.wait(resetDelayMs)
             if mobile.reset then
                 mobile.reset()
@@ -553,7 +534,7 @@ function start()
         if ok then
             applyApnForSim()
         else
-            log.warn(LOG_TAG, "sim info timeout, try auto apn")
+            log.warn(LOG_TAG, "simTo")
             applyApnAuto()
         end
     end)
@@ -570,5 +551,4 @@ function getOperatorName()
     return lastState.operator_name, lastState.operator
 end
 
-log.info(LOG_TAG, "loaded")
 return _M

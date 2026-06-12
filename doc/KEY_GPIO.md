@@ -1,8 +1,8 @@
-# GPIO 按键与就绪信号（lib/key）
+# GPIO 按键与就绪信号（peripheral）
 
 > 引脚：`user/config.lua` → `GPIO_IN`  
 > 按键策略：`../user/key_config.lua` → `KEY_CONFIG`  
-> 实现：`lib/key.lua` · 聚合启动：`user/peripheral.lua`
+> 实现：`peripheral.lua` · 聚合启动：`user/peripheral.lua`
 
 ---
 
@@ -15,7 +15,7 @@ flowchart LR
     PIN --> CFG
     APP[app.lua<br/>扁平引脚]
     PER[peripheral.lua<br/>normalizeConfig]
-    KEY[lib/key.lua]
+    KEY[peripheral.lua]
     EVT[APP_EVENTS]
     APP --> PER
     CFG --> KEY
@@ -28,10 +28,10 @@ flowchart LR
 | 引脚 | `config.lua` | `GPIO_IN.pwr_key` / `boot_key` / `coproc_ready` |
 | 策略 | `key_config.lua` | `KEY_CONFIG`（防抖、长短按、`APP_EVENTS` 键名） |
 | 聚合 | `peripheral.lua` | `require "key"`，`key.start(sub.key)` |
-| 驱动 | `lib/key.lua` | `gpio_util` 中断、长短按判定、就绪边沿 |
+| 驱动 | `peripheral.lua` | `gpio_util` 中断、长短按判定、就绪边沿 |
 | 业务 | `app.lua` | 订阅 `GPIO_PWRKEY_*`、`GPIO_BOOTKEY_*`、`GPIO_COPROC_READY` |
 
-**已移除**：`user/powerKey.lua`、`user/t3xKey.lua`（逻辑并入 `lib/key.lua`）。
+**已移除**：`user/powerKey.lua`、`user/t3xKey.lua`（逻辑并入 `peripheral.lua`）。
 
 ---
 
@@ -116,7 +116,7 @@ gpioModule.start({
 | 机制 | 位置 | 行为 |
 |------|------|------|
 | **硬件开机** | `main.lua` `pm.power(pm.PWK_MODE, true)` | `pm.shutdown()` 后 **长按 K1 ≥约 2s** 再开机 |
-| **软件长短按** | `lib/key.lua` + `gpio.PWR_KEY` | 开机后识别；**长按 3s** → `app` → `pm.shutdown()` |
+| **软件长短按** | `peripheral.lua` + `gpio.PWR_KEY` | 开机后识别；**长按 3s** → `app` → `pm.shutdown()` |
 | **T3x 上电** | `t3x_ctrl` GPIO22 | 与 K1 无关；低功耗时 `powerOn()`/`wake()` |
 
 **排查**：原 `GPIO35` 不在 Air780EHM 引脚表，按键无中断；原 `PWK_MODE=false` 会导致关机后 K1 无法硬件开机。

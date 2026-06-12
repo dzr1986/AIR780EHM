@@ -150,7 +150,7 @@ main.lua
 
 | 字段 | 低电未插 USB | 低电已插 USB |
 |------|--------------|--------------|
-| `powerStatus` | `"0"` | `"1"` |
+| `usbInserted` | `"0"` | `"1"` |
 | `remainPower` | 低（如 `"12"`） | 仍低，充电后逐渐升高 |
 | `lowPowerMode` | 常 `"rest"`（若已进低功耗） | 插入后多为 `"normal"`（若已 `onExitLowPower`） |
 

@@ -272,7 +272,7 @@ sequenceDiagram
 | `client_push_mqtt_config` | `AT+MQTTCFG` | `app.on_mqtt_cfg` → `net` | 更新 Broker 并重连 MQTT |
 | MQTT 离线 | — | `app.onMqttOffline` | `notify_host(**, 2**)` |
 | 唤醒后读原因 | `AT+HOSTEVT?` | `host_uart` pending | 返回 sid,evt |
-| 读 PIR | `AT+PIRSTAT?` | `pir_runtime` | 计数与策略 |
+| 读 PIR | `AT+PIRSTAT?` | `pir_ctrl` | 计数与策略 |
 | 低功耗 | `AT+LOWPOWER=ENTER` | `app` | 停 MQTT 上报、**关闭 TCP** |
 | 退出低功耗 | `AT+LOWPOWER=EXIT` | `app` | 恢复 t3x、**按 NET_TCP_CHANNEL 重建 TCP** |
 

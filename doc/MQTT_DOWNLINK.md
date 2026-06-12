@@ -52,7 +52,7 @@
 | 1004 / 1011 | `/panshi/app/862323084068124/event` |
 | 1005 SIM | `/panshi/app/862323084068124/sim` |
 | 1010 PIR | `/panshi/app/862323084068124/pir` |
-| 1012 / 1020 编码 | `/panshi/app/862323084068124/encode` |
+| 1021 / 1020 编码 | `/panshi/app/862323084068124/encode` |
 
 **载荷**：UTF-8 JSON，QoS 建议 **1**，每条消息一个 `dataType`。
 
@@ -67,15 +67,15 @@
 | 下行 | 含义 | 上行 | 上行主题 |
 |------|------|------|----------|
 | **2001** | 唤醒查询 | **1001** | `wakeup` |
-| **2002** | 低功耗 enter/exit | **1002** | `rest`（仅 enter 后） |
+| **2002** | 低功耗 enter/exit | **1002** | `rest`（enter/exit 状态切换成功后） |
 | **2003** | 状态查询 / 配置 interval | **1003** | `status` |
 | **2004** | 重启 / 关机 / OTA / **白光灯** | **1004** | `event` |
 | **2005** | SIM 查询 | **1005** | `sim` |
 | **2006** | IMEI + GB28181 查询 | **1006** | `identity` |
 | **2007** | TF/SD 卡状态查询 | **1007** | `tfcard` |
 | **2010** | PIR 策略 / 查询 | **1010** | `pir` |
-| **2011** | 云端停录 | **1011** | `event` |
-| **2012** | 设置视频/音频编码 | **1012** | `encode` |
+| **2011** | 设备停录 | **1011** | `event` |
+| **2021** | 设置视频/音频编码 | **1021** | `encode` |
 | **2020** | 查询视频/音频编码 | **1020** | `encode` |
 
 **1004 区分**：`"reply":1` → 应答 **2004**；含 `"stage"` → OTA 进度（无 `reply`）。
@@ -132,30 +132,21 @@
 {"dataType":"2002","lowPowerMode":"enter"}
 ```
 
-```json
-{"dataType":"2002","action":1}
-```
-
 退出 rest：
 
 ```json
 {"dataType":"2002","lowPowerMode":"exit"}
 ```
 
-```json
-{"dataType":"2002","action":0}
-```
-
 | 字段 | 说明 |
 |------|------|
-| `lowPowerMode` | `enter` / `exit` |
-| `action` | 兼容：`1` 进入，`0` 退出 |
+| `lowPowerMode` | `enter` / `exit`（必填） |
 
 | 操作 | 设备行为 | 上行 |
 |------|----------|------|
 | enter | T3x 断电、进 rest；**4G 保持 MQTT** | **1002**（当场 `source=enter`） |
 | enter + USB 已插 | 默认**拒绝**进 rest（无 1002） | — |
-| exit | 唤醒 T3x、出 rest | 无 1002 |
+| exit | 唤醒 T3x、出 rest | **1002**（`lowPowerMode=exit`） |
 
 串口等价：`AT+LOWPOWER=ENTER` / `EXIT`（1002 的 `reason=at`）。
 
@@ -241,7 +232,6 @@
 {
   "deviceNo": "862323084068124",
   "dataType": "1003",
-  "powerStatus": 1,
   "usbInserted": 1,
   "charging": 1,
   "remainPower": "85",
@@ -253,8 +243,7 @@
 
 | 上行字段 | 说明 |
 |----------|------|
-| `powerStatus` | 兼容字段，同 `usbInserted`；JSON 为 **数字** 0/1 |
-| `usbInserted` | `0` 未插 USB / `1` 已插（GPIO27） |
+| `usbInserted` | `0` 未插 USB / `1` 已插（GPIO27）；JSON 为 **数字** 0/1 |
 | `charging` | `0` 未充电或已满 / `1` 充电中（GPIO17） |
 | `remainPower` | 电量百分比或 `"--"` |
 | `batteryMv` | 电芯电压 mV 或 `"--"` |
@@ -287,7 +276,7 @@
 | 字段 | 必填 | 本例 | 说明 |
 |------|------|------|------|
 | `dataType` | 是 | `"2004"` | 电源/OTA 控制 |
-| `action` | 是 | `"reboot"` | 重启（同义 `restart`） |
+| `action` | 是 | `"reboot"` | 重启 |
 | `messageId` | 否 | `"cmd-001"` | 平台流水号，1004 原样回传 |
 
 **上行**（约 1 秒内，`reply=1` 表示应答 2004，非 OTA `stage`）：
@@ -329,7 +318,7 @@
 
 | 字段 | 说明 |
 |------|------|
-| `action` | `"off"`（同义 `shutdown` / `poweroff`） |
+| `action` | `"off"` |
 
 **上行**：
 
@@ -429,13 +418,13 @@
 {"dataType":"2004","action":"wled","enable":1,"messageId":"wled-001"}
 ```
 
-**关灯**（同义 `action=wled_off` 或 `enable=0`）：
+**关灯**：
 
 ```json
 {"dataType":"2004","action":"wled","enable":0,"messageId":"wled-002"}
 ```
 
-**查询状态**（同义 `action":"wled?"` 或 `action":"wled","query":1`）：
+**查询状态**：
 
 ```json
 {"dataType":"2004","action":"wled_query","messageId":"wled-q1"}
@@ -443,9 +432,8 @@
 
 | 字段 | 说明 |
 |------|------|
-| `action` | `wled` / `wled_on` / `wled_off` / `wled_query` / `wled?` |
-| `enable` | `0` 关 / `1` 开（`wled` 开/关时；`state` / `on` 同义） |
-| `query` | `1` 表示查询（与 `action=wled` 同用） |
+| `action` | `wled`（须带 `enable`）/ `wled_query` |
+| `enable` | `0` 关 / `1` 开（仅 `action=wled` 时必填） |
 
 **上行**（开/关/查询均含 **`enable`** 当前态 0/1）：
 
@@ -485,11 +473,11 @@
 
 | action | 1004 | 设备 |
 |--------|------|------|
-| `reboot` / `restart` | `ret=0`, `ok` | 重启 |
-| `off` / `shutdown` / `poweroff` | 同上 | 关机 |
-| `ota` / `upgrade` / `fota` | `ota_accepted` | FOTA + stage |
-| `wled` / `wled_on` / `wled_off` | `ret=0`, `ok`, **`enable`** | 白光灯开/关 |
-| `wled_query` / `wled?` | `ret=0`, `ok`, **`enable`** | 查询白光灯 |
+| `reboot` | `ret=0`, `ok` | 重启 |
+| `off` | 同上 | 关机 |
+| `ota` | `ota_accepted` | FOTA + stage |
+| `wled` | `ret=0`, `ok`, **`enable`** | 白光灯开/关（须 `enable`） |
+| `wled_query` | `ret=0`, `ok`, **`enable`** | 查询白光灯 |
 | 其它 | `ret=-1`, `unknown_action` | 无操作 |
 
 串口：`AT+REBOOT` · `AT+POWEROFF` · `AT+OTA` · `AT+WLED=0/1`
@@ -657,14 +645,6 @@
 {"dataType":"2010","action":"query"}
 ```
 
-```json
-{"dataType":"2010","query":1}
-```
-
-```json
-{"dataType":"2010","action":"status"}
-```
-
 **应答主题**：`/panshi/app/862323084068124/pir`
 
 ```json
@@ -735,7 +715,7 @@
 
 ---
 
-## 10. `2011` — 云端停录 → `1011`
+## 10. `2011` — 设备停录 → `1011`
 
 **发布**：`/panshi/device/862323084068124/`
 
@@ -745,7 +725,7 @@
 
 条件：正在录像且 `stopOnCloud=1`。
 
-> **非秒回**：`requestStopFromCloud()` 经 PIR 状态机；停录完成后才发 **1011**（`reason=cloud`）。T3x 写盘中可能先唤醒，1011 或为 `source=t3x`。
+> **无即时 1004**：`requestStopFromCloud()` → `publishStopRecording(device)` → **1011**（`reason=device`）。T3x 写盘中可能 `source=t3x`。
 
 **应答主题**：`/panshi/app/862323084068124/event`
 
@@ -753,7 +733,7 @@
 {
   "deviceNo": "862323084068124",
   "dataType": "1011",
-  "reason": "cloud",
+  "reason": "device",
   "source": "4g",
   "uploadMode": "auto",
   "quality": "high",
@@ -763,7 +743,7 @@
 
 | `source` | 含义 |
 |----------|------|
-| `4g` | 4G 侧停录（timer/cloud/manual，T3x 未写盘或 4G 直接结会话） |
+| `4g` | 4G 侧停录（timer/device/manual，T3x 未写盘） |
 | `t3x` | T3x `AT+RECORD=0` 回报后转发 |
 
 | `reason` | 来源 |
@@ -824,7 +804,7 @@
 
 ---
 
-## 12. `2012` — 设置编码参数 → `1012`
+## 12. `2021` — 设置编码参数 → `1021`
 
 **发布**：`/panshi/device/862323084068124/`
 
@@ -832,7 +812,7 @@
 
 ```json
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "camera": 0,
   "stream": 0,
   "width": 1920,
@@ -848,14 +828,14 @@
 仅改码率（通常不重启）：
 
 ```json
-{"dataType":"2012","camera":0,"stream":0,"bitrate":800,"messageId":"set-br"}
+{"dataType":"2021","camera":0,"stream":0,"bitrate":800,"messageId":"set-br"}
 ```
 
 设置音频：
 
 ```json
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "scope": "audio",
   "camera": 0,
   "enable": 1,
@@ -873,7 +853,7 @@
 ```json
 {
   "deviceNo": "862323084068124",
-  "dataType": "1012",
+  "dataType": "1021",
   "reply": 1,
   "messageId": "set-1080p",
   "ret": 0,
@@ -903,10 +883,10 @@
 8. `2010` 配置 → PIR 触发 → **1010**（常电且 `uploadMode=auto` 时可能 **1001**；rest 仅忽略 PIR/不发 1001）
 9. `2010` + `action=query` → **1010**（**rest 下仍可用**）
 10. `2004` + `reboot` → **1004** `reply=1`（设备重启）
-11. `2002` enter → **1002**（含 `reason`/`source`）；`2002` exit（无 1002）
+11. `2002` enter → **1002**（`lowPowerMode=enter`，含 `reason`/`source`）；`2002` exit → **1002**（`lowPowerMode=exit`）
 12. `2011`（录像中）→ **1011**
 13. `2020` → **1020**（encode 主题）
-14. `2012` 改码率 → **1012** `needReboot=0`；改分辨率 → `needReboot=1`
+14. `2021` 改码率 → **1021** `needReboot=0`；改分辨率 → `needReboot=1`
 
 单行 JSON 抄录见：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)
 
@@ -925,5 +905,5 @@
 | 2007 | `handleDownlink2007` | `publishTfCardStatus` |
 | 2010 | `handleDownlink2010` | `publishPirDetect` |
 | 2011 | `handleDownlink2011` | `publishPirRecordStop` |
-| 2012 | `handleDownlink2012` | `publishEncodeReply` → 1012 |
+| 2021 | `handleDownlink2021` | `publishEncodeReply` → 1021 |
 | 2020 | `handleDownlink2020` | `publishEncodeReply` → 1020 |

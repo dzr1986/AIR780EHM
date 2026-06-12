@@ -8,17 +8,17 @@
 
 ## 重要：固件代码无需修改
 
-780EHM_PJ **现有固件已兼容**自建 OTA，**不要改** `lib/fota.lua`、`user/config.lua` 里的 OTA 逻辑。
+780EHM_PJ **现有固件已兼容**自建 OTA，**不要改** `user/fota_svc.lua`、`user/config.lua` 里的 OTA 逻辑。
 
 | 文件 | 保持原样 |
 |------|----------|
-| `lib/fota.lua` | 已支持 MQTT 2004 下行带 `url` 字段（见 §6.6） |
+| `user/fota_svc.lua` | 已支持 MQTT 2004 下行带 `url` 字段（见 §6.6） |
 | `user/config.lua` → `FOTA_CFG` | 保持 `server_mode = "iot"` 即可 |
 | `user/main.lua` | `PRODUCT_KEY` / `VERSION` 不变 |
 
 ### 为什么不用改固件？
 
-`lib/fota.lua` 的 `buildIotOpts()` **本来就有**这条逻辑：
+`user/fota_svc.lua` 的 `buildIotOpts()` **本来就有**这条逻辑：
 
 ```
 MQTT 2004 载荷里若有 url  →  直接用该 url 调 libfota2
@@ -48,7 +48,7 @@ MQTT 2004 载荷里若无 url  →  走合宙 IoT（product_key + version）
 |------|------|------|
 | OTA 服务端 | `ota_server/` | 托管差分包、设备表、MQTT 触发 |
 | Nginx HTTPS | `ota_server/deploy/nginx/` | 公网入口 |
-| 固件（不改） | `lib/fota.lua` | 收到 2004+url 后 HTTP 拉包 |
+| 固件（不改） | `user/fota_svc.lua` | 收到 2004+url 后 HTTP 拉包 |
 
 ---
 
@@ -59,7 +59,7 @@ MQTT 2004 载荷里若无 url  →  走合宙 IoT（product_key + version）
 2. Luatools 制作 dfota 差分包 → 上传到管理台
 3. 管理台填 IMEI + 目标版本 → 「下发 OTA」
 4. OTA 服务器 MQTT Publish → /panshi/device/{IMEI}/
-5. 设备 net_mqtt → lib/fota.lua → libfota2 HTTP GET → 下载差分包
+5. 设备 net_mqtt → user/fota_svc.lua → libfota2 HTTP GET → 下载差分包
 6. 设备 1004 stage=success → 重启
 ```
 

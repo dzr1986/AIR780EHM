@@ -85,7 +85,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 
 #### 体构建
 
-`build_hostevt_body` 与 `build_pirstat_body` 均调用 `pir_runtime.buildAtBody` + `host_event.summarize`，仅扩展字段名不同。
+`build_hostevt_body` 与 `build_pirstat_body` 均调用 `pir_ctrl.buildAtBody` + `host_event.summarize`，仅扩展字段名不同。
 
 **建议**：`buildPirWakeBody(extFields)` 统一内核。
 
@@ -106,7 +106,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 |------|------|
 | `lib/usb_policy.lua` | `isUsbInserted()`、`mayEnterRest()`（读 `HOST_USB_CFG.block_4g_rest_when_usb`） |
 | `lib/device_id.lua` | IMEI 单点解析 |
-| `t3x_ipc.ensurePowered(tag)` | 上收四处 T3x 上电样板（`t3x_policy.mayPowerT3x` + `t3x_ctrl.powerOn`） |
+| `t3x_ctrl.ensurePowered(tag)` | 上收四处 T3x 上电样板（`t3x_policy.mayPowerT3x` + `t3x_ctrl.powerOn`） |
 
 ---
 
@@ -154,7 +154,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 |-----|------|------|
 | `low_power_wakeup` | `net_tcp`、`app` | 策略门面 vs 实现 |
 | `t3x_policy` | `t3x_ctrl` | 门禁 vs GPIO |
-| `host_event` | `host_uart`、`pir_runtime` | 汇总 vs AT 解析 |
+| `host_event` | `host_uart`、`pir_ctrl` | 汇总 vs AT 解析 |
 | `pir` | `pir_ctrl` | GPIO ISR vs 会话（注意 lib→user 反向 require，可改事件订阅） |
 | `led` | `led_ctrl` | 原语 vs 板级任务 |
 
@@ -199,7 +199,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 |---|-----|
 | 2.1 | 新增 `lib/usb_policy.lua` |
 | 2.2 | 新增 `lib/device_id.lua` |
-| 2.3 | `t3x_ipc.ensurePowered(tag)` 替换 `sound_prompt` / `time_sync` / `host_uart` 四处样板 |
+| 2.3 | `t3x_ctrl.ensurePowered(tag)` 替换 `sound_prompt` / `time_sync` / `host_uart` 四处样板 |
 
 ### 阶段 3 — `net_mqtt` + `app` 表驱动（约 150～200 行）
 
@@ -226,9 +226,9 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 项 | 约省 | 条件 |
 |----|------|------|
 | `lib/usb_rndis.lua` → `archive/slim` | ~9 KB | `RNDIS_ENABLE=0` |
-| `lib/fota.lua` + `lib/libfota2.lua` | ~15 KB | 无 OTA、`fota=false` |
+| `fota_svc.lua` + `fota_svc.lua` | ~15 KB | 无 OTA、`fota=false` |
 | `user/sound_prompt.lua` 桩化 | ~7 KB | 无提示音需求 |
-| `lib/mobile_info.lua` | ~5 KB | 已归档 |
+| `(已删除)` | ~5 KB | 已归档 |
 | `user/net_tcp.lua` 桩 | ~8 KB | `mode=mqtt`（已完成） |
 
 门球量产若保留 RNDIS、FOTA、提示音，则 Flash 主要靠 **阶段 1～3 删行** 与 **编译后实测**，收益有限；逻辑精简的价值在**可维护性与少漂移**。
@@ -237,10 +237,10 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 
 ## 7. 验收清单（每阶段合并后）
 
-- [ ] **MQTT**：2001–2007、2010–2012、2020 下行；1001–1011 上行
+- [ ] **MQTT**：2001–2007、2010–2021、2020 下行；1001–1011 上行
 - [ ] **低功耗**：rest 进/出、USB 插入拦截 rest、`AT+HOSTIDLE` / HOSTEVT
 - [ ] **PIR**：2010 录像/拍照、PIRSTAT / HOSTEVT body
-- [ ] **T3x 查询**：GB28181、TF、RECORD、IPC、编码（2012/2020）
+- [ ] **T3x 查询**：GB28181、TF、RECORD、IPC、编码（2021/2020）
 - [ ] **T3x 电源**：`IPCPOWEROFF`、USBRESET、`+CAT1:USB`
 - [ ] **提示音**（若 `sound_prompt=true`）：冷启动 boot、用户关机 shutdown
 - [ ] **蜂窝**：`bootstrapNetwork`、2005 SIM、联通 APN
@@ -254,7 +254,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 优先级 | 内容 | 预估节省（源码行） | 风险 |
 |--------|------|-------------------|------|
 | **P0** | `pulseUsbDebugEn` 去重、`hostQuery`、`setHostEncode`、`usb_policy`、`device_id` | 250～350 行 | 低 |
-| **P1** | HOSTEVT/PIRSTAT 合并、`t3x_ipc.ensurePowered`、MQTT 上行表驱动、烧录日志开关 | 200～300 行 | 中 |
+| **P1** | HOSTEVT/PIRSTAT 合并、`t3x_ctrl.ensurePowered`、MQTT 上行表驱动、烧录日志开关 | 200～300 行 | 中 |
 | **P2** | 调试订阅合并、`led` dual 外置、`cellular` 按需轮询 | 100～150 行 | 低～中 |
 | **P3** | `config.lua` HOST_* 等待时间基表继承 | 配置维护 | 极低 |
 
@@ -266,7 +266,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 |------|------|
 | 2026-06-10 | 初版：`cat1_slim_logic` 分支逻辑精简规划 |
 | 2026-06-10 | **已落地阶段 0 + 阶段 1**：`t3x_ctrl` 去重 `pulseUsbDebugEn`；`peripheral` 修 `led_ctrl`；`archive/slim/README` 修正 `net_tcp` 路径；`host_uart` 新增 `run_host_query`、`build_pir_wake_context`、`setHostEncode` |
-| 2026-06-10 | **已落地阶段 2**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t3x_ipc.ensurePowered` |
+| 2026-06-10 | **已落地阶段 2**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t3x_ctrl.ensurePowered` |
 | 2026-06-10 | **已落地阶段 3**：`publishUplink`、`debug_checks`、`subscribePirMqttBridge` |
 | 2026-06-10 | **已落地阶段 4**：`withRndisReopen`、`led_dual` 归档、`cellInfoRefreshWanted` |
 
@@ -285,12 +285,12 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 
 | 2 | `lib/usb_policy.lua` USB/rest 门禁单点 | `lib/usb_policy.lua`，`app`/`net_mqtt`/`host_uart` |
 | 2 | `lib/device_id.lua` IMEI 单点 | `lib/device_id.lua`，`app`/`net_mqtt`/`host_uart` |
-| 2 | `t3x_ipc.ensurePowered(tag)` | `user/t3x_ipc.lua`，`sound_prompt`/`time_sync`/`host_uart` |
+| 2 | `t3x_ctrl.ensurePowered(tag)` | `t3x_ctrl.lua`，`sound_prompt`/`time_sync`/`host_uart` |
 
 | 3 | `formatUplink` / `publishUplink` 上行表驱动 | `user/net_mqtt.lua` |
 | 3 | `T3X_BURN_CFG.debug_checks` 烧录明细日志 | `user/config.lua`、`user/app.lua` |
 | 3 | PIR/MQTT 桥接表驱动 + `wakeT3xForPir` | `user/app.lua` |
 
 | 4 | `usb_rndis.withRndisReopen` 去重 switch/rebind | `lib/usb_rndis.lua` |
-| 4 | `led_dual` 归档，single_blue 减 Flash | `lib/led.lua` → `archive/slim/lib/led_dual.lua` |
+| 4 | `led_dual` 归档，single_blue 减 Flash | `led_ctrl.lua` → `archive/slim/led_ctrl_dual.lua` |
 | 4 | `cellular_bootstrap` 按需 `startCellInfoRefresh` | `lib/cellular_bootstrap.lua` |

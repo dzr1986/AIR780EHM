@@ -1,12 +1,15 @@
---- PIR 业务控制：媒体策略、录像会话、事件发布（与 lib/pir.lua 硬件层配合）
+--- PIR：GPIO 硬件 + 业务策略 + 运行统计（原 lib/pir + pir_runtime + pir_ctrl）
 -- @module pir_ctrl
--- @release 2026.5.18
 
 require "sys"
+require "config"
+local gpio_util = require "gpio_util"
 
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
+local L = "pirc"
 
 local PIR_MEDIA = {
     ACTION = { PHOTO = "photo", VIDEO = "video", BOTH = "both", DEVINFO = "devinfo" },
@@ -16,17 +19,20 @@ local PIR_MEDIA = {
     STOP_REASON = {
         TIMER = "timer",
         PIR_RETRIGGER = "pir_retrigger",
-        CLOUD = "cloud",
+        CLOUD = "cloud", -- 兼容旧日志/PIRSTAT
+        DEVICE = "device", -- MQTT 2011 平台令设备停录
         MANUAL = "manual",
     },
 }
 
 _G.APP_PIR_CONFIG = PIR_MEDIA
 
+--- startOnCloud/stopOnCloud：是否响应平台 MQTT 2012/2011（TF 卡录，非云端存片）
 local DEFAULT_RECORD_POLICY = {
     maxDurationSec = 60,
     stopOnSecondPir = true,
     stopOnCloud = true,
+    startOnCloud = true,
 }
 
 local session = {
@@ -37,32 +43,158 @@ local session = {
     startedAt = nil,
     last_stop_reason = nil,
     stop_mqtt_published = false,
+    cloud_stop_message_id = nil,
 }
 
---- IPC AT+PIRMEDIA= 回写的归一化 action（覆盖 PIRSTAT/HOSTEVT 直至会话结束）
 local effectiveMediaAction = nil
-
 local handlerStarted = false
 local suspended = false
-local pir_runtime = nil
-pcall(function() pir_runtime = require "pir_runtime" end)
+
+-- 硬件层（GPIO + 冷却）
+local hwPin, hwCfg, hwStarted = nil, nil, false
+local cooldownUntil = 0
+
+-- 运行统计（AT+PIRSTAT? / AT+PIRCLR）
+local stats = {
+    cnt_hw_irq = 0, cnt_hw_ignore_level = 0, cnt_hw_ignore_cooldown = 0,
+    cnt_hw_ignore_burn = 0, cnt_hw_accept = 0,
+    cnt_biz_ignore_suspend = 0, cnt_biz_ignore_rest = 0, cnt_biz_detected = 0,
+    cnt_biz_retrigger = 0, cnt_biz_photo = 0, cnt_biz_video = 0,
+    cnt_stop_timer = 0, cnt_stop_retrigger = 0, cnt_stop_cloud = 0, cnt_stop_manual = 0,
+    cnt_start_cloud = 0,
+    last_event = "none", last_ts = 0,
+}
 
 local function statBump(key)
-    if pir_runtime and pir_runtime.bump then
-        pir_runtime.bump(key)
-    end
+    if stats[key] ~= nil then stats[key] = stats[key] + 1 end
 end
 
 local function statLast(evt)
-    if pir_runtime and pir_runtime.setLast then
-        pir_runtime.setLast(evt)
+    stats.last_event = evt or "none"
+    stats.last_ts = os.time()
+end
+
+local function onHwInterrupt(level)
+    statBump("cnt_hw_irq")
+    if _G.T3X_BURN_MODE_ACTIVE then
+        statBump("cnt_hw_ignore_burn")
+        statLast("ignore_burn")
+        return
     end
+    local active = hwCfg and hwCfg.active_level
+    if active == nil then active = 1 end
+    if level ~= active then
+        statBump("cnt_hw_ignore_level")
+        return
+    end
+    local now = os.time() * 1000
+    if now < cooldownUntil then
+        statBump("cnt_hw_ignore_cooldown")
+        statLast("ignore_cooldown")
+        return
+    end
+    cooldownUntil = now + (hwCfg.cooldown_ms or 10000)
+    statBump("cnt_hw_accept")
+    statLast("hw_accept")
+    local E = _G.APP_EVENTS
+    if E and E.PIR_HW_TRIGGERED then
+        sys.publish(E.PIR_HW_TRIGGERED)
+    end
+end
+
+function startHw()
+    if hwStarted then return false end
+    hwCfg = _G.PIR_CFG
+    hwPin = hwCfg and hwCfg.pin
+    if not hwPin or not hwCfg then
+        log.warn(L, "hw?")
+        return false
+    end
+    gpio_util.setup_input(hwPin, onHwInterrupt, {
+        trigger_mode = hwCfg.trigger_mode or "rising",
+        pull = hwCfg.pull or "pulldown",
+        debounce_ms = hwCfg.debounce_ms or 100,
+    })
+    hwStarted = true
+    log.info(L, "hw", hwPin)
+    return true
+end
+
+local function getHwState()
+    local now = os.time() * 1000
+    local remain = cooldownUntil > now and (cooldownUntil - now) or 0
+    return { started = hwStarted, pin = hwPin, cooldown_remaining_ms = remain }
+end
+
+local function escVal(s)
+    return (tostring(s or ""):gsub(",", "_"):gsub("=", "_"))
+end
+
+function buildAtBody()
+    local hw = getHwState()
+    local biz = getState()
+    local cfg = _G.PIR_CFG or {}
+    local media = biz.mediaConfig or {}
+    if effectiveMediaAction then
+        media = { action = effectiveMediaAction, uploadMode = media.uploadMode, quality = media.quality }
+    end
+    local policy = biz.recordPolicy or {}
+    local rt = _G.APP_RUNTIME or {}
+    local parts = {
+        "suspended=" .. (biz.suspended and 1 or 0),
+        "recording=" .. (biz.recording and 1 or 0),
+        "hw_started=" .. (hw.started and 1 or 0),
+        "burn_mode=" .. (_G.T3X_BURN_MODE_ACTIVE and 1 or 0),
+        "lowpower=" .. (rt.low_power_mode or 0),
+        "online=" .. (rt.online_status or 0),
+        "pin=" .. (hw.pin or cfg.pin or 0),
+        "cooldown_ms=" .. (cfg.cooldown_ms or 0),
+        "cooldown_left_ms=" .. (hw.cooldown_remaining_ms or 0),
+        "action=" .. escVal(media.action),
+        "upload=" .. escVal(media.uploadMode),
+        "quality=" .. escVal(media.quality),
+        "max_sec=" .. (policy.maxDurationSec or 0),
+        "stop_second=" .. (policy.stopOnSecondPir and 1 or 0),
+        "stop_cloud=" .. (policy.stopOnCloud and 1 or 0),
+        "start_cloud=" .. (policy.startOnCloud and 1 or 0),
+    }
+    for _, k in ipairs({
+        "cnt_hw_irq", "cnt_hw_ignore_level", "cnt_hw_ignore_cooldown", "cnt_hw_ignore_burn",
+        "cnt_hw_accept", "cnt_biz_ignore_suspend", "cnt_biz_ignore_rest", "cnt_biz_detected",
+        "cnt_biz_retrigger", "cnt_biz_photo", "cnt_biz_video", "cnt_stop_timer",
+        "cnt_stop_retrigger", "cnt_stop_cloud", "cnt_stop_manual", "cnt_start_cloud",
+    }) do
+        parts[#parts + 1] = k .. "=" .. stats[k]
+    end
+    parts[#parts + 1] = "last=" .. escVal(stats.last_event)
+    parts[#parts + 1] = "last_ts=" .. (stats.last_ts or 0)
+    if biz.recording and biz.startedAt then
+        parts[#parts + 1] = "rec_elapsed=" .. (os.time() - biz.startedAt)
+    end
+    if biz.last_stop_reason then
+        parts[#parts + 1] = "last_stop=" .. escVal(biz.last_stop_reason)
+    end
+    return table.concat(parts, ",")
+end
+
+function clearConsumableMarkers()
+    stats.last_event = "none"
+    stats.last_ts = 0
+end
+
+function resetCounters()
+    for k, v in pairs(stats) do
+        if type(v) == "number" then stats[k] = 0 end
+    end
+    stats.last_event = "none"
+    stats.last_ts = 0
 end
 
 local STOP_CNT = {
     [PIR_MEDIA.STOP_REASON.TIMER] = "cnt_stop_timer",
     [PIR_MEDIA.STOP_REASON.PIR_RETRIGGER] = "cnt_stop_retrigger",
     [PIR_MEDIA.STOP_REASON.CLOUD] = "cnt_stop_cloud",
+    [PIR_MEDIA.STOP_REASON.DEVICE] = "cnt_stop_cloud",
     [PIR_MEDIA.STOP_REASON.MANUAL] = "cnt_stop_manual",
 }
 
@@ -95,15 +227,17 @@ function normalizePirRecordPolicy(policy)
         maxDurationSec = maxSec,
         stopOnSecondPir = toBool(input.stopOnSecondPir, DEFAULT_RECORD_POLICY.stopOnSecondPir),
         stopOnCloud = toBool(input.stopOnCloud, DEFAULT_RECORD_POLICY.stopOnCloud),
+        startOnCloud = toBool(input.startOnCloud, DEFAULT_RECORD_POLICY.startOnCloud),
     }
 end
 
 _G.normalizePirMediaConfig = normalizePirMediaConfig
 _G.normalizePirRecordPolicy = normalizePirRecordPolicy
 
-local PIR_CFG_PATH = "/pir_mqtt_cfg.json"
+local PIR_CFG_PATH = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.pir_mqtt)
+    or "/pir_mqtt_cfg.json"
 --- schemaVersion 2：出厂默认 action=video；启动时一次性将旧版持久化 photo 迁为 video
-local PIR_CFG_SCHEMA_VER = 2
+local PIR_CFG_SCHEMA_VER = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.pir_mqtt_schema) or 2
 local pirCfgSchemaVersion = PIR_CFG_SCHEMA_VER
 
 local function savePersistedConfig()
@@ -117,12 +251,12 @@ local function savePersistedConfig()
     end
     local f = io.open(PIR_CFG_PATH, "w")
     if not f then
-        log.warn("pir_ctrl", "save cfg failed", PIR_CFG_PATH)
+        log.warn(L, "save cfg fail", PIR_CFG_PATH)
         return
     end
     f:write(payload)
     f:close()
-    log.info("pir_ctrl", "saved cfg", PIR_CFG_PATH, "ver", pirCfgSchemaVersion)
+    log.info(L, "saved cfg", PIR_CFG_PATH, pirCfgSchemaVersion)
 end
 
 local function migratePersistedConfig(data)
@@ -137,7 +271,7 @@ local function migratePersistedConfig(data)
             uploadMode = old.uploadMode,
             quality = old.quality,
         })
-        log.info("pir_ctrl", "migrate persisted action photo -> video")
+        log.info(L, "migrate photo->video")
     end
     pirCfgSchemaVersion = PIR_CFG_SCHEMA_VER
     return true
@@ -155,7 +289,7 @@ local function loadPersistedConfig()
     end
     local ok, data = pcall(json.decode, body)
     if not ok or type(data) ~= "table" then
-        log.warn("pir_ctrl", "persist cfg decode fail", PIR_CFG_PATH)
+        log.warn(L, "cfg decode fail", PIR_CFG_PATH)
         return
     end
     if data.mediaConfig then
@@ -167,7 +301,7 @@ local function loadPersistedConfig()
     if migratePersistedConfig(data) then
         savePersistedConfig()
     else
-        log.info("pir_ctrl", "loaded persisted cfg", PIR_CFG_PATH, "ver", pirCfgSchemaVersion)
+        log.info(L, "loaded cfg", PIR_CFG_PATH, pirCfgSchemaVersion)
     end
 end
 
@@ -206,7 +340,7 @@ function requestT3xStopRecord(reason)
     local E = _G.APP_EVENTS or {}
     publishEvent(E.PIR_REQUEST_T3X_STOP or "APP_PIR_REQUEST_T3X_STOP",
         reason, session.uploadMode, session.quality)
-    log.info("pirCtrl", "请求 T3x 停录", reason)
+    log.info(L, "req t3x stop", reason)
     return true
 end
 
@@ -231,7 +365,7 @@ function publishStopRecording(reason)
     statLast("stop_" .. tostring(reason))
     local E = _G.APP_EVENTS or {}
     publishEvent(E.PIR_STOP_RECORDING, reason, session.uploadMode, session.quality)
-    log.info("pirCtrl", "停止录像", reason)
+    log.info(L, "stop rec", reason)
     return true
 end
 
@@ -245,7 +379,7 @@ function syncStopFromT3x(reason)
         session.last_stop_reason = reason
         clearEffectiveMediaAction()
         statLast("stop_t3x_" .. tostring(reason))
-        log.info("pirCtrl", "T3x 同步停录", reason)
+        log.info(L, "t3x sync stop", reason)
     end
     return uploadMode, quality
 end
@@ -265,7 +399,7 @@ local function beginVideoSession(uploadMode, quality)
         publishEvent(E.PIR_TIMER_EXPIRED or "APP_PIR_TIMER_EXPIRED",
             session.uploadMode, session.quality)
     end, policy.maxDurationSec * 1000)
-    log.info("pirCtrl", "录像会话开始", policy.maxDurationSec, "s")
+    log.info(L, "rec session", policy.maxDurationSec, "s")
 end
 
 --- T3x 归一化后 action 同步：修正 MQTT 1010、补开录像会话
@@ -281,19 +415,70 @@ function applyEffectiveMediaAction(action)
     end
     local E = _G.APP_EVENTS or {}
     publishEvent(E.PIR_MEDIA_EFFECTIVE or "APP_PIR_MEDIA_EFFECTIVE", effectiveMediaAction)
-    log.info("pirCtrl", "IPC effective media", effectiveMediaAction)
+    log.info(L, "effective media", effectiveMediaAction)
     return effectiveMediaAction
 end
 
-function requestStopFromCloud()
-    if not getRecordPolicy().stopOnCloud then
-        log.warn("pirCtrl", "策略禁止云端停止")
-        return false
+--- MQTT 2012：平台令设备开录（无 PIR 硬件触发）
+function requestStartFromCloud(opts)
+    opts = type(opts) == "table" and opts or {}
+    local policy = getRecordPolicy()
+    if not policy.startOnCloud then
+        log.warn(L, "cloud start denied")
+        return false, "denied"
+    end
+    if suspended then
+        log.warn(L, "cloud start suspend")
+        return false, "suspended"
     end
     if session.recording then
-        return requestT3xStopRecord(PIR_MEDIA.STOP_REASON.CLOUD)
+        log.warn(L, "cloud start busy")
+        return false, "busy"
     end
-    return publishStopRecording(PIR_MEDIA.STOP_REASON.CLOUD)
+    local cur = getMediaConfig()
+    local media = normalizePirMediaConfig({
+        action = opts.action or cur.action,
+        uploadMode = opts.uploadMode or cur.uploadMode,
+        quality = opts.quality or cur.quality,
+    })
+    local A = PIR_MEDIA.ACTION
+    if media.action == A.DEVINFO then
+        log.warn(L, "cloud start devinfo")
+        return false, "devinfo"
+    end
+    if media.action == A.PHOTO then
+        media.action = A.VIDEO
+    end
+    if opts.videoMaxDurationSec or opts.maxDurationSec then
+        setRecordPolicy({
+            maxDurationSec = opts.videoMaxDurationSec or opts.maxDurationSec,
+        })
+    end
+    statBump("cnt_start_cloud")
+    statLast("cloud_start")
+    publishActionEvents(media)
+    log.info(L, "cloud start", media.action, media.uploadMode, media.quality)
+    return true, media
+end
+
+function requestStopFromCloud(opts)
+    opts = type(opts) == "table" and opts or {}
+    if not getRecordPolicy().stopOnCloud then
+        log.warn(L, "dev stop denied")
+        return false, "stop_on_cloud_denied"
+    end
+    if not session.recording then
+        return false, "not_recording"
+    end
+    session.cloud_stop_message_id = opts.messageId
+    local reason = PIR_MEDIA.STOP_REASON.DEVICE
+    -- 始终请求 T3x 停录（last_stop=device），勿仅依赖 t3x_rec_active（可能与 AT+RECORD=1 竞态）
+    requestT3xStopRecord(reason)
+    if not publishStopRecording(reason) then
+        session.cloud_stop_message_id = nil
+        return false, "stop_failed"
+    end
+    return true
 end
 
 function requestStopManual()
@@ -351,7 +536,7 @@ function getRecordPolicyConfig()
     return getRecordPolicy()
 end
 
---- 订阅 lib/pir 硬件事件（须在 peripheral 启动 PIR 之前调用）
+--- 订阅 PIR 硬件事件（须在 startHw 之前调用）
 function start()
     if handlerStarted then
         return false
@@ -369,13 +554,13 @@ function suspend()
         publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
     end
     clearRecordTimer()
-    log.info("pir_ctrl", "已挂起（t3x 烧录等场景）")
+    log.info(L, "suspended")
     return true
 end
 
 function resume()
     suspended = false
-    log.info("pir_ctrl", "已恢复")
+    log.info(L, "resumed")
     return true
 end
 
@@ -409,13 +594,13 @@ function onPirTriggered()
     if ignore == "suspend" then
         statBump("cnt_biz_ignore_suspend")
         statLast("ignore_suspend")
-        log.info("pir_ctrl", "PIR 已挂起，忽略硬件触发")
+        log.info(L, "ignore hw", ignore)
         return nil
     end
     if ignore == "rest" then
         statBump("cnt_biz_ignore_rest")
         statLast("ignore_rest")
-        log.info("pir_ctrl", "rest 低功耗中，忽略 PIR")
+        log.info(L, "ignore rest")
         return nil
     end
     local E = _G.APP_EVENTS or {}
@@ -423,14 +608,14 @@ function onPirTriggered()
     if session.recording and getRecordPolicy().stopOnSecondPir then
         statBump("cnt_biz_retrigger")
         statLast("retrigger")
-        log.info("pirCtrl", "录像中二次 PIR", media.action, media.uploadMode)
+        log.info(L, "retrigger", media.action, media.uploadMode)
         requestT3xStopRecord(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
         publishEvent(E.GPIO_PIR_TRIGGERED, "retrigger", media.action, media.uploadMode, media.quality)
         return nil
     end
     statBump("cnt_biz_detected")
     statLast("detected")
-    log.info("pirCtrl", "PIR 业务处理", media.action, media.uploadMode, media.quality)
+    log.info(L, "handle", media.action, media.uploadMode, media.quality)
     publishEvent(E.GPIO_PIR_TRIGGERED, "detected", media.action, media.uploadMode, media.quality)
     if media.action == PIR_MEDIA.ACTION.DEVINFO then
         local ok, net = pcall(require, "net_mqtt")

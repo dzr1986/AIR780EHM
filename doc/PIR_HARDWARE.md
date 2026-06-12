@@ -58,7 +58,7 @@ flowchart LR
 
 | 原理图 | 主板 / 模组 | 固件 |
 |--------|-------------|------|
-| PIRMCU_DET | PIR_MCU_DET → **GPIO30** | `PIR_CFG` / `GPIO_IN.pir_det`，`lib/pir` |
+| PIRMCU_DET | PIR_MCU_DET → **GPIO30** | `PIR_CFG` / `GPIO_IN.pir_det`，`pir_ctrl` |
 | BATSTAT_LED | **BAT_STAT_LED → GPIO21** | `GPIO_OUT.bat_stat_led`，`led_ctrl` |
 
 **要点（结合原理图的分析）**
@@ -76,7 +76,7 @@ flowchart LR
 ```mermaid
 flowchart TB
     HW[PIR 模块 PIR_MCU_DET]
-    PIR[lib/pir.lua GPIO30 中断+冷却]
+    PIR[pir_ctrl.lua GPIO30 中断+冷却]
     CTRL[../user/pir_ctrl.lua 策略/录像会话]
     APP[user/app.lua 唤醒 T3x / MQTT]
     NET[user/net_mqtt.lua 1010 / 1011]
@@ -91,7 +91,7 @@ flowchart TB
 |----|------|------|
 | 硬件参数 | `config.lua` | `PIR_CFG`（含 pin、cooldown 等） |
 | 业务策略 | `pir_ctrl.lua` | `pirMediaConfig`、`pirRecordPolicy` |
-| 硬件 | `lib/pir.lua` | GPIO30 中断、防抖、冷却，发布 `PIR_HW_TRIGGERED` |
+| 硬件 | `pir_ctrl.lua` | GPIO30 中断、防抖、冷却，发布 `PIR_HW_TRIGGERED` |
 | 聚合 | `peripheral.lua` | `pir.start()` |
 | 业务 | `pir_ctrl.lua` | 拍照/录像策略、录像定时、二次触发停录 |
 | 编排 | `app.lua` | 订阅事件 → `publishWakeup`、T3x 唤醒、`publishPirDetect` |
@@ -99,7 +99,7 @@ flowchart TB
 
 ---
 
-## 3. GPIO30 检测参数（`config.lua` → `PIR_CFG`，`lib/pir.lua` 读取）
+## 3. GPIO30 检测参数（`config.lua` → `PIR_CFG`，`pir_ctrl.lua` 读取）
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -121,7 +121,7 @@ flowchart TB
 | 项目 | 说明 |
 |------|------|
 | 配置位置 | `config.lua` → `PIR_COOLDOWN_MS.*`、`PIR_CFG.cooldown_ms` |
-| 实现 | `lib/pir.lua` 软件冷却，冷却期内 GPIO 上升沿忽略 |
+| 实现 | `pir_ctrl.lua` 软件冷却，冷却期内 GPIO 上升沿忽略 |
 | 完整分析 | **[`PIR_TRIGGER_INTERVAL.md`](PIR_TRIGGER_INTERVAL.md)**（行业参考、现场日志、选型建议） |
 
 快速改档示例：
@@ -141,7 +141,7 @@ sequenceDiagram
     participant APP as app.start
     participant PC as pir_ctrl.start
     participant PER as peripheral.start
-    participant PIR as lib/pir
+    participant PIR as pir_ctrl
 
     APP->>APP: setupEventHandlers()
     APP->>PC: pir_ctrl.start() 订阅 PIR_HW_TRIGGERED
@@ -238,7 +238,7 @@ flowchart TD
 
 | 事件（`APP_EVENTS`） | 发布者 | 说明 |
 |----------------------|--------|------|
-| `PIR_HW_TRIGGERED` | `lib/pir` | GPIO30 有效触发（过冷却） |
+| `PIR_HW_TRIGGERED` | `pir_ctrl` | GPIO30 有效触发（过冷却） |
 | `GPIO_PIR_TRIGGERED` | `pir_ctrl` | 业务层确认触发（含 action 等） |
 | `PIR_WAKE_T3X` | `pir_ctrl` | 一次 PIR 一次唤醒 T3x（含 photo/video/both） |
 | `T3X_RECORD_ACTIVE` / `T3X_RECORD_STOP` | `host_uart` | T3x `AT+RECORD=` → MQTT 1010/1011 |

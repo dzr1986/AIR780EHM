@@ -37,7 +37,7 @@
 | `max_sec` | int | 录像最长秒数 |
 | `last_stop` | string | 云端/定时停录请求（`none` / `cloud` / …） |
 
-media 字段与 `AT+PIRSTAT?` 中 `pir_runtime.buildAtBody()` **同源**；T3x `media_dispatch_wake_event` **优先读 HOSTEVT**，失败回退 PIRSTAT。
+media 字段与 `AT+PIRSTAT?` 中 `pir_ctrl.buildAtBody()` **同源**；T3x `media_dispatch_wake_event` **优先读 HOSTEVT**，失败回退 PIRSTAT。
 
 无待处理：
 
@@ -58,7 +58,7 @@ media 字段与 `AT+PIRSTAT?` 中 `pir_runtime.buildAtBody()` **同源**；T3x `
 | 清除对象 | 实现 | 说明 |
 |----------|------|------|
 | GPIO 唤醒 pending | `host_uart.clear_pending_wake()` | `notify_host()` 写入、尚未消费的 `sid/evt` |
-| PIR 可消费标记 | `pir_runtime.clearConsumableMarkers()` | `last=none`、`last_ts=0` |
+| PIR 可消费标记 | `pir_ctrl.clearConsumableMarkers()` | `last=none`、`last_ts=0` |
 | **不清除** | `cnt_*` 累加计数 | 与 `AT+PIRCLR` 区分；统计仍走 `AT+PIRSTAT?` |
 
 ### 1.3 `AT+HOSTIDLE=1` 判定与响应
@@ -96,7 +96,7 @@ USB 策略详见 [T3X_LOW_POWER.md §2.1](T3X_LOW_POWER.md)。
 
 ### 2.1 「精简」与「宽表」是什么意思？
 
-二者用**同一份底层数据**（`pir_runtime.buildAtBody()` + `host_event.summarize()`），做成两种不同**宽度**的串口应答：
+二者用**同一份底层数据**（`pir_ctrl.buildAtBody()` + `host_event.summarize()`），做成两种不同**宽度**的串口应答：
 
 | 说法 | 对应 AT | 含义 |
 |------|---------|------|
@@ -106,7 +106,7 @@ USB 策略详见 [T3X_LOW_POWER.md §2.1](T3X_LOW_POWER.md)。
 因此 **`has_event`（HOSTEVT）与 `has_work`（PIRSTAT 末尾）结论一致**，不是两套状态机；宽表只是在同一份汇总结果上多贴了诊断数据。
 
 ```text
-pir_runtime.buildAtBody()  +  getHostEvtPending()  +  host_event.summarize()
+pir_ctrl.buildAtBody()  +  getHostEvtPending()  +  host_event.summarize()
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼
@@ -191,7 +191,7 @@ has_work=1,work_types=wake,work_pending=wake,work_sid=1,work_evt=0 OK
 ### 2.6 数据流简图
 
 ```text
-                    pir_runtime + host_event（单一真源）
+                    pir_ctrl + host_event（单一真源）
                                       │
           ┌───────────────────────────┼───────────────────────────┐
           ▼                           ▼                           ▼
@@ -305,7 +305,7 @@ sequenceDiagram
 | AT 注册 | `user/host_uart.lua` | `uart_hostevt_query`、`uart_hostevt_clr`、`uart_hostidle` |
 | 响应拼装 | `user/host_uart.lua` | `build_hostevt_body()`、`buildHostEvtBody()` |
 | 事件汇总 | `lib/host_event.lua` | `summarize()`、`shouldBlockT3xSleep()` |
-| PIR 可消费标记 | `user/pir_runtime.lua` | `clearConsumableMarkers()` |
+| PIR 可消费标记 | `pir_ctrl.lua` | `clearConsumableMarkers()` |
 | 休眠门禁 | `user/t3x_ctrl.lua` | `enterSleep()` |
 
 ### T3x

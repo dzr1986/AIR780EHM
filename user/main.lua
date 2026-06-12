@@ -1,4 +1,4 @@
-﻿-- 780EHM_PJ 入口
+-- 780EHM_PJ 入口
 -- 启动链: main → app.start(peripheral, net, t3x_ctrl) → sys.run()
 --
 -- LuatTools 只静态解析下面两行；VERSION 须脚本版 xxx.yyy.zzz（如 001.000.002）。
@@ -79,9 +79,9 @@ require "app_config"
 require "key_config"
 
 if _G.FEATURE_CFG then
-    log.info("main", "RNDIS", _G.FEATURE_CFG.rndis and "开" or "关")
-    log.info("main", "低功耗", _G.FEATURE_CFG.low_power and "开" or "关")
-    log.info("main", "休眠查询", _G.FEATURE_CFG.host_evt and "PIRSTAT.has_work 开" or "关")
+    log.info("main", "rnd", _G.FEATURE_CFG.rndis and "1" or "0")
+    log.info("main", "lp", _G.FEATURE_CFG.low_power and "1" or "0")
+    log.info("main", "hevt", _G.FEATURE_CFG.host_evt and "1" or "0")
     local okLp, lpw = pcall(require, "low_power_wakeup")
     if okLp and lpw and lpw.modeLabel then
         log.info("main", "低功耗唤醒通道", lpw.modeLabel())
@@ -97,21 +97,21 @@ if not isEntry then
     return app
 end
 
-log.info("main", "版本", BUILD_TAG, "core", rtos.version(), "project", PROJECT)
+log.info("main", "build", BUILD_TAG, "c", rtos.version(), "p", PROJECT)
 
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     -- 开启 PWRKEY 防抖：关机后需长按 K1 约 2s 才能再开机（见 doc/KEY_GPIO.md）
     pm.power(pm.PWK_MODE, true)
 end
 
--- ① RNDIS：与 pwrkey_rndis_boot/main.lua 相同 sys.taskInit(rndis.open)
+-- ① RNDIS：开机即 open（与 pwrkey_rndis_boot 一致）
 if _G.MODULE_FLAGS and _G.MODULE_FLAGS.rndis then
     local okMod, usb_rndis = pcall(require, "usb_rndis")
     if okMod and type(usb_rndis) == "table" and usb_rndis.open then
         sys.taskInit(usb_rndis.open)
-        log.info("main", "RNDIS taskInit(open)")
+        log.info("main", "rnd+")
     else
-        log.warn("main", "usb_rndis 不可用，跳过 RNDIS")
+        log.warn("main", "rnd?")
     end
 end
 

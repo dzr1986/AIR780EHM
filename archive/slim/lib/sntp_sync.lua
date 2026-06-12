@@ -63,17 +63,17 @@ end
 
 local function trySync(runtimeConfig)
     for _, server in ipairs(runtimeConfig.servers) do
-        log.info("sntpSync.trySync", server)
+        log.info("sntp", server)
         socket.sntp(server)
         if sys.waitUntil("NTP_UPDATE", runtimeConfig.timeout) then
             lastServer = server
             lastSyncTime = os.time()
             lastSyncOk = true
-            log.info("sntpSync", "sync ok", "server:", server, "unix:", lastSyncTime, os.date("!%Y-%m-%d %H:%M:%S UTC"))
+            log.info("sntp", "ok", "srv", server, "u", lastSyncTime, os.date("!%Y-%m-%d %H:%M:%S UTC"))
             sys.publish(runtimeConfig.success_event, lastSyncTime, server)
             return true, server, lastSyncTime
         end
-        log.warn("sntpSync", "sync timeout/fail, waiting retry...")
+        log.warn("sntp", "to")
         sys.wait(runtimeConfig.retry_wait)
     end
 

@@ -73,7 +73,7 @@ local ipcMod
 
 local function t3xOn(extra)
     if ipcMod == nil then
-        local ok, m = pcall(require, "t3x_ipc")
+        local ok, m = pcall(require, "t3x_ctrl")
         ipcMod = ok and m or false
     end
     if not ipcMod or not ipcMod.ensurePowered then
@@ -113,7 +113,7 @@ function pushToHost(force)
     end
     local t = os.time()
     if not isTimeValid(t) then
-        log.warn(LOG_TAG, "4G 时间无效，跳过推送", t)
+        log.warn(LOG_TAG, "tInv", t)
         return false
     end
     if not force then
@@ -125,14 +125,14 @@ function pushToHost(force)
 
     local ub = getUart()
     if not ub or not ub.sendString then
-        log.warn(LOG_TAG, "uart_bridge 不可用")
+        log.warn(LOG_TAG, "noUb")
         return false
     end
 
     t3xOn()
     sys.wait(tonumber(cfg().host_boot_wait_ms) or 1500)
 
-    log.info(LOG_TAG, "AT+TIMESET", t, os.date("!%Y-%m-%d %H:%M:%S UTC", t))
+    log.info(LOG_TAG, "ts", t, os.date("!%Y-%m-%d %H:%M:%S UTC", t))
     ub.sendString("AT+TIMESET=" .. t, true)
 
     local timeoutMs = tonumber(cfg().ack_timeout_ms) or 800
@@ -141,7 +141,7 @@ function pushToHost(force)
         lastPushedUnix = t
         log.info(LOG_TAG, "T3x 时间已同步", t)
     else
-        log.warn(LOG_TAG, "TIMESET 超时", t)
+        log.warn(LOG_TAG, "tsTo", t)
     end
     return ok
 end
@@ -160,7 +160,7 @@ function onSntpSuccess(unix, server)
     if not enabled() or cfg().sync_on_sntp == false then
         return
     end
-    log.info(LOG_TAG, "SNTP 成功", unix or os.time(), server or "")
+    log.info(LOG_TAG, "snOk", unix or os.time(), server or "")
     pushToHostAsync(true)
 end
 
@@ -176,7 +176,7 @@ function pushBeforeNotify(sid, evt)
     local okPol, policy = pcall(require, "t3x_policy")
     if okPol and type(policy) == "table" and policy.requestT3xWake then
         if not policy.mayPowerT3x("time_sync_notify") then
-            log.info(LOG_TAG, "TIMESET/唤醒跳过", policy.getDenyReason and policy.getDenyReason() or "")
+            log.info(LOG_TAG, "tsSk", policy.getDenyReason and policy.getDenyReason() or "")
             return
         end
     end
@@ -211,12 +211,75 @@ function start(opts)
             onSntpSuccess(unix, server)
         end)
     end
-    log.info(LOG_TAG, "已启动",
+    log.info(LOG_TAG, "on",
         "min_unix", cfg().min_valid_unix or DEFAULT_MIN_UNIX,
         "sync_wake", cfg().sync_on_wake ~= false,
         "sync_sntp", cfg().sync_on_sntp ~= false)
     return true
 end
 
-log.info(LOG_TAG, "loaded")
+-- SNTP（原 lib/sntp_sync.lua，并入减 bin 体积）
+local sntpCfg = {
+    task_name = "sntp_task",
+    ok_wait = 3600000,
+    fail_wait = 10000,
+    timeout = 30000,
+    ip_wait_timeout = 1000,
+    retry_wait = 1000,
+    success_event = "SNTP_SYNC_SUCCESS",
+    servers = {
+        "ntp.aliyun.com",
+        "time1.cloud.tencent.com",
+        "cn.pool.ntp.org",
+    },
+}
+local sntpStarted = false
+
+local function sntpTrySync(runtimeConfig)
+    for _, server in ipairs(runtimeConfig.servers) do
+        log.info(LOG_TAG, "sntp", server)
+        socket.sntp(server)
+        if sys.waitUntil("NTP_UPDATE", runtimeConfig.timeout) then
+            local t = os.time()
+            log.info(LOG_TAG, "sntpOk", server, t)
+            sys.publish(runtimeConfig.success_event, t, server)
+            return true
+        end
+        sys.wait(runtimeConfig.retry_wait)
+    end
+    return false
+end
+
+local function sntpWaitIp(interval)
+    while not socket.adapter(socket.dft()) do
+        sys.waitUntil("IP_READY", interval or sntpCfg.ip_wait_timeout)
+    end
+end
+
+local function sntpTask(runtimeConfig)
+    while true do
+        sntpWaitIp(runtimeConfig.ip_wait_timeout)
+        if sntpTrySync(runtimeConfig) then
+            sys.wait(runtimeConfig.ok_wait)
+        else
+            sys.wait(runtimeConfig.fail_wait)
+        end
+    end
+end
+
+function startSntp(newConfig)
+    if sntpStarted then return false end
+    if type(newConfig) == "table" then
+        if type(newConfig.servers) == "table" and #newConfig.servers > 0 then
+            sntpCfg.servers = newConfig.servers
+        end
+        for k, v in pairs(newConfig) do
+            if k ~= "servers" and v ~= nil then sntpCfg[k] = v end
+        end
+    end
+    sntpStarted = true
+    sys.taskInit(sntpTask, sntpCfg)
+    return true
+end
+
 return _M

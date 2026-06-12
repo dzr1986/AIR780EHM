@@ -11,7 +11,7 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-local LOG_TAG = "battery_guard"
+local LOG_TAG = "batG"
 local pir_ctrl
 
 local hooks = {}
@@ -33,7 +33,7 @@ end
 local function pctThreshold(key)
     local v = tonumber(cfg()[key])
     if v == nil then
-        log.warn(LOG_TAG, "config 缺少 BATTERY_CFG.guard." .. key)
+        log.warn(LOG_TAG, "guard cfg missing", key)
     end
     return v
 end
@@ -98,7 +98,7 @@ local function suspendPir()
     if pir_ctrl and pir_ctrl.suspend then
         pir_ctrl.suspend()
         guard.pir_suspended = true
-        log.info(LOG_TAG, "PIR 已暂停（低电量）")
+        log.info(LOG_TAG, "pir-")
     end
 end
 
@@ -112,7 +112,7 @@ local function resumePir()
     end)()
     if pir_ctrl and pir_ctrl.resume then
         pir_ctrl.resume()
-        log.info(LOG_TAG, "PIR 已恢复")
+        log.info(LOG_TAG, "pir+")
     end
     guard.pir_suspended = false
 end
@@ -122,7 +122,7 @@ local function enterBatteryRest(pct)
         return
     end
     guard.rest_by_battery = true
-    log.warn(LOG_TAG, "电量", pct, "% ≤ 休眠阈值，请求进 rest（app 上报 1002 + 断 T3x）")
+    log.warn(LOG_TAG, "电量", pct, "≤rest")
     if type(hooks.on_enter_low_power) == "function" then
         hooks.on_enter_low_power("battery")
     end
@@ -133,7 +133,7 @@ local function exitBatteryRest(pct)
         return
     end
     guard.rest_by_battery = false
-    log.info(LOG_TAG, "电量", pct, "% 已恢复，退出电量休眠并上电 T3x")
+    log.info(LOG_TAG, "电量", pct, ">rest")
     if type(hooks.on_exit_low_power) == "function" then
         hooks.on_exit_low_power("battery_recover")
     end
@@ -144,11 +144,11 @@ local function scheduleShutdown(pct)
         return
     end
     local delay = tonumber(cfg().shutdown_delay_ms) or 3000
-    log.error(LOG_TAG, "电量", pct, "% ≤ 关机阈值，", delay / 1000, "s 后关机")
+    log.error(LOG_TAG, "电量", pct, "≤off", delay / 1000, "s off")
     guard.shutdown_timer = sys.timerStart(function()
         guard.shutdown_timer = nil
         if isUsbInserted() then
-            log.info(LOG_TAG, "关机前检测到 USB 插入，取消关机")
+            log.info(LOG_TAG, "usbXoff")
             return
         end
         if type(hooks.on_power_off) == "function" then
@@ -231,7 +231,7 @@ function onUsbInserted()
     if wasPir then
         resumePir()
     end
-    log.info(LOG_TAG, "USB 插入，忽略低电量限制，保持 T3x 上电")
+    log.info(LOG_TAG, "usb+")
     local exitedRest = false
     if wasRest or (_G.APP_RUNTIME and _G.APP_RUNTIME.low_power_mode == 1) then
         if type(hooks.on_exit_low_power) == "function" then
@@ -247,7 +247,7 @@ end
 
 --- USB 拔出：按当前电量重新评估
 function onUsbRemoved()
-    log.info(LOG_TAG, "USB 拔出，启用电量保护策略")
+    log.info(LOG_TAG, "usb-")
     local pct = guard.last_percent
     if pct == nil and _G.APP_RUNTIME then
         pct = tonumber(_G.APP_RUNTIME.battery_percent)
@@ -270,7 +270,7 @@ end
 function start(opts)
     hooks = type(opts) == "table" and opts or {}
     local c = cfg()
-    log.info(LOG_TAG, "已启动",
+    log.info(LOG_TAG, "on",
         "rest<=" .. tostring(c.t3x_rest_percent) .. "%",
         "off<=" .. tostring(c.shutdown_percent) .. "%",
         "pir<=" .. tostring(c.pir_suspend_percent) .. "%",
@@ -296,5 +296,4 @@ function getState()
     }
 end
 
-log.info(LOG_TAG, "loaded")
 return _M

@@ -12,4 +12,4 @@
 | `T31_CAT1_AT_COMMAND_SPEC.md` | [T3X_CAT1_AT_COMMAND_SPEC.md](../T3X_CAT1_AT_COMMAND_SPEC.md) |
 | `T31_WAKE_PROTOCOL.md` | [T3X_HOSTEVT_PROTOCOL.md](../T3X_HOSTEVT_PROTOCOL.md) |
 
-代码与 `require` 统一使用 **snake_case**：`t3x_ctrl`、`t3x_ipc`、`t3x_policy`。
+代码与 `require` 统一使用 **snake_case**：`t3x_ctrl`、`t3x_policy`（原 `t3x_ipc` 已合并进 `t3x_ctrl`）。

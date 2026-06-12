@@ -1,6 +1,6 @@
 ﻿# PIR 媒体与录像停止协议
 
-> 适用工程：780EHM_PJ（方案1：`lib/pir.lua` → `pir_ctrl.lua` → `app.lua` / `net_mqtt.lua`）  
+> 适用工程：780EHM_PJ（方案1：`pir_ctrl.lua` → `app.lua` / `net_mqtt.lua`）  
 > 更新日期：2026-05-24
 
 ---
@@ -36,7 +36,8 @@ PIR 人体感应触发后，设备根据 `pirMediaConfig` 决定拍照/录像，
 |------|------|------|------|
 | `maxDurationSec` | number | `60` | **条件1：定时停止**。录像开始后最长秒数（1～3600），到时 `reason=timer` |
 | `stopOnSecondPir` | bool/0/1 | `true` | **条件2：二次 PIR**。录像中再次触发 PIR 则 `reason=pir_retrigger`，且**不再**启动新的拍照/录像 |
-| `stopOnCloud` | bool/0/1 | `true` | **条件3：云端命令**。是否响应下行 `2011` |
+| `stopOnCloud` | bool/0/1 | `true` | **条件3：云端停录**。是否响应下行 `2011` |
+| `startOnCloud` | bool/0/1 | `true` | **平台开录（TF 卡）**。是否响应下行 `2012` |
 
 ### 2.4 配置来源与持久化迁移
 
@@ -105,7 +106,7 @@ flowchart TD
 
 | 事件名 | 常量 | 发布时机 | 订阅方 |
 |--------|------|----------|--------|
-| PIR 硬件中断 | `PIR_HW_TRIGGERED` | `lib/pir` 有效边沿 | `pir_ctrl` |
+| PIR 硬件中断 | `PIR_HW_TRIGGERED` | `pir_ctrl` 有效边沿 | `pir_ctrl` |
 | PIR 业务触发 | `GPIO_PIR_TRIGGERED` | `pir_ctrl.onPirTriggered` | `app` → MQTT **1010** |
 | 唤醒 T3x（photo/video/both） | `PIR_WAKE_T3X` | 一次 PIR 业务 | `app` → wakeup + `requestT3xWake` |
 | **停止录像（timer/cloud）** | `PIR_STOP_RECORDING` | 4G 清会话 | `app` → 1011 `source=4g` 或唤醒 T3x |
@@ -130,7 +131,8 @@ sys.publish(APP_EVENTS.PIR_STOP_RECORDING, reason, uploadMode, quality)
 |----|------|----------|
 | `timer` | 达到 `maxDurationSec` | `pir_ctrl` 内定时器 |
 | `pir_retrigger` | 录像中第二次 PIR（且 `stopOnSecondPir=true`） | `pir_ctrl.onPirTriggered` |
-| `cloud` | 云端下发 `dataType=2011` | `net_mqtt.lua` → `requestStopFromCloud()` |
+| `cloud` | 兼容旧版；现 **2011** 使用 `device` |
+| `device` | 平台下发 **2011** 停录 |
 | `manual` | 本地调用 `pir_ctrl.requestStopManual()` | 预留 AT/调试 |
 | `done` | T3x 正常录完（`source=t3x` 的 1011） | `host_uart` → `publishT3xRecordStop` |
 | `time_sync` / `disk_full` / … | T3x 开录/写盘失败（`source=t3x`） | 同上，reason 与 T3x 一致 |
@@ -144,7 +146,7 @@ sys.publish(APP_EVENTS.PIR_STOP_RECORDING, reason, uploadMode, quality)
 ```mermaid
 sequenceDiagram
     participant HW as PIR 硬件
-    participant LIB as lib/pir.lua
+    participant LIB as pir_ctrl.lua
     participant PC as pir_ctrl
     participant APP as app.lua
     participant MQTT as net_mqtt
@@ -179,7 +181,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant PIR as lib/pir.lua
+    participant PIR as pir_ctrl.lua
     participant CFG as pir_ctrl
     participant APP as app.lua
     participant NET as net_mqtt.lua
@@ -213,7 +215,7 @@ flowchart TD
 
 1. 第一次 PIR：`PIR_WAKE_T3X` 一次唤醒；T3x 按 `PIRSTAT action=` 执行（`both` 先拍后录）。  
 2. 录像未结束前第二次 PIR：`requestT3xStopRecord(pir_retrigger)` → `PIR_REQUEST_T3X_STOP` 唤醒 T3x（**保持** `recording=1`）；`GPIO_PIR_TRIGGERED(retrigger)`；**不**发 4G 侧 1011。  
-3. PIR 冷却期（`lib/pir.lua` 默认 5s）过后，可再次全新触发。
+3. PIR 冷却期（`pir_ctrl.lua` 默认 5s）过后，可再次全新触发。
 
 ### 4.5 特殊状态（不触发或抑制 PIR 业务）
 
@@ -227,7 +229,8 @@ flowchart TD
 
 ## 5. MQTT 协议（PIR 相关）
 
-> 通用连接、主题、200x↔100x 见 **[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md)**。本节 PIR：**2010↔1010**、**2011↔1011**。
+> 通用连接、主题、200x↔100x 见 **[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md)**。本节 PIR：**2010↔1010**、**2012↔1012**、**2011↔1011**。  
+> **与 PIR 硬件关系 + 联调实操**：[mqtt_2010_2012_2011_pir_flow.md](./mqtt_2010_2012_2011_pir_flow.md)
 
 ### 5.1 下行：PIR 策略 / 查询 `dataType=2010` → 上行 `1010`
 
@@ -243,7 +246,8 @@ flowchart TD
   "quality": "high",
   "videoMaxDurationSec": 90,
   "stopOnSecondPir": 1,
-  "stopOnCloud": 1
+  "stopOnCloud": 1,
+  "startOnCloud": 1
 }
 ```
 
@@ -252,9 +256,10 @@ flowchart TD
 | `action` | 否 | 同 `pirMediaConfig.action` |
 | `uploadMode` | 否 | 同 `pirMediaConfig.uploadMode` |
 | `quality` | 否 | 同 `pirMediaConfig.quality` |
-| `videoMaxDurationSec` | 否 | 最长录像秒数，别名 `maxDurationSec` |
+| `videoMaxDurationSec` | 否 | 最长录像秒数（1～3600） |
 | `stopOnSecondPir` | 否 | `1`/`0` 或 `true`/`false` |
-| `stopOnCloud` | 否 | 是否允许 2011 停止 |
+| `stopOnCloud` | 否 | 是否允许 **2011** 停录 |
+| `startOnCloud` | 否 | 是否允许 **2012** 开录 |
 
 未出现的字段保持设备当前值（合并更新）。
 
@@ -294,7 +299,43 @@ flowchart TD
 | `retrigger` | 录像中二次 PIR |
 | `query` | 应答 2010 查询 |
 
-### 5.3 下行：停止录像 `dataType=2011`
+### 5.3 下行：平台开录 `dataType=2012` → 上行 `1012`
+
+**方向**：平台 → 设备（**仅 Cat.1** 处理；T3x 经 GPIO/UART 协作）
+
+```json
+{"dataType":"2012","messageId":"start-001"}
+```
+
+可选：`action`、`uploadMode`、`quality`、`videoMaxDurationSec`（省略则用当前 2010 配置）。
+
+**设备行为**：
+
+- 未在录像且 `startOnCloud=true` → `requestStartFromCloud()` → **1004** `pir_start` + **1012**（`event`，`reason=device`，`source=4g`）
+- T3x 写盘确认另发 **1010** `t3x_active`（`pir` 主题）
+- 已在录 / `startOnCloud=false` / suspend → **1004** `ret=-1`（日志 `d12x`），无 1012
+
+详见 [mqtt_2012_1012_flow.md](./mqtt_2012_1012_flow.md)。
+
+### 5.4 上行：平台开录受理 `dataType=1012`
+
+**主题**：`/panshi/app/{deviceNo}/event`
+
+```json
+{
+  "deviceNo": "868123456789012",
+  "dataType": "1012",
+  "reason": "device",
+  "source": "4g",
+  "action": "video",
+  "uploadMode": "auto",
+  "quality": "high",
+  "recording": 1,
+  "time": "2026-06-12 12:00:00"
+}
+```
+
+### 5.5 下行：停止录像 `dataType=2011`
 
 **方向**：平台 → 设备  
 
@@ -309,10 +350,10 @@ flowchart TD
 
 **设备行为**：
 
-- 若当前正在录像且 `stopOnCloud=true` → 发布 `PIR_STOP_RECORDING(cloud)`  
-- 若未在录像 → 忽略（无事件）
+- 若当前正在录像且 `stopOnCloud=true` → 结束会话并发布 `PIR_STOP_RECORDING(device)` → **1011**  
+- 若未在录像 → 忽略（无上行，日志 `d11x`）
 
-### 5.4 上行：录像已停止 `dataType=1011`
+### 5.6 上行：录像已停止 `dataType=1011`
 
 **方向**：设备 → 平台  
 
@@ -335,14 +376,14 @@ flowchart TD
 
 | 字段 | 说明 |
 |------|------|
-| `reason` | `timer` / `pir_retrigger` / `cloud` / `manual`；T3x 侧另含 `done` / `time_sync` / `disk_full` 等 |
+| `reason` | `timer` / `pir_retrigger` / `device` / `manual`；T3x 侧另含 `done` / `time_sync` / `disk_full` 等 |
 | `source` | `4g`（4G 会话结束）或 `t3x`（T3x `AT+RECORD=0`） |
 | `uploadMode` | 停止时会话的上传模式 |
 | `quality` | 停止时会话的画质 |
 
-### 5.4 与其它上行类型
+### 5.7 与其它上行类型
 
-`1001` / `1002` / `1003` 定义见 **MQTT_PROTOCOL.md**；本节 **1011** 为 PIR 录像停止专用。
+`1001` / `1002` / `1003` 定义见 **MQTT_PROTOCOL.md**；**1012** 为平台开录受理，**1011** 为录像停止专用。
 
 ---
 
@@ -350,11 +391,13 @@ flowchart TD
 
 | 能力 | 模块 | 函数 |
 |------|------|------|
-| PIR 中断 | `lib/pir.lua` | `onInterrupt` → `APP_PIR_HW_TRIGGERED` → `pir_ctrl.onPirTriggered` |
+| PIR 中断 | `pir_ctrl.lua` | `onInterrupt` → `APP_PIR_HW_TRIGGERED` → `pir_ctrl.onPirTriggered` |
 | 会话/定时/停止发布 | `pir_ctrl.lua` | `beginVideoSession` / `publishStopRecording` |
 | 业务响应 | `app.lua` | `setupEventHandlers` 内 PIR 订阅 |
-| 云端 2010/2011 | `net_mqtt.lua` | `pir_ctrl.setMediaConfig` / `setRecordPolicy` / `requestStopFromCloud` |
+| 平台 2010/2012/2011 | `net_mqtt.lua` | `setMediaConfig` / `setRecordPolicy` / `requestStartFromCloud` / `requestStopFromCloud` |
+| 上行 1012 | `net_mqtt.lua` | `publishPirRecordStart` |
 | 上行 1011 | `net_mqtt.lua` | `publishPirRecordStop` / `publishT3xRecordStop` |
+| 编码 2020/2021 | `net_mqtt.lua` + `host_uart.lua` | `handleDownlink2020/2021` → IPC `AT+VENC*` / `AT+AUDIO*` |
 | T3x 写盘确认 1010 | `net_mqtt.lua` | `publishPirRecordActive` |
 | T3x AT+RECORD | `host_uart.lua` | `uart_record_notify` → `APP_T3X_RECORD_*` |
 | 硬件触发 | `config.lua` | `PIR_CFG` |
@@ -381,7 +424,7 @@ require "pir_ctrl".requestStopManual()
 - [ ] 首个 I 帧后收到 **1010** `pirStatus=t3x_active, active=1`
 - [ ] T3x 失败时收到 **1011** `source=t3x`（如 `time_sync`、`no_iframe`）
 - [ ] 录像中再次挥手，收到 `reason=pir_retrigger`，且无第二次 `PIR_RECORD_VIDEO`
-- [ ] 平台发 `2011`，收到 `reason=cloud`
+- [ ] 平台发 `2011`，收到 `reason=device`
 - [ ] `stopOnSecondPir=0` 时，录像中二次 PIR 不停止（仍受定时器约束）
 - [ ] `host_uart.queryHostRecord()` 在写盘期间返回 `running=1,active=1`
 
