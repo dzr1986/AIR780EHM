@@ -96,6 +96,12 @@ local function updateUsb(inserted, fromIrq)
     last_usb = inserted
     log.info(LOG_TAG, "USB_DET GPIO" .. tostring(usbPin()),
         inserted and "插入" or "拔出", fromIrq and "IRQ" or "init")
+    if inserted and fromIrq then
+        local okPeri, peri = pcall(require, "peripheral")
+        if okPeri and peri and peri.cancelLongPress then
+            peri.cancelLongPress("pwr")
+        end
+    end
     publishUsbChange(inserted)
 end
 local function updateChg(charging, fromIrq)

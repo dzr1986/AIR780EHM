@@ -168,26 +168,38 @@ local function refreshAfterCellularIp()
     applyPmUsb()
     refreshing = false
     sys.publish(EVT_REFRESH_END)
+    log.info(LOG_TAG, "refresh_done", readCellularIp() or "--")
     if not bootStable then
         publishBootStable()
     end
     return true
 end
 local function hookIpReadyForRndis()
-    if ipReadyHooked or not sys or not sys.subscribe then
+    -- refresh 仅由 finishBootOpen / rebind / switch 触发。
+    -- 勿订阅 IP_READY 做周期性 flymode 切换，否则会 IP_READY→refresh→IP_LOSE→IP_READY 死循环。
+    if ipReadyHooked then
         return
     end
     ipReadyHooked = true
+    local cfg = _G.RNDIS_CFG or {}
+    if cfg.refresh_on_ip_ready ~= true then
+        return
+    end
+    if not sys or not sys.subscribe then
+        return
+    end
     sys.subscribe("IP_READY", function()
-        if runtime.status ~= "enabled" or not bootStable then
+        if runtime.status ~= "enabled" or not bootStable or refreshing then
             return
         end
-        if not refreshAllowed() then
+        if not refreshAllowed() or ipReadyRefreshed then
             return
         end
         sys.taskInit(function()
             sys.wait(1500)
-            ipReadyRefreshed = false
+            if refreshing or ipReadyRefreshed then
+                return
+            end
             refreshAfterCellularIp()
         end)
     end)
@@ -213,23 +225,27 @@ local function cycleRndis(pauseMs, extraWait)
         sys.wait(extraWait)
     end
     ipReadyRefreshed = false
-    refreshing = false
     if not refreshAfterCellularIp() then
+        refreshing = false
         sys.publish(EVT_REFRESH_END)
     end
     return true
 end
 local function finishBootOpen()
     if refreshAllowed() then
-        local ready = waitCellularReady()
+        log.info(LOG_TAG, "boot_wait_ip")
+        local ready, ip = waitCellularReady()
         if ready and not ipReadyRefreshed then
+            log.info(LOG_TAG, "boot_refresh", ip or "--")
             if not refreshAfterCellularIp() then
                 publishBootStable()
             end
         else
+            log.warn(LOG_TAG, "boot_skip_refresh", ready and 1 or 0, ip or "--")
             publishBootStable()
         end
     else
+        log.info(LOG_TAG, "boot_no_usb_refresh")
         publishBootStable()
     end
 end

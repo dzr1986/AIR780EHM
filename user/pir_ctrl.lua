@@ -35,6 +35,19 @@ local session = {
     stop_mqtt_published = false,
     cloud_stop_message_id = nil,
 }
+local modCache = {}
+local function loadMod(name)
+    local mod = modCache[name]
+    if mod ~= nil then
+        return mod or nil
+    end
+    local ok, loaded = pcall(require, name)
+    modCache[name] = ok and loaded or false
+    return ok and loaded or nil
+end
+local function netMqttMod()
+    return loadMod("net_mqtt")
+end
 local effectiveMediaAction = nil
 local handlerStarted = false
 local suspended = false
@@ -260,7 +273,6 @@ local function loadPersistedConfig()
     end
     if migratePersistedConfig(data) then
         savePersistedConfig()
-    else
     end
 end
 _G.pirMediaConfig = normalizePirMediaConfig(PIR_MEDIA.DEFAULT_CONFIG)
@@ -520,8 +532,8 @@ function onPirTriggered()
     statLast("detected")
     publishEvent(E.GPIO_PIR_TRIGGERED, "detected", media.action, media.uploadMode, media.quality)
     if media.action == PIR_MEDIA.ACTION.DEVINFO then
-        local ok, net = pcall(require, "net_mqtt")
-        if ok and net and net.refreshAndPublishDeviceIdentity then
+        local net = netMqttMod()
+        if net and net.refreshAndPublishDeviceIdentity then
             net.refreshAndPublishDeviceIdentity(nil)
         end
         return media

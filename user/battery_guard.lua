@@ -3,7 +3,6 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "batG"
 local pir_ctrl
 local hooks = {}
 local guard = {
@@ -219,12 +218,6 @@ function onBatteryUpdate(pct, mv)
 end
 function start(opts)
     hooks = type(opts) == "table" and opts or {}
-    local c = cfg()
-    log.info(LOG_TAG, "on",
-        "rest<=" .. tostring(c.t3x_rest_percent) .. "%",
-        "off<=" .. tostring(c.shutdown_percent) .. "%",
-        "pir<=" .. tostring(c.pir_suspend_percent) .. "%",
-        "usb_ignore=" .. tostring(c.ignore_when_usb_inserted ~= false))
     local pct = _G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.battery_percent)
     if pct then
         sys.taskInit(function()

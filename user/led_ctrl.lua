@@ -4,7 +4,6 @@ local gpio_util = require "gpio_util"
 local _M = { _VERSION = "1.2.0" }
 module(..., package.seeall)
 _G[_M] = _M
-local LOG_TAG = "led"
 local LED_CONFIG = {
     bluePin = 21,
     startup = { enabled = true, blinks = 2, light_ms = 400, dark_ms = 400 },
@@ -87,10 +86,6 @@ local function cycleCfg()
         suppress_low_when_charging = LED_CONFIG.suppress_low_when_charging,
     }
 end
-local PATTERN_LABEL = {
-    ok = "ok", offline = "off", low = "low", unknown = "?",
-    charging_ok = "cok", charging_offline = "coff",
-}
 local function runOneCycle(st, cfg)
     st = type(st) == "table" and st or {}
     cfg = type(cfg) == "table" and cfg or {}
@@ -131,11 +126,6 @@ local function ledTask()
             local pattern = runOneCycle(runtimeSnapshot(), cycleCfg())
             if pattern ~= lastPattern then
                 lastPattern = pattern
-                local usb, chg = readChargeFlags()
-                log.info(LOG_TAG, PATTERN_LABEL[pattern] or pattern,
-                    "bat=" .. tostring((_G.APP_RUNTIME or {}).battery_percent),
-                    "on=" .. tostring((_G.APP_RUNTIME or {}).online_status),
-                    "usb=" .. tostring(usb), "chg=" .. tostring(chg))
             end
         end
     end)

@@ -1,7 +1,6 @@
 require "sys"
 require "config"
 local gpio_util = require "gpio_util"
-local LOG_TAG = "t3x"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -26,21 +25,28 @@ local state = {
     last_wake_reason = nil,
     rest_enter_time = nil,
 }
+local modCache = {}
+local function loadMod(name)
+    local mod = modCache[name]
+    if mod ~= nil then
+        return mod or nil
+    end
+    local ok, loaded = pcall(require, name)
+    modCache[name] = ok and loaded or false
+    return ok and loaded or nil
+end
+local function t3xPolicyMod()
+    return loadMod("t3x_policy")
+end
+local function hostUartMod()
+    return loadMod("host_uart")
+end
+local function hostEventMod()
+    return loadMod("host_event")
+end
 local function getEntries()
     local gout = _G.GPIO_OUT or {}
     return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
-end
-local function gpioTag(pin, level)
-    if pin == nil then
-        return "gpio(?)=?"
-    end
-    return string.format("gpio(%d)=%d", pin, level or 0)
-end
-local function logGpioSet(action, entry_pwr, entry_boot, entry_ota, pwrLv, bootLv, otaLv)
-    log.info(LOG_TAG, action,
-        gpioTag(entry_pwr and entry_pwr.pin, pwrLv),
-        gpioTag(entry_boot and entry_boot.pin, bootLv),
-        gpioTag(entry_ota and entry_ota.pin, otaLv))
 end
 local function getWakePulseMs()
     local cfg = _G.HOST_WAKE_CFG or {}
@@ -88,8 +94,8 @@ local function ensurePins()
 end
 function start()
     ensurePins()
-    local ok, policy = pcall(require, "t3x_policy")
-    if ok and type(policy) == "table" and policy.bootPowerOn then
+    local policy = t3xPolicyMod()
+    if type(policy) == "table" and policy.bootPowerOn then
         policy.bootPowerOn(_M)
     else
         powerOn()
@@ -109,8 +115,6 @@ function powerOn()
     isPoweredOn = true
     state.power_state = "on"
     lastAction = "powerOn"
-    logGpioSet("pwr+", entry_pwr, entry_boot, entry_ota,
-        powerOnLevel, currentBootLevel, currentOtaLevel)
     return true
 end
 function pulseMcuInt()
@@ -125,8 +129,6 @@ function pulseMcuInt()
     sys.timerStart(function()
         t3xMcuIntPin(idle)
         lastAction = "pulseMcuInt"
-        log.info(LOG_TAG, "wake", "pin", entry_int.pin, "ms", ms,
-            "idle", idle, "active", active)
     end, ms)
     return true
 end
@@ -134,7 +136,7 @@ function pulseWakeup()
     return pulseMcuInt()
 end
 function powerOff()
-    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
+    ensurePins()
     if not t3xPowerPin then
         return false
     end
@@ -143,17 +145,11 @@ function powerOff()
     isPoweredOn = false
     state.power_state = "off"
     lastAction = "powerOff"
-    logGpioSet("pwr-", entry_pwr, entry_boot, entry_ota,
-        powerOffLevel, currentBootLevel, currentOtaLevel)
     return true
 end
 function enterBootMode()
-    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
+    ensurePins()
     if not t3xPowerPin or not t3xBootModePin or not t3xOtaPin then
-        log.warn(LOG_TAG, "bootFail",
-            gpioTag(entry_pwr and entry_pwr.pin, nil),
-            gpioTag(entry_boot and entry_boot.pin, nil),
-            gpioTag(entry_ota and entry_ota.pin, nil))
         return false
     end
     powerOff()
@@ -163,8 +159,6 @@ function enterBootMode()
         currentBootLevel = bootModeLevel
         currentOtaLevel = otaModeLevel
         isInBootMode = true
-        logGpioSet("bootIO", entry_pwr, entry_boot, entry_ota,
-            powerOffLevel, bootModeLevel, otaModeLevel)
     end, bootDelay)
     sys.timerStart(function()
         powerOn()
@@ -193,14 +187,9 @@ function pulseUsbDebugEn(opts)
     t3xOtaPin(otaOff)
     currentOtaLevel = otaOff
     lastAction = "pulseUsbDebugEn"
-    log.info(LOG_TAG, "usbRst", "pin", entry_ota.pin,
-        "high_ms", high_ms, "off", otaOff)
-    logGpioSet("USB_DEBUG_EN", entry_pwr, entry_boot, entry_ota,
-        currentPowerLevel, currentBootLevel, otaOff)
     return true
 end
 function exitBootMode()
-    local entry_pwr, _, entry_boot, entry_ota = getEntries()
     ensurePins()
     if not t3xBootModePin or not t3xOtaPin then
         return false
@@ -213,8 +202,6 @@ function exitBootMode()
     currentOtaLevel = otaOff
     isInBootMode = false
     lastAction = "exitBootMode"
-    logGpioSet("bootX", entry_pwr, entry_boot, entry_ota,
-        currentPowerLevel, bootOff, otaOff)
     return true
 end
 function enterSleep(opts)
@@ -223,9 +210,9 @@ function enterSleep(opts)
     end
     opts = type(opts) == "table" and opts or {}
     if opts.skip_pending_work_check ~= true then
-        local okHu, hu = pcall(require, "host_uart")
-        local okHe, he = pcall(require, "host_event")
-        if okHu and hu and hu.buildHostEvtBody and okHe and he and he.shouldBlockT3xSleep then
+        local hu = hostUartMod()
+        local he = hostEventMod()
+        if hu and hu.buildHostEvtBody and he and he.shouldBlockT3xSleep then
             local body = hu.buildHostEvtBody()
             if he.shouldBlockT3xSleep(body) then
                 return false
@@ -298,16 +285,15 @@ local function ipcEnabled()
     return ipcCfg().enabled ~= false
 end
 local function ipcHostUart()
-    local ok, mod = pcall(require, "host_uart")
-    return ok and mod or nil
+    return hostUartMod()
 end
 local function ipcInTask()
     return coroutine.running() ~= nil
 end
 function ensurePowered(tag, opts)
     opts = type(opts) == "table" and opts or {}
-    local okPol, policy = pcall(require, "t3x_policy")
-    if okPol and type(policy) == "table" and policy.mayPowerT3x
+    local policy = t3xPolicyMod()
+    if type(policy) == "table" and policy.mayPowerT3x
         and not policy.mayPowerT3x(tag or "t3x_ipc") then
         return false
     end

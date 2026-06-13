@@ -1,5 +1,4 @@
 require "sys"
-require "sysplus"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -49,10 +48,6 @@ local function resolveOtaVersion(ver)
     end
     return ver
 end
-local function logIotHttpError(url, body)
-    if not url or not url:find(IOT_HOST, 1, true) then return end
-    local data, ok = json.decode(body)
-end
 local function defaultFirmwareName()
     local bsp = rtos.bsp()
     if bsp:find("-") then bsp = bsp:sub(1, bsp:find("-") - 1) end
@@ -73,15 +68,10 @@ local function fotaHttpTask(cbFnc, opts)
         ret = (body == 0) and 4 or 0
     elseif code == -4 then ret = 1
     elseif code == -5 then ret = 3
-    elseif code == 401 or code == 403 then
-        logIotHttpError(opts.url, body)
-        ret = 3
-    elseif code >= 300 then
-        logIotHttpError(opts.url, body)
+    elseif code == 401 or code == 403 or code >= 300 then
         ret = 3
     else
         ret = 4
-        logIotHttpError(opts.url, body)
     end
     cbFnc(ret)
 end
@@ -97,7 +87,6 @@ local function buildIotUpgradeUrl(opts)
     if not iotVer then
         return false
     end
-    if iotVer ~= opts.version then log.info(L, "iotV", opts.version, iotVer) end
     opts.version = iotVer
     if not opts.firmware_name then opts.firmware_name = defaultFirmwareName() end
     local query

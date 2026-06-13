@@ -146,52 +146,37 @@ local function enabled()
     end
     return mobile ~= nil
 end
-function detectOperator(imsi, iccid, apn)
+local function operatorOverride()
     local override = cfg().sim_operator_override
     if type(override) == "string" and override ~= "" and override ~= "unknown" then
         return override
     end
+end
+local function matchOperator(imsi, iccid, apn)
     local op = matchImsiOperator(imsi)
     if op then
-        return op
+        return op, "imsi"
     end
     op = matchIccidOperator(iccid)
     if op then
-        return op
+        return op, "iccid"
     end
     op = matchApnOperator(apn)
     if op then
-        return op
+        return op, "apn"
     end
-    return "unknown"
+    return "unknown", "none"
+end
+function detectOperator(imsi, iccid, apn)
+    return operatorOverride() or matchOperator(imsi, iccid, apn)
 end
 function resolveOperator(imsi, iccid, apn)
-    local override = cfg().sim_operator_override
-    if type(override) == "string" and override ~= "" and override ~= "unknown" then
+    local override = operatorOverride()
+    if override then
         syncOperatorRuntime(override)
         return override, operatorName(override), "override"
     end
-    local op, src = nil, nil
-    op = matchImsiOperator(imsi)
-    if op then
-        src = "imsi"
-    else
-        op = matchIccidOperator(iccid)
-        if op then
-            src = "iccid"
-        else
-            op = matchApnOperator(apn)
-            if op then
-                src = "apn"
-            end
-        end
-    end
-    local imsiOp = matchImsiOperator(imsi)
-    local iccidOp = matchIccidOperator(iccid)
-    if not op then
-        op = "unknown"
-        src = "none"
-    end
+    local op, src = matchOperator(imsi, iccid, apn)
     local name = operatorName(op)
     if op ~= "unknown" then
         syncOperatorRuntime(op)
@@ -386,6 +371,7 @@ local function setupSetAuto()
         tonumber(c.set_auto_count) or 5
     )
 end
+
 function waitForNetwork()
     if not enabled() then
         local ip = socket and socket.localIP and socket.localIP() or nil
@@ -397,16 +383,6 @@ function waitForNetwork()
     waitSimInfo()
     applyApnForSim()
     for attempt = 1, maxAttempts do
-        if socket and socket.localIP then
-            local curIp = socket.localIP()
-            if curIp and curIp ~= "" and curIp ~= "0.0.0.0" then
-                lastState.ip = curIp
-                lastState.ip_ready = true
-                lastState.apn = readCurrentApn()
-                exportRuntime()
-                return true, curIp
-            end
-        end
         local ret = sys.waitUntil("IP_READY", timeoutMs)
         local ip = socket and socket.localIP and socket.localIP() or nil
         if ret and ip and ip ~= "" and ip ~= "0.0.0.0" then
@@ -416,10 +392,10 @@ function waitForNetwork()
             exportRuntime()
             return true, ip
         end
-        log.warn(LOG_TAG, "netF", attempt,
-            mobile.status and mobile.status() or "?",
-            mobile.csq and mobile.csq() or "?",
-            readCurrentApn())
+        log.warn(LOG_TAG, "net_fail", "attempt", attempt,
+            "status", mobile.status and mobile.status() or "?",
+            "csq", mobile.csq and mobile.csq() or "?",
+            "apn", readCurrentApn())
         if attempt < maxAttempts then
             if attempt == 1 and lastState.operator == "unicom" then
                 local fallback = cfg().unicom_apn_fallback

@@ -45,7 +45,7 @@ end
 _G.validateBuildVersion = validateBuildVersion
 _G.buildIotOtaVersion = buildIotOtaVersion
 _G.resolveIotOtaVersion = resolveIotOtaVersion
-BUILD_TAG = "v20260607"
+BUILD_TAG = "v20260614"
 local moduleName = ...
 local isEntry = moduleName == nil
 require "sys"
@@ -76,21 +76,29 @@ log.info("main", "build", BUILD_TAG, "c", rtos.version(), "p", PROJECT)
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, true)
 end
-if _G.MODULE_FLAGS and _G.MODULE_FLAGS.rndis then
-    local okMod, usb_rndis = pcall(require, "usb_rndis")
-    if okMod and type(usb_rndis) == "table" and usb_rndis.open then
-        sys.taskInit(usb_rndis.open)
-    else
-    end
-end
 if _G.MODULE_FLAGS and _G.MODULE_FLAGS.cellular ~= false then
     local okCell, cellular = pcall(require, "cellular_bootstrap")
     if okCell and type(cellular) == "table" and cellular.start then
         cellular.start()
     end
 end
-if _G.MODULE_FLAGS and _G.MODULE_FLAGS.mqtt and net.bootstrapNetwork then
-    net.bootstrapNetwork()
+local function startNetworkBootstrap()
+    if _G.MODULE_FLAGS and _G.MODULE_FLAGS.mqtt and net.bootstrapNetwork then
+        net.bootstrapNetwork()
+    end
+end
+if _G.MODULE_FLAGS and _G.MODULE_FLAGS.rndis then
+    local okMod, usb_rndis = pcall(require, "usb_rndis")
+    if okMod and type(usb_rndis) == "table" and usb_rndis.open then
+        sys.taskInit(function()
+            usb_rndis.open()
+            startNetworkBootstrap()
+        end)
+    else
+        startNetworkBootstrap()
+    end
+else
+    startNetworkBootstrap()
 end
 app.start(peripheral, net, t3x_ctrl)
 sys.run()

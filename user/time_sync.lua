@@ -3,11 +3,9 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "time_sync"
 local ACK_EVENT = "TIME_SYNC_ACK"
 local DEFAULT_MIN_UNIX = 1704067200 -- 2024-01-01 UTC
 local uart_bridge
-local t3xModule
 local host_uart
 local lastPushedUnix = 0
 local function cfg()
@@ -108,7 +106,6 @@ function pushToHost(force)
     end
     t3xOn()
     sys.wait(tonumber(cfg().host_boot_wait_ms) or 1500)
-    log.info(LOG_TAG, "ts", t, os.date("!%Y-%m-%d %H:%M:%S UTC", t))
     ub.sendString("AT+TIMESET=" .. t, true)
     local timeoutMs = tonumber(cfg().ack_timeout_ms) or 800
     local ok = waitTimesetAck(timeoutMs)
@@ -130,7 +127,6 @@ function onSntpSuccess(unix, server)
     if not enabled() or cfg().sync_on_sntp == false then
         return
     end
-    log.info(LOG_TAG, "snOk", unix or os.time(), server or "")
     pushToHostAsync(true)
 end
 function onT3xWake()
@@ -143,7 +139,6 @@ function pushBeforeNotify(sid, evt)
     local okPol, policy = pcall(require, "t3x_policy")
     if okPol and type(policy) == "table" and policy.requestT3xWake then
         if not policy.mayPowerT3x("time_sync_notify") then
-            log.info(LOG_TAG, "tsSk", policy.getDenyReason and policy.getDenyReason() or "")
             return
         end
     end
@@ -168,18 +163,11 @@ function pushBeforeNotifyAsync(sid, evt)
     end)
 end
 function start(opts)
-    if type(opts) == "table" and opts.t3x then
-        t3xModule = opts.t3x
-    end
     if cfg().sync_on_sntp ~= false then
         sys.subscribe("SNTP_SYNC_SUCCESS", function(unix, server)
             onSntpSuccess(unix, server)
         end)
     end
-    log.info(LOG_TAG, "on",
-        "min_unix", cfg().min_valid_unix or DEFAULT_MIN_UNIX,
-        "sync_wake", cfg().sync_on_wake ~= false,
-        "sync_sntp", cfg().sync_on_sntp ~= false)
     return true
 end
 local sntpCfg = {

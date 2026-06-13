@@ -43,6 +43,7 @@ _G.APP_EVENTS = {
     MQTT_OFFLINE = "mqtt_offline",
     MQTT_CONNECTED = "mqtt_connected",
     MQTT_STATUS_INTERVAL_CHANGED = "mqtt_status_interval_changed",
+    MQTT_USB_RECOVERY_CHANGED = "mqtt_usb_recovery_changed",
     DEVICE_OTA_REQUEST = "device_ota_request",
     MQTT_OTA_STATUS = "mqtt_ota_status",
     DEVICE_REBOOT_REQUEST = "device_reboot_request",

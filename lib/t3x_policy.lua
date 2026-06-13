@@ -5,6 +5,7 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 local LOG_TAG = "t3x_policy"
 local lastDenyReason = ""
+local lastMqttOfflineWakeSec = 0
 local function cfg()
     return _G.T3X_POLICY_CFG or {}
 end
@@ -60,7 +61,9 @@ function mayPowerT3x(reason, opts)
         return true
     end
     if isUsbInserted() then
-        return true
+        if reason ~= "mqtt_offline" or cfg().allow_mqtt_offline_wake_when_usb == true then
+            return true
+        end
     end
     if opts.force_wake then
         return true
@@ -81,11 +84,24 @@ function mayPowerT3x(reason, opts)
     return true
 end
 function shouldWakeOnMqttOffline()
+    lastDenyReason = ""
     if cfg().block_mqtt_offline_wake == false then
         return mayPowerT3x("mqtt_offline")
     end
     if isLowPowerMode() then
         lastDenyReason = "mqtt_offline+rest"
+        return false
+    end
+    local cd = tonumber(cfg().mqtt_offline_wake_cooldown_sec)
+    if cd and cd > 0 and lastMqttOfflineWakeSec > 0 then
+        local elapsed = os.time() - lastMqttOfflineWakeSec
+        if elapsed < cd then
+            lastDenyReason = string.format("mqtt_offline_cooldown_%ds", cd - elapsed)
+            return false
+        end
+    end
+    if cfg().block_mqtt_offline_wake_when_usb ~= false and isUsbInserted() then
+        lastDenyReason = "mqtt_offline+usb"
         return false
     end
     return mayPowerT3x("mqtt_offline")
@@ -104,6 +120,9 @@ function requestT3xWake(reason, sid, evt, opts)
         if okTs and time_sync and time_sync.pushBeforeNotifyAsync
             and _G.MODULE_FLAGS.time_sync ~= false then
             time_sync.pushBeforeNotifyAsync(sid, evt)
+            if reason == "mqtt_offline" then
+                lastMqttOfflineWakeSec = os.time()
+            end
             return true
         end
         local hu = _G.host_uart
@@ -112,7 +131,11 @@ function requestT3xWake(reason, sid, evt, opts)
             if ok then hu = mod end
         end
         if hu and hu.notify_host then
-            return hu.notify_host(sid, evt) ~= false
+            local ok = hu.notify_host(sid, evt) ~= false
+            if ok and reason == "mqtt_offline" then
+                lastMqttOfflineWakeSec = os.time()
+            end
+            return ok
         end
     end
     local t3x = _G.t3x_ctrl
@@ -121,7 +144,12 @@ function requestT3xWake(reason, sid, evt, opts)
         if ok then t3x = mod end
     end
     if t3x and t3x.wake then
-        sys.taskInit(function() t3x.wake() end)
+        sys.taskInit(function()
+            t3x.wake()
+            if reason == "mqtt_offline" then
+                lastMqttOfflineWakeSec = os.time()
+            end
+        end)
         return true
     end
     return false
