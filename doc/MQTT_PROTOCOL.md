@@ -234,6 +234,14 @@ app.start() → bootMqtt → net_ready → mqtt.connect
 { "dataType": "2004", "action": "wled_query", "messageId": "wled-q1" }
 ```
 
+```json
+{ "dataType": "2004", "action": "hostevt_poll_query", "messageId": "hevt-poll-q1" }
+```
+
+```json
+{ "dataType": "2004", "action": "hostevt_poll", "hostEvtPollMs": 30000, "messageId": "hevt-poll-set1" }
+```
+
 | action | 1004 回复 | 设备 |
 |--------|-----------|------|
 | `reboot` | `reply=1`, `ret=0` | 约 500ms 重启 |
@@ -245,7 +253,7 @@ app.start() → bootMqtt → net_ready → mqtt.connect
 
 OTA 字段：`version`（**须 `内核号.XXX.ZZZ`**，如 `2034.001.002`，与 LuatTools / 合宙 IoT / `main.lua` `VERSION` 一致）、`url`, `product_key`, `timeout`, `full_url` 等（同 `fota_svc.lua`）。
 
-串口：`AT+REBOOT`、`AT+POWEROFF`、`AT+OTA`、`AT+WLED=0/1`。
+串口：`AT+REBOOT`、`AT+POWEROFF`、`AT+OTA`、`AT+WLED=0/1`、`AT+HOSTEVTPOLL=`。
 
 ---
 

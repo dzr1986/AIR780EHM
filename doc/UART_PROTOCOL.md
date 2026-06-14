@@ -38,6 +38,7 @@ ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（hos
 | `AT+PIRSTAT?` | `+PIRSTAT:suspended=0,recording=0,cnt_hw_accept=...` | PIR 策略与触发统计（4G 保存），见 [T3X_4G_AT_INTERACTION.md](T3X_4G_AT_INTERACTION.md) §5 |
 | `AT+PIRCLR` | `+PIRCLR:OK` | 清零 PIR 统计计数（不清策略） |
 | `AT+HOSTEVT?` | `+HOSTEVT:sid,evt` | 唤醒 pending（查询）+ `AT+HOSTEVTCLR`（清除），见 [T3X_HOSTEVT_PROTOCOL.md](T3X_HOSTEVT_PROTOCOL.md) |
+| `AT+HOSTEVTPOLL?` | `+HOSTEVTPOLL:<ms>` | T3x 空闲 `HOSTEVT?` 轮询间隔（毫秒）；见 [T3X_HOSTEVT_SLEEP.md](T3X_HOSTEVT_SLEEP.md) |
 | `AT+WLED?` / `AT+WLEDEN?` | `+WLED:0` 或 `+WLED:1` | 白光灯状态（4G 侧；MQTT 2004 同源） |
 | `AT+WLED=0/1` / `AT+WLEDEN=0/1` | `+WLED:0/1` + `OK` | 关/开白光灯，转发 T3x 执行 |
 

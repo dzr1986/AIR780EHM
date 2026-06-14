@@ -641,6 +641,25 @@ local function handleDownlink2004(data)
             end
             reply(0, "ok", "wled", { enable = on })
         end
+    elseif action == "hostevt_poll_query" then
+        local hu = getHostUart()
+        local pollMs = hu and hu.getHostEvtPollMs and hu.getHostEvtPollMs() or 30000
+        reply(0, "ok", "hostevt_poll", { hostEvtPollMs = pollMs })
+    elseif action == "hostevt_poll" then
+        local pollMs = tonumber(data.hostEvtPollMs)
+        local hu = getHostUart()
+        if not hu or not hu.setHostEvtPollMs then
+            reply(-1, "not_supported", "hostevt_poll")
+        elseif not pollMs then
+            reply(-1, "invalid_hostEvtPollMs", "hostevt_poll")
+        else
+            local ok, err = hu.setHostEvtPollMs(pollMs, true)
+            if ok then
+                reply(0, "ok", "hostevt_poll", { hostEvtPollMs = pollMs })
+            else
+                reply(-1, err or "set_failed", "hostevt_poll")
+            end
+        end
     else
         reply(-1, "unknown_action", action or "")
     end
@@ -1427,6 +1446,10 @@ function publishControlReply(action, retCode, message, extra)
     if extra.enable ~= nil then
         local en = (extra.enable == 1 or extra.enable == true) and 1 or 0
         enableField = string.format(',"enable":%s', tostring(en))
+    end
+    if extra.hostEvtPollMs ~= nil then
+        enableField = enableField .. string.format(',"hostEvtPollMs":%d',
+            math.floor(tonumber(extra.hostEvtPollMs) or 0))
     end
     local mid = extra.messageId
     publishUplink({

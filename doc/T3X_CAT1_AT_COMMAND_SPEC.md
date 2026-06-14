@@ -59,6 +59,8 @@ AT+SERVCLOSE=<sid> → AT+SERVCREATE → AT+MQTTCFG
 | `AT+GETCFG?` | `+GETCFG:` | 4G 在线/电量/低功耗等 |
 | `AT+HOSTEVT?` | `+HOSTEVT:` | 本次 GPIO 唤醒 sid,evt（仅查询） |
 | `AT+HOSTEVTCLR` | `+HOSTEVTCLR:OK` | 清除 pending 唤醒 |
+| `AT+HOSTEVTPOLL?` | `+HOSTEVTPOLL:<ms>` | T3x 空闲 `HOSTEVT?` 轮询间隔（毫秒） |
+| `AT+HOSTEVTPOLL=<ms>` | `+HOSTEVTPOLL:OK` | 设置轮询间隔 |
 | `AT+PIRSTAT?` | `+PIRSTAT:` | PIR 策略与计数 |
 | `AT+PIRCLR` | `+PIRCLR:` | 清零 PIR 计数 |
 

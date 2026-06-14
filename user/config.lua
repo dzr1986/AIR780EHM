@@ -38,6 +38,9 @@ _G.HOST_EVT_CFG = {
     pir_pending_max_age_sec = 120,
     block_t3x_sleep_when_pending = true,
     allow_host_idle_sleep = true,
+    poll_interval_ms = 30000,
+    poll_interval_min_ms = 1000,
+    poll_interval_max_ms = 300000,
 }
 
 _G.HOST_USB_CFG = {
@@ -278,6 +281,8 @@ _G.APP_PERSIST_CFG = {
     mqtt_status = "/mqtt_status_cfg.json",
     mqtt_status_schema = 1,
     pir_mqtt_schema = 2,
+    host_evt_poll = "/host_evt_poll_cfg.json",
+    host_evt_poll_schema = 1,
 }
 
 _G.BATTERY_CFG = {

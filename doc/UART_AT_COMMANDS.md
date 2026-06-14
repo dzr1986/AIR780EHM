@@ -50,6 +50,9 @@
 | `AT+PIRCLR` | `+PIRCLR:OK` | 清零 `cnt_*` 统计（**运维**；业务消费用 `HOSTEVTCLR`） |
 | `AT+HOSTEVT` / `AT+HOSTEVT?` | `+HOSTEVT:` | **精简**：`has_event,pending,types,sid,evt` + media；T3x 休眠/唤醒主入口 |
 | `AT+HOSTEVTCLR` | `+HOSTEVTCLR:OK` | 清除 pending 唤醒 + PIR 可消费 `last`（不清 `cnt_*`） |
+| `AT+HOSTEVTPOLL` / `AT+HOSTEVTPOLL?` | `+HOSTEVTPOLL:<ms>` | T3x 空闲轮询 `HOSTEVT?` 间隔（**毫秒**）；默认 30000 |
+| `AT+HOSTEVTPOLL=<ms>` | `+HOSTEVTPOLL:OK` | 设置轮询间隔；范围见 `HOST_EVT_CFG.poll_interval_*_ms` |
+| `AT+HOSTIDLE?` / `AT+HOSTIDLE=0/1` | `+HOSTIDLE:` | 休眠门禁；见 [T3X_HOSTEVT_SLEEP.md](T3X_HOSTEVT_SLEEP.md) |
 | `AT+TIME` | `+TIME:` | Unix 秒；SNTP 未就绪时为 `+TIME:0` |
 | `AT+IMEI` / `AT+IMEI?` | `+IMEI:` | Cat.1 模组 IMEI（MQTT ClientId / deviceNo 同源） |
 | `AT+IPCINFO` / `AT+IPCINFO?` | `+IPCINFO:` | Cat.1 IMEI + GB28181 ID（见 §2.8） |
@@ -94,7 +97,8 @@ AT → ATI → AT+RIL=0 → AT+SERVCREATE=… → AT+MQTTCFG=… → AT+GETCFG
 
 | 命令 | 说明 |
 |------|------|
-| `AT+SETCFG=interval,<秒>` | 低功耗 MQTT 上报间隔 |
+| `AT+SETCFG=interval,<秒>` | 低功耗 MQTT 上报间隔（1003 周期） |
+| `AT+SETCFG=hostevt_poll,<毫秒>` | T3x 空闲 `HOSTEVT?` 轮询间隔（同 `AT+HOSTEVTPOLL=`） |
 | `AT+SETCFG=devicemodel,<文本>` | 设备型号 |
 | `AT+SETCFG=hexrpt,0/1` | 开关原始 RX 的 `+RXHEX` 回显 |
 | `AT+SENDSTR=<文本>` | 4G 向 UART 对端发字符串 |
@@ -321,6 +325,8 @@ AT+IPCINFO?
 AT+PIRSTAT
 AT+HOSTEVT
 AT+HOSTEVTCLR
+AT+HOSTEVTPOLL?
+AT+HOSTEVTPOLL=30000
 AT+TIME
 AT+WLED=1
 AT+LOWPOWER=ENTER

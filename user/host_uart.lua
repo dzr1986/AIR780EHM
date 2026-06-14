@@ -577,6 +577,107 @@ local function uart_hostidle(cmd)
     return nil
 end
 
+
+local HOSTEVT_POLL_CFG = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.host_evt_poll)
+    or "/host_evt_poll_cfg.json"
+local HOSTEVT_POLL_SCHEMA = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.host_evt_poll_schema) or 1
+
+local function clamp_hostevt_poll_ms(ms)
+    local cfg = _G.HOST_EVT_CFG or {}
+    ms = tonumber(ms)
+    if not ms then
+        return nil
+    end
+    ms = math.floor(ms)
+    local minMs = tonumber(cfg.poll_interval_min_ms) or 1000
+    local maxMs = tonumber(cfg.poll_interval_max_ms) or 300000
+    if ms < minMs then
+        ms = minMs
+    end
+    if ms > maxMs then
+        ms = maxMs
+    end
+    return ms
+end
+
+local function sync_hostevt_poll_ms(ms)
+    local cfg = _G.HOST_EVT_CFG or {}
+    cfg.poll_interval_ms = ms
+end
+
+local function save_hostevt_poll_cfg(ms)
+    local payload = json.encode({
+        schemaVersion = HOSTEVT_POLL_SCHEMA,
+        poll_interval_ms = ms,
+        updated_at = os.time(),
+    })
+    if not payload then
+        return false
+    end
+    local wf = io.open(HOSTEVT_POLL_CFG, "w")
+    if not wf then
+        return false
+    end
+    wf:write(payload)
+    wf:close()
+    return true
+end
+
+local function load_hostevt_poll_cfg()
+    local f = io.open(HOSTEVT_POLL_CFG, "r")
+    if not f then
+        return
+    end
+    local content = f:read("*a")
+    f:close()
+    if not content or content == "" then
+        return
+    end
+    local ok, d = pcall(json.decode, content)
+    if not ok or type(d) ~= "table" then
+        return
+    end
+    local ms = clamp_hostevt_poll_ms(d.poll_interval_ms)
+    if ms then
+        sync_hostevt_poll_ms(ms)
+    end
+end
+
+function getHostEvtPollMs()
+    local cfg = _G.HOST_EVT_CFG or {}
+    return clamp_hostevt_poll_ms(cfg.poll_interval_ms) or 30000
+end
+
+function setHostEvtPollMs(ms, persist)
+    ms = clamp_hostevt_poll_ms(ms)
+    if not ms then
+        return false, "invalid_poll_ms"
+    end
+    sync_hostevt_poll_ms(ms)
+    if persist and not save_hostevt_poll_cfg(ms) then
+        return false, "persist_fail"
+    end
+    return true
+end
+
+local function uart_hostevt_poll(cmd)
+    if _G.FEATURE_CFG and _G.FEATURE_CFG.host_evt == false then
+        return CRLF .. "+HOSTEVTPOLL:NOT_SUPPORTED" .. CRLF
+    end
+    if cmd == "AT+HOSTEVTPOLL?" or cmd == "AT+HOSTEVTPOLL" then
+        return rsp_fmt("HOSTEVTPOLL", "%d", getHostEvtPollMs())
+    end
+    local pollMs = cmd:match("^AT%+HOSTEVTPOLL=(%d+)$")
+    if pollMs then
+        local ok = setHostEvtPollMs(pollMs, true)
+        if ok then
+            return rsp_body("HOSTEVTPOLL", "OK")
+        end
+        return CRLF .. "+HOSTEVTPOLL:ERROR" .. CRLF
+    end
+    return nil
+end
+
 local function uart_pirclr(_cmd)
     local ok, pir = pcall(require, "pir_ctrl")
     if ok and pir and pir.resetCounters then
@@ -1105,6 +1206,11 @@ local function uart_setcfg(cmd)
     elseif key == "hexrpt" then
         state.hex_report = (val == "1" or val == "true" or val == "on")
         return RSP_SETCFG_OK
+    elseif key == "hostevt_poll" and tonumber(val) then
+        if setHostEvtPollMs(tonumber(val), true) then
+            return RSP_SETCFG_OK
+        end
+        return RSP_SETCFG_ERR
     end
     return RSP_SETCFG_ERR
 end
@@ -1145,6 +1251,8 @@ local AT_EXACT = {
     ["AT+HOSTEVT"] = uart_hostevt_query,
     ["AT+HOSTEVT?"] = uart_hostevt_query,
     ["AT+HOSTEVTCLR"] = uart_hostevt_clr,
+    ["AT+HOSTEVTPOLL"] = uart_hostevt_poll,
+    ["AT+HOSTEVTPOLL?"] = uart_hostevt_poll,
     ["AT+TIME"] = uart_time_query,
     ["AT+IMEI"] = uart_imei,
     ["AT+IMEI?"] = uart_imei,
@@ -1180,6 +1288,7 @@ local AT_PREFIX = {
     { prefix = "AT+SENDHEX=", handler = uart_sendhex },
     { prefix = "AT+LOWPOWER=", handler = uart_lowpower },
     { prefix = "AT+HOSTIDLE=", handler = uart_hostidle },
+    { prefix = "AT+HOSTEVTPOLL=", handler = uart_hostevt_poll },
     { prefix = "AT+RNDIS=", handler = uart_rndis },
     { prefix = "AT+USBRECOVERY=", handler = uart_usbrecovery },
     { prefix = "AT+SETCFG=", handler = uart_setcfg },
@@ -2266,5 +2375,7 @@ function getState()
         uart = uart_bridge.getState(),
     }
 end
+
+load_hostevt_poll_cfg()
 
 return _M

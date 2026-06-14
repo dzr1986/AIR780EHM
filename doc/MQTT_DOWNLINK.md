@@ -453,7 +453,50 @@
 
 4G 维护 `APP_RUNTIME.wled_on`，经 UART 转发 `AT+WLED=n` 至 T3x 驱动 `WLED_EN` GPIO。串口：`AT+WLED=0/1`、`AT+WLED?`（别名 `AT+WLEDEN*`）。
 
-### 6.6 OTA（自建 url）
+### 6.6 HOSTEVT 空闲轮询间隔（HOSTEVTPOLL）
+
+| 项 | 值 |
+|----|-----|
+| 下行主题 | `/panshi/device/{deviceNo}/` |
+| 上行主题 | `/panshi/app/{deviceNo}/event` |
+| 串口等价 | `AT+HOSTEVTPOLL?` / `AT+HOSTEVTPOLL=<ms>` |
+
+**查询**：
+
+```json
+{"dataType":"2004","action":"hostevt_poll_query","messageId":"hevt-poll-q1"}
+```
+
+**设置 30 秒**：
+
+```json
+{"dataType":"2004","action":"hostevt_poll","hostEvtPollMs":30000,"messageId":"hevt-poll-set1"}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `action` | `hostevt_poll_query` / `hostevt_poll` |
+| `hostEvtPollMs` | 毫秒；设置时必填；范围默认 1000～300000 |
+
+**上行**（`1004`，含当前 `hostEvtPollMs`）：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "hevt-poll-set1",
+  "action": "hostevt_poll",
+  "ret": 0,
+  "message": "ok",
+  "hostEvtPollMs": 30000,
+  "time": "2026-06-14 12:00:00"
+}
+```
+
+> 与 **`2003 interval`**（1003 周期，秒）不同；勿混用。
+
+### 6.7 OTA（自建 url）
 
 **下行**：
 
@@ -469,7 +512,7 @@
 | `timeout` | 超时 ms |
 | `full_url` | `1` 时 url 前加 `###` |
 
-### 6.7 `action` 取值
+### 6.8 `action` 取值
 
 | action | 1004 | 设备 |
 |--------|------|------|
@@ -478,9 +521,11 @@
 | `ota` | `ota_accepted` | FOTA + stage |
 | `wled` | `ret=0`, `ok`, **`enable`** | 白光灯开/关（须 `enable`） |
 | `wled_query` | `ret=0`, `ok`, **`enable`** | 查询白光灯 |
+| `hostevt_poll` | `ret=0`, `ok`, **`hostEvtPollMs`** | 设置 T3x 空闲 HOSTEVT 轮询间隔 |
+| `hostevt_poll_query` | `ret=0`, `ok`, **`hostEvtPollMs`** | 查询轮询间隔 |
 | 其它 | `ret=-1`, `unknown_action` | 无操作 |
 
-串口：`AT+REBOOT` · `AT+POWEROFF` · `AT+OTA` · `AT+WLED=0/1`
+串口：`AT+REBOOT` · `AT+POWEROFF` · `AT+OTA` · `AT+WLED=0/1` · `AT+HOSTEVTPOLL=`
 
 ---
 

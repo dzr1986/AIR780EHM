@@ -1,14 +1,14 @@
-# T3x 休眠前事件查询（HOSTEVT 四条 AT）
+# T3x 休眠前事件查询（HOSTEVT 五条 AT）
 
-> T3x 与 4G 协处理器之间，**事件汇总、消费、休眠**统一由下列四条 AT 完成。  
+> T3x 与 4G 协处理器之间，**事件汇总、消费、休眠、轮询间隔**统一由下列五条 AT 完成。  
 > 汇总逻辑集中在 `lib/host_event.lua`，不维护平行状态机。  
 > 双端开关：`WITH_T3X_HOSTEVT_SLEEP`（T3x）↔ `HOST_EVT_ENABLE`（4G）。
 
-**版本**：v1.5 · 2026-06-06
+**版本**：v1.6 · 2026-06-14
 
 ---
 
-## 1. 四条 AT 语义
+## 1. 五条 AT 语义
 
 | AT | 响应 / 行为 | 说明 |
 |----|-------------|------|
@@ -16,6 +16,8 @@
 | **`AT+HOSTEVTCLR`** | `+HOSTEVTCLR:OK` | **清除**可消费标记：GPIO pending + PIR `last/last_ts` |
 | **`AT+HOSTIDLE=1`** | `+HOSTIDLE:OK` / `BUSY` / `ERROR` | `has_event=0` 时 T3x 请求 4G 对 T3x `enterSleep` |
 | **`AT+HOSTIDLE?`** | `+HOSTIDLE:lowpower=%d` | 查询 4G 侧 `low_power_mode` 标志 |
+| **`AT+HOSTEVTPOLL?`** | `+HOSTEVTPOLL:<ms>` | 查询 T3x 空闲轮询 `HOSTEVT?` 间隔（**毫秒**） |
+| **`AT+HOSTEVTPOLL=<ms>`** | `+HOSTEVTPOLL:OK` / `ERROR` | 设置轮询间隔；持久化 `/host_evt_poll_cfg.json` |
 
 ### 1.1 `AT+HOSTEVT?` 响应格式
 
@@ -45,7 +47,31 @@ media 字段与 `AT+PIRSTAT?` 中 `pir_ctrl.buildAtBody()` **同源**；T3x `med
 +HOSTEVT:has_event=0,pending=none,types=,sid=0,evt=-1,recording=0,action=video,max_sec=60,last_stop=none OK
 ```
 
-### 1.1.1 mqtt 类 pending（v1.5）
+### 1.1.1 `AT+HOSTEVTPOLL`（v1.6）
+
+T3x 在 **GPIO 等待超时、空闲休眠轮询** 时，按本间隔周期性发 `AT+HOSTEVT?`（此前 T3x 侧硬编码约 1s；现由 4G 侧配置下发）。
+
+```text
+T3x → 4G: AT+HOSTEVTPOLL?
+4G → T3x: +HOSTEVTPOLL:30000 OK
+
+T3x → 4G: AT+HOSTEVTPOLL=30000
+4G → T3x: +HOSTEVTPOLL:OK OK
+```
+
+| 项 | 说明 |
+|----|------|
+| 单位 | **毫秒**（`30000` = 30 秒） |
+| 默认 | `HOST_EVT_CFG.poll_interval_ms = 30000` |
+| 范围 | `poll_interval_min_ms`～`poll_interval_max_ms`（默认 1000～300000） |
+| 持久化 | `/host_evt_poll_cfg.json`（`APP_PERSIST_CFG.host_evt_poll`） |
+| 别名 | `AT+SETCFG=hostevt_poll,<毫秒>` |
+| MQTT | `2004` `action=hostevt_poll_query` / `hostevt_poll` + `hostEvtPollMs` → `1004` |
+| T3x 侧 | 须在 `host_event.c` 读 `HOSTEVTPOLL?` 并应用间隔（4G 仅存储与应答） |
+
+与 **`2003 interval`**（MQTT 1003 周期，**秒**）无关。
+
+### 1.1.2 mqtt 类 pending（v1.5）
 
 | 来源 | 行为 |
 |------|------|
@@ -181,7 +207,7 @@ has_work=1,work_types=wake,work_pending=wake,work_sid=1,work_evt=0 OK
 
 | 场景 | 使用的 AT |
 |------|-----------|
-| 空闲休眠轮询 | `HOSTEVT?` → `HOSTIDLE=1` |
+| 空闲休眠轮询 | 按 `HOSTEVTPOLL` 间隔 → `HOSTEVT?` → `HOSTIDLE=1` |
 | GPIO 唤醒 | `HOSTEVT?`（仅 `wake` 类型 dispatch） |
 | 拍照/录像 | `HOSTEVT?` media 字段（失败回退 `PIRSTAT?`） |
 | 唤醒后调试日志 | 可选 `PIRSTAT?`（仅日志，不参与分支） |
