@@ -431,6 +431,8 @@ _G.MQTT_CFG = {
     autoreconn_ms = 10000,
     min_connect_interval_sec = 8,
     ip_lose_cooldown_sec = 3,
+    -- 调试 true：串口打印 mqtt_dl / mqtt_ul 上下行明细；量产 false
+    debug_uplink = true,
 }
 
 _G.FOTA_CFG = {

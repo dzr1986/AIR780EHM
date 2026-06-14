@@ -178,7 +178,7 @@ app.start() → bootMqtt → net_ready → mqtt.connect
 | 条件 | 设备行为 | 上行 |
 |------|----------|------|
 | enter | 断 T3x、进 rest；**MQTT 保持** | 状态切换成功后 **1002**（`lowPowerMode=enter`，含 `reason`/`source`） |
-| enter + **USB 已插入** | `block_4g_rest_when_usb` 时**忽略**，无 1002 | —（静默，日志 `d2u`） |
+| enter + **USB 已插入** | `block_4g_rest_when_usb` 时**忽略**，无 1002 | —（静默；`debug_uplink=true` 时日志 `2002 enter blocked usb`，见 [MQTT_862323084068314.md](MQTT_862323084068314.md) §6.2） |
 | exit | 唤醒 T3x、出 rest | 状态切换成功后 **1002**（`lowPowerMode=exit`）；不发 1001 |
 | 2002 字段非法 | 忽略 | —（日志 `d2?`） |
 

@@ -32,6 +32,7 @@ local DT = {
     UL_SIM = "1005",
     UL_DEVICE_ID = "1006",
     UL_TF_CARD = "1007",
+    UL_VERSION = "1008",
     UL_PIR_DETECT = "1010",
     UL_PIR_STOP = "1011",
     UL_PIR_START = "1012",
@@ -44,6 +45,7 @@ local DT = {
     DL_SIM = "2005",
     DL_DEVICE_ID = "2006",
     DL_TF_CARD = "2007",
+    DL_VERSION_QUERY = "2008",
     DL_PIR_CFG = "2010",
     DL_PIR_STOP = "2011",
     DL_PIR_START = "2012",   -- 鈫?UL 1012 event
@@ -208,13 +210,47 @@ local function formatUplink(dataType, fields)
         getDeviceId(), dataType, fields, mqttTimestamp())
 end
 
+local function mqttDebugEnabled()
+    return _G.MQTT_CFG and _G.MQTT_CFG.debug_uplink == true
+end
+
+local function clipPayload(payload, maxLen)
+    maxLen = maxLen or 512
+    if payload == nil then
+        return ""
+    end
+    local s = tostring(payload)
+    if #s <= maxLen then
+        return s
+    end
+    return s:sub(1, maxLen) .. "..."
+end
+
+local function logMqttDownlink(topic, payload, dataType)
+    if not mqttDebugEnabled() then
+        return
+    end
+    log.info(LOG_TAG, "mqtt_dl", dataType or "?", topic or "", clipPayload(payload))
+end
+
+local function logMqttUplink(topic, payload, dataType)
+    if not mqttDebugEnabled() then
+        return
+    end
+    log.info(LOG_TAG, "mqtt_ul", dataType or "?", topic or "", clipPayload(payload))
+end
+
 local function publishUplink(opts)
     opts = opts or {}
     if not isConnected then
+        if mqttDebugEnabled() then
+            log.warn(LOG_TAG, "mqtt_ul_skip", opts.dataType or "?", "offline")
+        end
         return false
     end
     local topic = getPubTopic() .. (opts.suffix or "event")
     local payload = opts.payload or formatUplink(opts.dataType, opts.fields)
+    logMqttUplink(topic, payload, opts.dataType)
     mqttClient:publish(topic, payload, opts.qos or 1)
     if opts.app_event_fn then
         opts.app_event_fn(topic, payload)
@@ -514,10 +550,19 @@ end
 local function handleDownlink2002(data)
     if data.lowPowerMode == "enter" then
         if usbBlocks4gRest() then
+            if mqttDebugEnabled() then
+                log.info(LOG_TAG, "2002 enter blocked usb")
+            end
             return
+        end
+        if mqttDebugEnabled() then
+            log.info(LOG_TAG, "2002 enter")
         end
         sys.publish(APP_EVENTS.POWER_ENTER_REST)
     elseif data.lowPowerMode == "exit" then
+        if mqttDebugEnabled() then
+            log.info(LOG_TAG, "2002 exit")
+        end
         sys.publish(APP_EVENTS.POWER_EXIT_REST)
     end
 end
@@ -563,16 +608,20 @@ local function handleDownlink2004(data)
         reply(0, "ok", "off")
         sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
     elseif action == "ota" then
-        if _G.validateBuildVersion then
-            local v = data.version
-            if v and v ~= "" then
-                local ok = _G.validateBuildVersion(tostring(v))
-                if not ok then
-                    reply(-1, "invalid_version_format", "ota")
-                    return
-                end
-                data.version = ok
+        local v = data.version
+        if v and v ~= "" then
+            v = tostring(v)
+            local resolved
+            if _G.resolveIotOtaVersion then
+                resolved = _G.resolveIotOtaVersion(v)
+            elseif _G.validateBuildVersion then
+                resolved = _G.validateBuildVersion(v)
             end
+            if not resolved then
+                reply(-1, "invalid_version_format", "ota")
+                return
+            end
+            data.version = resolved
         end
         reply(0, "ota_accepted", "ota")
         publishAppEvent("DEVICE_OTA_REQUEST", data)
@@ -597,9 +646,38 @@ local function handleDownlink2004(data)
     end
 end
 
--- [2005] SIM 鏌ヨ 鈫?1005
+-- [2005] SIM 查询 → 1005
 local function handleDownlink2005(data)
     publishSimInfo()
+end
+
+local function coreVersionStr()
+    local core = rtos and rtos.version and rtos.version()
+    if core and core ~= "" then
+        return core:sub(1, 1) == "V" and core:sub(2) or core
+    end
+    return ""
+end
+
+local function collectFirmwareVersionSnapshot()
+    local scriptVer = _G.VERSION or VERSION or ""
+    local iotVer = _G.IOT_VERSION or ""
+    if iotVer == "" and _G.resolveIotOtaVersion and scriptVer ~= "" then
+        iotVer = _G.resolveIotOtaVersion(scriptVer) or ""
+    end
+    return {
+        script_version = scriptVer,
+        firmware_version = iotVer,
+        core_version = coreVersionStr(),
+        project = _G.PROJECT or "",
+        build_tag = _G.BUILD_TAG or "",
+        product_key = _G.PRODUCT_KEY or "",
+    }
+end
+
+-- [2008] 固件版本查询 → 1008
+local function handleDownlink2008(data)
+    publishFirmwareVersion(data and data.messageId)
 end
 
 local function identityCfg()
@@ -939,6 +1017,7 @@ DOWNLINK_HANDLERS = {
     [DT.DL_SIM] = handleDownlink2005,
     [DT.DL_DEVICE_ID] = handleDownlink2006,
     [DT.DL_TF_CARD] = handleDownlink2007,
+    [DT.DL_VERSION_QUERY] = handleDownlink2008,
     [DT.DL_PIR_CFG] = handleDownlink2010,
     [DT.DL_PIR_STOP] = handleDownlink2011,
     [DT.DL_PIR_START] = handleDownlink2012,
@@ -951,10 +1030,14 @@ local function handleServerMessage(topic, payload)
     local ok, data = pcall(json.decode, payload)
     if not ok then
         log.warn(LOG_TAG, "jsonE")
+        if mqttDebugEnabled() then
+            log.warn(LOG_TAG, "mqtt_dl_bad", topic or "", clipPayload(payload))
+        end
         return
     end
 
     local dataType = normalizeDataType(data)
+    logMqttDownlink(topic, payload, dataType)
     local handler = dataType and DOWNLINK_HANDLERS[dataType]
 
     if handler then
@@ -1144,7 +1227,10 @@ local function mqttTask()
         local ret, topic, data, qos = sys.waitUntil("mqtt_pub", 300000)
         if ret then
             if topic == "close" then break end
-            if isConnected then mqttClient:publish(topic, data, qos) end
+            if isConnected then
+                logMqttUplink(topic, data, nil)
+                mqttClient:publish(topic, data, qos)
+            end
         end
     end
 
@@ -1264,6 +1350,23 @@ function publishSimInfo()
     })
 end
 
+function publishFirmwareVersion(messageId)
+    local snap = collectFirmwareVersionSnapshot()
+    publishUplink({
+        suffix = "version",
+        dataType = DT.UL_VERSION,
+        fields = string.format(
+            ',"scriptVersion":"%s","firmwareVersion":"%s","coreVersion":"%s","project":"%s","buildTag":"%s","productKey":"%s"%s',
+            escJson(snap.script_version),
+            escJson(snap.firmware_version),
+            escJson(snap.core_version),
+            escJson(snap.project),
+            escJson(snap.build_tag),
+            escJson(snap.product_key),
+            msgIdPart(messageId)),
+    })
+end
+
 function publishDeviceIdentity(imei, gb28181Id, messageId)
     local deviceNo = getDeviceId()
     imei = imei or deviceNo
@@ -1344,6 +1447,9 @@ local function mqttBuildVersion(ver)
         return ""
     end
     ver = tostring(ver)
+    if _G.resolveIotOtaVersion then
+        return _G.resolveIotOtaVersion(ver) or ver
+    end
     if _G.validateBuildVersion then
         return _G.validateBuildVersion(ver) or ver
     end
@@ -1517,6 +1623,7 @@ function publishRaw(topicSuffix, payload, qos)
     else
         topic = getPubTopic() .. topicSuffix
     end
+    logMqttUplink(topic, payload, nil)
     mqttClient:publish(topic, payload, qos or 1)
     return true
 end

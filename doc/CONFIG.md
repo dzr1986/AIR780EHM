@@ -260,6 +260,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `rx_line_max` | `4096` | 行缓冲上限 |
 
 - `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末  
+  - **`MQTT_CFG.debug_uplink`**：`false` 量产（默认）；`true` 联调时打印 `mqtt_dl` / `mqtt_ul` 上下行明细，见 [MQTT_862323084068314.md](MQTT_862323084068314.md) §1.1、§6.2  
   - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`user/fota_svc.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段  
   - **自建 OTA 服务器**：固件 **无需改 lua**；MQTT 2004 带 `url` 即走自建 HTTP（见 [OTA_SERVER.md](OTA_SERVER.md)、[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §6.6）；服务端见 [`ota_server/README.md`](../ota_server/README.md)
 - **`config.mk` 与 `config.lua` 宏对照**（`config.mk` 仅覆盖部分；其余仅在 `config.lua` 顶部 `local *_ENABLE`）：
