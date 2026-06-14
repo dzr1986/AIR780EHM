@@ -203,6 +203,7 @@ T3x → Cat.1: +RECORD:running=1,active=0,ch=0,reason=idle OK
 | `AT+TFCARD?` / `AT+TFCARD` | `+TFCARD:present,n,total_mb,used_mb,free_mb` `OK` | 读 T3x TF/SD 卡（MQTT 1007） |
 | `AT+IPCSTATUS?` / `AT+IPCSTATUS` | `+IPCSTATUS:ready\|idle\|shutting_down` `OK` | T3x 生命周期（§3.4） |
 | `AT+RECORD?` / `AT+RECORD` | `+RECORD:running=,active=,ch=,reason=` `OK` | T3x 真实录像状态（§2.9） |
+| `AT+RECORDTIME?` / `AT+RECORDTIME=<min>` | `+RECORDTIME:<min>,min=[5|10|15|20|30|45|60]` / `+RECORDTIME:OK,<min>` `OK` | 录像时长档位（分钟）；MQTT **2022/2023** → **1022/1023** |
 | `AT+VENC?` / `AT+VENC?=<cam>` / `AT+VENC?=<cam>,<stream>` | 多行 `+VENC:` … `+VENC:END` `OK` | MQTT **2020** 查询视频编码（§3.5） |
 | `AT+VENCSET=<cam>,<stream>,<en>,<w>,<h>,<br>,<fps>,<rc>,<enc>` | `+VENCSET:OK,cam=,stream=,needReboot=` 或 `+VENCSET:ERROR` | MQTT **2021** 设置视频编码 |
 | `AT+AUDIO?` / `AT+AUDIO?=<cam>` | 多行 `+AUDIO:` … `+AUDIO:END` `OK` | MQTT **2020** `scope=audio` |

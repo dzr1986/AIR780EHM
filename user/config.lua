@@ -1,37 +1,29 @@
-﻿
 module(..., package.seeall)
 _G[_modname or (...)] = _M
-
 local RNDIS_ENABLE = 1
 local LOW_POWER_ENABLE = 1
 local HOST_EVT_ENABLE = 1
 local USB_REENUM_ENABLE = 1 -- 1=允许 T3X 通过 USBRESET 触发 CAT1 重新枚举
-
 _G.FEATURE_CFG = {
     rndis = (RNDIS_ENABLE == 1),
     low_power = (LOW_POWER_ENABLE == 1),
     host_evt = (HOST_EVT_ENABLE == 1),
     usb_reenum = (USB_REENUM_ENABLE == 1),
 }
-
 _G.RNDIS_CFG = {
     refresh_only_usb = true,
     refresh_on_ip_ready = false,  -- true=每个 IP_READY 再 refresh（易 IP 振荡，仅调试）
 }
-
 local LOW_POWER_WAKEUP_MODE = "mqtt"
-
 _G.LOW_POWER_WAKEUP_CFG = {
     mode = LOW_POWER_WAKEUP_MODE,
 }
-
 _G.LOW_POWER_CFG = {
     enabled = (_G.FEATURE_CFG.low_power ~= false),
     graceful_ipc = true,
     modem_hibernate = false,
     rest_mqtt_interval_sec = 30,
 }
-
 _G.HOST_EVT_CFG = {
     enabled = (_G.FEATURE_CFG.host_evt ~= false),
     types_mask = 0x0F,
@@ -42,7 +34,6 @@ _G.HOST_EVT_CFG = {
     poll_interval_min_ms = 1000,
     poll_interval_max_ms = 300000,
 }
-
 _G.HOST_USB_CFG = {
     block_host_idle_when_usb = true,
     block_4g_rest_when_usb = true,
@@ -56,7 +47,6 @@ _G.HOST_USB_CFG = {
     usb_reset_notify_after_ms = 800,
     usb_debug_en_pulse_ms = 300,
 }
-
 _G.APP_META = {
     version = _G.VERSION or "",
     log_enabled = false,
@@ -64,12 +54,10 @@ _G.APP_META = {
     cmd_ext = "",
     deep_rest_ms = 10 * 60 * 1000,
 }
-
 _G.APP_STACK = {
     mqtt = "net_mqtt",
     uart = "uart_bridge",
 }
-
 _G.APP_RUNTIME = {
     online_status = 0,
     power_status = 0,
@@ -84,11 +72,9 @@ _G.APP_RUNTIME = {
     cellular_apn = "",
     wled_on = 0,
 }
-
 if _G.LOW_POWER_CFG and _G.LOW_POWER_CFG.rest_mqtt_interval_sec then
     _G.APP_RUNTIME.low_power_interval_sec = _G.LOW_POWER_CFG.rest_mqtt_interval_sec
 end
-
 _G.CELLULAR_CFG = {
     enabled = true,
     apn_auto = true,
@@ -107,9 +93,8 @@ _G.CELLULAR_CFG = {
     max_reset_attempts = 3,
     reset_delay_ms = 30000,
 }
-
 _G.T3X_BURN_CFG = {
-    min_battery_percent = 20,
+    min_battery_percent = 12,
     require_battery_valid = true,
     allow_repeat_enter_boot = true,
     debug_checks = false,
@@ -123,7 +108,6 @@ _G.T3X_BURN_CFG = {
     turn_off_led = true,
     publish_rest_before_stop = true,
 }
-
 _G.GPIO_IN = {
     pwr_key = {
         pin = 46,
@@ -182,7 +166,6 @@ _G.GPIO_IN = {
         active_level = 1,
     },
 }
-
 _G.GPIO_OUT = {
     led_red = {
         pin = 20,
@@ -222,18 +205,15 @@ _G.GPIO_OUT = {
         on_level = 1,
     },
 }
-
 _G.LED_CFG = {
     mode = "single_blue",
     red_enabled = false,
-
     startup = {
         enabled = true,
         blinks = 2,
         light_ms = 400,
         dark_ms = 400,
     },
-
     low_percent = 20,
     low_blink_ms = 400,
     low_blinks_per_round = 6,
@@ -242,24 +222,20 @@ _G.LED_CFG = {
     check_network = true,
     unknown_hold_ms = 3000,
     suppress_low_when_charging = true,
-
     notify_t3x_net_led = false,
     t3x_net_ursp = "+CAT1:MQTT,%d",
 }
-
 _G.WLED_CFG = {
     enabled = true,
     forward_to_t3x = true,
     t3x_power_wait_ms = 800,
 }
-
 _G.PIR_COOLDOWN_MS = {
     frequent = 3 * 1000,
     normal = 10 * 1000,
     standard = 15 * 1000,
     economy = 30 * 1000,
 }
-
 do
     local det = _G.GPIO_IN.pir_det
     _G.PIR_CFG = {
@@ -271,11 +247,9 @@ do
         cooldown_ms = _G.PIR_COOLDOWN_MS.frequent,
     }
 end
-
 _G.PIR_RECORD_CFG = {
     stop_mqtt_fallback_ms = 15000,
 }
-
 _G.APP_PERSIST_CFG = {
     pir_mqtt = "/pir_mqtt_cfg.json",
     mqtt_status = "/mqtt_status_cfg.json",
@@ -284,7 +258,6 @@ _G.APP_PERSIST_CFG = {
     host_evt_poll = "/host_evt_poll_cfg.json",
     host_evt_poll_schema = 1,
 }
-
 _G.BATTERY_CFG = {
     adc = {
         channel = 1,
@@ -299,7 +272,6 @@ _G.BATTERY_CFG = {
     sample_interval_ms = 10 * 1000,
     mqtt_report_interval_sec = 30,
     mqtt_battery_report_min_sec = 30,
-
     led = {
         high_threshold = 70,
         medium_threshold = 20,
@@ -315,7 +287,6 @@ _G.BATTERY_CFG = {
         unknown_hold = 3000,
         fallback_hold = 1000,
     },
-
     guard = {
         enabled = true,
         ignore_when_usb_inserted = true,
@@ -328,7 +299,6 @@ _G.BATTERY_CFG = {
         require_valid_sample = true,
     },
 }
-
 _G.T3X_POLICY_CFG = {
     enabled = _G.LOW_POWER_CFG.enabled,
     block_wake_in_low_power = true,
@@ -337,9 +307,7 @@ _G.T3X_POLICY_CFG = {
     mqtt_offline_wake_cooldown_sec = 120,
     block_wake_below_percent = 15,
 }
-
 _G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
-
 _G.SOUND_CFG = {
     enabled = true,
     boot_on_cold_start = true,
@@ -351,7 +319,6 @@ _G.SOUND_CFG = {
     play_timeout_ms = 2500,
     t3x_power_wait_ms = 800,
 }
-
 _G.TIME_SYNC_CFG = {
     enabled = true,
     min_valid_unix = 1704067200,
@@ -363,7 +330,6 @@ _G.TIME_SYNC_CFG = {
     ack_timeout_ms = 800,
     resync_skew_sec = 2,
 }
-
 _G.HOST_IDENTITY_CFG = {
     enabled = true,
     auto_publish_on_ready = true,
@@ -373,27 +339,23 @@ _G.HOST_IDENTITY_CFG = {
     t3x_power_wait_ms = 800,
     publish_on_ipcinfo_query = false,
 }
-
 _G.HOST_TFCARD_CFG = {
     enabled = true,
     query_timeout_ms = 3000,
     host_boot_wait_ms = 1500,
     t3x_power_wait_ms = 800,
 }
-
 _G.HOST_RECORD_CFG = {
     enabled = true,
     query_timeout_ms = 3000,
     host_boot_wait_ms = 1500,
     t3x_power_wait_ms = 800,
 }
-
 _G.HOST_ENCODE_CFG = {
     query_timeout_ms = 8000,
     host_boot_wait_ms = 1500,
     t3x_power_wait_ms = 800,
 }
-
 _G.HOST_IPC_CFG = {
     enabled = _G.LOW_POWER_CFG.enabled and _G.LOW_POWER_CFG.graceful_ipc,
     graceful_poweroff = _G.LOW_POWER_CFG.graceful_ipc,
@@ -406,26 +368,22 @@ _G.HOST_IPC_CFG = {
     host_boot_wait_ms = 1500,
     boot_sound_wait_ready = true,
 }
-
 _G.HOST_WAKE_CFG = {
     pulse_ms = 120,
     idle_level = 1,
     pulse_level = 0,
     default_sid = 1,
 }
-
 _G.UART_CFG = {
     id = 1,
     baud = 115200,
     line_protocol = true,
     rx_line_max = 4096,
 }
-
 _G.WDT_CFG = {
     timeout_ms = 9000,
     feed_interval_ms = 3000,
 }
-
 _G.MQTT_CFG = {
     host = "112.86.146.218",
     port = 2123,
@@ -436,10 +394,8 @@ _G.MQTT_CFG = {
     autoreconn_ms = 10000,
     min_connect_interval_sec = 8,
     ip_lose_cooldown_sec = 3,
-    -- 调试 true：串口打印 mqtt_dl / mqtt_ul 上下行明细；量产 false
     debug_uplink = true,
 }
-
 _G.FOTA_CFG = {
     server_mode = "iot",
     request_delay_ms = 500,
@@ -448,5 +404,4 @@ _G.FOTA_CFG = {
     timeout_ms = 300000,
     auto_reboot_on_success = true,
 }
-
 return _M

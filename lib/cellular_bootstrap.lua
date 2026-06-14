@@ -371,7 +371,6 @@ local function setupSetAuto()
         tonumber(c.set_auto_count) or 5
     )
 end
-
 function waitForNetwork()
     if not enabled() then
         local ip = socket and socket.localIP and socket.localIP() or nil

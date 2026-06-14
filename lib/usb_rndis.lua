@@ -175,8 +175,6 @@ local function refreshAfterCellularIp()
     return true
 end
 local function hookIpReadyForRndis()
-    -- refresh 仅由 finishBootOpen / rebind / switch 触发。
-    -- 勿订阅 IP_READY 做周期性 flymode 切换，否则会 IP_READY→refresh→IP_LOSE→IP_READY 死循环。
     if ipReadyHooked then
         return
     end

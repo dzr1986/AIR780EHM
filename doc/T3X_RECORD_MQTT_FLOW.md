@@ -18,6 +18,10 @@
 | **1011** | 4G→云 | T3x `AT+RECORD=0` 结束/失败/二次 PIR | `source=t3x, reason=*` |
 | **1006** | 4G→云 | 设备标识（IMEI+GB28181） | 经 `AT+IPCINFO?` 或唤醒 `devinfo` |
 | **1007** | 4G→云 | TF 卡状态 | 经 `AT+TFCARD?` |
+| **2022** | 云→4G | 查询录像时长档位（分钟） | `recordTimeMin`、`allowedMin` |
+| **2023** | 云→4G | 设置录像时长档位 | `recordTimeMin`（5/10/15/20/30/45/60） |
+| **1022** | 4G→云 | 2022 应答 | `recordTimeMin`、`allowedMin` |
+| **1023** | 4G→云 | 2023 应答 | `recordTimeMin` |
 
 **原则**：4G 维护「录像会话策略」（`recording=1`、max_sec 定时）；T3x 维护「真实写盘结果」。两者必须通过 `AT+RECORD=` 同步，再由 4G 统一 MQTT 上报，避免平台只看到 4G 侧状态而不知道 SD 上是否有 MP4。
 
@@ -62,6 +66,21 @@ OK
 | `reason` | 最近一次 `AT+RECORD=0` 的 reason，或 `idle`/`active` |
 
 源码：`app/cat1/uart_host_cmd.c`、`third/libmedia/librecord_mp4/storage_mp4_api.c`
+
+
+### 2.4 MQTT 录像时长（2022 / 2023）
+
+| 下行 | 上行 | 主题后缀 | UART |
+|------|------|----------|------|
+| **2022** 查询 | **1022** | `record` | `AT+RECORDTIME?` |
+| **2023** 设置 | **1023** | `record` | `AT+RECORDTIME=<min>` |
+
+下行示例：
+
+```json
+{"dataType":"2022","messageId":"rt-q-001"}
+{"dataType":"2023","recordTimeMin":45,"messageId":"rt-s-001"}
+```
 
 ### 2.3 Cat.1 本地 AT+RECORD?（T3x 主动问 4G）
 
