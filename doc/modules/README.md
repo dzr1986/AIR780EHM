@@ -9,4 +9,7 @@
 | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) | `pir_ctrl.lua` 硬件中断、录像会话、MQTT 2010–2012 |
 | [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md) | 电量三档、evaluate、USB、HOSTIDLE 门禁 |
 | [T3X_POWER_WAKEUP.md](T3X_POWER_WAKEUP.md) | `t3x_ctrl` + `t3x_policy` 供电/休眠/唤醒 |
+| [IPC_SUPERVISION_FLOW.md](IPC_SUPERVISION_FLOW.md) | `ipc_supervision` IPCALERT → 1004/1011/对账/IPCSTAT |
+| [APP_EVENT_BUS.md](APP_EVENT_BUS.md) | `APP_EVENTS` 常量与 `app.lua` 订阅编排 |
+| [VBAT_FILTER.md](VBAT_FILTER.md) | `vbat` ADC 采样、EMA 滤波、`BATTERY_UPDATE` |
 

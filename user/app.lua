@@ -1,5 +1,5 @@
 -- 应用编排中心：事件订阅、低功耗、USB、PIR→MQTT、T3x 烧录
--- 文档：doc/LUA_MODULES.md §3.4
+-- 专题：doc/modules/APP_EVENT_BUS.md · 总览：doc/LUA_MODULES.md §3.4
 require "sys"
 require "sysplus"
 require "config"

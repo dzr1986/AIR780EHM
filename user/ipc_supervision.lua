@@ -1,6 +1,6 @@
---- Cat.1 侧 IPC 异常监督模块（与 IPC app/cat1/ipc_supervision.* 对称）
+--- Cat.1 侧 IPC 异常监督（镜像 app/cat1/ipc_supervision.*）
+-- 专题：doc/modules/IPC_SUPERVISION_FLOW.md
 -- 契约：ipc_alert_contract.lua ↔ ipc_alert_contract.h
--- 流程：T3x AT+IPCALERT → 1004 ipc_alert →（可选）1011 / 对账 / IPCSTAT 刷新
 -- @module ipc_supervision
 
 require "sys"

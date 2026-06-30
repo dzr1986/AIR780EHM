@@ -4,9 +4,9 @@
 > **配置真源**：[`user/config.lua`](../user/config.lua) · 开关 [`user/app_config.lua`](../user/app_config.lua)  
 > **启动顺序**：[`CODE_DOC_AUDIT.md`](CODE_DOC_AUDIT.md) §3 · 调用图 [`CALL_GRAPH.md`](CALL_GRAPH.md)
 
----
+> **专题索引**：[doc/modules/README.md](modules/README.md)
 
-## 1. 架构总览
+---
 
 ```
 main.lua
@@ -91,6 +91,8 @@ main.lua
 
 ### 3.4 `app.lua` — 编排中心（~1000 行）
 
+> 专题：[APP_EVENT_BUS.md](modules/APP_EVENT_BUS.md)
+
 | 项 | 说明 |
 |----|------|
 | **职责** | 依赖注入、事件订阅、低功耗进/出、USB 边沿、PIR→MQTT 桥、T3x 烧录模式 |
@@ -140,6 +142,8 @@ applyUsbInsertState(inserted, source)
 ---
 
 ### 3.6 `vbat.lua` — 电池 ADC
+
+> 专题：[VBAT_FILTER.md](modules/VBAT_FILTER.md)
 
 | 项 | 说明 |
 |----|------|
@@ -203,6 +207,8 @@ applyUsbInsertState(inserted, source)
 ---
 
 ### 3.12 `ipc_supervision.lua` / `ipc_alert_contract.lua`
+
+> 专题：[IPC_SUPERVISION_FLOW.md](modules/IPC_SUPERVISION_FLOW.md)
 
 | 模块 | 职责 |
 |------|------|
