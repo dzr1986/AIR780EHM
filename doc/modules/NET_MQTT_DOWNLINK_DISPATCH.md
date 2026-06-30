@@ -1,7 +1,7 @@
 # net_mqtt 下行分发
 
 > **代码真源**：[`user/net_mqtt.lua`](../../user/net_mqtt.lua)  
-> **协议**：[MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md)
+> **协议**：[MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) · **联调**：[MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md)
 
 ---
 

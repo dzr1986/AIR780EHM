@@ -45,12 +45,12 @@
 
 面向云端下行与 T3x 串口协议，真源在 `user/host_uart.lua` / `user/net_mqtt.lua`：
 
-| 专题 | 说明 |
-|------|------|
+| 专题 / 文档 | 说明 |
+|-------------|------|
+| [MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md) | **平台 MQTT 客户端联调**（MQTTX、冒烟、mosquitto） |
 | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) | `AT_CMD_TABLE`、`RX_LINE_HANDLER_REGISTRY`、HOSTIDLE 门禁 |
-| [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) | `DOWNLINK_HANDLERS`、`DL2004_ACTIONS`、2022–2031 query/set 工厂 |
-
-协议全文：[MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) · [UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md)
+| [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) | `DOWNLINK_HANDLERS`、`DL2004_ACTIONS`、2022–2031 工厂 |
+| [MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) | 下行 200x 字段全集 · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) |
 
 ---
 

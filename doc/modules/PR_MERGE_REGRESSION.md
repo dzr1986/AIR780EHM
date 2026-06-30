@@ -97,7 +97,10 @@ main (2100851)
 | B4 | USB 插入 | 取消进行中的 PWR 长按定时器 | |
 | B5 | 充电中低电 | 蓝灯 **不** 低电快闪（见 LED_INDICATORS） | |
 
-### 4.3 MQTT 下行（PR #5）— [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md)
+### 4.3 MQTT 下行（PR #5）— [MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md) · [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md)
+
+用 **平台 MQTT 客户端** Publish 到 `/panshi/device/{IMEI}/`，Subscribe `/panshi/app/{IMEI}/#` 收上行。  
+详细步骤、mosquitto 命令与 JSON 模板见 [MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md) §4–§5。
 
 | # | dataType | 场景 | 预期 | ☐ |
 |---|----------|------|------|---|

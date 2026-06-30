@@ -67,6 +67,7 @@
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | **本机 IMEI 862323084068314** MQTT 联调手册 |
 | [MQTT_DOWNLINK_862323084068124.txt](MQTT_DOWNLINK_862323084068124.txt) | **IMEI 124** MQTTX 单行 JSON 抄录（含 2024–2027） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
+| [MQTT_CLIENT_E2E_TEST.md](MQTT_CLIENT_E2E_TEST.md) | **MQTT 客户端 E2E 联调**（MQTTX / mosquitto / 冒烟清单） |
 | [OTA_SERVER.md](OTA_SERVER.md) | **自建 OTA**（固件对接 + 部署清单，不改 lua） |
 | [OTA_PROTOCOL.md](OTA_PROTOCOL.md) | **OTA 协议与升级流程分析**（HTTP + MQTT） |
 | [OTA_FLOW.md](OTA_FLOW.md) | **完整流程 + 代码完整性清单** |
