@@ -578,6 +578,15 @@ local function handleDownlink2003(data)
 end
 
 -- [2004] 电源/OTA 控制 → 1004(reply) + OTA 过程 1004(stage)
+local function fetchWledFromHost()
+    local on = getWledState()
+    local hu = getHostUart()
+    if hu and hu.queryHostWled and hu.isHostAtReady and hu.isHostAtReady() then
+        on = hu.queryHostWled() or on
+    end
+    return on
+end
+
 local function handleDownlink2004(data)
     local action = data.action
     local messageId = data.messageId or ""
@@ -590,6 +599,32 @@ local function handleDownlink2004(data)
             end
         end
         publishControlReply(act or action, ret, msg, extra)
+    end
+
+    local function runWledQuery()
+        sys.taskInit(function()
+            local on = fetchWledFromHost()
+            log.info(L, "downlink_2004_wled_query", on)
+            reply(0, "ok", "wled", { enable = on })
+        end)
+    end
+
+    local function runWledSet(on)
+        sys.taskInit(function()
+            log.info(L, "downlink_2004_wled", on)
+            local hu = getHostUart()
+            local ok = true
+            if hu and hu.setWled then
+                ok = hu.setWled(on, { sync = true }) == true
+            elseif _G.APP_RUNTIME then
+                _G.APP_RUNTIME.wled_on = on
+            end
+            if ok then
+                reply(0, "ok", "wled", { enable = on })
+            else
+                reply(-1, "wled_forward_fail", "wled", { enable = getWledState() })
+            end
+        end)
     end
 
     if action == "reboot" then
@@ -617,26 +652,10 @@ local function handleDownlink2004(data)
         reply(0, "ota_accepted", "ota")
         publishAppEvent("DEVICE_OTA_REQUEST", data)
     elseif action == "wled_query" or action == "wled?" then
-        sys.taskInit(function()
-            local on = getWledState()
-            local hu = getHostUart()
-            if hu and hu.queryHostWled and hu.isHostAtReady and hu.isHostAtReady() then
-                on = hu.queryHostWled() or on
-            end
-            log.info(L, "downlink_2004_wled_query", on)
-            reply(0, "ok", "wled", { enable = on })
-        end)
+        runWledQuery()
     elseif action == "wled" or action == "wled_on" or action == "wled_off" then
         if action == "wled" and (data.query == 1 or data.query == true) then
-            sys.taskInit(function()
-                local on = getWledState()
-                local hu = getHostUart()
-                if hu and hu.queryHostWled and hu.isHostAtReady and hu.isHostAtReady() then
-                    on = hu.queryHostWled() or on
-                end
-                log.info(L, "downlink_2004_wled_query", on)
-                reply(0, "ok", "wled", { enable = on })
-            end)
+            runWledQuery()
             return
         end
         local on
@@ -652,21 +671,7 @@ local function handleDownlink2004(data)
             reply(-1, "invalid_wled", "wled")
             return
         end
-        sys.taskInit(function()
-            log.info(L, "downlink_2004_wled", on)
-            local hu = getHostUart()
-            local ok = true
-            if hu and hu.setWled then
-                ok = hu.setWled(on, { sync = true }) == true
-            elseif _G.APP_RUNTIME then
-                _G.APP_RUNTIME.wled_on = on
-            end
-            if ok then
-                reply(0, "ok", "wled", { enable = on })
-            else
-                reply(-1, "wled_forward_fail", "wled", { enable = getWledState() })
-            end
-        end)
+        runWledSet(on)
     else
         log.warn(L, "downlink_2004_unknown", action)
         reply(-1, "unknown_action", action or "")
@@ -767,6 +772,39 @@ local function handleHostDownlink(dtype, data, runFn)
         return
     end
     runFn()
+end
+
+local function downlinkMessageId(data)
+    return data.messageId or data.msgId or ""
+end
+
+--- 100x reply 上行公共骨架（各业务通过 appendFields 扩展 body）
+local function publishReplyBase(opts)
+    local fields = string.format(
+        ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
+        escJson(opts.messageId or ""),
+        tostring(opts.retCode ~= nil and opts.retCode or -1),
+        escJson(opts.message or ""))
+    if opts.appendFields then
+        fields = fields .. opts.appendFields(opts.body)
+    end
+    publishUplink({
+        suffix = opts.suffix,
+        dataType = opts.dataType,
+        no_conn = NC,
+        fields = fields,
+        log = opts.log,
+        log_args = opts.log_args or { opts.dataType, opts.retCode, opts.message },
+    })
+end
+
+--- 需 T3x 在线的 query/set 下行包装（2022–2031 等）
+local function wrapHostDownlink(dlType, handler, isQuery)
+    return function(data)
+        handleHostDownlink(dlType, data, function()
+            handler(data, isQuery)
+        end)
+    end
 end
 
 -- [2006] IMEI + GB28181 查询 → 1006
@@ -1034,7 +1072,7 @@ local function handleDownlink2012(data)
             log.warn(L, "downlink_2012_error", "no_fn")
             return
         end
-        local messageId = data.messageId or data.msgId or ""
+        local messageId = downlinkMessageId(data)
         local ok, result = pir_ctrl.requestStartFromCloud({
             action = data.action,
             uploadMode = data.uploadMode,
@@ -1077,31 +1115,31 @@ end
 
 local function publishEncodeReply(dlType, retCode, message, body, messageId)
     local ulType = (dlType == DT.DL_ENCODE_QUERY) and DT.UL_ENCODE_QUERY or DT.UL_ENCODE_SET
-    local fields = string.format(
-        ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
-        escJson(messageId or ""),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message or ""))
-    if type(body) == "table" then
-        if body.needReboot ~= nil then
-            fields = fields .. string.format(',"needReboot":%s',
-                (body.needReboot == true or body.needReboot == 1) and "1" or "0")
-        end
-        if body.runtimeApply ~= nil then
-            fields = fields .. string.format(',"runtimeApply":%d', tonumber(body.runtimeApply) or 0)
-        end
-        local ok, encoded = pcall(json.encode, body)
-        if ok and encoded then
-            fields = fields .. ',"body":' .. encoded
-        end
-    end
-    publishUplink({
-        suffix = "encode",
+    publishReplyBase({
         dataType = ulType,
-        no_conn = NC,
-        fields = fields,
+        suffix = "encode",
         log = "publish_encode",
-        log_args = { ulType, retCode, message },
+        retCode = retCode,
+        message = message,
+        messageId = messageId,
+        body = body,
+        appendFields = function(b)
+            local extra = ""
+            if type(b) == "table" then
+                if b.needReboot ~= nil then
+                    extra = extra .. string.format(',"needReboot":%s',
+                        (b.needReboot == true or b.needReboot == 1) and "1" or "0")
+                end
+                if b.runtimeApply ~= nil then
+                    extra = extra .. string.format(',"runtimeApply":%d', tonumber(b.runtimeApply) or 0)
+                end
+                local ok, encoded = pcall(json.encode, b)
+                if ok and encoded then
+                    extra = extra .. ',"body":' .. encoded
+                end
+            end
+            return extra
+        end,
     })
 end
 
@@ -1170,26 +1208,26 @@ local RECORD_TIME_ALLOWED = "5|10|15|20|30|45|60"
 
 local function publishRecordTimeReply(dlType, retCode, message, body, messageId)
     local ulType = (dlType == DT.DL_RECORD_TIME_QUERY) and DT.UL_RECORD_TIME_QUERY or DT.UL_RECORD_TIME_SET
-    local fields = string.format(
-        ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
-        escJson(messageId or ""),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message or ""))
-    if type(body) == "table" then
-        if body.minutes ~= nil then
-            fields = fields .. string.format(',"recordTimeMin":%d', tonumber(body.minutes) or 0)
-        end
-        if body.allowedMin then
-            fields = fields .. string.format(',"allowedMin":"%s"', escJson(body.allowedMin))
-        end
-    end
-    publishUplink({
-        suffix = "record",
+    publishReplyBase({
         dataType = ulType,
-        no_conn = NC,
-        fields = fields,
+        suffix = "record",
         log = "publish_recordtime",
-        log_args = { ulType, retCode, message },
+        retCode = retCode,
+        message = message,
+        messageId = messageId,
+        body = body,
+        appendFields = function(b)
+            local extra = ""
+            if type(b) == "table" then
+                if b.minutes ~= nil then
+                    extra = extra .. string.format(',"recordTimeMin":%d', tonumber(b.minutes) or 0)
+                end
+                if b.allowedMin then
+                    extra = extra .. string.format(',"allowedMin":"%s"', escJson(b.allowedMin))
+                end
+            end
+            return extra
+        end,
     })
 end
 
@@ -1197,7 +1235,7 @@ local function handleDownlinkRecordTime(data, isQuery)
     sys.taskInit(function()
         local hu = getHostUart()
         local dlType = isQuery and DT.DL_RECORD_TIME_QUERY or DT.DL_RECORD_TIME_SET
-        local messageId = data.messageId or data.msgId or ""
+        local messageId = downlinkMessageId(data)
         local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 12000
         if not hu then
             publishRecordTimeReply(dlType, -1, "no_host_uart", nil, messageId)
@@ -1251,41 +1289,29 @@ local function handleDownlinkRecordTime(data, isQuery)
     end)
 end
 
-local function handleDownlink2022(data)
-    handleHostDownlink(DT.DL_RECORD_TIME_QUERY, data, function()
-        handleDownlinkRecordTime(data, true)
-    end)
-end
-
-local function handleDownlink2023(data)
-    handleHostDownlink(DT.DL_RECORD_TIME_SET, data, function()
-        handleDownlinkRecordTime(data, false)
-    end)
-end
-
 local function publishFramerateReply(dlType, retCode, message, body, messageId)
     local ulType = (dlType == DT.DL_FRAMERATE_QUERY) and DT.UL_FRAMERATE_QUERY or DT.UL_FRAMERATE_SET
-    local fields = string.format(
-        ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
-        escJson(messageId or ""),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message or ""))
-    if type(body) == "table" then
-        if body.runtimeApply ~= nil then
-            fields = fields .. string.format(',"runtimeApply":%d', tonumber(body.runtimeApply) or 0)
-        end
-        local ok, encoded = pcall(json.encode, body)
-        if ok and encoded then
-            fields = fields .. ',"body":' .. encoded
-        end
-    end
-    publishUplink({
-        suffix = "framerate",
+    publishReplyBase({
         dataType = ulType,
-        no_conn = NC,
-        fields = fields,
+        suffix = "framerate",
         log = "publish_framerate",
-        log_args = { ulType, retCode, message },
+        retCode = retCode,
+        message = message,
+        messageId = messageId,
+        body = body,
+        appendFields = function(b)
+            local extra = ""
+            if type(b) == "table" then
+                if b.runtimeApply ~= nil then
+                    extra = extra .. string.format(',"runtimeApply":%d', tonumber(b.runtimeApply) or 0)
+                end
+                local ok, encoded = pcall(json.encode, b)
+                if ok and encoded then
+                    extra = extra .. ',"body":' .. encoded
+                end
+            end
+            return extra
+        end,
     })
 end
 
@@ -1293,7 +1319,7 @@ local function handleDownlinkFramerate(data, isQuery)
     sys.taskInit(function()
         local hu = getHostUart()
         local dlType = isQuery and DT.DL_FRAMERATE_QUERY or DT.DL_FRAMERATE_SET
-        local messageId = data.messageId or data.msgId or ""
+        local messageId = downlinkMessageId(data)
         local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 12000
         if not hu then
             publishFramerateReply(dlType, -1, "no_host_uart", nil, messageId)
@@ -1337,39 +1363,27 @@ local function handleDownlinkFramerate(data, isQuery)
     end)
 end
 
-local function handleDownlink2024(data)
-    handleHostDownlink(DT.DL_FRAMERATE_QUERY, data, function()
-        handleDownlinkFramerate(data, true)
-    end)
-end
-
-local function handleDownlink2025(data)
-    handleHostDownlink(DT.DL_FRAMERATE_SET, data, function()
-        handleDownlinkFramerate(data, false)
-    end)
-end
-
 local function publishPersonDetectReply(dlType, retCode, message, body, messageId)
     local ulType = (dlType == DT.DL_PERSON_DETECT_QUERY) and DT.UL_PERSON_DETECT_QUERY or DT.UL_PERSON_DETECT_SET
-    local fields = string.format(
-        ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
-        escJson(messageId or ""),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message or ""))
-    if type(body) == "table" and body.enable ~= nil then
-        fields = fields .. string.format(',"enable":%d', tonumber(body.enable) or 0)
-    end
-    if type(body) == "table" and body.personDetectAvailable ~= nil then
-        fields = fields .. string.format(',"personDetectAvailable":%d',
-            tonumber(body.personDetectAvailable) or 0)
-    end
-    publishUplink({
-        suffix = "personDetect",
+    publishReplyBase({
         dataType = ulType,
-        no_conn = NC,
-        fields = fields,
+        suffix = "personDetect",
         log = "publish_persondet",
-        log_args = { ulType, retCode, message },
+        retCode = retCode,
+        message = message,
+        messageId = messageId,
+        body = body,
+        appendFields = function(b)
+            local extra = ""
+            if type(b) == "table" and b.enable ~= nil then
+                extra = extra .. string.format(',"enable":%d', tonumber(b.enable) or 0)
+            end
+            if type(b) == "table" and b.personDetectAvailable ~= nil then
+                extra = extra .. string.format(',"personDetectAvailable":%d',
+                    tonumber(b.personDetectAvailable) or 0)
+            end
+            return extra
+        end,
     })
 end
 
@@ -1377,7 +1391,7 @@ local function handleDownlinkPersonDetect(data, isQuery)
     sys.taskInit(function()
         local hu = getHostUart()
         local dlType = isQuery and DT.DL_PERSON_DETECT_QUERY or DT.DL_PERSON_DETECT_SET
-        local messageId = data.messageId or data.msgId or ""
+        local messageId = downlinkMessageId(data)
         local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 8000
         if not hu then
             publishPersonDetectReply(dlType, -1, "no_host_uart", nil, messageId)
@@ -1422,52 +1436,40 @@ local function handleDownlinkPersonDetect(data, isQuery)
     end)
 end
 
-local function handleDownlink2026(data)
-    handleHostDownlink(DT.DL_PERSON_DETECT_QUERY, data, function()
-        handleDownlinkPersonDetect(data, true)
-    end)
-end
-
-local function handleDownlink2027(data)
-    handleHostDownlink(DT.DL_PERSON_DETECT_SET, data, function()
-        handleDownlinkPersonDetect(data, false)
-    end)
-end
-
 local function publishMicReply(dlType, retCode, message, body, messageId)
     local ulType = (dlType == DT.DL_MIC_QUERY) and DT.UL_MIC_QUERY or DT.UL_MIC_SET
-    local fields = string.format(
-        ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
-        escJson(messageId or ""),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message or ""))
-    if type(body) == "table" then
-        if body.camera ~= nil then
-            fields = fields .. string.format(',"camera":%d', tonumber(body.camera) or 0)
-        end
-        if body.volume ~= nil then
-            fields = fields .. string.format(',"volume":%d', tonumber(body.volume) or 0)
-        end
-        if body.gain ~= nil then
-            fields = fields .. string.format(',"gain":%d', tonumber(body.gain) or 0)
-        end
-        if body.runtimeApply ~= nil then
-            fields = fields .. string.format(',"runtimeApply":%d', tonumber(body.runtimeApply) or 0)
-        end
-        if body.mics and json and json.encode then
-            local ok, encoded = pcall(json.encode, body.mics)
-            if ok and encoded then
-                fields = fields .. ',"mics":' .. encoded
-            end
-        end
-    end
-    publishUplink({
-        suffix = "mic",
+    publishReplyBase({
         dataType = ulType,
-        no_conn = NC,
-        fields = fields,
+        suffix = "mic",
         log = "publish_mic",
-        log_args = { ulType, retCode, message },
+        retCode = retCode,
+        message = message,
+        messageId = messageId,
+        body = body,
+        appendFields = function(b)
+            local extra = ""
+            if type(b) == "table" then
+                if b.camera ~= nil then
+                    extra = extra .. string.format(',"camera":%d', tonumber(b.camera) or 0)
+                end
+                if b.volume ~= nil then
+                    extra = extra .. string.format(',"volume":%d', tonumber(b.volume) or 0)
+                end
+                if b.gain ~= nil then
+                    extra = extra .. string.format(',"gain":%d', tonumber(b.gain) or 0)
+                end
+                if b.runtimeApply ~= nil then
+                    extra = extra .. string.format(',"runtimeApply":%d', tonumber(b.runtimeApply) or 0)
+                end
+                if b.mics and json and json.encode then
+                    local ok, encoded = pcall(json.encode, b.mics)
+                    if ok and encoded then
+                        extra = extra .. ',"mics":' .. encoded
+                    end
+                end
+            end
+            return extra
+        end,
     })
 end
 
@@ -1475,7 +1477,7 @@ local function handleDownlinkMic(data, isQuery)
     sys.taskInit(function()
         local hu = getHostUart()
         local dlType = isQuery and DT.DL_MIC_QUERY or DT.DL_MIC_SET
-        local messageId = data.messageId or data.msgId or ""
+        local messageId = downlinkMessageId(data)
         local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 8000
         if not hu then
             publishMicReply(dlType, -1, "no_host_uart", nil, messageId)
@@ -1541,50 +1543,31 @@ local function handleDownlinkMic(data, isQuery)
     end)
 end
 
-local function handleDownlink2028(data)
-    handleHostDownlink(DT.DL_MIC_QUERY, data, function()
-        handleDownlinkMic(data, true)
-    end)
-end
-
-local function handleDownlink2029(data)
-    handleHostDownlink(DT.DL_MIC_SET, data, function()
-        handleDownlinkMic(data, false)
-    end)
-end
-
 local function publishSoftPhotoReply(dlType, retCode, message, body, messageId)
     local ulType = (dlType == DT.DL_SOFTPHOTO_QUERY) and DT.UL_SOFTPHOTO_QUERY or DT.UL_SOFTPHOTO_SET
-    local fields = string.format(
-        ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
-        escJson(messageId or ""),
-        tostring(retCode ~= nil and retCode or -1),
-        escJson(message or ""))
-    if type(body) == "table" then
-        local keys = {
-            { "enable", "enable" },
-            { "nightModeThreshold", "nightModeThreshold" },
-            { "dayModeThreshold", "dayModeThreshold" },
-            { "dayModeAltThreshold", "dayModeAltThreshold" },
-            { "gbGainThreshold", "gbGainThreshold" },
-            { "gbGainRecordInit", "gbGainRecordInit" },
-            { "checkTime", "checkTime" },
-            { "checkCount", "checkCount" },
-        }
-        for _, pair in ipairs(keys) do
-            local k = pair[1]
-            if body[k] ~= nil then
-                fields = fields .. string.format(',"%s":%d', k, tonumber(body[k]) or 0)
-            end
-        end
-    end
-    publishUplink({
-        suffix = "softPhoto",
+    local SOFT_PHOTO_KEYS = {
+        "enable", "nightModeThreshold", "dayModeThreshold", "dayModeAltThreshold",
+        "gbGainThreshold", "gbGainRecordInit", "checkTime", "checkCount",
+    }
+    publishReplyBase({
         dataType = ulType,
-        no_conn = NC,
-        fields = fields,
+        suffix = "softPhoto",
         log = "publish_softphoto",
-        log_args = { ulType, retCode, message },
+        retCode = retCode,
+        message = message,
+        messageId = messageId,
+        body = body,
+        appendFields = function(b)
+            local extra = ""
+            if type(b) == "table" then
+                for _, k in ipairs(SOFT_PHOTO_KEYS) do
+                    if b[k] ~= nil then
+                        extra = extra .. string.format(',"%s":%d', k, tonumber(b[k]) or 0)
+                    end
+                end
+            end
+            return extra
+        end,
     })
 end
 
@@ -1592,7 +1575,7 @@ local function handleDownlinkSoftPhoto(data, isQuery)
     sys.taskInit(function()
         local hu = getHostUart()
         local dlType = isQuery and DT.DL_SOFTPHOTO_QUERY or DT.DL_SOFTPHOTO_SET
-        local messageId = data.messageId or data.msgId or ""
+        local messageId = downlinkMessageId(data)
         local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 8000
         if not hu then
             publishSoftPhotoReply(dlType, -1, "no_host_uart", nil, messageId)
@@ -1643,16 +1626,18 @@ local function handleDownlinkSoftPhoto(data, isQuery)
     end)
 end
 
-local function handleDownlink2030(data)
-    handleHostDownlink(DT.DL_SOFTPHOTO_QUERY, data, function()
-        handleDownlinkSoftPhoto(data, true)
-    end)
-end
-
-local function handleDownlink2031(data)
-    handleHostDownlink(DT.DL_SOFTPHOTO_SET, data, function()
-        handleDownlinkSoftPhoto(data, false)
-    end)
+local function registerHostQuerySetHandlers(map)
+    local pairs = {
+        { DT.DL_RECORD_TIME_QUERY, DT.DL_RECORD_TIME_SET, handleDownlinkRecordTime },
+        { DT.DL_FRAMERATE_QUERY, DT.DL_FRAMERATE_SET, handleDownlinkFramerate },
+        { DT.DL_PERSON_DETECT_QUERY, DT.DL_PERSON_DETECT_SET, handleDownlinkPersonDetect },
+        { DT.DL_MIC_QUERY, DT.DL_MIC_SET, handleDownlinkMic },
+        { DT.DL_SOFTPHOTO_QUERY, DT.DL_SOFTPHOTO_SET, handleDownlinkSoftPhoto },
+    }
+    for _, item in ipairs(pairs) do
+        map[item[1]] = wrapHostDownlink(item[1], item[3], true)
+        map[item[2]] = wrapHostDownlink(item[2], item[3], false)
+    end
 end
 
 DOWNLINK_HANDLERS = {
@@ -1669,17 +1654,8 @@ DOWNLINK_HANDLERS = {
     [DT.DL_PIR_START] = handleDownlink2012,
     [DT.DL_ENCODE_SET] = handleDownlink2021,
     [DT.DL_ENCODE_QUERY] = handleDownlink2020,
-    [DT.DL_RECORD_TIME_QUERY] = handleDownlink2022,
-    [DT.DL_RECORD_TIME_SET] = handleDownlink2023,
-    [DT.DL_FRAMERATE_QUERY] = handleDownlink2024,
-    [DT.DL_FRAMERATE_SET] = handleDownlink2025,
-    [DT.DL_PERSON_DETECT_QUERY] = handleDownlink2026,
-    [DT.DL_PERSON_DETECT_SET] = handleDownlink2027,
-    [DT.DL_MIC_QUERY] = handleDownlink2028,
-    [DT.DL_MIC_SET] = handleDownlink2029,
-    [DT.DL_SOFTPHOTO_QUERY] = handleDownlink2030,
-    [DT.DL_SOFTPHOTO_SET] = handleDownlink2031,
 }
+registerHostQuerySetHandlers(DOWNLINK_HANDLERS)
 
 local function handleServerMessage(topic, payload)
     log.info(L, "mqtt_rx", topic, payload)
