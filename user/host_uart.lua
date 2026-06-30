@@ -45,6 +45,7 @@ local SYS_EVT = {
 
 local run_host_query
 local host_query
+local host_set
 
 _M.EVT = {
     SERVER_DATA = 0,
@@ -2561,6 +2562,74 @@ host_query = function(timeoutMs, opts)
     return run_host_query(opts)
 end
 
+--- T3x AT 设置公共模板（busy → 上电 → sendString → waitUntil → parse_rsp）
+host_set = function(spec)
+    spec = spec or {}
+    local busyKey = spec.busy_key
+    if busyKey and state[busyKey] then
+        return false, "busy", nil
+    end
+    if busyKey then
+        state[busyKey] = true
+    end
+    local okSet, msg, extra
+    local ok, e = pcall(function()
+        local cfg = spec.cfg or identity_cfg()
+        local timeoutMs = tonumber(spec.timeout_ms)
+            or tonumber(cfg[spec.timeout_cfg_key or "query_timeout_ms"])
+            or spec.default_timeout
+            or 8000
+        local prepOk, prepMsg, atCmd = true, nil, spec.at_cmd
+        if spec.prepare then
+            prepOk, prepMsg, atCmd = spec.prepare(spec)
+        end
+        if prepOk == false then
+            okSet, msg = false, prepMsg or "invalid"
+            return
+        end
+        if not atCmd or atCmd == "" then
+            okSet, msg = false, "missing_at"
+            return
+        end
+        if not ensure_t3x_for_host_query(spec.policy_tag, cfg) then
+            okSet, msg = false, "t3x_unavailable"
+            return
+        end
+        if spec.wait_boot ~= false and not state.host_at_ready then
+            sys.wait(host_boot_wait_ms(spec.boot_cfg or cfg))
+        end
+        if not uart_bridge.sendString then
+            okSet, msg = false, "no_uart"
+            return
+        end
+        if spec.log_tag then
+            log.info(LOG_TAG, spec.log_tag, atCmd, timeoutMs)
+        end
+        uart_bridge.sendString(atCmd, true)
+        local got, rsp = sys.waitUntil(spec.ack_event, timeoutMs)
+        if not got or type(rsp) ~= "table" then
+            okSet, msg = false, "timeout"
+            return
+        end
+        if spec.parse_rsp then
+            okSet, msg, extra = spec.parse_rsp(rsp, spec)
+            return
+        end
+        if rsp.ok then
+            okSet, msg, extra = true, "ok", rsp
+            return
+        end
+        okSet, msg = false, "error"
+    end)
+    if busyKey then
+        state[busyKey] = false
+    end
+    if not ok then
+        return false, tostring(e), nil
+    end
+    return okSet, msg, extra
+end
+
 local function noop_nil()
     return nil
 end
@@ -3218,54 +3287,32 @@ end
 --- 须在 task 内调用；向 T3x 发 AT+RECORDTIME=<min>（固定档位 5/10/15/20/30/45/60）
 function setHostRecordTime(opts)
     opts = opts or {}
-    if state.recordtime_set_busy then
-        return false, "busy", nil
-    end
-    state.recordtime_set_busy = true
-    local okSet, msg, extra
-    local ok, e = pcall(function()
-        local cfg = record_cfg()
-        local timeoutMs = tonumber(opts.timeout_ms)
-            or tonumber(cfg.query_timeout_ms) or 3000
-        local min = tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
-        if min == nil then
-            okSet, msg = false, "missing_min"
-            return
-        end
-        if not ensure_t3x_for_host_query("host_recordtime_set", identity_cfg()) then
-            okSet, msg = false, "t3x_unavailable"
-            return
-        end
-        if not state.host_at_ready then
-            sys.wait(host_boot_wait_ms(cfg))
-        end
-        if not uart_bridge.sendString then
-            okSet, msg = false, "no_uart"
-            return
-        end
-        log.info(LOG_TAG, "recordtime_set", min, timeoutMs)
-        uart_bridge.sendString(string.format("AT+RECORDTIME=%d", min), true)
-        local got, rsp = sys.waitUntil(SYS_EVT.RECORDTIME_SET, timeoutMs)
-        if not got or type(rsp) ~= "table" then
-            okSet, msg = false, "timeout"
-            return
-        end
-        if rsp.ok then
-            state.host_record_time = rsp
-            okSet, msg, extra = true, "ok", { minutes = rsp.minutes }
-            return
-        end
-        if rsp.invalid then
-            okSet, msg = false, "invalid_minute"
-            return
-        end
-        okSet, msg = false, "error"
-    end)
-    state.recordtime_set_busy = false
-    if not ok then
-        return false, tostring(e), nil
-    end
-    return okSet, msg, extra
+    return host_set({
+        busy_key = "recordtime_set_busy",
+        policy_tag = "host_recordtime_set",
+        cfg = record_cfg(),
+        default_timeout = 3000,
+        timeout_ms = opts.timeout_ms,
+        ack_event = SYS_EVT.RECORDTIME_SET,
+        log_tag = "recordtime_set",
+        prepare = function()
+            local min = tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
+            if min == nil then
+                return false, "missing_min"
+            end
+            return true, nil, string.format("AT+RECORDTIME=%d", min)
+        end,
+        parse_rsp = function(rsp)
+            if rsp.ok then
+                state.host_record_time = rsp
+                return true, "ok", { minutes = rsp.minutes }
+            end
+            if rsp.invalid then
+                return false, "invalid_minute", nil
+            end
+            return false, "error", nil
+        end,
+    })
 end
 
 --- MQTT 2024/2025：查询 T3x 帧率（AT+FRAMERATE?）
@@ -3309,98 +3356,75 @@ end
 --- MQTT 2025：设置 T3x 帧率（AT+FRAMERATE=cam,stream,fps）
 function setHostFramerate(opts)
     opts = opts or {}
-    if state.framerate_set_busy then
-        return false, "busy", nil
-    end
-    state.framerate_set_busy = true
-    local okSet, msg, extra
-    local ok, e = pcall(function()
-        local cam = tonumber(opts.camera) or 0
-        local stream = tonumber(opts.stream) or 0
-        local fps = tonumber(opts.framerate or opts.fps)
-        local timeoutMs = tonumber(opts.timeout_ms) or 8000
-        if fps == nil then
-            okSet, msg = false, "missing_framerate"
-            return
-        end
-        if not ensure_t3x_for_host_query("host_framerate_set", identity_cfg()) then
-            okSet, msg = false, "t3x_unavailable"
-            return
-        end
-        if not state.host_at_ready then
-            sys.wait(host_boot_wait_ms(encode_cfg()))
-        end
-        if not uart_bridge.sendString then
-            okSet, msg = false, "no_uart"
-            return
-        end
-        uart_bridge.sendString(string.format("AT+FRAMERATE=%d,%d,%d", cam, stream, fps), true)
-        local got, rsp = sys.waitUntil(SYS_EVT.FRAMERATE_SET, timeoutMs)
-        if not got or type(rsp) ~= "table" then
-            okSet, msg = false, "timeout"
-            return
-        end
-        if rsp.ok then
-            okSet, msg, extra = true, "ok", rsp
-            return
-        end
-        okSet, msg = false, "error"
-    end)
-    state.framerate_set_busy = false
-    if not ok then
-        return false, tostring(e), nil
-    end
-    return okSet, msg, extra
+    return host_set({
+        busy_key = "framerate_set_busy",
+        policy_tag = "host_framerate_set",
+        cfg = encode_cfg(),
+        default_timeout = 8000,
+        timeout_ms = opts.timeout_ms,
+        ack_event = SYS_EVT.FRAMERATE_SET,
+        prepare = function()
+            local cam = tonumber(opts.camera) or 0
+            local stream = tonumber(opts.stream) or 0
+            local fps = tonumber(opts.framerate or opts.fps)
+            if fps == nil then
+                return false, "missing_framerate"
+            end
+            return true, nil, string.format("AT+FRAMERATE=%d,%d,%d", cam, stream, fps)
+        end,
+        parse_rsp = function(rsp)
+            if rsp.ok then
+                return true, "ok", rsp
+            end
+            return false, "error", nil
+        end,
+    })
 end
 
 --- MQTT 2012 直连：T3x 已在线时 AT+RECORDCTRL=1[,max_sec]
 function recordCtrlStart(opts)
     opts = opts or {}
     local maxSec = tonumber(opts.max_sec or opts.videoMaxDurationSec) or 60
-    local timeoutMs = tonumber(opts.timeout_ms) or 8000
-    if not ensure_t3x_for_host_query("host_recordctrl_start", identity_cfg()) then
-        return false, "t3x_unavailable", nil
-    end
-    if not state.host_at_ready then
-        sys.wait(host_boot_wait_ms(record_cfg()))
-    end
-    if not uart_bridge.sendString then
-        return false, "no_uart", nil
-    end
-    uart_bridge.sendString(string.format("AT+RECORDCTRL=1,%d", maxSec), true)
-    local got, rsp = sys.waitUntil(SYS_EVT.RECORDCTRL_SET, timeoutMs)
-    if not got or type(rsp) ~= "table" then
-        return false, "timeout", nil
-    end
-    if rsp.ok and rsp.start == 1 then
-        return true, "ok", rsp
-    end
-    return false, "error", rsp
+    return host_set({
+        policy_tag = "host_recordctrl_start",
+        cfg = identity_cfg(),
+        boot_cfg = record_cfg(),
+        default_timeout = 8000,
+        timeout_ms = opts.timeout_ms,
+        ack_event = SYS_EVT.RECORDCTRL_SET,
+        prepare = function()
+            return true, nil, string.format("AT+RECORDCTRL=1,%d", maxSec)
+        end,
+        parse_rsp = function(rsp)
+            if rsp.ok and rsp.start == 1 then
+                return true, "ok", rsp
+            end
+            return false, "error", rsp
+        end,
+    })
 end
 
 --- MQTT 2011 直连：T3x 已在线时 AT+RECORDCTRL=0[,reason]
 function recordCtrlStop(opts)
     opts = opts or {}
     local reason = tostring(opts.reason or "cloud")
-    local timeoutMs = tonumber(opts.timeout_ms) or 8000
-    if not ensure_t3x_for_host_query("host_recordctrl_stop", identity_cfg()) then
-        return false, "t3x_unavailable", nil
-    end
-    if not state.host_at_ready then
-        sys.wait(host_boot_wait_ms(record_cfg()))
-    end
-    if not uart_bridge.sendString then
-        return false, "no_uart", nil
-    end
-    uart_bridge.sendString(string.format("AT+RECORDCTRL=0,%s", reason), true)
-    local got, rsp = sys.waitUntil(SYS_EVT.RECORDCTRL_SET, timeoutMs)
-    if not got or type(rsp) ~= "table" then
-        return false, "timeout", nil
-    end
-    if rsp.ok and rsp.start == 0 then
-        return true, "ok", rsp
-    end
-    return false, "error", rsp
+    return host_set({
+        policy_tag = "host_recordctrl_stop",
+        cfg = identity_cfg(),
+        boot_cfg = record_cfg(),
+        default_timeout = 8000,
+        timeout_ms = opts.timeout_ms,
+        ack_event = SYS_EVT.RECORDCTRL_SET,
+        prepare = function()
+            return true, nil, string.format("AT+RECORDCTRL=0,%s", reason)
+        end,
+        parse_rsp = function(rsp)
+            if rsp.ok and rsp.start == 0 then
+                return true, "ok", rsp
+            end
+            return false, "error", rsp
+        end,
+    })
 end
 
 --- MQTT 2026/2027：查询/设置人形检测（AT+PERSONDET? / AT+PERSONDET=）
@@ -3430,46 +3454,27 @@ end
 
 function setHostPersonDetect(opts)
     opts = opts or {}
-    if state.persondet_set_busy then
-        return false, "busy", nil
-    end
-    state.persondet_set_busy = true
-    local okSet, msg, extra
-    local ok, e = pcall(function()
-        local enable = tonumber(opts.enable)
-        local timeoutMs = tonumber(opts.timeout_ms) or 5000
-        if enable == nil or (enable ~= 0 and enable ~= 1) then
-            okSet, msg = false, "invalid_enable"
-            return
-        end
-        if not ensure_t3x_for_host_query("host_persondet_set", identity_cfg()) then
-            okSet, msg = false, "t3x_unavailable"
-            return
-        end
-        if not state.host_at_ready then
-            sys.wait(host_boot_wait_ms(identity_cfg()))
-        end
-        if not uart_bridge.sendString then
-            okSet, msg = false, "no_uart"
-            return
-        end
-        uart_bridge.sendString(string.format("AT+PERSONDET=%d", enable), true)
-        local got, rsp = sys.waitUntil(SYS_EVT.PERSONDET_SET, timeoutMs)
-        if not got or type(rsp) ~= "table" then
-            okSet, msg = false, "timeout"
-            return
-        end
-        if rsp.ok then
-            okSet, msg, extra = true, "ok", rsp
-            return
-        end
-        okSet, msg = false, "error"
-    end)
-    state.persondet_set_busy = false
-    if not ok then
-        return false, tostring(e), nil
-    end
-    return okSet, msg, extra
+    return host_set({
+        busy_key = "persondet_set_busy",
+        policy_tag = "host_persondet_set",
+        cfg = identity_cfg(),
+        default_timeout = 5000,
+        timeout_ms = opts.timeout_ms,
+        ack_event = SYS_EVT.PERSONDET_SET,
+        prepare = function()
+            local enable = tonumber(opts.enable)
+            if enable == nil or (enable ~= 0 and enable ~= 1) then
+                return false, "invalid_enable"
+            end
+            return true, nil, string.format("AT+PERSONDET=%d", enable)
+        end,
+        parse_rsp = function(rsp)
+            if rsp.ok then
+                return true, "ok", rsp
+            end
+            return false, "error", nil
+        end,
+    })
 end
 
 --- MQTT 2028/2029：查询/设置麦克风 AI 音量增益（AT+MIC? / AT+MICSET=）
@@ -3508,48 +3513,29 @@ end
 
 function setHostMic(opts)
     opts = opts or {}
-    if state.mic_set_busy then
-        return false, "busy", nil
-    end
-    state.mic_set_busy = true
-    local okSet, msg, extra
-    local ok, e = pcall(function()
-        local cam = tonumber(opts.camera) or 0
-        local volume = tonumber(opts.volume)
-        local gain = tonumber(opts.gain)
-        local timeoutMs = tonumber(opts.timeout_ms) or 8000
-        if volume == nil or gain == nil then
-            okSet, msg = false, "missing_params"
-            return
-        end
-        if not ensure_t3x_for_host_query("host_mic_set", identity_cfg()) then
-            okSet, msg = false, "t3x_unavailable"
-            return
-        end
-        if not state.host_at_ready then
-            sys.wait(host_boot_wait_ms(identity_cfg()))
-        end
-        if not uart_bridge.sendString then
-            okSet, msg = false, "no_uart"
-            return
-        end
-        uart_bridge.sendString(string.format("AT+MICSET=%d,%d,%d", cam, volume, gain), true)
-        local got, rsp = sys.waitUntil(SYS_EVT.MIC_SET, timeoutMs)
-        if not got or type(rsp) ~= "table" then
-            okSet, msg = false, "timeout"
-            return
-        end
-        if rsp.ok then
-            okSet, msg, extra = true, "ok", rsp
-            return
-        end
-        okSet, msg = false, "error"
-    end)
-    state.mic_set_busy = false
-    if not ok then
-        return false, tostring(e), nil
-    end
-    return okSet, msg, extra
+    return host_set({
+        busy_key = "mic_set_busy",
+        policy_tag = "host_mic_set",
+        cfg = identity_cfg(),
+        default_timeout = 8000,
+        timeout_ms = opts.timeout_ms,
+        ack_event = SYS_EVT.MIC_SET,
+        prepare = function()
+            local cam = tonumber(opts.camera) or 0
+            local volume = tonumber(opts.volume)
+            local gain = tonumber(opts.gain)
+            if volume == nil or gain == nil then
+                return false, "missing_params"
+            end
+            return true, nil, string.format("AT+MICSET=%d,%d,%d", cam, volume, gain)
+        end,
+        parse_rsp = function(rsp)
+            if rsp.ok then
+                return true, "ok", rsp
+            end
+            return false, "error", nil
+        end,
+    })
 end
 
 --- MQTT 2030/2031：查询/设置软光敏（AT+SOFTPHOTO? / AT+SOFTPHOTOSET=）
@@ -3579,60 +3565,41 @@ end
 
 function setHostSoftPhoto(opts)
     opts = opts or {}
-    if state.softphoto_set_busy then
-        return false, "busy", nil
-    end
-    state.softphoto_set_busy = true
-    local okSet, msg, extra
-    local ok, e = pcall(function()
-        local timeoutMs = tonumber(opts.timeout_ms) or 8000
-        local fields = {
-            tonumber(opts.enable),
-            tonumber(opts.nightModeThreshold or opts.night_mode_threshold),
-            tonumber(opts.dayModeThreshold or opts.day_mode_threshold),
-            tonumber(opts.dayModeAltThreshold or opts.day_mode_alt_threshold),
-            tonumber(opts.gbGainThreshold or opts.gb_gain_threshold),
-            tonumber(opts.gbGainRecordInit or opts.gb_gain_record_init),
-            tonumber(opts.checkTime or opts.check_time),
-            tonumber(opts.checkCount or opts.check_count),
-        }
-        for i = 1, #fields do
-            if fields[i] == nil then
-                okSet, msg = false, "missing_params"
-                return
+    return host_set({
+        busy_key = "softphoto_set_busy",
+        policy_tag = "host_softphoto_set",
+        cfg = identity_cfg(),
+        default_timeout = 8000,
+        timeout_ms = opts.timeout_ms,
+        ack_event = SYS_EVT.SOFTPHOTO_SET,
+        prepare = function()
+            local fields = {
+                tonumber(opts.enable),
+                tonumber(opts.nightModeThreshold or opts.night_mode_threshold),
+                tonumber(opts.dayModeThreshold or opts.day_mode_threshold),
+                tonumber(opts.dayModeAltThreshold or opts.day_mode_alt_threshold),
+                tonumber(opts.gbGainThreshold or opts.gb_gain_threshold),
+                tonumber(opts.gbGainRecordInit or opts.gb_gain_record_init),
+                tonumber(opts.checkTime or opts.check_time),
+                tonumber(opts.checkCount or opts.check_count),
+            }
+            for i = 1, #fields do
+                if fields[i] == nil then
+                    return false, "missing_params"
+                end
             end
-        end
-        if not ensure_t3x_for_host_query("host_softphoto_set", identity_cfg()) then
-            okSet, msg = false, "t3x_unavailable"
-            return
-        end
-        if not state.host_at_ready then
-            sys.wait(host_boot_wait_ms(identity_cfg()))
-        end
-        if not uart_bridge.sendString then
-            okSet, msg = false, "no_uart"
-            return
-        end
-        uart_bridge.sendString(string.format(
-            "AT+SOFTPHOTOSET=%d,%d,%d,%d,%d,%d,%d,%d",
-            fields[1], fields[2], fields[3], fields[4],
-            fields[5], fields[6], fields[7], fields[8]), true)
-        local got, rsp = sys.waitUntil(SYS_EVT.SOFTPHOTO_SET, timeoutMs)
-        if not got or type(rsp) ~= "table" then
-            okSet, msg = false, "timeout"
-            return
-        end
-        if rsp.ok then
-            okSet, msg, extra = true, "ok", rsp
-            return
-        end
-        okSet, msg = false, "error"
-    end)
-    state.softphoto_set_busy = false
-    if not ok then
-        return false, tostring(e), nil
-    end
-    return okSet, msg, extra
+            return true, nil, string.format(
+                "AT+SOFTPHOTOSET=%d,%d,%d,%d,%d,%d,%d,%d",
+                fields[1], fields[2], fields[3], fields[4],
+                fields[5], fields[6], fields[7], fields[8])
+        end,
+        parse_rsp = function(rsp)
+            if rsp.ok then
+                return true, "ok", rsp
+            end
+            return false, "error", nil
+        end,
+    })
 end
 
 function queryHostTfCard(timeoutMs)
