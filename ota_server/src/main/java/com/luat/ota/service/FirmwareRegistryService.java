@@ -1,6 +1,7 @@
 package com.luat.ota.service;
 
 import com.luat.ota.config.OtaProperties;
+import com.luat.ota.entity.FirmwareDeviceAssignment;
 import com.luat.ota.entity.FirmwarePackage;
 import com.luat.ota.entity.OtaProject;
 import com.luat.ota.repository.FirmwareDeviceAssignmentRepository;
