@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+-- GPIO_IN/OUT → gpio.setup 封装；专题 doc/modules/LIB_UART_GPIO.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M

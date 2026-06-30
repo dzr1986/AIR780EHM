@@ -233,6 +233,8 @@ applyUsbInsertState(inserted, source)
 
 ### 3.14 `net_tcp.lua` — TCP 唤醒桩
 
+> 专题：[LOW_POWER_WAKEUP.md](modules/LOW_POWER_WAKEUP.md)
+
 | 项 | 说明 |
 |----|------|
 | **职责** | `LOW_POWER_WAKEUP_CFG.mode=tcp` 时的占位；默认 MQTT 模式不加载 |
@@ -242,11 +244,17 @@ applyUsbInsertState(inserted, source)
 
 ## 4. `lib/` 模块
 
+> 底层驱动专题：[LIB_UART_GPIO.md](modules/LIB_UART_GPIO.md) · USB：[USB_CHARGE_POLICY.md](modules/USB_CHARGE_POLICY.md) · 唤醒：[LOW_POWER_WAKEUP.md](modules/LOW_POWER_WAKEUP.md)
+
 ### 4.1 `uart_bridge.lua`
+
+> 见 [LIB_UART_GPIO.md](modules/LIB_UART_GPIO.md) §2
 
 底层 UART：`start/stop/write/sendString`、行/原始 RX 回调。唯一硬件串口入口。
 
 ### 4.2 `gpio_util.lua`
+
+> 见 [LIB_UART_GPIO.md](modules/LIB_UART_GPIO.md) §3
 
 `GPIO_IN/OUT` 配置转 `gpio.setup`：pull、边沿、防抖、输出初始化。
 
@@ -264,6 +272,8 @@ bootPowerOn → t3x_ctrl.powerOn（经 mayPowerT3x("boot")）
 
 ### 4.4 `usb_policy.lua` / `usb_charge.lua` / `usb_rndis.lua`
 
+> 专题：[USB_CHARGE_POLICY.md](modules/USB_CHARGE_POLICY.md)
+
 | 模块 | 职责 |
 |------|------|
 | `usb_charge` | GPIO27/CHG_STATE 中断；发布 `GPIO_USB_DET_CHANGED` |
@@ -271,6 +281,8 @@ bootPowerOn → t3x_ctrl.powerOn（经 mayPowerT3x("boot")）
 | `usb_rndis` | USB 网卡 tethering、IP_READY 刷新 |
 
 ### 4.5 `low_power_wakeup.lua`
+
+> 专题：[LOW_POWER_WAKEUP.md](modules/LOW_POWER_WAKEUP.md)
 
 抽象 rest 期间 TCP/MQTT 行为：`onEnterRest` 关 TCP 通道；`onExitRest` 恢复。模式 `mqtt`（默认）/ `tcp`。
 

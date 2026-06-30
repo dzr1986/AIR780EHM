@@ -16,4 +16,7 @@
 | [TIME_SYNC_FLOW.md](TIME_SYNC_FLOW.md) | SNTP、`AT+TIMESET`、`pushBeforeNotify` 唤醒对时 |
 | [FOTA_SVC_FLOW.md](FOTA_SVC_FLOW.md) | MQTT 2004 OTA、合宙 IoT HTTP、自动重启 |
 | [SOUND_PROMPT_FLOW.md](SOUND_PROMPT_FLOW.md) | `AT+PLAYSOUND` 冷启动/关机提示音 |
+| [USB_CHARGE_POLICY.md](USB_CHARGE_POLICY.md) | `usb_charge` GPIO 检测 + `usb_policy` rest/HOSTIDLE 门禁 |
+| [LOW_POWER_WAKEUP.md](LOW_POWER_WAKEUP.md) | mqtt/tcp 唤醒通道、`net_tcp` 桩、rest 进/出钩子 |
+| [LIB_UART_GPIO.md](LIB_UART_GPIO.md) | `uart_bridge` 串口层 + `gpio_util` GPIO 封装 |
 

@@ -1,4 +1,5 @@
 require "config"
+-- USB 插入时 HOSTIDLE / 4G rest 门禁；专题 doc/modules/USB_CHARGE_POLICY.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M

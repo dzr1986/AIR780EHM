@@ -1,5 +1,5 @@
 --- MQTT 低功耗长连接（LOW_POWER_WAKEUP_CFG.mode="mqtt" 时为唤醒主通道）
--- 与 net_tcp.lua 二选一；策略见 lib/low_power_wakeup.lua
+-- 与 net_tcp.lua 二选一；策略见 doc/modules/LOW_POWER_WAKEUP.md
 -- 协议：下行 200x ↔ 上行 100x，见 doc/MQTT_PROTOCOL.md
 -- 分发：DOWNLINK_HANDLERS / DL2004_ACTIONS / HOST_UART_QUERY_SET_SPECS
 --       见 doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md

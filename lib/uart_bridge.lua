@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+-- Cat.1↔T3x UART 底层；专题 doc/modules/LIB_UART_GPIO.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
