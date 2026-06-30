@@ -1,6 +1,8 @@
 --- MQTT 低功耗长连接（LOW_POWER_WAKEUP_CFG.mode="mqtt" 时为唤醒主通道）
 -- 与 net_tcp.lua 二选一；策略见 lib/low_power_wakeup.lua
 -- 协议：下行 200x ↔ 上行 100x，见 doc/MQTT_PROTOCOL.md
+-- 分发：DOWNLINK_HANDLERS / DL2004_ACTIONS / HOST_UART_QUERY_SET_SPECS
+--       见 doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- @module net_mqtt
 -- @release 2026.5.19
 
@@ -587,11 +589,10 @@ local function fetchWledFromHost()
     return on
 end
 
-local function handleDownlink2004(data)
+local function makeDownlink2004Reply(data)
     local action = data.action
     local messageId = data.messageId or ""
-
-    local function reply(ret, msg, act, extraFields)
+    return function(ret, msg, act, extraFields)
         local extra = { messageId = messageId }
         if type(extraFields) == "table" then
             for k, v in pairs(extraFields) do
@@ -600,42 +601,69 @@ local function handleDownlink2004(data)
         end
         publishControlReply(act or action, ret, msg, extra)
     end
+end
 
-    local function runWledQuery()
-        sys.taskInit(function()
-            local on = fetchWledFromHost()
-            log.info(L, "downlink_2004_wled_query", on)
+local function runWledQuery2004(reply)
+    sys.taskInit(function()
+        local on = fetchWledFromHost()
+        log.info(L, "downlink_2004_wled_query", on)
+        reply(0, "ok", "wled", { enable = on })
+    end)
+end
+
+local function runWledSet2004(reply, on)
+    sys.taskInit(function()
+        log.info(L, "downlink_2004_wled", on)
+        local hu = getHostUart()
+        local ok = true
+        if hu and hu.setWled then
+            ok = hu.setWled(on, { sync = true }) == true
+        elseif _G.APP_RUNTIME then
+            _G.APP_RUNTIME.wled_on = on
+        end
+        if ok then
             reply(0, "ok", "wled", { enable = on })
-        end)
-    end
+        else
+            reply(-1, "wled_forward_fail", "wled", { enable = getWledState() })
+        end
+    end)
+end
 
-    local function runWledSet(on)
-        sys.taskInit(function()
-            log.info(L, "downlink_2004_wled", on)
-            local hu = getHostUart()
-            local ok = true
-            if hu and hu.setWled then
-                ok = hu.setWled(on, { sync = true }) == true
-            elseif _G.APP_RUNTIME then
-                _G.APP_RUNTIME.wled_on = on
-            end
-            if ok then
-                reply(0, "ok", "wled", { enable = on })
-            else
-                reply(-1, "wled_forward_fail", "wled", { enable = getWledState() })
-            end
-        end)
+local function resolve2004Action(action, data)
+    if action == "wled_query" or action == "wled?" then
+        return "wled_query"
     end
+    if action == "wled" and (data.query == 1 or data.query == true) then
+        return "wled_query"
+    end
+    if action == "wled" or action == "wled_on" or action == "wled_off" then
+        return "wled_set"
+    end
+    return action
+end
 
-    if action == "reboot" then
+local function parse2004WledEnable(action, data)
+    if action == "wled_on" then
+        return 1
+    end
+    if action == "wled_off" then
+        return 0
+    end
+    return tonumber(data.enable)
+end
+
+local DL2004_ACTIONS = {
+    reboot = function(_data, reply)
         log.info(L, "downlink_2004_reboot")
         reply(0, "ok", "reboot")
         sys.publish(APP_EVENTS.DEVICE_REBOOT_REQUEST)
-    elseif action == "off" then
+    end,
+    off = function(_data, reply)
         log.info(L, "downlink_2004_poweroff")
         reply(0, "ok", "off")
         sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
-    elseif action == "ota" then
+    end,
+    ota = function(data, reply)
         log.info(L, "downlink_2004_ota")
         if _G.validateBuildVersion then
             local v = data.version
@@ -651,31 +679,32 @@ local function handleDownlink2004(data)
         end
         reply(0, "ota_accepted", "ota")
         publishAppEvent("DEVICE_OTA_REQUEST", data)
-    elseif action == "wled_query" or action == "wled?" then
-        runWledQuery()
-    elseif action == "wled" or action == "wled_on" or action == "wled_off" then
-        if action == "wled" and (data.query == 1 or data.query == true) then
-            runWledQuery()
-            return
-        end
-        local on
-        if action == "wled_on" then
-            on = 1
-        elseif action == "wled_off" then
-            on = 0
-        else
-            on = tonumber(data.enable)
-        end
+    end,
+    wled_query = function(_data, reply)
+        runWledQuery2004(reply)
+    end,
+}
+
+local function handleDownlink2004(data)
+    local reply = makeDownlink2004Reply(data)
+    local resolved = resolve2004Action(data.action, data)
+    if resolved == "wled_set" then
+        local on = parse2004WledEnable(data.action, data)
         if on ~= 0 and on ~= 1 then
             log.warn(L, "downlink_2004_wled_error", tostring(on))
             reply(-1, "invalid_wled", "wled")
             return
         end
-        runWledSet(on)
-    else
-        log.warn(L, "downlink_2004_unknown", action)
-        reply(-1, "unknown_action", action or "")
+        runWledSet2004(reply, on)
+        return
     end
+    local fn = DL2004_ACTIONS[resolved]
+    if fn then
+        fn(data, reply)
+        return
+    end
+    log.warn(L, "downlink_2004_unknown", data.action)
+    reply(-1, "unknown_action", data.action or "")
 end
 
 -- [2005] SIM 查询 → 1005
@@ -1206,16 +1235,85 @@ end
 
 local RECORD_TIME_ALLOWED = "5|10|15|20|30|45|60"
 
-local function publishRecordTimeReply(dlType, retCode, message, body, messageId)
-    local ulType = (dlType == DT.DL_RECORD_TIME_QUERY) and DT.UL_RECORD_TIME_QUERY or DT.UL_RECORD_TIME_SET
-    publishReplyBase({
-        dataType = ulType,
+--- 2022–2031：T3x UART query/set 下行公共工厂
+local function makeQuerySetReplyPublisher(spec)
+    return function(dlType, retCode, message, body, messageId)
+        local ulType = (dlType == spec.queryDl) and spec.ulQuery or spec.ulSet
+        publishReplyBase({
+            dataType = ulType,
+            suffix = spec.suffix,
+            log = spec.log,
+            retCode = retCode,
+            message = message,
+            messageId = messageId,
+            body = body,
+            appendFields = spec.appendFields,
+        })
+    end
+end
+
+local function makeHostQuerySetHandler(spec)
+    local publishReply = makeQuerySetReplyPublisher(spec)
+    return function(data, isQuery)
+        sys.taskInit(function()
+            local hu = getHostUart()
+            local dlType = isQuery and spec.queryDl or spec.setDl
+            local messageId = downlinkMessageId(data)
+            local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms)
+                or spec.defaultTimeoutMs or 12000
+            if not hu then
+                publishReply(dlType, -1, "no_host_uart", nil, messageId)
+                return
+            end
+            if isQuery then
+                local qfn = spec.queryFn
+                if not qfn then
+                    publishReply(dlType, -1, "no_host_uart", nil, messageId)
+                    return
+                end
+                local body, err, failBody = qfn(hu, data, timeoutMs)
+                if body then
+                    publishReply(dlType, 0, "ok", body, messageId)
+                else
+                    if spec.queryFailLog then
+                        log.warn(L, spec.queryFailLog, err or "query_fail")
+                    end
+                    publishReply(dlType, -1, err or "query_fail", failBody, messageId)
+                end
+                return
+            end
+            local sfn = spec.setFn
+            if not sfn then
+                publishReply(dlType, -1, "no_host_uart", nil, messageId)
+                return
+            end
+            local ok, msg, extra, failBody = sfn(hu, data, timeoutMs)
+            if ok then
+                publishReply(dlType, 0, "ok", extra, messageId)
+                if spec.onSetSuccess then
+                    spec.onSetSuccess(extra, data)
+                end
+            else
+                if spec.setFailLog then
+                    log.warn(L, spec.setFailLog, msg or "fail")
+                end
+                publishReply(dlType, -1, msg or "fail", failBody or extra, messageId)
+            end
+        end)
+    end
+end
+
+local HOST_UART_QUERY_SET_SPECS = {
+    recordTime = {
+        queryDl = DT.DL_RECORD_TIME_QUERY,
+        setDl = DT.DL_RECORD_TIME_SET,
+        ulQuery = DT.UL_RECORD_TIME_QUERY,
+        ulSet = DT.UL_RECORD_TIME_SET,
         suffix = "record",
         log = "publish_recordtime",
-        retCode = retCode,
-        message = message,
-        messageId = messageId,
-        body = body,
+        defaultTimeoutMs = 12000,
+        queryFailLog = "downlink_2022_fail",
+        setFailLog = "downlink_2023_fail",
         appendFields = function(b)
             local extra = ""
             if type(b) == "table" then
@@ -1228,77 +1326,48 @@ local function publishRecordTimeReply(dlType, retCode, message, body, messageId)
             end
             return extra
         end,
-    })
-end
-
-local function handleDownlinkRecordTime(data, isQuery)
-    sys.taskInit(function()
-        local hu = getHostUart()
-        local dlType = isQuery and DT.DL_RECORD_TIME_QUERY or DT.DL_RECORD_TIME_SET
-        local messageId = downlinkMessageId(data)
-        local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 12000
-        if not hu then
-            publishRecordTimeReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        if isQuery then
+        queryFn = function(hu, _data, timeoutMs)
             if not hu.queryHostRecordTime then
-                publishRecordTimeReply(dlType, -1, "no_host_uart", nil, messageId)
-                return
+                return nil
             end
             local snap = hu.queryHostRecordTime(timeoutMs)
             if snap and snap.parsed then
-                publishRecordTimeReply(dlType, 0, "ok", {
+                return {
                     minutes = snap.minutes,
                     allowedMin = RECORD_TIME_ALLOWED,
-                }, messageId)
-            else
-                log.warn(L, "downlink_2022_fail", "query_fail")
-                publishRecordTimeReply(dlType, -1, "query_fail", {
-                    allowedMin = RECORD_TIME_ALLOWED,
-                }, messageId)
+                }
             end
-            return
-        end
-        if not hu.setHostRecordTime then
-            publishRecordTimeReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        local min = tonumber(data.recordTimeMin or data.recTime or data.minutes or data.min)
-        if min == nil then
-            publishRecordTimeReply(dlType, -1, "missing_min", {
-                allowedMin = RECORD_TIME_ALLOWED,
-            }, messageId)
-            return
-        end
-        local ok, msg, extra = hu.setHostRecordTime({
-            minutes = min,
-            timeout_ms = timeoutMs,
-        })
-        if ok then
-            publishRecordTimeReply(dlType, 0, "ok", {
-                minutes = extra and extra.minutes or min,
-                allowedMin = RECORD_TIME_ALLOWED,
-            }, messageId)
-        else
-            log.warn(L, "downlink_2023_fail", msg or "fail")
-            publishRecordTimeReply(dlType, -1, msg or "fail", {
-                allowedMin = RECORD_TIME_ALLOWED,
-            }, messageId)
-        end
-    end)
-end
-
-local function publishFramerateReply(dlType, retCode, message, body, messageId)
-    local ulType = (dlType == DT.DL_FRAMERATE_QUERY) and DT.UL_FRAMERATE_QUERY or DT.UL_FRAMERATE_SET
-    publishReplyBase({
-        dataType = ulType,
+            return nil, "query_fail", { allowedMin = RECORD_TIME_ALLOWED }
+        end,
+        setFn = function(hu, data, timeoutMs)
+            if not hu.setHostRecordTime then
+                return false, "no_host_uart"
+            end
+            local min = tonumber(data.recordTimeMin or data.recTime or data.minutes or data.min)
+            if min == nil then
+                return false, "missing_min", nil, { allowedMin = RECORD_TIME_ALLOWED }
+            end
+            local ok, msg, extra = hu.setHostRecordTime({
+                minutes = min,
+                timeout_ms = timeoutMs,
+            })
+            if ok then
+                return true, "ok", {
+                    minutes = extra and extra.minutes or min,
+                    allowedMin = RECORD_TIME_ALLOWED,
+                }
+            end
+            return false, msg or "fail", nil, { allowedMin = RECORD_TIME_ALLOWED }
+        end,
+    },
+    framerate = {
+        queryDl = DT.DL_FRAMERATE_QUERY,
+        setDl = DT.DL_FRAMERATE_SET,
+        ulQuery = DT.UL_FRAMERATE_QUERY,
+        ulSet = DT.UL_FRAMERATE_SET,
         suffix = "framerate",
         log = "publish_framerate",
-        retCode = retCode,
-        message = message,
-        messageId = messageId,
-        body = body,
+        defaultTimeoutMs = 12000,
         appendFields = function(b)
             local extra = ""
             if type(b) == "table" then
@@ -1312,23 +1381,9 @@ local function publishFramerateReply(dlType, retCode, message, body, messageId)
             end
             return extra
         end,
-    })
-end
-
-local function handleDownlinkFramerate(data, isQuery)
-    sys.taskInit(function()
-        local hu = getHostUart()
-        local dlType = isQuery and DT.DL_FRAMERATE_QUERY or DT.DL_FRAMERATE_SET
-        local messageId = downlinkMessageId(data)
-        local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 12000
-        if not hu then
-            publishFramerateReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        if isQuery then
+        queryFn = function(hu, data, timeoutMs)
             if not hu.queryHostFramerate then
-                publishFramerateReply(dlType, -1, "no_host_uart", nil, messageId)
-                return
+                return nil
             end
             local rows = hu.queryHostFramerate({
                 camera = data.camera,
@@ -1336,43 +1391,39 @@ local function handleDownlinkFramerate(data, isQuery)
                 timeout_ms = timeoutMs,
             })
             if type(rows) == "table" then
-                publishFramerateReply(dlType, 0, "ok", { streams = rows }, messageId)
-            else
-                publishFramerateReply(dlType, -1, "query_fail", nil, messageId)
+                return { streams = rows }
             end
-            return
-        end
-        if not hu.setHostFramerate then
-            publishFramerateReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        local ok, msg, extra = hu.setHostFramerate({
-            camera = data.camera,
-            stream = data.stream,
-            framerate = data.framerate or data.fps,
-            timeout_ms = timeoutMs,
-        })
-        if ok then
-            publishFramerateReply(dlType, 0, "ok", extra, messageId)
+            return nil, "query_fail"
+        end,
+        setFn = function(hu, data, timeoutMs)
+            if not hu.setHostFramerate then
+                return false, "no_host_uart"
+            end
+            local ok, msg, extra = hu.setHostFramerate({
+                camera = data.camera,
+                stream = data.stream,
+                framerate = data.framerate or data.fps,
+                timeout_ms = timeoutMs,
+            })
+            if ok then
+                return true, "ok", extra
+            end
+            return false, msg or "fail"
+        end,
+        onSetSuccess = function(extra)
             if extra and tonumber(extra.runtimeApply) == 0 then
                 publishIpcAlert("encode_runtime_fail", "framerate")
             end
-        else
-            publishFramerateReply(dlType, -1, msg or "fail", nil, messageId)
-        end
-    end)
-end
-
-local function publishPersonDetectReply(dlType, retCode, message, body, messageId)
-    local ulType = (dlType == DT.DL_PERSON_DETECT_QUERY) and DT.UL_PERSON_DETECT_QUERY or DT.UL_PERSON_DETECT_SET
-    publishReplyBase({
-        dataType = ulType,
+        end,
+    },
+    personDetect = {
+        queryDl = DT.DL_PERSON_DETECT_QUERY,
+        setDl = DT.DL_PERSON_DETECT_SET,
+        ulQuery = DT.UL_PERSON_DETECT_QUERY,
+        ulSet = DT.UL_PERSON_DETECT_SET,
         suffix = "personDetect",
         log = "publish_persondet",
-        retCode = retCode,
-        message = message,
-        messageId = messageId,
-        body = body,
+        defaultTimeoutMs = 8000,
         appendFields = function(b)
             local extra = ""
             if type(b) == "table" and b.enable ~= nil then
@@ -1384,68 +1435,47 @@ local function publishPersonDetectReply(dlType, retCode, message, body, messageI
             end
             return extra
         end,
-    })
-end
-
-local function handleDownlinkPersonDetect(data, isQuery)
-    sys.taskInit(function()
-        local hu = getHostUart()
-        local dlType = isQuery and DT.DL_PERSON_DETECT_QUERY or DT.DL_PERSON_DETECT_SET
-        local messageId = downlinkMessageId(data)
-        local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 8000
-        if not hu then
-            publishPersonDetectReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        if isQuery then
+        queryFn = function(hu, _data, timeoutMs)
             if not hu.queryHostPersonDetect then
-                publishPersonDetectReply(dlType, -1, "no_host_uart", nil, messageId)
-                return
+                return nil
             end
             local snap = hu.queryHostPersonDetect(timeoutMs)
             if snap and snap.parsed then
-                publishPersonDetectReply(dlType, 0, "ok", {
+                return {
                     enable = snap.enable,
                     personDetectAvailable = snap.available,
-                }, messageId)
-            else
-                publishPersonDetectReply(dlType, -1, "query_fail", nil, messageId)
+                }
             end
-            return
-        end
-        if not hu.setHostPersonDetect then
-            publishPersonDetectReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        local enable = tonumber(data.enable)
-        if enable == nil or (enable ~= 0 and enable ~= 1) then
-            publishPersonDetectReply(dlType, -1, "invalid_enable", nil, messageId)
-            return
-        end
-        local ok, msg, extra = hu.setHostPersonDetect({
-            enable = enable,
-            timeout_ms = timeoutMs,
-        })
-        if ok then
-            publishPersonDetectReply(dlType, 0, "ok", {
-                enable = extra and extra.enable or enable,
-            }, messageId)
-        else
-            publishPersonDetectReply(dlType, -1, msg or "fail", nil, messageId)
-        end
-    end)
-end
-
-local function publishMicReply(dlType, retCode, message, body, messageId)
-    local ulType = (dlType == DT.DL_MIC_QUERY) and DT.UL_MIC_QUERY or DT.UL_MIC_SET
-    publishReplyBase({
-        dataType = ulType,
+            return nil, "query_fail"
+        end,
+        setFn = function(hu, data, timeoutMs)
+            if not hu.setHostPersonDetect then
+                return false, "no_host_uart"
+            end
+            local enable = tonumber(data.enable)
+            if enable == nil or (enable ~= 0 and enable ~= 1) then
+                return false, "invalid_enable"
+            end
+            local ok, msg, extra = hu.setHostPersonDetect({
+                enable = enable,
+                timeout_ms = timeoutMs,
+            })
+            if ok then
+                return true, "ok", {
+                    enable = extra and extra.enable or enable,
+                }
+            end
+            return false, msg or "fail"
+        end,
+    },
+    mic = {
+        queryDl = DT.DL_MIC_QUERY,
+        setDl = DT.DL_MIC_SET,
+        ulQuery = DT.UL_MIC_QUERY,
+        ulSet = DT.UL_MIC_SET,
         suffix = "mic",
         log = "publish_mic",
-        retCode = retCode,
-        message = message,
-        messageId = messageId,
-        body = body,
+        defaultTimeoutMs = 8000,
         appendFields = function(b)
             local extra = ""
             if type(b) == "table" then
@@ -1470,97 +1500,76 @@ local function publishMicReply(dlType, retCode, message, body, messageId)
             end
             return extra
         end,
-    })
-end
-
-local function handleDownlinkMic(data, isQuery)
-    sys.taskInit(function()
-        local hu = getHostUart()
-        local dlType = isQuery and DT.DL_MIC_QUERY or DT.DL_MIC_SET
-        local messageId = downlinkMessageId(data)
-        local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 8000
-        if not hu then
-            publishMicReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        if isQuery then
+        queryFn = function(hu, data, timeoutMs)
             if not hu.queryHostMic then
-                publishMicReply(dlType, -1, "no_host_uart", nil, messageId)
-                return
+                return nil
             end
             local rows = hu.queryHostMic({
                 camera = data.camera,
                 timeout_ms = timeoutMs,
             })
-            if type(rows) == "table" and #rows > 0 then
-                local cam = tonumber(data.camera)
-                local row = rows[1]
-                if cam ~= nil then
-                    for _, r in ipairs(rows) do
-                        if tonumber(r.camera) == cam then
-                            row = r
-                            break
-                        end
+            if type(rows) ~= "table" or #rows == 0 then
+                return nil, "query_fail"
+            end
+            local cam = tonumber(data.camera)
+            local row = rows[1]
+            if cam ~= nil then
+                for _, r in ipairs(rows) do
+                    if tonumber(r.camera) == cam then
+                        row = r
+                        break
                     end
                 end
-                publishMicReply(dlType, 0, "ok", {
-                    camera = row.camera,
-                    volume = row.volume,
-                    gain = row.gain,
-                    mics = rows,
-                }, messageId)
-            else
-                publishMicReply(dlType, -1, "query_fail", nil, messageId)
             end
-            return
-        end
-        if not hu.setHostMic then
-            publishMicReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        local volume = tonumber(data.volume)
-        local gain = tonumber(data.gain)
-        if volume == nil or gain == nil then
-            publishMicReply(dlType, -1, "missing_params", nil, messageId)
-            return
-        end
-        local ok, msg, extra = hu.setHostMic({
-            camera = data.camera,
-            volume = volume,
-            gain = gain,
-            timeout_ms = timeoutMs,
-        })
-        if ok then
-            publishMicReply(dlType, 0, "ok", {
-                camera = extra and extra.camera or tonumber(data.camera) or 0,
+            return {
+                camera = row.camera,
+                volume = row.volume,
+                gain = row.gain,
+                mics = rows,
+            }
+        end,
+        setFn = function(hu, data, timeoutMs)
+            if not hu.setHostMic then
+                return false, "no_host_uart"
+            end
+            local volume = tonumber(data.volume)
+            local gain = tonumber(data.gain)
+            if volume == nil or gain == nil then
+                return false, "missing_params"
+            end
+            local ok, msg, extra = hu.setHostMic({
+                camera = data.camera,
                 volume = volume,
                 gain = gain,
-                runtimeApply = extra and extra.runtimeApply or 0,
-            }, messageId)
-        else
-            publishMicReply(dlType, -1, msg or "fail", nil, messageId)
-        end
-    end)
-end
-
-local function publishSoftPhotoReply(dlType, retCode, message, body, messageId)
-    local ulType = (dlType == DT.DL_SOFTPHOTO_QUERY) and DT.UL_SOFTPHOTO_QUERY or DT.UL_SOFTPHOTO_SET
-    local SOFT_PHOTO_KEYS = {
-        "enable", "nightModeThreshold", "dayModeThreshold", "dayModeAltThreshold",
-        "gbGainThreshold", "gbGainRecordInit", "checkTime", "checkCount",
-    }
-    publishReplyBase({
-        dataType = ulType,
+                timeout_ms = timeoutMs,
+            })
+            if ok then
+                return true, "ok", {
+                    camera = extra and extra.camera or tonumber(data.camera) or 0,
+                    volume = volume,
+                    gain = gain,
+                    runtimeApply = extra and extra.runtimeApply or 0,
+                }
+            end
+            return false, msg or "fail"
+        end,
+    },
+    softPhoto = {
+        queryDl = DT.DL_SOFTPHOTO_QUERY,
+        setDl = DT.DL_SOFTPHOTO_SET,
+        ulQuery = DT.UL_SOFTPHOTO_QUERY,
+        ulSet = DT.UL_SOFTPHOTO_SET,
         suffix = "softPhoto",
         log = "publish_softphoto",
-        retCode = retCode,
-        message = message,
-        messageId = messageId,
-        body = body,
+        defaultTimeoutMs = 8000,
         appendFields = function(b)
             local extra = ""
+            local keys = {
+                "enable", "nightModeThreshold", "dayModeThreshold", "dayModeAltThreshold",
+                "gbGainThreshold", "gbGainRecordInit", "checkTime", "checkCount",
+            }
             if type(b) == "table" then
-                for _, k in ipairs(SOFT_PHOTO_KEYS) do
+                for _, k in ipairs(keys) do
                     if b[k] ~= nil then
                         extra = extra .. string.format(',"%s":%d', k, tonumber(b[k]) or 0)
                     end
@@ -1568,49 +1577,21 @@ local function publishSoftPhotoReply(dlType, retCode, message, body, messageId)
             end
             return extra
         end,
-    })
-end
-
-local function handleDownlinkSoftPhoto(data, isQuery)
-    sys.taskInit(function()
-        local hu = getHostUart()
-        local dlType = isQuery and DT.DL_SOFTPHOTO_QUERY or DT.DL_SOFTPHOTO_SET
-        local messageId = downlinkMessageId(data)
-        local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms) or 8000
-        if not hu then
-            publishSoftPhotoReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        if isQuery then
+        queryFn = function(hu, _data, timeoutMs)
             if not hu.queryHostSoftPhoto then
-                publishSoftPhotoReply(dlType, -1, "no_host_uart", nil, messageId)
-                return
+                return nil
             end
             local snap = hu.queryHostSoftPhoto(timeoutMs)
             if snap and snap.parsed then
-                publishSoftPhotoReply(dlType, 0, "ok", snap, messageId)
-            else
-                publishSoftPhotoReply(dlType, -1, "query_fail", nil, messageId)
+                return snap
             end
-            return
-        end
-        if not hu.setHostSoftPhoto then
-            publishSoftPhotoReply(dlType, -1, "no_host_uart", nil, messageId)
-            return
-        end
-        local ok, msg, extra = hu.setHostSoftPhoto({
-            enable = data.enable,
-            nightModeThreshold = data.nightModeThreshold or data.night_mode_threshold,
-            dayModeThreshold = data.dayModeThreshold or data.day_mode_threshold,
-            dayModeAltThreshold = data.dayModeAltThreshold or data.day_mode_alt_threshold,
-            gbGainThreshold = data.gbGainThreshold or data.gb_gain_threshold,
-            gbGainRecordInit = data.gbGainRecordInit or data.gb_gain_record_init,
-            checkTime = data.checkTime or data.check_time,
-            checkCount = data.checkCount or data.check_count,
-            timeout_ms = timeoutMs,
-        })
-        if ok then
-            publishSoftPhotoReply(dlType, 0, "ok", {
+            return nil, "query_fail"
+        end,
+        setFn = function(hu, data, timeoutMs)
+            if not hu.setHostSoftPhoto then
+                return false, "no_host_uart"
+            end
+            local ok, msg, extra = hu.setHostSoftPhoto({
                 enable = data.enable,
                 nightModeThreshold = data.nightModeThreshold or data.night_mode_threshold,
                 dayModeThreshold = data.dayModeThreshold or data.day_mode_threshold,
@@ -1619,24 +1600,35 @@ local function handleDownlinkSoftPhoto(data, isQuery)
                 gbGainRecordInit = data.gbGainRecordInit or data.gb_gain_record_init,
                 checkTime = data.checkTime or data.check_time,
                 checkCount = data.checkCount or data.check_count,
-            }, messageId)
-        else
-            publishSoftPhotoReply(dlType, -1, msg or "fail", extra, messageId)
-        end
-    end)
-end
+                timeout_ms = timeoutMs,
+            })
+            if ok then
+                return true, "ok", {
+                    enable = data.enable,
+                    nightModeThreshold = data.nightModeThreshold or data.night_mode_threshold,
+                    dayModeThreshold = data.dayModeThreshold or data.day_mode_threshold,
+                    dayModeAltThreshold = data.dayModeAltThreshold or data.day_mode_alt_threshold,
+                    gbGainThreshold = data.gbGainThreshold or data.gb_gain_threshold,
+                    gbGainRecordInit = data.gbGainRecordInit or data.gb_gain_record_init,
+                    checkTime = data.checkTime or data.check_time,
+                    checkCount = data.checkCount or data.check_count,
+                }
+            end
+            return false, msg or "fail", extra
+        end,
+    },
+}
+
+local HOST_UART_QUERY_SET_ORDER = {
+    "recordTime", "framerate", "personDetect", "mic", "softPhoto",
+}
 
 local function registerHostQuerySetHandlers(map)
-    local pairs = {
-        { DT.DL_RECORD_TIME_QUERY, DT.DL_RECORD_TIME_SET, handleDownlinkRecordTime },
-        { DT.DL_FRAMERATE_QUERY, DT.DL_FRAMERATE_SET, handleDownlinkFramerate },
-        { DT.DL_PERSON_DETECT_QUERY, DT.DL_PERSON_DETECT_SET, handleDownlinkPersonDetect },
-        { DT.DL_MIC_QUERY, DT.DL_MIC_SET, handleDownlinkMic },
-        { DT.DL_SOFTPHOTO_QUERY, DT.DL_SOFTPHOTO_SET, handleDownlinkSoftPhoto },
-    }
-    for _, item in ipairs(pairs) do
-        map[item[1]] = wrapHostDownlink(item[1], item[3], true)
-        map[item[2]] = wrapHostDownlink(item[2], item[3], false)
+    for i = 1, #HOST_UART_QUERY_SET_ORDER do
+        local spec = HOST_UART_QUERY_SET_SPECS[HOST_UART_QUERY_SET_ORDER[i]]
+        local handler = makeHostQuerySetHandler(spec)
+        map[spec.queryDl] = wrapHostDownlink(spec.queryDl, handler, true)
+        map[spec.setDl] = wrapHostDownlink(spec.setDl, handler, false)
     end
 end
 
