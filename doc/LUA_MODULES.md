@@ -199,6 +199,8 @@ applyUsbInsertState(inserted, source)
 
 ### 3.11 `peripheral.lua` / `led_ctrl.lua`
 
+> 专题：[PERIPHERAL_LED_FLOW.md](modules/PERIPHERAL_LED_FLOW.md)
+
 | 模块 | 职责 |
 |------|------|
 | `peripheral` | 聚合 PWR/BOOT 长按、coproc_ready、LED 模式；启动 `pir_ctrl.startHw` |
@@ -218,6 +220,8 @@ applyUsbInsertState(inserted, source)
 ---
 
 ### 3.13 `time_sync.lua` / `sound_prompt.lua` / `fota_svc.lua`
+
+> 专题：[TIME_SYNC_FLOW.md](modules/TIME_SYNC_FLOW.md) · [SOUND_PROMPT_FLOW.md](modules/SOUND_PROMPT_FLOW.md) · [FOTA_SVC_FLOW.md](modules/FOTA_SVC_FLOW.md)
 
 | 模块 | 职责 |
 |------|------|

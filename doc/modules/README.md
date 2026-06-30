@@ -12,4 +12,8 @@
 | [IPC_SUPERVISION_FLOW.md](IPC_SUPERVISION_FLOW.md) | `ipc_supervision` IPCALERT → 1004/1011/对账/IPCSTAT |
 | [APP_EVENT_BUS.md](APP_EVENT_BUS.md) | `APP_EVENTS` 常量与 `app.lua` 订阅编排 |
 | [VBAT_FILTER.md](VBAT_FILTER.md) | `vbat` ADC 采样、EMA 滤波、`BATTERY_UPDATE` |
+| [PERIPHERAL_LED_FLOW.md](PERIPHERAL_LED_FLOW.md) | `peripheral` 按键 + `led_ctrl` 蓝灯状态机 |
+| [TIME_SYNC_FLOW.md](TIME_SYNC_FLOW.md) | SNTP、`AT+TIMESET`、`pushBeforeNotify` 唤醒对时 |
+| [FOTA_SVC_FLOW.md](FOTA_SVC_FLOW.md) | MQTT 2004 OTA、合宙 IoT HTTP、自动重启 |
+| [SOUND_PROMPT_FLOW.md](SOUND_PROMPT_FLOW.md) | `AT+PLAYSOUND` 冷启动/关机提示音 |
 

@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+-- T3x 语音提示 AT+PLAYSOUND；专题 doc/modules/SOUND_PROMPT_FLOW.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
