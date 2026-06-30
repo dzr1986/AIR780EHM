@@ -290,6 +290,31 @@ local function clearRecordTimer()
         session.timerId = nil
     end
 end
+
+--- 结束录像会话（可选发 PIR_STOP_RECORDING 事件）
+local function endRecordingSession(reason, opts)
+    opts = type(opts) == "table" and opts or {}
+    clearRecordTimer()
+    local uploadMode = session.uploadMode
+    local quality = session.quality
+    local wasRecording = session.recording == true
+    if wasRecording or opts.force then
+        session.recording = false
+        session.last_stop_reason = reason
+        clearEffectiveMediaAction()
+        local ck = STOP_CNT[reason]
+        if ck then
+            statBump(ck)
+        end
+        statLast(opts.statTag or ("stop_" .. tostring(reason)))
+    end
+    if wasRecording and opts.publish_stop ~= false then
+        local E = _G.APP_EVENTS or {}
+        publishEvent(E.PIR_STOP_RECORDING, reason, uploadMode, quality)
+    end
+    return wasRecording, uploadMode, quality
+end
+
 function canPublishStopMqtt()
     return session.stop_mqtt_published ~= true
 end
@@ -312,30 +337,19 @@ function getEffectiveMediaAction()
     return effectiveMediaAction
 end
 function publishStopRecording(reason)
-    if not session.recording then return false end
-    clearRecordTimer()
-    session.recording = false
-    session.last_stop_reason = reason
-    clearEffectiveMediaAction()
-    local ck = STOP_CNT[reason]
-    if ck then
-        statBump(ck)
+    if not session.recording then
+        return false
     end
-    statLast("stop_" .. tostring(reason))
-    local E = _G.APP_EVENTS or {}
-    publishEvent(E.PIR_STOP_RECORDING, reason, session.uploadMode, session.quality)
+    endRecordingSession(reason, { publish_stop = true })
     return true
 end
+
 function syncStopFromT3x(reason)
-    clearRecordTimer()
-    local uploadMode = session.uploadMode
-    local quality = session.quality
-    if session.recording then
-        session.recording = false
-        session.last_stop_reason = reason
-        clearEffectiveMediaAction()
-        statLast("stop_t3x_" .. tostring(reason))
-    end
+    local _, uploadMode, quality = endRecordingSession(reason, {
+        publish_stop = false,
+        statTag = "stop_t3x_" .. tostring(reason),
+        force = session.recording,
+    })
     return uploadMode, quality
 end
 local function beginVideoSession(uploadMode, quality)
@@ -535,6 +549,26 @@ local function shouldIgnorePirTrigger()
     end
     return nil
 end
+local function publishPirGpioEvent(pirStatus, media)
+    local E = _G.APP_EVENTS or {}
+    publishEvent(E.GPIO_PIR_TRIGGERED, pirStatus,
+        media.action, media.uploadMode, media.quality)
+end
+
+local function handlePirRetrigger(media)
+    statBump("cnt_biz_retrigger")
+    statLast("retrigger")
+    requestT3xStopRecord(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
+    publishPirGpioEvent("retrigger", media)
+end
+
+local function handlePirDevinfo()
+    local net = netMqttMod()
+    if net and net.refreshAndPublishDeviceIdentity then
+        net.refreshAndPublishDeviceIdentity(nil)
+    end
+end
+
 function onPirTriggered()
     clearEffectiveMediaAction()
     local ignore = shouldIgnorePirTrigger()
@@ -548,23 +582,18 @@ function onPirTriggered()
         statLast("ignore_rest")
         return nil
     end
-    local E = _G.APP_EVENTS or {}
+
     local media = normalizePirMediaConfig(_G.pirMediaConfig)
     if session.recording and getRecordPolicy().stopOnSecondPir then
-        statBump("cnt_biz_retrigger")
-        statLast("retrigger")
-        requestT3xStopRecord(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
-        publishEvent(E.GPIO_PIR_TRIGGERED, "retrigger", media.action, media.uploadMode, media.quality)
+        handlePirRetrigger(media)
         return nil
     end
+
     statBump("cnt_biz_detected")
     statLast("detected")
-    publishEvent(E.GPIO_PIR_TRIGGERED, "detected", media.action, media.uploadMode, media.quality)
+    publishPirGpioEvent("detected", media)
     if media.action == PIR_MEDIA.ACTION.DEVINFO then
-        local net = netMqttMod()
-        if net and net.refreshAndPublishDeviceIdentity then
-            net.refreshAndPublishDeviceIdentity(nil)
-        end
+        handlePirDevinfo()
         return media
     end
     return publishActionEvents(media)

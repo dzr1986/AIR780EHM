@@ -617,16 +617,44 @@ local function wakeT3xForPir(tag, sid, evt)
         requestT3xWake(tag, wakeSid, evt or 0, opts)
     end
 end
-local function onPirMediaAction(action, uploadMode, quality)
-    if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
-        return
+local function subscribeAll(handlers)
+    for _, item in ipairs(handlers) do
+        sys.subscribe(item[1], item[2])
     end
+end
+
+local function publishPirToMqtt(overrides)
+    if netModule and netModule.publishPirEvent then
+        netModule.publishPirEvent(overrides)
+    elseif netModule and netModule.publishPirDetect then
+        netModule.publishPirDetect(overrides)
+    end
+end
+
+local function maybePublishWakeupForPir(uploadMode)
     local inRest = _G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.low_power_mode) == 1
     if (uploadMode == "auto" or uploadMode == nil) and not inRest
         and netModule and netModule.publishWakeup then
         netModule.publishWakeup()
-    elseif inRest and (uploadMode == "auto" or uploadMode == nil) then
     end
+end
+
+local function scheduleDelayedStatusPublish(delayMs)
+    delayMs = tonumber(delayMs) or 2000
+    sys.timerStart(function()
+        if _G.APP_RUNTIME.online_status == 1 and netModule and netModule.publishStatus then
+            sys.taskInit(function()
+                netModule.publishStatus()
+            end)
+        end
+    end, delayMs)
+end
+
+local function onPirMediaAction(action, uploadMode, quality)
+    if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
+        return
+    end
+    maybePublishWakeupForPir(uploadMode)
     wakeT3xForPir("pir_media")
 end
 local function t3xRecActive()
@@ -665,25 +693,18 @@ local function onPirStopRecording(reason, uploadMode, quality)
     end
     wakeT3xForPir("pir_stop")
 end
-local function subscribeAll(handlers)
-    for _, item in ipairs(handlers) do
-        sys.subscribe(item[1], item[2])
-    end
-end
-local function subscribePirMqttBridge()
-    local function pirPub(overrides)
-        if netModule and netModule.publishPirEvent then
-            netModule.publishPirEvent(overrides)
-        elseif netModule and netModule.publishPirDetect then
-            netModule.publishPirDetect(overrides)
-        end
-    end
-    local handlers = {
+
+--- PIR / T3x → MQTT 事件桥（pir_ctrl / host_uart 发布，net_mqtt 消费）
+
+local function buildPirMqttHandlers()
+    local stopTimer = (_G.APP_PIR_CONFIG and _G.APP_PIR_CONFIG.STOP_REASON
+        and _G.APP_PIR_CONFIG.STOP_REASON.TIMER) or "timer"
+    return {
         { E.PIR_WAKE_T3X, function(action, uploadMode, quality)
             onPirMediaAction(action, uploadMode, quality)
         end },
         { E.PIR_MEDIA_EFFECTIVE, function(action)
-            pirPub({ pirStatus = "media_sync", action = action })
+            publishPirToMqtt({ pirStatus = "media_sync", action = action })
         end },
         { E.PIR_REQUEST_T3X_STOP, function(reason)
             wakeT3xForPir("pir_stop_" .. tostring(reason))
@@ -702,7 +723,7 @@ local function subscribePirMqttBridge()
             end
         end },
         { E.T3X_PERSON_CNT, function(count)
-            pirPub({ pirStatus = "person_update", personCount = tonumber(count) or 0 })
+            publishPirToMqtt({ pirStatus = "person_update", personCount = tonumber(count) or 0 })
         end },
         { E.T3X_RECORD_STOP, function(reason, uploadMode, quality)
             if netModule and netModule.publishT3xRecordStop then
@@ -713,12 +734,10 @@ local function subscribePirMqttBridge()
             ipc_supervision.onAlert(alertCode, alertDetail)
         end },
         { E.PIR_TIMER_EXPIRED, function()
-            local stopTimer = (_G.APP_PIR_CONFIG and _G.APP_PIR_CONFIG.STOP_REASON
-                and _G.APP_PIR_CONFIG.STOP_REASON.TIMER) or "timer"
             pir_ctrl.publishStopRecording(stopTimer)
         end },
         { E.GPIO_PIR_TRIGGERED, function(pirStatus, action, uploadMode, quality)
-            pirPub({
+            publishPirToMqtt({
                 pirStatus = pirStatus or "detected",
                 action = action,
                 uploadMode = uploadMode,
@@ -726,11 +745,10 @@ local function subscribePirMqttBridge()
             })
         end },
     }
-    subscribeAll(handlers)
 end
-local function setupEventHandlers()
-    pir_ctrl.start()
-    subscribeAll({
+
+local function buildSystemEventHandlers()
+    return {
         { E.POWER_ENTER_REST, function()
             if not isLowPowerFeatureEnabled() then
                 return
@@ -766,7 +784,9 @@ local function setupEventHandlers()
         end },
         { E.GPIO_COPROC_READY, function()
             log.info(L, "coproc_ready")
-            if t3xModule then t3xModule.exitBootMode() end
+            if t3xModule then
+                t3xModule.exitBootMode()
+            end
             if pir_ctrl.resume and state.t3x_burn_active then
                 pir_ctrl.resume()
                 _G.T3X_BURN_MODE_ACTIVE = false
@@ -777,20 +797,13 @@ local function setupEventHandlers()
         end },
         { E.GPIO_USB_DET_CHANGED, function(inserted)
             applyUsbInsertState(inserted == 1, "GPIO27")
-            if inserted == 1 and _G.MODULE_FLAGS.rndis and not state.t3x_burn_active then
-            end
-            if inserted == 1 and state.mqtt_started and netModule and netModule.publishStatus then
-                sys.timerStart(function()
-                    if _G.APP_RUNTIME.online_status == 1 then
-                        sys.taskInit(function()
-                            netModule.publishStatus()
-                        end)
-                    end
-                end, 2000)
+            if inserted == 1 and state.mqtt_started then
+                scheduleDelayedStatusPublish(2000)
             end
         end },
         { E.GPIO_CHG_STATE_CHANGED, function(charging)
-            if state.mqtt_started and netModule and netModule.publishStatus and _G.APP_RUNTIME.online_status == 1 then
+            if state.mqtt_started and netModule and netModule.publishStatus
+                and _G.APP_RUNTIME.online_status == 1 then
                 sys.taskInit(function()
                     netModule.publishStatus()
                 end)
@@ -802,9 +815,15 @@ local function setupEventHandlers()
             end
         end },
         { E.MQTT_OFFLINE, onMqttOffline },
-    })
-    subscribePirMqttBridge()
+    }
 end
+
+local function setupEventHandlers()
+    pir_ctrl.start()
+    subscribeAll(buildSystemEventHandlers())
+    subscribeAll(buildPirMqttHandlers())
+end
+
 local function setupGpio()
     if not gpioModule or not _G.MODULE_FLAGS.gpio then return end
     local gin, gout = _G.GPIO_IN, _G.GPIO_OUT
@@ -816,30 +835,24 @@ local function setupGpio()
         ledBluePin = gout and gout.bat_stat_led and gout.bat_stat_led.pin,
     })
 end
+local function startOptionalService(mod, fn)
+    if type(mod) == "table" and mod[fn] then
+        mod[fn]()
+    end
+end
+
 local function startBackgroundServices()
     if _G.MODULE_FLAGS.battery then
-        if type(batAdc) == "table" and batAdc.start then
-            batAdc.start()
-        else
-        end
+        startOptionalService(batAdc, "start")
     end
     if _G.MODULE_FLAGS.charge then
-        if type(usbCharge) == "table" and usbCharge.start then
-            usbCharge.start()
-        else
-        end
+        startOptionalService(usbCharge, "start")
     end
     if _G.MODULE_FLAGS.sntp then
-        if type(time_sync) == "table" and time_sync.startSntp then
-            time_sync.startSntp()
-        else
-        end
+        startOptionalService(time_sync, "startSntp")
     end
     if _G.MODULE_FLAGS.mobile_info then
-        if type(mobile_info) == "table" and mobile_info.start then
-            mobile_info.start()
-        else
-        end
+        startOptionalService(mobile_info, "start")
     end
 end
 local function initPowerStatus()
