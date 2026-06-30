@@ -1,3 +1,4 @@
+-- 电量档位（battery 策略）：doc/modules/BATTERY_GUARD_TIERS.md
 require "sys"
 require "config"
 local _modname = ...
@@ -6,6 +7,11 @@ _G[_modname] = _M
 
 local pir_ctrl
 local hooks = {}
+
+local TIER_NORMAL = "normal"
+local TIER_HOST_IDLE = "host_idle"
+local TIER_SHUTDOWN = "shutdown"
+
 local guard = {
     pir_suspended = false,
     rest_by_battery = false,
@@ -15,6 +21,7 @@ local guard = {
     rest_exit_ts = 0,
     enter_confirm_streak = 0,
     exit_confirm_streak = 0,
+    host_idle_wake_ts = 0,
 }
 
 -- ---------------------------------------------------------------------------
@@ -39,6 +46,14 @@ local function intCfg(key, default)
         return default
     end
     return v
+end
+
+local function getStrategy()
+    return _G.LOW_POWER_ENTER_STRATEGY or "battery"
+end
+
+local function isHybridStrategy()
+    return getStrategy() == "hybrid"
 end
 
 local function enabled()
@@ -68,6 +83,37 @@ function isUsbInserted()
         return hooks.is_usb_inserted() and true or false
     end
     return false
+end
+
+-- ---------------------------------------------------------------------------
+-- 电量档位
+-- ---------------------------------------------------------------------------
+
+function getBatteryTier(pct)
+    pct = tonumber(pct)
+    if pct == nil then
+        return nil
+    end
+    local shutdownPct = pctThreshold("shutdown_percent")
+    local hostIdlePct = pctThreshold("host_idle_below_percent")
+    if shutdownPct == nil or hostIdlePct == nil then
+        return nil
+    end
+    if pct <= shutdownPct then
+        return TIER_SHUTDOWN
+    end
+    if pct <= hostIdlePct then
+        return TIER_HOST_IDLE
+    end
+    return TIER_NORMAL
+end
+
+local function syncBatteryTier(pct)
+    local tier = getBatteryTier(pct)
+    if _G.APP_RUNTIME and tier then
+        _G.APP_RUNTIME.battery_tier = tier
+    end
+    return tier
 end
 
 -- ---------------------------------------------------------------------------
@@ -175,23 +221,32 @@ function shouldAllowPirInRest()
     return isBatteryDynamicRest()
 end
 
---- 一直录像常电：电量 >t3x_rest_percent 且非 rest 时拒绝 HOSTIDLE 休眠
+--- >20% 常电：拒绝 HOSTIDLE；5~20% 中间档：允许 HOSTIDLE 断 T31
 function shouldAllowHostIdleSleep()
     if cfg().block_host_idle_above_recover == false then
         return true
     end
-    if guard.rest_by_battery then
-        return true
-    end
-    local pct = guard.last_percent
-    if pct == nil and _G.APP_RUNTIME then
-        pct = tonumber(_G.APP_RUNTIME.battery_percent)
-    end
-    local alwaysOnPct = pctThreshold("t3x_rest_percent")
-    if pct ~= nil and alwaysOnPct ~= nil and pct > alwaysOnPct then
+    return getBatteryTier(guard.last_percent) == TIER_HOST_IDLE
+end
+
+--- 中间档 PIR 唤醒后至少 host_idle_min_awake_sec 内拒绝 HOSTIDLE，保证 T31 进入录像
+function canAcceptHostIdleSleep()
+    if not shouldAllowHostIdleSleep() then
         return false
     end
-    return true
+    local minAwake = intCfg("host_idle_min_awake_sec", 30)
+    if minAwake <= 0 or guard.host_idle_wake_ts <= 0 then
+        return true
+    end
+    return (os.time() - guard.host_idle_wake_ts) >= minAwake
+end
+
+function noteT3xAwakeForHostIdle()
+    guard.host_idle_wake_ts = os.time()
+end
+
+function markT3xWoken()
+    noteT3xAwakeForHostIdle()
 end
 
 -- ---------------------------------------------------------------------------
@@ -203,12 +258,17 @@ local function loadPctThresholds()
         shutdown = pctThreshold("shutdown_percent"),
         rest = pctThreshold("t3x_rest_percent"),
         recover = pctThreshold("recover_rest_percent"),
+        host_idle = pctThreshold("host_idle_below_percent"),
         pir_suspend = pctThreshold("pir_suspend_percent"),
         pir_resume = pctThreshold("pir_resume_percent"),
     }
 end
 
-local function thresholdsReady(t)
+local function thresholdsReadyBattery(t)
+    return t.shutdown and t.host_idle
+end
+
+local function thresholdsReadyHybrid(t)
     return t.shutdown and t.rest and t.recover and t.pir_suspend and t.pir_resume
 end
 
@@ -270,7 +330,7 @@ local function tryExitBatteryRest(pct, recoverPct)
     exitBatteryRest()
 end
 
---- 已在 rest 但非电量 rest（如历史 usb_remove 误进）：电量 >recover 时立即退出
+--- 已在 rest 但非电量 rest（如历史 usb_remove 误进）：电量恢复时立即退出
 local function tryExitMismatchedRest(pct, recoverPct)
     if pct == nil or recoverPct == nil or pct <= recoverPct then
         return
@@ -315,7 +375,28 @@ local function handleShutdownZone(pct, shutdownPct)
     return true
 end
 
-local function handleRestZone(pct, t)
+--- battery 策略：>20% 常电；5~20% HOSTIDLE；≤5% 关机
+local function evaluateBatteryStrategy(pct, t)
+    local tier = syncBatteryTier(pct)
+
+    if tier == TIER_SHUTDOWN then
+        handleShutdownZone(pct, t.shutdown)
+        return
+    end
+
+    cancelShutdownTimer()
+
+    if guard.pir_suspended then
+        resumePir()
+    end
+    if guard.rest_by_battery then
+        exitBatteryRest()
+    end
+    tryExitMismatchedRest(pct, t.host_idle)
+end
+
+--- hybrid 策略：保留 ≤t3x_rest_percent 进 4G rest 的旧逻辑
+local function handleRestZoneHybrid(pct, t)
     if guard.rest_by_battery then
         tryExitBatteryRest(pct, t.recover)
     else
@@ -324,12 +405,24 @@ local function handleRestZone(pct, t)
     end
 end
 
-local function handlePirZone(pct, t)
+local function handlePirZoneHybrid(pct, t)
     if pct <= t.pir_suspend then
         suspendPir()
     elseif pct > t.pir_resume then
         resumePir()
     end
+end
+
+local function evaluateHybridStrategy(pct, t)
+    syncBatteryTier(pct)
+
+    if handleShutdownZone(pct, t.shutdown) then
+        return
+    end
+
+    cancelShutdownTimer()
+    handleRestZoneHybrid(pct, t)
+    handlePirZoneHybrid(pct, t)
 end
 
 function evaluate(pct, mv)
@@ -346,7 +439,7 @@ function evaluate(pct, mv)
     end
     guard.last_percent = pct
 
-    -- 阶段 1：USB 供电路径（优先于电量阈值）
+    -- 阶段 1：USB 供电（优先于电量阈值）
     if isUsbInserted() then
         cancelShutdownTimer()
         if guard.rest_by_battery or guard.pir_suspended then
@@ -360,29 +453,26 @@ function evaluate(pct, mv)
     end
 
     local t = loadPctThresholds()
-    if not thresholdsReady(t) then
-        return
+    if isHybridStrategy() then
+        if not thresholdsReadyHybrid(t) then
+            return
+        end
+        evaluateHybridStrategy(pct, t)
+    else
+        if not thresholdsReadyBattery(t) then
+            return
+        end
+        evaluateBatteryStrategy(pct, t)
     end
-
-    -- 阶段 2：关机区（≤shutdown_percent）
-    if handleShutdownZone(pct, t.shutdown) then
-        return
-    end
-
-    cancelShutdownTimer()
-
-    -- 阶段 3：rest 进出（t3x_rest / recover）
-    handleRestZone(pct, t)
-
-    -- 阶段 4：PIR 挂起/恢复
-    handlePirZone(pct, t)
 end
 
 -- ---------------------------------------------------------------------------
 -- USB 事件入口
 -- ---------------------------------------------------------------------------
 
-function onUsbInserted()
+function onUsbInserted(opts)
+    opts = type(opts) == "table" and opts or {}
+    local source = opts.source
     cancelShutdownTimer()
     local wasRest = guard.rest_by_battery
     local wasPir = guard.pir_suspended
@@ -390,9 +480,11 @@ function onUsbInserted()
     guard.pir_suspended = false
     guard.rest_enter_ts = 0
     guard.rest_exit_ts = 0
+    guard.host_idle_wake_ts = 0
     resetConfirmStreaks()
     if _G.APP_RUNTIME then
         _G.APP_RUNTIME.battery_dynamic_rest = 0
+        _G.APP_RUNTIME.battery_tier = TIER_NORMAL
     end
     if wasPir then
         resumePir()
@@ -404,7 +496,8 @@ function onUsbInserted()
             exitedRest = true
         end
     end
-    if not exitedRest and type(hooks.wake_t3x) == "function" then
+    -- 冷启动时 initPowerStatus 早于 t3x_ctrl.start()，由 bootPowerOn 上电，避免与 wake_t3x 重复
+    if not exitedRest and source ~= "boot" and type(hooks.wake_t3x) == "function" then
         hooks.wake_t3x()
     end
 end
@@ -444,12 +537,15 @@ end
 function getState()
     return {
         enabled = enabled(),
+        strategy = getStrategy(),
+        battery_tier = getBatteryTier(guard.last_percent),
         usb_inserted = isUsbInserted(),
         pir_suspended = guard.pir_suspended,
         rest_by_battery = guard.rest_by_battery,
         battery_dynamic_rest = isBatteryDynamicRest(),
         shutdown_pending = guard.shutdown_timer ~= nil,
         last_percent = guard.last_percent,
+        host_idle_wake_ts = guard.host_idle_wake_ts,
         rest_enter_ts = guard.rest_enter_ts,
         rest_exit_ts = guard.rest_exit_ts,
         enter_confirm_streak = guard.enter_confirm_streak,

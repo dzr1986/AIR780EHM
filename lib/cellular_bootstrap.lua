@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+-- SIM/APN 与 IP_READY 入网；专题 doc/modules/CELLULAR_BOOTSTRAP.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M

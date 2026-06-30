@@ -1,4 +1,6 @@
 --- 主机串口：AT/HEX/STR 协议 + uart_bridge + GPIO 唤醒
+-- 分发：AT_CMD_TABLE / RX_LINE_HANDLER_REGISTRY
+--       见 doc/modules/HOST_UART_AT_DISPATCH.md
 -- @module host_uart
 
 require "sys"
@@ -1506,7 +1508,7 @@ local function uart_str_line(line)
 end
 
 -- ---------------------------------------------------------------------------
--- 表驱动分发
+-- 表驱动分发（文档：doc/modules/HOST_UART_AT_DISPATCH.md §2）
 -- ---------------------------------------------------------------------------
 
 local function uart_cmd_entry(keys, prefix, handler)
@@ -1518,8 +1520,10 @@ local function uart_cmd_entry(keys, prefix, handler)
 end
 
 local AT_CMD_TABLE = {
+    -- 握手 / 版本
     uart_cmd_entry("AT", nil, uart_at_ack),
     uart_cmd_entry({ "ATI", "AT+CGMR", "AT+GETVER" }, nil, uart_ati),
+    -- 状态查询
     uart_cmd_entry("AT+GETCFG", nil, uart_getcfg),
     uart_cmd_entry({ "AT+PIRSTAT", "AT+PIRSTAT?" }, nil, uart_pirstat_query),
     uart_cmd_entry("AT+PIRCLR", nil, uart_pirclr),
@@ -1537,6 +1541,7 @@ local AT_CMD_TABLE = {
     uart_cmd_entry("AT+TIME", nil, uart_time_query),
     uart_cmd_entry({ "AT+IMEI", "AT+IMEI?" }, nil, uart_imei),
     uart_cmd_entry({ "AT+IPCINFO", "AT+IPCINFO?" }, nil, uart_ipcinfo_query),
+    -- 链路 / 通道配置
     uart_cmd_entry(nil, "AT+MQTTPUB=", uart_mqttpub),
     uart_cmd_entry({ "AT+WLED?", "AT+WLEDEN?" }, nil, uart_wled),
     uart_cmd_entry(nil, "AT+WLED=", uart_wled),
@@ -1549,6 +1554,7 @@ local AT_CMD_TABLE = {
     uart_cmd_entry(nil, "AT+RIL=", uart_ril),
     uart_cmd_entry(nil, "AT+SENDSTR=", uart_sendstr),
     uart_cmd_entry(nil, "AT+SENDHEX=", uart_sendhex),
+    -- 低功耗 / 休眠
     uart_cmd_entry(nil, "AT+LOWPOWER=", uart_lowpower),
     uart_cmd_entry({ "AT+HOSTIDLE", "AT+HOSTIDLE?" }, nil, uart_hostidle),
     uart_cmd_entry(nil, "AT+HOSTIDLE=", uart_hostidle),
@@ -1556,6 +1562,7 @@ local AT_CMD_TABLE = {
     uart_cmd_entry(nil, "AT+RNDIS=", uart_rndis),
     uart_cmd_entry({ "AT+USBRESET", "AT+USBRESET?" }, nil, uart_usbreset),
     uart_cmd_entry(nil, "AT+USBRECOVERY=", uart_usbrecovery),
+    -- 电源 / OTA
     uart_cmd_entry("AT+REBOOT", nil, uart_reboot),
     uart_cmd_entry("AT+POWEROFF", nil, uart_poweroff),
     uart_cmd_entry({ "AT+OTA", "AT+OTACHECK" }, nil, uart_ota),
@@ -2267,33 +2274,38 @@ local function try_ipcpoweroff_line(line)
     return false
 end
 
---- 主机上行应答行：按序尝试专用解析器（命中即消费，不再走 AT 分发）
-local RX_LINE_TRY_HANDLERS = {
-    try_encode_uart_error,
-    try_sound_ack_line,
-    try_timeset_ack_line,
-    try_gb28181_line,
-    try_wled_line,
-    try_tfformat_line,
-    try_tfcard_line,
-    try_recordtime_line,
-    try_framerate_line,
-    try_recordctrl_line,
-    try_persondet_line,
-    try_record_line,
-    try_venc_line,
-    try_vencset_line,
-    try_audio_line,
-    try_audioset_line,
-    try_mic_line,
-    try_micset_line,
-    try_softphoto_line,
-    try_softphotoset_line,
-    try_ipcstat_line,
-    try_ipcstatus_line,
-    try_ipcpoweroff_line,
-    try_encode_ok_tail,
+--- T3x 上行应答行注册表（按序尝试，命中即消费；文档见 doc/modules/HOST_UART_AT_DISPATCH.md）
+local RX_LINE_HANDLER_REGISTRY = {
+    { name = "encode_uart_error", fn = try_encode_uart_error },
+    { name = "sound_ack", fn = try_sound_ack_line },
+    { name = "timeset_ack", fn = try_timeset_ack_line },
+    { name = "gb28181", fn = try_gb28181_line },
+    { name = "wled", fn = try_wled_line },
+    { name = "tfformat", fn = try_tfformat_line },
+    { name = "tfcard", fn = try_tfcard_line },
+    { name = "recordtime", fn = try_recordtime_line },
+    { name = "framerate", fn = try_framerate_line },
+    { name = "recordctrl", fn = try_recordctrl_line },
+    { name = "persondet", fn = try_persondet_line },
+    { name = "record", fn = try_record_line },
+    { name = "venc", fn = try_venc_line },
+    { name = "vencset", fn = try_vencset_line },
+    { name = "audio", fn = try_audio_line },
+    { name = "audioset", fn = try_audioset_line },
+    { name = "mic", fn = try_mic_line },
+    { name = "micset", fn = try_micset_line },
+    { name = "softphoto", fn = try_softphoto_line },
+    { name = "softphotoset", fn = try_softphotoset_line },
+    { name = "ipcstat", fn = try_ipcstat_line },
+    { name = "ipcstatus", fn = try_ipcstatus_line },
+    { name = "ipcpoweroff", fn = try_ipcpoweroff_line },
+    { name = "encode_ok_tail", fn = try_encode_ok_tail },
 }
+
+local RX_LINE_TRY_HANDLERS = {}
+for i = 1, #RX_LINE_HANDLER_REGISTRY do
+    RX_LINE_TRY_HANDLERS[i] = RX_LINE_HANDLER_REGISTRY[i].fn
+end
 
 local function hostFirstAtEvent()
     return (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"

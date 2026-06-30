@@ -6,16 +6,15 @@ Cat.1 在 **电量 ≤5% 且未插 USB** 时排程整机关机。2026-06 起：*
 
 ---
 
-## 1. 电量分档（未插 USB）
+## 1. 电量分档（未插 USB，`battery` 策略默认）
 
 | 电量 | 行为 |
 |------|------|
-| >20% | 常电 |
-| 10%～20% | T3x 可 HOSTIDLE，4G 仍 normal |
-| ≤10% | 进 4G rest，发 **1002** enter |
-| ≤5% | 停 PIR + rest + **延时关机**（默认 3s） |
+| >20% | 常电；拒绝 HOSTIDLE |
+| 5%～20% | T31 可 HOSTIDLE；4G 仍 normal；PIR 唤醒后 30s 内拒 HOSTIDLE |
+| ≤5% | 挂起 PIR + 4G rest（1002）+ 延时关机（默认 3s） |
 
-配置真源：`/mnt/share/user/config.lua` → `BATTERY_CFG.guard`。
+`hybrid` 策略另含 ≤`t3x_rest_percent` 进 4G rest。配置真源：`user/config.lua` → `BATTERY_CFG.guard`。模块逻辑见 [LUA_MODULES.md](LUA_MODULES.md)。
 
 ---
 

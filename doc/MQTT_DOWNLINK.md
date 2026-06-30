@@ -1,5 +1,6 @@
 # MQTT 下行命令手册（平台 → 设备）
 
+> **端到端联调**：[MQTT_CLIENT_E2E_TEST.md](MQTT_CLIENT_E2E_TEST.md)（MQTTX 配置、冒烟步骤、mosquitto 命令）  
 > **本机示例 IMEI**：`862323084068124`  
 > **MQTTX 抄录**：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)  
 > **完整协议**：[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) · **平台对接**：[§1.2](./MQTT_PROTOCOL.md#12-平台对接须知) · **远程控制流程**：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · **代码**：`user/net_mqtt.lua`

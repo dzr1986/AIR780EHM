@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+-- USB_DET / CHG_STATE 中断；专题 doc/modules/USB_CHARGE_POLICY.md
 local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)

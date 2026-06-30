@@ -1,4 +1,5 @@
 local _modname = ...
+-- rest 期间 mqtt/tcp 唤醒通道策略；专题 doc/modules/LOW_POWER_WAKEUP.md
 module(_modname, package.seeall)
 _G[_modname] = _M
 

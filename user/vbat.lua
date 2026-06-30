@@ -1,3 +1,5 @@
+--- ADC 电量采样与滤波 → BATTERY_UPDATE / APP_RUNTIME
+-- 专题：doc/modules/VBAT_FILTER.md
 require "sys"
 require "config"
 local _modname = ...

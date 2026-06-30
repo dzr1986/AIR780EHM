@@ -1,4 +1,5 @@
 require "sys"
+-- LuatOS OTA（MQTT 2004 / DEVICE_OTA_REQUEST）；专题 doc/modules/FOTA_SVC_FLOW.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M

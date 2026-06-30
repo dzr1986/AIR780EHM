@@ -1,4 +1,5 @@
 require "config"
+-- HOSTEVT 待处理汇总；专题 doc/modules/HOST_EVENT_PENDING.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M

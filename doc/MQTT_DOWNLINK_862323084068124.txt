@@ -7,6 +7,7 @@
   协议规则         : 下行 200x  ↔  上行 100x（个位对齐）
   代码实现         : user/net_mqtt.lua
   详细说明         : doc/MQTT_PROTOCOL.md / doc/MQTT_DOWNLINK.md
+                     doc/MQTT_CLIENT_E2E_TEST.md（MQTTX 联调步骤）
                      doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md（帧率/录像/人形 AT 流程）
   文档版本         : 2026-06-26
 

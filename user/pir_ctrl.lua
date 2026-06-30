@@ -1,3 +1,4 @@
+--- PIR 硬件中断 + 录像会话 + 云端启停；文档：doc/modules/PIR_CTRL_FLOW.md
 require "sys"
 require "config"
 local gpio_util = require "gpio_util"
@@ -569,17 +570,20 @@ local function handlePirDevinfo()
     end
 end
 
+local PIR_IGNORE_STATS = {
+    suspend = { cnt = "cnt_biz_ignore_suspend", last = "ignore_suspend" },
+    rest = { cnt = "cnt_biz_ignore_rest", last = "ignore_rest" },
+}
+
 function onPirTriggered()
     clearEffectiveMediaAction()
     local ignore = shouldIgnorePirTrigger()
-    if ignore == "suspend" then
-        statBump("cnt_biz_ignore_suspend")
-        statLast("ignore_suspend")
-        return nil
-    end
-    if ignore == "rest" then
-        statBump("cnt_biz_ignore_rest")
-        statLast("ignore_rest")
+    if ignore then
+        local st = PIR_IGNORE_STATS[ignore]
+        if st then
+            statBump(st.cnt)
+            statLast(st.last)
+        end
         return nil
     end
 

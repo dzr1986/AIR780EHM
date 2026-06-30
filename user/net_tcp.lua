@@ -1,4 +1,5 @@
 require "sys"
+-- TCP 唤醒桩（LOW_POWER_WAKEUP_CFG.mode=tcp 时由 low_power_wakeup 懒加载）；专题 doc/modules/LOW_POWER_WAKEUP.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
