@@ -348,7 +348,9 @@ evaluate ≤5% → suspendPir + onEnterLowPower(battery) + scheduleShutdown(3s)
 |------|------|
 | [modules/README.md](modules/README.md) | **专题文档索引** |
 | [modules/HOST_UART_AT_DISPATCH.md](modules/HOST_UART_AT_DISPATCH.md) | host_uart AT 表与上行应答 |
-| [modules/NET_MQTT_DOWNLINK_DISPATCH.md](modules/NET_MQTT_DOWNLINK_DISPATCH.md) | net_mqtt 下行 200x 分发 |
+| [modules/PIR_CTRL_FLOW.md](modules/PIR_CTRL_FLOW.md) | PIR 硬件与会话 |
+| [modules/BATTERY_GUARD_TIERS.md](modules/BATTERY_GUARD_TIERS.md) | 电量三档策略 |
+| [modules/T3X_POWER_WAKEUP.md](modules/T3X_POWER_WAKEUP.md) | T3x 供电唤醒 |
 | [CONFIG.md](CONFIG.md) | 配置字段索引 |
 | [CALL_GRAPH.md](CALL_GRAPH.md) | 启动与事件流 |
 | [POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) | 电量/USB/T3x 决策 |

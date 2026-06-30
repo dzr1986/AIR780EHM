@@ -1,6 +1,4 @@
--- T3x 协处理器电源控制：GPIO22 上断电、GPIO29 唤醒、优雅 IPC 关机
--- 休眠互斥：enterSleep 期间 sleep_in_progress；唤醒前 waitSleepIdle
--- 文档：doc/LUA_MODULES.md §3.7
+-- 文档：doc/modules/T3X_POWER_WAKEUP.md
 require "sys"
 require "config"
 local gpio_util = require "gpio_util"

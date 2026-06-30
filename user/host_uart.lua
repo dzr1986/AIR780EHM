@@ -1,4 +1,6 @@
 --- 主机串口：AT/HEX/STR 协议 + uart_bridge + GPIO 唤醒
+-- 分发：AT_CMD_TABLE / RX_LINE_HANDLER_REGISTRY
+--       见 doc/modules/HOST_UART_AT_DISPATCH.md
 -- @module host_uart
 
 require "sys"
