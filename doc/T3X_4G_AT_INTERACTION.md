@@ -2,6 +2,7 @@
 
 > 先读框架简图：[T3X_4G_FRAMEWORK.md](T3X_4G_FRAMEWORK.md)  
 > **AT 规范（MQTT + TCP）**：[T3X_CAT1_AT_COMMAND_SPEC.md](T3X_CAT1_AT_COMMAND_SPEC.md)  
+> **MQTT 远程控制（帧率/录像/人形）**：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md)  
 > 物理：UART（默认 115200 8N1，`\r\n` 行协议）  
 > 4G 实现：`user/host_uart.lua`  
 > T3x 实现：`t3x_linux/api.c`  
@@ -105,6 +106,12 @@ T3x API：`client_get_runtime_config`、`client_query_host_evt`、`client_get_pi
 |------|------|------|
 | `AT+PLAYSOUND=boot\|shutdown` | 提示音 | [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md) |
 | `AT+TIMESET=<unix>` | 设置系统时间 | [TIME_SYNC.md](TIME_SYNC.md) |
+| `AT+FRAMERATE?` / `AT+FRAMERATE=` | MQTT **2024/2025** 帧率 | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#3-帧率2024--2025) |
+| `AT+RECORDCTRL=1/0` | MQTT **2012/2011** 直连开停录（T3x 在线） | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012) |
+| `AT+PERSONDET?` / `AT+PERSONDET=` | MQTT **2026/2027** 人形检测 | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §5](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#5-人形检测2026--2027) |
+| `AT+VENC?` / `AT+VENCSET` 等 | MQTT **2020/2021** 编码 | [REMOTE_ENCODE_CONFIG.md](REMOTE_ENCODE_CONFIG.md) |
+
+完整 4G→T3x 表见 [UART_AT_COMMANDS.md §3](UART_AT_COMMANDS.md#3-cat1--t3x4g-主动发t3x-答)。
 
 4G 调用 `host_uart.notify_host(sid, evt)` → GPIO29 低脉冲 → T3x `PB27` 下降沿。
 

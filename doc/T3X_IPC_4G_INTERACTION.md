@@ -154,8 +154,8 @@ sequenceDiagram
 | 入口 | reason | MQTT |
 |------|--------|------|
 | 冷启动无 USB | `boot_no_usb` | conack 补 1002+1003 |
-| USB 拔出 | `usb_remove` | 1002 |
-| 电量 ≤10% | `battery` | 1002 |
+| USB 拔出 | `battery`（≤20%）或 legacy `usb_remove`¹ | 1002 |
+| 电量 ≤20% | `battery` | 1002 |
 | 平台 2002 | `mqtt_2002` | — |
 | MQTT 重连 | — | 1002+1003（不发 1001） |
 
@@ -168,7 +168,7 @@ GPIO27 **USB 插入**时，4G 与 T3x **互斥**低功耗指令（详见 [T3X_US
 | USB | 4G 模块 | T3x |
 |-----|---------|------------|
 | **插入** | 不进 rest；拒绝 `HOSTIDLE=1` → `+HOSTIDLE:USB` | 收 `+CAT1:USB,1` → **停止**发 `HOSTIDLE=1`（仍可做 `HOSTEVT?` 业务） |
-| **拔出** | 发 `+CAT1:USB,0`；可 `onEnterLowPower(usb_remove)` | 清除阻塞；`has_event=0` 时可再 `HOSTIDLE=1` |
+| **拔出** | 发 `+CAT1:USB,0`；**仅 ≤20%** 进 rest（`battery`） | 清除阻塞；`has_event=0` 且 ≤20% 时可再 `HOSTIDLE=1` |
 
 配置：`user/config.lua` → `HOST_USB_CFG`（`block_4g_rest_when_usb` / `notify_t3x_usb_state`）。
 

@@ -5,6 +5,7 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local LOG_TAG = "usb_charge"
+local updateChg
 local started = false
 local usb_det_ready = false
 local last_usb = nil
@@ -81,6 +82,10 @@ local function readCharging()
     end
     return gpio.get(pin) == cfg().chg_active_level
 end
+--- 有效充电态：须 USB 已插入且 CHG_STATE 有效（避免 GPIO17 悬空误报）
+local function effectiveCharging()
+    return readUsbInserted() and readCharging()
+end
 local function publishUsbChange(inserted)
     local ev = (_G.APP_EVENTS and _G.APP_EVENTS.GPIO_USB_DET_CHANGED) or "APP_GPIO_USB_DET_CHANGED"
     sys.publish(ev, inserted and 1 or 0)
@@ -103,8 +108,9 @@ local function updateUsb(inserted, fromIrq)
         end
     end
     publishUsbChange(inserted)
+    updateChg(effectiveCharging(), fromIrq)
 end
-local function updateChg(charging, fromIrq)
+updateChg = function(charging, fromIrq)
     if last_chg == charging then
         return
     end
@@ -117,7 +123,7 @@ local function onUsbIrq(_level)
     updateUsb(readUsbInserted(), true)
 end
 local function onChgIrq(_level)
-    updateChg(readCharging(), true)
+    updateChg(effectiveCharging(), true)
 end
 local function setupPinIrq(entry, callback)
     return gpio_util.setup_input_entry(entry, callback)
@@ -140,7 +146,7 @@ function start()
     end
     started = true
     last_usb = readUsbInserted()
-    last_chg = readCharging()
+    last_chg = effectiveCharging()
     log.info(LOG_TAG, "已启动(中断)",
         "USB_DET GPIO" .. tostring(c.usb_det_pin), last_usb and "插入" or "拔出",
         "CHG_STATE GPIO" .. tostring(c.chg_state_pin), last_chg and "充电" or "未充")
@@ -157,7 +163,10 @@ function isUsbInserted()
     return readUsbInserted()
 end
 function isCharging()
-    return readCharging() and 1 or 0
+    if not readUsbInserted() then
+        return 0
+    end
+    return effectiveCharging() and 1 or 0
 end
 function getState()
     return {

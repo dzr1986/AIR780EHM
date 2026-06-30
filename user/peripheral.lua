@@ -6,7 +6,7 @@ local led_ctrl = require "led_ctrl"
 local pir_ctrl = require "pir_ctrl"
 local _M = {}
 module(..., package.seeall)
-local LOG_TAG = "peri"
+local LOG_TAG = "peripheral"
 local keyStarted = false
 local bootCfg, pwrCfg, readyCfg
 local pressStates = {

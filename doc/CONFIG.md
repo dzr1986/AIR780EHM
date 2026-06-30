@@ -108,6 +108,14 @@
 | **adc** | `channel` | `1` | BAT_ADC / ADC1 |
 | | `mv_scale` | `3326/1131` | 引脚 mV × scale = 电芯 mV |
 | | `divider` | 1000K+510K | `mv_scale` 为 nil 时自动计算 |
+| | `mv_calibration` | `3812/3608` | 板级实测校准系数（见 §10） |
+| **filter** | `sample_count` | `11` | 每周期 ADC 子采样次数 |
+| | `sample_spacing_ms` | `20` | 子采样间隔（ms） |
+| | `trim_drop` | `2` | 排序后去掉首尾各 N 个再均值 |
+| | `ema_alpha` | `0.35` | 电芯 mV 指数平滑（0～1） |
+| | `mv_max_step` | `35` | 每周期 mV 最大变化（限幅） |
+| | `percent_hyst_high_mv` | `4120` | 已为 100% 时，低于此 mV 才降百分比 |
+| | `percent_max_step` | `2` | 每周期百分比最大变化 |
 | **cell** | `v_max_mv` / `v_min_mv` | 4200 / 3000 | 映射 100% / 1% |
 | | `sample_interval_ms` | 10000 | `vbat` 采样周期 |
 | | `mqtt_report_interval_sec` | 60 | MQTT 1003 `remainPower` 周期 |
@@ -222,6 +230,20 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `ready_wait_timeout_ms` | 120000 | 上电后轮询 ready 总超时 |
 | `ready_poll_ms` | 1000 | ready 轮询间隔 |
 | `boot_sound_wait_ready` | true | 冷启动开机音等 `+IPCSTATUS:ready` |
+| `uart_recovery.*` | 见下 | **USB 已插**且连续 `ipc_status_no_response` 时 powerOff→powerOn→脉冲 |
+
+`uart_recovery` 子表（`host_uart.lua`）：
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `enabled` | true | 看门狗开关 |
+| `miss_threshold` | 5 | 连续无应答次数后触发恢复 |
+| `max_attempts` | 3 | 单次上电周期最多恢复次数 |
+| `cooldown_sec` | 30 | 两次恢复最小间隔 |
+| `power_off_ms` | 500 | 断电保持 |
+| `power_on_wait_ms` | 800 | 上电后等待再脉冲 |
+
+日志：`uart_recovery_sched` → `uart_recovery_cycle`；耗尽 `uart_recovery_exhausted`。
 
 ### `T3X_POLICY_CFG` T3x 门禁（`config.lua`，v1.2）
 

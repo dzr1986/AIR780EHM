@@ -120,8 +120,8 @@ sequenceDiagram
     U->>G: 拔出
     G->>H: push_usb_host_idle_state(0)
     H->>T: +CAT1:USB,0
-    G->>G: onEnterLowPower(usb_remove) 可选
-    Note over T: has_event=0 时可 HOSTIDLE=1
+    G->>G: onUsbRemoved → evaluate（仅 ≤20% 进 rest）
+    Note over T: has_event=0 且 ≤20% 时可 HOSTIDLE=1
 ```
 
 ---
@@ -155,8 +155,8 @@ flowchart TD
 
 | 来源 | reason | 调用方 |
 |------|--------|--------|
-| USB 拔出（GPIO27） | `usb_remove` | `enterRestIfNeededAfterUsbRemove` |
-| 电量 ≤10% | `battery` | `battery_guard` → hooks |
+| USB 拔出（GPIO27） | `battery`（仅 ≤20%）或 legacy `usb_remove`¹ | `enterRestIfNeededAfterUsbRemove` → `battery_guard.onUsbRemoved` |
+| 电量 ≤20% | `battery` | `battery_guard` → hooks |
 | MQTT 下行 2002 | `mqtt_2002` | `POWER_ENTER_REST` |
 | Host AT | `at` | `host_uart` hooks |
 | 冷启动无 USB | `boot_no_usb` | `initPowerStatus`（与 `charge` 模块是否加载无关，只看 GPIO27/VBUS） |
@@ -183,7 +183,8 @@ flowchart TD
 }
 ```
 
-`reason` 与 `app.onEnterLowPower` 一致：`boot_no_usb` / `usb_remove` / `battery` / `mqtt_2002` / `at` 等。  
+`reason` 与 `app.onEnterLowPower` 一致：`boot_no_usb` / `battery` / `mqtt_2002` / `at` 等。  
+¹ **`usb_remove`**：仅 **未开 battery_guard** 的旧逻辑；默认 **battery 策略**下拔 USB **>20% 不进 rest**，见 [WORK_MODE_BATTERY_20PCT.md §9](WORK_MODE_BATTERY_20PCT.md#9-usb-拔插与-rest仅电量-20)。  
 **后台读态以 1003.lowPowerMode 为准**；1002 表示「进 rest 时刻」。
 
 ### MQTT conack 首条上行（1001 / 1002+1003）
@@ -387,7 +388,8 @@ T3x 可保持 `WITH_T3X_LOW_POWER=yes`（其它场景仍可用 IPCSTATUS）；`e
 ## 7. 实机验证清单
 
 - [ ] `LOW_POWER_ENABLE=0`：拔 USB **不**进 rest，日志见「低功耗能力已关闭」
-- [ ] `LOW_POWER_ENABLE=1`：拔 USB 进 rest，MQTT 1002 含 `reason=usb_remove`，1003 `lowPowerMode=rest`
+- [ ] `LOW_POWER_ENABLE=1` + **battery 策略**：**>20%** 拔 USB **不进** rest；**≤20%** 进 rest，1002 `reason=battery`
+- [ ] legacy（未开 battery_guard）：拔 USB 可能仍 `reason=usb_remove`
 - [ ] 冷启动无 USB 进 rest：MQTT conack 发 **1002+1003**（不发 1001）
 - [ ] **1003 周期**约 **30s**（`low_power_interval_sec` 初值；非 60s）；`2003 interval:60` 后约 60s
 - [ ] **1003** 中 `usbInserted` / `charging` 为 JSON **数字** 0/1（非字符串）

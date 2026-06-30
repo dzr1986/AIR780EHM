@@ -6,8 +6,9 @@
   固件版本         : 2034.001.002（main.lua VERSION）
   协议规则         : 下行 200x  ↔  上行 100x（个位对齐）
   代码实现         : user/net_mqtt.lua
-  详细说明         : doc/MQTT_PROTOCOL.md / doc/MQTT_DOWNLINK.md（代码真源 user/net_mqtt.lua）
-  文档版本         : 2026-05-24
+  详细说明         : doc/MQTT_PROTOCOL.md / doc/MQTT_DOWNLINK.md
+                     doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md（帧率/录像/人形 AT 流程）
+  文档版本         : 2026-06-26
 
 ================================================================================
 一、连接与主题（MQTTX / MQTT.fx / 平台侧）
@@ -43,12 +44,16 @@
   /panshi/app/862323084068124/wakeup   → 1001 唤醒
   /panshi/app/862323084068124/rest     → 1002 休眠
   /panshi/app/862323084068124/status   → 1003 状态（周期 low_power_interval_sec，初值 30s）
-  /panshi/app/862323084068124/event    → 1004 控制回复 / OTA 进度、1011 停录
+  /panshi/app/862323084068124/event    → 1004 控制回复 / OTA 进度、1011 停录、1012 开录
   /panshi/app/862323084068124/sim      → 1005 SIM 信息
   /panshi/app/862323084068124/identity → 1006 设备标识（IMEI + GB28181）
-  /panshi/app/862323084068124/tfcard    → 1007 TF/SD 卡状态
+  /panshi/app/862323084068124/tfcard   → 1007 TF/SD 卡状态
+  /panshi/app/862323084068124/version  → 1008 固件版本（2008 查询）
   /panshi/app/862323084068124/pir      → 1010 PIR 检测状态
-  /panshi/app/862323084068124/encode  → 1012 编码设置应答 / 1020 编码查询应答
+  /panshi/app/862323084068124/encode  → 1020 编码查询 / 1021 编码设置应答
+  /panshi/app/862323084068124/record  → 1022 录像时长查询 / 1023 设置应答
+  /panshi/app/862323084068124/framerate → 1024 帧率查询 / 1025 设置应答
+  /panshi/app/862323084068124/personDetect → 1026 人形查询 / 1027 设置应答
 
 【设备上电后自动上行（无需下发）】
   1. MQTT conack：常电 → 1001；已在 rest → 1002+1003（不发 1001）
@@ -67,13 +72,23 @@
   2005      SIM 卡信息查询                 1005      sim
   2006      IMEI + GB28181 标识查询         1006      identity
   2007      TF/SD 卡状态查询               1007      tfcard
+  2008      固件版本查询（仅 4G）           1008      version
   2010      PIR 策略配置 / 状态查询         1010      pir
-  2011      云端停止录像                   1011      event
-  2012      设置视频/音频编码参数           1012      encode
+  2011      平台停录（TF 卡）               1011      event
+  2012      平台开录（TF 卡）               1012      event
   2020      查询视频/音频编码参数           1020      encode
+  2021      设置视频/音频编码参数           1021      encode
+  2022      查询录像时长档位（分钟）         1022      record
+  2023      设置录像时长档位                 1023      record
+  2024      查询帧率                         1024      framerate
+  2025      设置帧率                         1025      framerate
+  2026      查询人形检测开关                 1026      personDetect
+  2027      设置人形检测开关                 1027      personDetect
 
   1004 区分：含 "reply":1 → 应答 2004；含 "stage" → OTA 进度（无 reply）
+  2012 开录受理后另发 1004 action=pir_start（同 event 主题）
   编码参数详见 doc/REMOTE_ENCODE_CONFIG.md
+  帧率/录像/人形 AT 流程详见 doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md
 
 ================================================================================
 三、下行命令明细（复制到 MQTTX Publish）
@@ -536,6 +551,31 @@
   Cat.1→T3xx: AT+TFCARD?
 
 ------------------------------------------------------------------------------
+3.7a  2008 — 固件版本查询  →  1008
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 1008（主题 version）；仅查 Cat.1 固件，不需 T3x 在线，秒回
+
+【下行】
+{"dataType":"2008","messageId":"ver-001"}
+
+【上行 — 主题 version】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1008",
+  "scriptVersion": "001.000.002",
+  "firmwareVersion": "2034.001.002",
+  "coreVersion": "2034",
+  "project": "PANSHI_CAT1",
+  "buildTag": "v20260614",
+  "productKey": "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x",
+  "messageId": "ver-001",
+  "time": "2026-06-14 14:00:00"
+}
+
+  firmwareVersion : 与 2004 OTA version、1004.currentVersion 一致（合宙 IoT 版）
+
+------------------------------------------------------------------------------
 3.8  2010 — PIR 策略 / 状态查询  →  1010
 
 【策略来源】出厂默认 action=video；/pir_mqtt_cfg.json 持久化；OTA 后一次性将旧 photo 迁为 video（schemaVersion→2）。
@@ -560,6 +600,7 @@
   videoMaxDurationSec  number                 最长录像秒（别名 maxDurationSec）
   stopOnSecondPir      0/1                    录像中再次 PIR 是否停录
   stopOnCloud          0/1                    是否响应 2011
+  startOnCloud         0/1                    是否响应 2012 平台开录
 
 【拍照策略示例】
 {"dataType":"2010","action":"photo","uploadMode":"auto","quality":"high"}
@@ -633,11 +674,12 @@
 }
 
 ------------------------------------------------------------------------------
-3.9  2011 — 云端停止录像  →  1011
+3.9  2011 — 平台停录（TF 卡）  →  1011
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   条件 : 设备正在录像 且 stopOnCloud=1（2010 配置）
-  应答 : 停录完成后发 1011（非下行秒回；经 PIR 状态机）
+  应答 : 停录完成后发 1011（T3x 写盘时可能延迟；经 PIR 状态机）
+  T3x 在线 : 4G 另发 AT+RECORDCTRL=0,cloud
 
 【下行】
 {"dataType":"2011","messageId":"test-001"}
@@ -654,7 +696,60 @@
 }
 
   source        : 4g（4G 停录）| t3x（T3x AT+RECORD=0 回报）
-  reason 其它取值 : timer | pir_retrigger | manual | done | ...
+  reason 其它取值 : timer | pir_retrigger | manual | done | device | ...
+
+  详述 : doc/mqtt_2011_1011_flow.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4
+
+------------------------------------------------------------------------------
+3.9a  2012 — 平台开录（TF 卡）  →  1012 / 1010
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  条件 : 未在录像 且 startOnCloud=1（2010 配置 recordPolicy）
+  应答 : 受理后 1004 action=pir_start + 1012；T3x 写盘后 1010 t3x_active（pir）
+  T3x 在线 : 4G 另发 AT+RECORDCTRL=1,<videoMaxDurationSec>
+
+【下行 — 最简】
+{"dataType":"2012","messageId":"start-001"}
+
+【下行 — 带最长录像秒数】
+{
+  "dataType": "2012",
+  "messageId": "start-002",
+  "action": "video",
+  "videoMaxDurationSec": 90
+}
+
+【字段】
+  action               可选 photo|video|both，省略用当前 2010 配置
+  videoMaxDurationSec  最长录像秒，省略默认 60
+  uploadMode/quality   可选，与 2010 媒体字段一致
+
+【上行 1004 受理 — 主题 event】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "action": "pir_start",
+  "ret": 0,
+  "message": "ok",
+  "messageId": "start-001",
+  "time": "2026-06-26 12:00:00"
+}
+
+【上行 1012 — 主题 event】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1012",
+  "reason": "device",
+  "source": "4g",
+  "action": "video",
+  "uploadMode": "auto",
+  "quality": "high",
+  "recording": 1,
+  "time": "2026-06-26 12:00:01"
+}
+
+  详述 : doc/mqtt_2012_1012_flow.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4
 
 ------------------------------------------------------------------------------
 3.10  2020 — 查询视频/音频编码参数  →  1020
@@ -698,18 +793,19 @@
 }
 
 ------------------------------------------------------------------------------
-3.11  2012 — 设置视频/音频编码参数  →  1012
+3.11  2021 — 设置视频/音频编码参数  →  1021
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
-  应答 : 主题 encode，dataType=1012
+  应答 : 主题 encode，dataType=1021
   说明 : 仅 bitrate 可热更新（needReboot=0）；分辨率/帧率/编码器等需重启 T31x
+  串口 : Cat.1→T3x AT+VENCSET= / AT+AUDIOSET=
 
 【仅改码率（热更新）】
-{"dataType":"2012","camera":0,"stream":0,"bitrate":800,"messageId":"set-br"}
+{"dataType":"2021","camera":0,"stream":0,"bitrate":800,"messageId":"set-br"}
 
 【改分辨率（需重启）】
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "camera": 0,
   "stream": 0,
   "width": 1280,
@@ -723,7 +819,7 @@
 
 【设置音频】
 {
-  "dataType": "2012",
+  "dataType": "2021",
   "scope": "audio",
   "camera": 0,
   "enable": 1,
@@ -744,7 +840,7 @@
 【上行 — 主题 encode】
 {
   "deviceNo": "862323084068124",
-  "dataType": "1012",
+  "dataType": "1021",
   "reply": 1,
   "messageId": "set-br",
   "ret": 0,
@@ -754,7 +850,93 @@
   "time": "2026-06-07 12:00:00"
 }
 
-  needReboot=1 表示 T31x 将重启，分辨率等变更在重启后生效。
+  needReboot=1 表示 T31x 将重启。仅改帧率可用 2025（更轻量），见 3.13。
+
+------------------------------------------------------------------------------
+3.12  2022 / 2023 — 录像时长档位  →  1022 / 1023
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 record
+  说明 : T3x rec_time 固定档位 5/10/15/20/30/45/60 分钟
+  串口 : AT+RECORDTIME? / AT+RECORDTIME=<min>
+
+【查询】
+{"dataType":"2022","messageId":"rt-q-001"}
+
+【设置 10 分钟】
+{"dataType":"2023","recordTimeMin":10,"messageId":"rt-s-001"}
+
+【上行 1022 — 主题 record】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1022",
+  "reply": 1,
+  "messageId": "rt-q-001",
+  "ret": 0,
+  "recordTimeMin": 10,
+  "allowedMin": [5, 10, 15, 20, 30, 45, 60],
+  "time": "2026-06-26 10:00:00"
+}
+
+------------------------------------------------------------------------------
+3.13  2024 / 2025 — 帧率查询/设置  →  1024 / 1025
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 framerate
+  说明 : 仅改帧率，不含分辨率/编码器；T3x 休眠时需先唤醒
+  串口 : AT+FRAMERATE? / AT+FRAMERATE=cam,stream,fps
+
+【查询 camera0 主码流】
+{"dataType":"2024","camera":0,"stream":0,"messageId":"fps-q-001"}
+
+【设置为 20fps】
+{"dataType":"2025","camera":0,"stream":0,"framerate":20,"messageId":"fps-s-001"}
+
+【上行 1024 — 主题 framerate】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1024",
+  "reply": 1,
+  "messageId": "fps-q-001",
+  "ret": 0,
+  "message": "ok",
+  "body": {
+    "video": [{"camera":0,"stream":0,"framerate":25}]
+  },
+  "time": "2026-06-26 10:00:00"
+}
+
+  详述 : doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3
+
+------------------------------------------------------------------------------
+3.14  2026 / 2027 — 人形检测开关  →  1026 / 1027
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 personDetect
+  说明 : 需 T3x 编译 WITH_PERSON_DETECT
+  串口 : AT+PERSONDET? / AT+PERSONDET=0|1
+
+【查询】
+{"dataType":"2026","messageId":"pd-q-001"}
+
+【开启】
+{"dataType":"2027","enable":1,"messageId":"pd-s-001"}
+
+【关闭】
+{"dataType":"2027","enable":0,"messageId":"pd-s-002"}
+
+【上行 1026 — 主题 personDetect】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1026",
+  "reply": 1,
+  "messageId": "pd-q-001",
+  "ret": 0,
+  "enable": 1,
+  "time": "2026-06-26 10:00:00"
+}
+
+  详述 : doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §5
 
 ================================================================================
 四、MQTTX 操作步骤（建议顺序）
@@ -772,14 +954,22 @@
   ③ 2005 → 收 1005
   ④ 2006 → 收 1006（identity）
   ⑤ 2007 → 收 1007（tfcard）
+  ⑤a 2008 → 收 1008（version，秒回）
   ⑥ 2010 配置 → 人体触发 → 收 1010（常电 auto 时可能 1001；rest 无 PIR/无 1001）
   ⑦ 2010 query → 收 1010 pirStatus=query（rest 下仍可用；硬件 PIR 在 rest 无 1010）
   ⑧ 2004 reboot → 收 1004 reply=1（设备将重启）
-  ⑨ 2002 enter → 收 1002（含 reason/source）；2002 exit 唤醒（无 1002）
+  ⑨ 2002 enter → 收 1002（含 reason/source）；2002 exit → 收 1002 exit（无 1002 见 MQTT_PROTOCOL §4）
   ⑩ 2004 ota（谨慎）→ 1004 reply + stage
-  ⑪ 2011（录像中）→ 1011 reason=cloud
-  ⑫ 2020 → 1020（encode 主题，body.video / body.audio）
-  ⑬ 2012 改码率 → 1012 needReboot=0；改分辨率 → needReboot=1
+  ⑪ 2012（startOnCloud=1）→ 1004 pir_start + 1012；写盘后 1010 t3x_active
+  ⑫ 2011（录像中，stopOnCloud=1）→ 1011
+  ⑬ 2020 → 1020（encode 主题，body.video / body.audio）
+  ⑭ 2021 改码率 → 1021 needReboot=0；改分辨率 → needReboot=1
+  ⑮ 2024 → 1024（framerate 主题）
+  ⑯ 2025 framerate=20 → 1025
+  ⑰ 2026 → 1026（personDetect 主题，需 T3x 人形功能）
+  ⑱ 2027 enable=1 → 1027
+  ⑲ 2022 → 1022（record 主题）
+  ⑳ 2023 recordTimeMin=10 → 1023
 
 ================================================================================
 五、日志与串口自检
@@ -795,7 +985,10 @@
   发布设备标识(1006)    → 2006 应答 / T3x 就绪自动
   发布 TF 卡(1007)      → 2007 应答
   发布 PIR 检测(1010)   → PIR 上报
-  pub 1020 / pub 1012   → 编码查询/设置应答
+  pub 1020 / pub 1021   → 编码查询/设置应答
+  pub 1024 / pub 1025   → 帧率查询/设置应答
+  pub 1026 / pub 1027   → 人形检测查询/设置应答
+  pub 1012 / pir_start  → 2012 平台开录
 
 【正常日志示例 — 周期 1003（pong → 发布状态 → sent）】
 
@@ -830,8 +1023,18 @@
   | 发布 SIM(1005): .../sim        | 2005 查询 |
   | 发布设备标识(1006): .../identity | 2006 查询 / 自动上报 |
   | 发布 TF 卡(1007): .../tfcard   | 2007 查询 |
+  | 发布版本(1008): .../version    | 2008 查询 |
+  | pub 1024 / pub 1025            | 2024/2025 帧率 |
+  | pub 1026 / pub 1027            | 2026/2027 人形 |
 
-【串口 AT】
+【串口 AT — 远程控制等价】
+  2024/2025 帧率     : AT+FRAMERATE? / AT+FRAMERATE=0,0,20
+  2012/2011 直连录   : AT+RECORDCTRL=1,90 / AT+RECORDCTRL=0,cloud（T3x 在线时）
+  2026/2027 人形     : AT+PERSONDET? / AT+PERSONDET=1
+  2022/2023 录像时长 : AT+RECORDTIME? / AT+RECORDTIME=10
+  详见 doc/UART_AT_COMMANDS.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md
+
+【串口 AT — 连接状态】
   AT+GETCFG
   返回含 online=1 表示 MQTT 已连接
 
@@ -844,5 +1047,6 @@
   1003  2003 应答 + low_power_interval_sec 周期（初值 30s）
   1010  PIR 硬件边沿（另可用 2010 query 主动查）
   1011  停录事件（另可用 2011 触发 cloud）
+  1012  开录事件（另可用 2012 触发 cloud）
 
 ================================================================================

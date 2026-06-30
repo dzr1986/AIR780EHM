@@ -72,7 +72,7 @@ local t3x_ctrl = require "t3x_ctrl"
 if not isEntry then
     return app
 end
-log.info("main", "build", BUILD_TAG, "c", rtos.version(), "p", PROJECT)
+log.info("main", "build", BUILD_TAG, "core", rtos.version(), "project", PROJECT)
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, true)
 end

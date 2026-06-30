@@ -2,7 +2,7 @@
 
 > **物理**：UART 115200 8N1（`config.lua` → `UART_CFG`）  
 > **代码真源**：T3x→4G `user/host_uart.lua` · 4G→T3x `cat1_host/uart_host_cmd.c`  
-> **相关文档**：[UART_PROTOCOL.md](UART_PROTOCOL.md) · [T3X_CAT1_AT_COMMAND_SPEC.md](T3X_CAT1_AT_COMMAND_SPEC.md) · [T3X_4G_AT_INTERACTION.md](T3X_4G_AT_INTERACTION.md)
+> **相关文档**：[UART_PROTOCOL.md](UART_PROTOCOL.md) · [T3X_CAT1_AT_COMMAND_SPEC.md](T3X_CAT1_AT_COMMAND_SPEC.md) · [T3X_4G_AT_INTERACTION.md](T3X_4G_AT_INTERACTION.md) · [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md)（帧率/录像/人形）
 
 ---
 
@@ -84,8 +84,10 @@ AT → ATI → AT+RIL=0 → AT+SERVCREATE=… → AT+MQTTCFG=… → AT+GETCFG
 | `AT+POWEROFF` | `+POWEROFF:OK` | ~500ms 后关机 |
 | `AT+OTA` / `AT+OTACHECK` | `+OTA:STARTING` | 触发 FOTA |
 | `AT+RNDIS=1` / `AT+RNDIS=0` | `+RNDIS:OK` / `ERROR` | 开/关 RNDIS |
-| `AT+USBRESET` | `+USBRESET:OK` / `BUSY` / `DISABLED` / `REST` | T3x mismatch 恢复：重绑 RNDIS 后再推 `+CAT1:USB,1`；`REST`=4G rest 且 T3x 已断电，不 rebind |
+| `AT+USBRESET` | `+USBRESET:OK` / `BUSY` / `DISABLED` / `REST` | **T3x → 4G**：mismatch 恢复，重绑 RNDIS 后再推 `+CAT1:USB,1`；`REST`=4G rest 且 T3x 已断电，不 rebind |
 | `AT+USBRESET?` | `+USBRESET:busy,count,last,rest_blk,t3x_pwr` | 查询重枚举状态 |
+| `AT+USBRECOVERY=OK,0` / `EXHAUSTED,N` | `+USBRECOVERY:OK` / `EXHAUSTED` | **T3x → 4G**：仅上报恢复结果（**不** rebind）；4G 写 MQTT 1003 |
+| `AT+USBRECOVERYRESET` | `+USBRECOVERYRESET:OK` | **4G → T3x**：MQTT 2003 重置，清零 T31 侧重试计数 |
 
 ### 2.5 白光灯（T3x 也可经 4G 控制）
 
@@ -204,10 +206,22 @@ T3x → Cat.1: +RECORD:running=1,active=0,ch=0,reason=idle OK
 | `AT+IPCSTATUS?` / `AT+IPCSTATUS` | `+IPCSTATUS:ready\|idle\|shutting_down` `OK` | T3x 生命周期（§3.4） |
 | `AT+RECORD?` / `AT+RECORD` | `+RECORD:running=,active=,ch=,reason=` `OK` | T3x 真实录像状态（§2.9） |
 | `AT+RECORDTIME?` / `AT+RECORDTIME=<min>` | `+RECORDTIME:<min>,min=[5|10|15|20|30|45|60]` / `+RECORDTIME:OK,<min>` `OK` | 录像时长档位（分钟）；MQTT **2022/2023** → **1022/1023** |
+| `AT+FRAMERATE?` / `AT+FRAMERATE?=<cam>,<stream>` | 多行 `+FRAMERATE:<cam>,<stream>,<fps>` … `+FRAMERATE:END` `OK` | 仅帧率；MQTT **2024/2025** → **1024/1025** |
+| `AT+FRAMERATE=<cam>,<stream>,<fps>` | `+FRAMERATE:OK,<cam>,<stream>,<fps>,runtimeApply=0\|1` 或 `+FRAMERATE:ERROR` | 设置帧率；MQTT **1025** 携带 `runtimeApply` |
+| `AT+RECORDCTRL=1,<max_sec>` | `+RECORDCTRL:OK,1,max_sec=<n>` `OK` | T3x 在线时平台开录；MQTT **2012** 成功后 4G 主动发 |
+| `AT+RECORDCTRL=0,<reason>` | `+RECORDCTRL:OK,0,reason=<text>` `OK` | T3x 在线时平台停录；MQTT **2011** 成功后 4G 主动发；reason 默认 `cloud` |
+| `AT+IPCSTAT?` | `+IPCSTAT:ipcReady=,gb28181Online=,tfPresent=,personDetectEnabled=,personDetectAvailable=,timeSynced=,recordingT3x=,cat1Link=` `OK` | §6.2 扩展状态；MQTT **1003** 周期携带 |
+| `AT+IPCALERT=<code>[,<detail>]`（T3x→4G URC） | `+IPCALERT:OK` | §6.3 事件；4G 转 **1004** `action=ipc_alert` |
+| `AT+PERSONDET?` | `+PERSONDET:<enable>,available=0\|1` `OK` | 人形开关 + IVS 运行时可用；MQTT **1026** `personDetectAvailable` |
+| `AT+PERSONDET=0/1` | `+PERSONDET:OK,enable=0\|1` 或 `+PERSONDET:ERROR` | 设置人形；MQTT **2027** → **1027** |
 | `AT+VENC?` / `AT+VENC?=<cam>` / `AT+VENC?=<cam>,<stream>` | 多行 `+VENC:` … `+VENC:END` `OK` | MQTT **2020** 查询视频编码（§3.5） |
-| `AT+VENCSET=<cam>,<stream>,<en>,<w>,<h>,<br>,<fps>,<rc>,<enc>` | `+VENCSET:OK,cam=,stream=,needReboot=` 或 `+VENCSET:ERROR` | MQTT **2021** 设置视频编码 |
-| `AT+AUDIO?` / `AT+AUDIO?=<cam>` | 多行 `+AUDIO:` … `+AUDIO:END` `OK` | MQTT **2020** `scope=audio` |
+| `AT+VENCSET=<cam>,<stream>,<en>,<w>,<h>,<br>,<fps>,<rc>,<enc>` | `+VENCSET:OK,cam=,stream=,needReboot=,runtimeApply=` 或 `+VENCSET:ERROR` | MQTT **1021**；热更新码率时 `runtimeApply` 反映 `SetVideoBitrate` |
+| `AT+AUDIO?` / `AT+AUDIO?=<cam>` | 多行 `+AUDIO:` … `+AUDIO:END` `OK` | MQTT **2020** `scope=audio`（**扬声器** volume/gain） |
 | `AT+AUDIOSET=<cam>,<en>,<enc>,<sr>,<bw>,<sm>,<vol>,<gain>` | `+AUDIOSET:OK,cam=,needReboot=` 或 `+AUDIOSET:ERROR` | MQTT **2021** `scope=audio` |
+| `AT+MIC?` / `AT+MIC?=<cam>` | 多行 `+MIC:<cam>,<vol>,<gain>` … `+MIC:END` `OK` | MQTT **2028/2029** → **1028/1029**（**麦克风 AI**；默认 vol=60 gain=28） |
+| `AT+MICSET=<cam>,<vol>,<gain>` | `+MICSET:OK,cam=,runtimeApply=0\|1` 或 `+MICSET:ERROR` | 写 `cameraN:audio_in_volume/gain`；AI 已开则热更新 |
+| `AT+SOFTPHOTO?` | `+SOFTPHOTO:<8字段CSV>` `OK` | MQTT **2030** → **1030** |
+| `AT+SOFTPHOTOSET=<8字段CSV>` | `+SOFTPHOTOSET:OK` 或 `+SOFTPHOTOSET:ERROR` | MQTT **2031** → **1031**；写 `[soft_photosensitive]` |
 | `AT+IPCPOWEROFF` / `=1` / `=0` | `+IPCPOWEROFF:OK`（单行 URC，无尾缀 `OK`） | 优雅关机：播音/停流/退出 GB28181/sync |
 | `AT+PLAYSOUND=<name>` | 先 `OK`，播完后 `+SOUNDACK:<name>` `OK` | 开关机提示音；冷启动 `boot` 见 §3.3 |
 | `AT+PLAYSOUND?` | `+PLAYSOUND:<状态>` `OK` | 查询播放模块状态 |
@@ -288,6 +302,15 @@ Cat.1 → T3x: AT+PLAYSOUND=boot （可选，sound_prompt 冷启动）
 | 重启/关机/OTA | `AT+REBOOT` 等 | `2004` |
 | 白光灯 | `AT+WLED=` | `2004 action=wled` |
 | PIR 配置 | — | `2010` |
+| 平台开录 / 停录 | `AT+RECORDCTRL=1/0`（T3x 在线） | **2012** / **2011** |
+| IPC 扩展状态 | `AT+IPCSTAT?` | **1003** 字段 ipcReady/gb28181Online/… |
+| IPC 异常事件 | T3x 发 `AT+IPCALERT=` | **1004** `action=ipc_alert` |
+| 帧率查询/设置 | `AT+FRAMERATE?` / `AT+FRAMERATE=cam,stream,fps` | **2024/2025** → **1024/1025** |
+| 人形检测 | `AT+PERSONDET?` / `AT+PERSONDET=0\|1` | **2026/2027** → **1026/1027** |
+| 麦克风 AI | `AT+MIC?` / `AT+MICSET=cam,vol,gain` | **2028/2029** → **1028/1029** |
+| 软光敏 | `AT+SOFTPHOTO?` / `AT+SOFTPHOTOSET=` | **2030/2031** → **1030/1031** |
+| 录像时长档位 | `AT+RECORDTIME?` / `AT+RECORDTIME=<min>` | **2022/2023** → **1022/1023** |
+| 视频/音频编码 | `AT+VENC?` / `AT+VENCSET` / `AT+AUDIO?` / `AT+AUDIOSET` | **2020/2021** → **1020/1021** |
 | SIM | — | `2005` |
 
 ---
@@ -305,7 +328,9 @@ Cat.1 → T3x: AT+PLAYSOUND=boot （可选，sound_prompt 冷启动）
 | 2006/1006 标识 | `user/net_mqtt.lua` + `host_uart.queryHostGb28181()` |
 | 2007/1007 TF 卡 | `user/net_mqtt.lua` + `host_uart.queryHostTfCard()` |
 | 2021/2020 编码 | `user/net_mqtt.lua` + `host_uart.queryHostEncode` / `setHost*Encode` |
+| 2024–2027 帧率/人形/录像控制 | `user/net_mqtt.lua` + `host_uart.queryHostFramerate` / `setHostFramerate` / `recordCtrlStart/Stop` / `queryHostPersonDetect` / `setHostPersonDetect` |
 | T31x 编码落地 | `app/cat1/encode_remote.c` + `uart_host_cmd.c` |
+| T31x 远程控制落地 | `app/cat1/cloud_remote_ctrl.c` + `uart_host_cmd.c` |
 | WLED GPIO（T3x） | `cat1_host/wled.c` |
 | 对时 | `user/time_sync.lua` ↔ T3x `time_sync.c` |
 | 提示音 | `user/sound_prompt.lua` ↔ T3x `audio_prompt.c` |

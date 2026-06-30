@@ -4,7 +4,9 @@
 > 汇总逻辑集中在 `lib/host_event.lua`，不维护平行状态机。  
 > 双端开关：`WITH_T3X_HOSTEVT_SLEEP`（T3x）↔ `HOST_EVT_ENABLE`（4G）。
 
-**版本**：v1.6 · 2026-06-14
+**版本**：v1.7 · 2026-06-26
+
+> **电量 >20% 常电（v1.7）**：T3x 30s 空闲轮询时，即使 `HOSTEVT?` 无事件也 **不发** `HOSTIDLE=1`，先 `AT+GETCFG` 读 `battery=`。详见 [LOW_POWER_ENTER_STRATEGY.md §3](LOW_POWER_ENTER_STRATEGY.md#3-ipc-侧电量-20-禁止-hostidle双端防护)。
 
 ---
 
@@ -89,14 +91,20 @@ T3x → 4G: AT+HOSTEVTPOLL=30000
 
 ### 1.3 `AT+HOSTIDLE=1` 判定与响应
 
-1. 内部调用与 `AT+HOSTEVT?` 同源的 `build_hostevt_body()`
-2. `has_event=1` → `+HOSTIDLE:BUSY`（拒绝断电）
-3. `has_event=0` → 异步 `t3x_ctrl.enterSleep({ reason="host_idle" })` → `+HOSTIDLE:OK`
+**T3x 侧（2026-06-26）**：`has_event=0` 且非 USB 时，先 `AT+GETCFG` 读 `battery=`；**>20% 不发** `HOSTIDLE=1`（IPC 保持常电）。仅 **≤20%** 或电量读数未知时才发 `AT+HOSTIDLE=1`。实现：`app/cat1/host_event.c`。
+
+**4G 侧**（收到 `AT+HOSTIDLE=1` 时）：
+
+1. `battery_guard.shouldAllowHostIdleSleep()==false`（>20% 常电）→ `+HOSTIDLE:BUSY`
+2. 内部调用与 `AT+HOSTEVT?` 同源的 `build_hostevt_body()`
+3. `has_event=1` → `+HOSTIDLE:BUSY`（拒绝断电）
+4. `has_event=0` 且允许 → 异步 `t3x_ctrl.enterSleep({ reason="host_idle" })` → `+HOSTIDLE:OK`
 
 其它响应：
 
 | 响应 | 条件 |
 |------|------|
+| `+HOSTIDLE:BUSY` | 电量 **>20%** 常电（`block_host_idle_above_recover`）或 `has_event=1` |
 | `+HOSTIDLE:NOT_SUPPORTED` | `HOST_EVT_ENABLE=0` |
 | `+HOSTIDLE:DISABLED` | `HOST_EVT_CFG.allow_host_idle_sleep=false` |
 | `+HOSTIDLE:USB` | USB 已插入（`HOST_USB_CFG`）；T3x 不得发 `HOSTIDLE=1` |
@@ -292,9 +300,21 @@ sequenceDiagram
         T->>G: AT+HOSTEVTCLR
     else has_event=0
         G-->>T: has_event=0,pending=none,...
-        T->>G: AT+HOSTIDLE=1
-        G-->>T: +HOSTIDLE:OK
-        G->>G: t3x_ctrl.enterSleep
+        alt USB 插入
+            T->>T: 跳过 HOSTIDLE
+        else battery > 20%（GETCFG）
+            T->>G: AT+GETCFG
+            G-->>T: battery=85,...
+            T->>T: 跳过 HOSTIDLE（常电）
+        else battery ≤ 20%
+            T->>G: AT+HOSTIDLE=1
+            alt 4G 允许
+                G-->>T: +HOSTIDLE:OK
+                G->>G: t3x_ctrl.enterSleep
+            else 4G BUSY（兜底）
+                G-->>T: +HOSTIDLE:BUSY
+            end
+        end
     end
 ```
 
@@ -368,7 +388,8 @@ sequenceDiagram
 - [ ] 业务 dispatch **失败**时不发 CLR，下次轮询可重试
 - [ ] GPIO 脉冲仅 `pending/types` 含 **wake** 时走 runtime dispatch；纯 pir 留给休眠轮询
 - [ ] `HOSTEVTCLR` 后 `cnt_*` 计数**不变**（`PIRSTAT` 对照）
-- [ ] `has_event=0` 时 `AT+HOSTIDLE=1` → T3x 断电
+- [ ] `has_event=0` 且 **battery ≤20%** 时 `AT+HOSTIDLE=1` → T3x 断电
+- [ ] `has_event=0` 且 **battery >20%** 时 **不发** `HOSTIDLE=1`（日志 `skip HOSTIDLE (battery`）
 - [ ] `has_event=1` 时 `AT+HOSTIDLE=1` → `+HOSTIDLE:BUSY`
 - [ ] `AT+HOSTIDLE?` 与 MQTT `1003.lowPowerMode` 一致
 - [ ] 4G 主动 `enterSleep` 在 `has_event=1` 时不断 T3x 电

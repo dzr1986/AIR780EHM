@@ -4,6 +4,7 @@ local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+local L = "t3x_ctrl"
 local isPoweredOn = false
 local currentPowerLevel = nil
 local isInBootMode = false
@@ -47,6 +48,16 @@ end
 local function getEntries()
     local gout = _G.GPIO_OUT or {}
     return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
+end
+local function gpioLv(pin, lv)
+    if pin == nil then return "?" end
+    return tostring(pin) .. "=" .. tostring(lv or "?")
+end
+local function logGpio(action, entry_pwr, entry_boot, entry_ota, pwrLv, bootLv, otaLv)
+    log.info(L, action,
+        "pwr", gpioLv(entry_pwr and entry_pwr.pin, pwrLv),
+        "boot", gpioLv(entry_boot and entry_boot.pin, bootLv),
+        "ota", gpioLv(entry_ota and entry_ota.pin, otaLv))
 end
 local function getWakePulseMs()
     local cfg = _G.HOST_WAKE_CFG or {}
@@ -115,6 +126,10 @@ function powerOn()
     isPoweredOn = true
     state.power_state = "on"
     lastAction = "powerOn"
+    local okBg, bg = pcall(require, "battery_guard")
+    if okBg and type(bg) == "table" and bg.markT3xWoken then
+        bg.markT3xWoken()
+    end
     return true
 end
 function pulseMcuInt()
@@ -148,20 +163,31 @@ function powerOff()
     return true
 end
 function enterBootMode()
-    ensurePins()
+    log.info(L, "t3x_boot_mode_enter")
+    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
     if not t3xPowerPin or not t3xBootModePin or not t3xOtaPin then
+        log.warn(L, "t3x_boot_mode_enter_fail",
+            "pwr", gpioLv(entry_pwr and entry_pwr.pin, nil),
+            "boot", gpioLv(entry_boot and entry_boot.pin, nil),
+            "ota", gpioLv(entry_ota and entry_ota.pin, nil))
         return false
     end
     powerOff()
+    logGpio("t3x_power_off", entry_pwr, entry_boot, entry_ota,
+        powerOffLevel, currentBootLevel, currentOtaLevel)
     sys.timerStart(function()
         t3xBootModePin(bootModeLevel)
         t3xOtaPin(otaModeLevel)
         currentBootLevel = bootModeLevel
         currentOtaLevel = otaModeLevel
         isInBootMode = true
+        logGpio("t3x_boot_ota_levels_set", entry_pwr, entry_boot, entry_ota,
+            powerOffLevel, bootModeLevel, otaModeLevel)
     end, bootDelay)
     sys.timerStart(function()
         powerOn()
+        logGpio("t3x_power_on", entry_pwr, entry_boot, entry_ota,
+            powerOnLevel, bootModeLevel, otaModeLevel)
     end, bootDelay)
     lastAction = "enterBootMode"
     return true
@@ -171,7 +197,7 @@ function pulseUsbDebugEn(opts)
     local entry_pwr, _, entry_boot, entry_ota = getEntries()
     ensurePins()
     if not t3xOtaPin or not entry_ota or not entry_ota.pin then
-        return false
+        return false, 0
     end
     local usbCfg = _G.HOST_USB_CFG or {}
     local high_ms = tonumber(opts.high_ms) or tonumber(usbCfg.usb_debug_en_pulse_ms) or 300
@@ -179,19 +205,26 @@ function pulseUsbDebugEn(opts)
         high_ms = 0
     end
     local otaOff = entry_ota.init_level or 0
+    local function finishPulse()
+        t3xOtaPin(otaOff)
+        currentOtaLevel = otaOff
+        lastAction = "pulseUsbDebugEn"
+    end
     t3xOtaPin(otaModeLevel)
     currentOtaLevel = otaModeLevel
-    if high_ms > 0 then
-        sys.wait(high_ms)
+    if high_ms <= 0 then
+        finishPulse()
+        return true, 0
     end
-    t3xOtaPin(otaOff)
-    currentOtaLevel = otaOff
-    lastAction = "pulseUsbDebugEn"
-    return true
+    -- 非协程上下文禁止 sys.wait（会触发 Lua VM exit）；定时器脉冲 + 由调用方 task 等待
+    sys.timerStart(finishPulse, high_ms)
+    return true, high_ms
 end
 function exitBootMode()
-    ensurePins()
+    log.info(L, "t3x_boot_mode_exit")
+    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
     if not t3xBootModePin or not t3xOtaPin then
+        log.warn(L, "t3x_boot_mode_exit_fail")
         return false
     end
     local bootOff = 1 - bootModeLevel

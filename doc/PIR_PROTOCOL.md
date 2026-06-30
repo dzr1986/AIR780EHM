@@ -313,7 +313,7 @@ flowchart TD
 
 - 未在录像且 `startOnCloud=true` → `requestStartFromCloud()` → **1004** `pir_start` + **1012**（`event`，`reason=device`，`source=4g`）
 - T3x 写盘确认另发 **1010** `t3x_active`（`pir` 主题）
-- 已在录 / `startOnCloud=false` / suspend → **1004** `ret=-1`（日志 `d12x`），无 1012
+- 已在录 / `startOnCloud=false` / suspend → **1004** `ret=-1`（日志 `downlink_2012_error`），无 1012
 
 详见 [mqtt_2012_1012_flow.md](./mqtt_2012_1012_flow.md)。
 
@@ -351,7 +351,7 @@ flowchart TD
 **设备行为**：
 
 - 若当前正在录像且 `stopOnCloud=true` → 结束会话并发布 `PIR_STOP_RECORDING(device)` → **1011**  
-- 若未在录像 → 忽略（无上行，日志 `d11x`）
+- 若未在录像 → 忽略（无上行，日志 `downlink_2011_error`）
 
 ### 5.6 上行：录像已停止 `dataType=1011`
 

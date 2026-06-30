@@ -497,11 +497,40 @@ local function isRestLowPower()
     local rt = _G.APP_RUNTIME
     return rt and tonumber(rt.low_power_mode) == 1
 end
+local function isBatteryDynamicRest()
+    local rt = _G.APP_RUNTIME
+    if rt and tonumber(rt.battery_dynamic_rest) == 1 then
+        return true
+    end
+    local ok, bg = pcall(require, "battery_guard")
+    if ok and type(bg) == "table" and bg.isBatteryDynamicRest then
+        return bg.isBatteryDynamicRest() == true
+    end
+    return false
+end
+local function isPirHighPriority()
+    local cfg = _G.PIR_CFG or {}
+    return cfg.high_priority ~= false
+end
+local function requestExitRestForPir()
+    local E = _G.APP_EVENTS or {}
+    local evt = E.POWER_EXIT_REST or "power_exit_rest"
+    if evt and evt ~= "" then
+        sys.publish(evt, "pir")
+    end
+end
 local function shouldIgnorePirTrigger()
     if suspended then
         return "suspend"
     end
     if isRestLowPower() then
+        if isBatteryDynamicRest() then
+            return nil
+        end
+        if isPirHighPriority() then
+            requestExitRestForPir()
+            return nil
+        end
         return "rest"
     end
     return nil

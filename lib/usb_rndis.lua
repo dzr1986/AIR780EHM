@@ -2,7 +2,7 @@ require "sys"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "rnd"
+local LOG_TAG = "usb_rndis"
 local RNDIS_USB_ETHERNET_MODE = 3
 local FLYMODE_WAIT_MS = 1000
 local IP_READY_WAIT_MS = 300000
@@ -305,18 +305,38 @@ function switch(opts)
     local on_wait_ms = tonumber(opts.on_wait_ms) or 500
     local ok, err = cycleRndis(off_ms, on_wait_ms)
     if ok then
-        log.info(LOG_TAG, "sw", readCellularIp() or "--")
+        log.info(LOG_TAG, "switch_rndis", readCellularIp() or "--")
     end
     return ok, err
 end
 function rebind(opts)
     opts = type(opts) == "table" and opts or {}
     local wait_ms = tonumber(opts.wait_ms) or 500
-    local ok, err = cycleRndis(wait_ms, 0)
-    if ok then
-        log.info(LOG_TAG, "rb", readCellularIp() or "--")
+    if refreshing then
+        return false, "busy"
     end
-    return ok, err
+    if not mobileReady() then
+        runtime.status = "unsupported"
+        runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
+        return false, runtime.last_error
+    end
+    refreshing = true
+    ipReadyRefreshed = false
+    sys.publish(EVT_REFRESH_BEGIN)
+    local ok, err = pcall(function()
+        rndisCloseCore(wait_ms)
+        rndisOpenCore()
+        markRndisEnabled()
+    end)
+    refreshing = false
+    sys.publish(EVT_REFRESH_END)
+    if not ok then
+        runtime.last_error = tostring(err)
+        log.error(LOG_TAG, "rebind_fail", runtime.last_error)
+        return false, runtime.last_error
+    end
+    log.info(LOG_TAG, "rebind_ok", readCellularIp() or "--")
+    return true
 end
 function enableAsync(opts)
     sys.taskInit(function()

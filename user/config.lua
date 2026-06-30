@@ -2,6 +2,11 @@ module(..., package.seeall)
 _G[_modname or (...)] = _M
 local RNDIS_ENABLE = 1
 local LOW_POWER_ENABLE = 1
+-- 低功耗「进 rest / 断 T3x」主策略（见 doc/LOW_POWER_ENTER_STRATEGY.md）
+-- battery    = 默认三档：>20% 常电；10%<电量≤20% T31 HOSTIDLE 动态休眠；≤10% 4G rest；≤5% 关机
+-- idle_poll  = 旧方式：不看电量分档，仅 T3x 空闲轮询 HOSTIDLE 断电
+-- hybrid     = 电量≤10% rest，>10% 仍允许 HOSTIDLE（纯动态侦测机型）
+local LOW_POWER_ENTER_STRATEGY = "battery"
 local HOST_EVT_ENABLE = 1
 local USB_REENUM_ENABLE = 1 -- 1=允许 T3X 通过 USBRESET 触发 CAT1 重新枚举
 _G.FEATURE_CFG = {
@@ -154,7 +159,7 @@ _G.GPIO_IN = {
         net_name = "PIR_MCU_DET",
         pull = "pulldown",
         trigger_mode = "rising",
-        debounce_ms = 100,
+        debounce_ms = 50,
         active_level = 1,
     },
     misc_pullup = {
@@ -229,8 +234,11 @@ _G.WLED_CFG = {
     enabled = true,
     forward_to_t3x = true,
     t3x_power_wait_ms = 800,
+    ack_timeout_ms = 3000,
+    host_boot_wait_ms = 1500,
 }
 _G.PIR_COOLDOWN_MS = {
+    sensitive = 1500,
     frequent = 3 * 1000,
     normal = 10 * 1000,
     standard = 15 * 1000,
@@ -245,6 +253,7 @@ do
         debounce_ms = det.debounce_ms,
         active_level = det.active_level,
         cooldown_ms = _G.PIR_COOLDOWN_MS.frequent,
+        high_priority = true,
     }
 end
 _G.PIR_RECORD_CFG = {
@@ -264,10 +273,22 @@ _G.BATTERY_CFG = {
         range = nil,
         divider = { r_kohm = 1000, rx_kohm = 510 },
         mv_scale = 3326 / 1131,
+        -- 实测校准：ADC 换算约 3608mV 时万用表电芯 3812mV（2026-06）
+        mv_calibration = 3812 / 3608,
     },
     cell = {
         v_max_mv = 4200,
         v_min_mv = 3000,
+    },
+    -- ADC 滤波：抑制 mV/percent 抖动（满电附近 4200mV 阈值尤其敏感）
+    filter = {
+        sample_count = 11,
+        sample_spacing_ms = 20,
+        trim_drop = 2,
+        ema_alpha = 0.35,
+        mv_max_step = 35,
+        percent_hyst_high_mv = 4120,
+        percent_max_step = 2,
     },
     sample_interval_ms = 10 * 1000,
     mqtt_report_interval_sec = 30,
@@ -290,24 +311,57 @@ _G.BATTERY_CFG = {
     guard = {
         enabled = true,
         ignore_when_usb_inserted = true,
-        pir_suspend_percent = 15,
-        pir_resume_percent = 20,
-        t3x_rest_percent = 10,
-        recover_rest_percent = 18,
-        shutdown_percent = 5,
+        -- 三档电量（2026-06）：>host_idle_below 常电；中间档 HOSTIDLE；≤t3x_rest 进 4G rest
+        battery_rest_dynamic_detect = true,
+        host_idle_below_percent = 20,   -- 电量 ≤20% 允许 T31 HOSTIDLE（4G 仍 normal，不进 rest）
+        host_idle_min_awake_sec = 30,   -- 中间档：唤醒后至少常电 30s，无事件再 HOSTIDLE
+        t3x_rest_percent = 10,          -- 电量 ≤10% 进 4G rest（动态侦测，PIR 可唤醒）
+        recover_rest_percent = 10,      -- 电量 >10% 连续确认后退出 rest
+        min_rest_duration_sec = 600,
+        min_always_on_duration_sec = 300,
+        enter_rest_confirm_count = 2,
+        exit_rest_confirm_count = 3,
+        pir_suspend_percent = 5,        -- 仅关机前缘（≤5% 直接 scheduleShutdown）
+        pir_resume_percent = 6,
+        shutdown_percent = 5,           -- 电量 ≤5% 排程整机关机
         shutdown_delay_ms = 3000,
+        shutdown_mqtt_wait_ms = 8000,   -- 关机前等待 MQTT 连接（毫秒）
+        shutdown_mqtt_grace_ms = 800,   -- 上报后留空给 broker 收包
         require_valid_sample = true,
+        block_host_idle_above_recover = true,
     },
 }
 _G.T3X_POLICY_CFG = {
     enabled = _G.LOW_POWER_CFG.enabled,
     block_wake_in_low_power = true,
+    allow_pir_wake_in_battery_rest = true,
+    allow_pir_wake_in_rest = true,
+    allow_wled_wake_in_rest = true,
     block_mqtt_offline_wake = true,
     block_mqtt_offline_wake_when_usb = true,
     mqtt_offline_wake_cooldown_sec = 120,
-    block_wake_below_percent = 15,
+    block_wake_below_percent = 5,       -- 5~10% rest 仍允许 PIR 唤醒；≤5% 拒唤醒并关机
 }
 _G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
+
+do
+    local strategy = _G.LOW_POWER_ENTER_STRATEGY or LOW_POWER_ENTER_STRATEGY or "battery"
+    _G.LOW_POWER_ENTER_STRATEGY = strategy
+    local guard = _G.BATTERY_CFG and _G.BATTERY_CFG.guard
+    if type(guard) == "table" then
+        if strategy == "idle_poll" then
+            guard.enabled = false
+            guard.block_host_idle_above_recover = false
+        elseif strategy == "hybrid" then
+            guard.enabled = true
+            guard.block_host_idle_above_recover = false
+        else
+            guard.enabled = guard.enabled ~= false
+            guard.block_host_idle_above_recover = true
+        end
+    end
+end
+
 _G.SOUND_CFG = {
     enabled = true,
     boot_on_cold_start = true,
@@ -345,6 +399,16 @@ _G.HOST_TFCARD_CFG = {
     host_boot_wait_ms = 1500,
     t3x_power_wait_ms = 800,
 }
+_G.HOST_TFCARD_FORMAT_CFG = {
+    enabled = true,
+    format_timeout_ms = 120000,
+    record_stop_timeout_ms = 15000,
+    pre_format_wait_ms = 500,
+    reboot_after = false,
+    publish_status_after = true,
+    host_boot_wait_ms = 1500,
+    t3x_power_wait_ms = 800,
+}
 _G.HOST_RECORD_CFG = {
     enabled = true,
     query_timeout_ms = 3000,
@@ -362,11 +426,21 @@ _G.HOST_IPC_CFG = {
     poweroff_play_sound = true,
     poweroff_timeout_ms = 15000,
     status_query_timeout_ms = 2000,
+    status_cache_max_age_sec = 90,
     ready_wait_timeout_ms = 120000,
     ready_poll_ms = 1000,
     t3x_power_wait_ms = 800,
     host_boot_wait_ms = 1500,
     boot_sound_wait_ready = true,
+    -- USB 已插且 IPCSTATUS 长期无应答：powerOff → powerOn → MCU INT 脉冲
+    uart_recovery = {
+        enabled = true,
+        miss_threshold = 5,
+        max_attempts = 3,
+        cooldown_sec = 30,
+        power_off_ms = 500,
+        power_on_wait_ms = 800,
+    },
 }
 _G.HOST_WAKE_CFG = {
     pulse_ms = 120,
@@ -381,8 +455,9 @@ _G.UART_CFG = {
     rx_line_max = 4096,
 }
 _G.WDT_CFG = {
-    timeout_ms = 9000,
-    feed_interval_ms = 3000,
+    enabled = true,
+    timeout_ms = 9000,       -- 模组硬件 WDT 超时（ms），超时未喂狗则重启
+    feed_interval_ms = 3000,   -- 定时喂狗间隔（须 < timeout_ms）
 }
 _G.MQTT_CFG = {
     host = "112.86.146.218",

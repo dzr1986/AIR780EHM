@@ -3,7 +3,7 @@
 > **780EHM_PJ** 4G 固件（`user/`）与 T3x（`app/cat1/`）在 **GPIO27 USB 座** 拔插时，对低功耗指令的互斥策略。  
 > 关联：[T3X_LOW_POWER.md](T3X_LOW_POWER.md) §2.1、[T3X_HOSTEVT_SLEEP.md](T3X_HOSTEVT_SLEEP.md)
 
-**版本**：v1.0 · 2026-06-06
+**版本**：v1.1 · 2026-06-26
 
 ---
 
@@ -15,7 +15,8 @@
 | USB **插入** → 4G 模块**不进**低功耗 | `onEnterLowPower` 入口拦截；`AT+LOWPOWER=ENTER` → `+LOWPOWER:USB` |
 | USB **插入** → 串口通知 T3x 勿发休眠 AT | 4G 主动发 **`+CAT1:USB,1`** |
 | USB **拔出** → 通知 T3x 可恢复休眠轮询 | 4G 发 **`+CAT1:USB,0`** |
-| USB **拔出** → T3x 满足条件可再让 4G 休眠 | `has_event=0` 且无 USB 阻塞时 `AT+HOSTIDLE=1`；4G 可 `onEnterLowPower(usb_remove)` |
+| USB **拔出** → 4G 是否进 rest | **仅电量 ≤20%**（`battery_guard.evaluate`）；**>20% 不进 rest**（2026-06-26 起废弃无条件 `usb_remove`） |
+| USB **拔出** → T3x 满足条件可再让 4G 休眠 | `has_event=0` 且无 USB 阻塞且 **≤20%** 时可 `HOSTIDLE=1` |
 
 **说明**：T3x「低功耗」在此指 **`AT+HOSTIDLE=1`（请求 4G 对 T3x 断电）**；4G「低功耗」指 **`rest`（`low_power_mode=1`，T3x 断电、模组仍联网）**。USB 插入时**两者均被拦截**（可配置）。
 
@@ -42,8 +43,8 @@ sequenceDiagram
     U->>G: 拔出
     G->>H: push_usb_host_idle_state(0)
     H->>T: +CAT1:USB,0
-    G->>G: onEnterLowPower(usb_remove) 可选
-    Note over T: has_event=0 时可 AT+HOSTIDLE=1
+    G->>G: onUsbRemoved → evaluate（仅 ≤20% 进 rest）
+    Note over T: has_event=0 且 ≤20% 时可 AT+HOSTIDLE=1
 ```
 
 ---
@@ -107,8 +108,9 @@ _G.HOST_USB_CFG = {
 
 | 文件 | 函数 | 职责 |
 |------|------|------|
+| `app.lua` | `enterRestIfNeededAfterUsbRemove` | 拔 USB：**仅** `battery_guard.onUsbRemoved()`，**无**无条件 `usb_remove` |
 | `app.lua` | `applyUsbInsertState` | GPIO27/PMD 拔插写 `power_status` |
-| `app.lua` | `notifyT3xUsbHostIdlePolicy` | 调 `push_usb_host_idle_state` |
+| `battery_guard.lua` | `onUsbRemoved` / `tryExitMismatchedRest` | 拔座重算电量；>20% 误进 rest 立即纠正 |
 | `app.lua` | `onEnterLowPower` | USB=1 时直接 return，不进 rest |
 | `host_uart.lua` | `push_usb_host_idle_state` | 发 `+CAT1:USB,n` |
 | `host_uart.lua` | `uart_hostidle` | `HOSTIDLE:USB` / `HOSTIDLE?` 扩展字段 |
@@ -134,8 +136,9 @@ _G.HOST_USB_CFG = {
 
 - [ ] 插 USB：4G 日志 `USB插入`；串口 `+CAT1:USB,1`；T3x `HOSTEVT skip HOSTIDLE`
 - [ ] 插 USB：T3x 误发 `HOSTIDLE=1` → `+HOSTIDLE:USB`；4G **不进** rest
-- [ ] 拔 USB：串口 `+CAT1:USB,0`；4G 可 `进入低功耗 usb_remove`
-- [ ] 拔 USB：`has_event=0` 后 T3x `HOSTIDLE accepted`
+- [ ] 拔 USB：**>20%** 不进 rest（1003 `lowPowerMode=normal`）；**≤20%** 进 rest（`reason=battery`）
+- [ ] 拔 USB：`+CAT1:USB,0`；`has_event=0` 且 ≤20% 后 T3x `HOSTIDLE accepted`
+- [ ] 误进 rest（62% + rest）：ADC 上报后 `lp- battery_recover`
 - [ ] 冷启动插 USB：T3x 首 AT 后收到 `+CAT1:USB,1` 或 bootstrap `HOSTIDLE?` 中 `usb=1`
 - [ ] mismatch：`[4G_USB] reenum` + 4G `USBRESET done`；**无** `t3x wake` / `powerOn` 日志
 - [ ] T3x 已 `enterSleep` 断电：无持续 `AT+USBRESET`（IPC 已停）
@@ -173,6 +176,8 @@ _G.HOST_USB_CFG = {
 
 | 文档 | 说明 |
 |------|------|
+| [WORK_MODE_BATTERY_20PCT.md §9](WORK_MODE_BATTERY_20PCT.md#9-usb-拔插与-rest仅电量-20) | 拔 USB 仅 ≤20% 进 rest；误进纠正 |
+| [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) | 场景 B 流程图 |
 | [T3X_LOW_POWER.md](T3X_LOW_POWER.md) | rest / MQTT 1002、§2.1 摘要 |
 | [T3X_IPC_4G_INTERACTION.md](T3X_IPC_4G_INTERACTION.md) | 端到端总览 |
 | T3x `docs/usb_4g_recovery.md` | USB 恢复 + §11 低功耗互斥 |

@@ -3,7 +3,7 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "cell"
+local LOG_TAG = "cellular_bootstrap"
 local started = false
 local apnApplied = false
 local cellInfoRefreshStarted = false
@@ -316,7 +316,7 @@ function applyApnForSim()
         lastState.apn = apnMode or ""
     end
     exportRuntime()
-    log.info(LOG_TAG, "op", lastState.operator_name, operator,
+    log.info(LOG_TAG, "operator_update", lastState.operator_name, operator,
         imsi ~= "" and imsi or "--",
         iccid ~= "" and iccid:sub(1, 10) .. "..." or "--",
         lastState.apn ~= "" and lastState.apn or apnMode or "--")

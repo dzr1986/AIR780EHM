@@ -2,7 +2,7 @@ require "sys"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "fot"
+local L = "fota_svc"
 local IOT_UPGRADE_URL = "http://iot.openluat.com/api/site/firmware_upgrade?"
 local IOT_HOST = "iot.openluat.com"
 local started = false

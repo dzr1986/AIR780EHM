@@ -41,6 +41,30 @@ function isLowPowerMode()
     local rt = _G.APP_RUNTIME
     return rt and tonumber(rt.low_power_mode) == 1
 end
+local function isBatteryDynamicRest()
+    local rt = _G.APP_RUNTIME
+    if rt and tonumber(rt.battery_dynamic_rest) == 1 then
+        return true
+    end
+    local ok, bg = pcall(require, "battery_guard")
+    if ok and type(bg) == "table" and bg.isBatteryDynamicRest then
+        return bg.isBatteryDynamicRest() == true
+    end
+    return false
+end
+local function isWledWakeReason(reason)
+    return tostring(reason or "") == "wled"
+end
+local function isPirWakeReason(reason)
+    reason = tostring(reason or "")
+    if reason == "notify_host" or reason == "pir_media" or reason == "exit_low_power" then
+        return true
+    end
+    if reason:sub(1, 9) == "pir_stop" then
+        return true
+    end
+    return false
+end
 function isBurnActive()
     if _G.T3X_BURN_MODE_ACTIVE then
         return true
@@ -69,6 +93,17 @@ function mayPowerT3x(reason, opts)
         return true
     end
     if cfg().block_wake_in_low_power ~= false and isLowPowerMode() then
+        if cfg().allow_wled_wake_in_rest ~= false and isWledWakeReason(reason) then
+            return true
+        end
+        if isPirWakeReason(reason) then
+            if cfg().allow_pir_wake_in_rest ~= false then
+                return true
+            end
+            if cfg().allow_pir_wake_in_battery_rest ~= false and isBatteryDynamicRest() then
+                return true
+            end
+        end
         lastDenyReason = "low_power_mode=rest"
         return false
     end

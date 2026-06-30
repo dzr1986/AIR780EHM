@@ -2,9 +2,10 @@
 
 > **只读分析文档**（描述当前固件行为，不涉及改代码建议实现）  
 > 代码：`user/battery_guard.lua` · `lib/t3x_policy.lua` · `user/app.lua` · `user/config.lua`  
-> 关联：[LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) · [CONFIG.md](CONFIG.md)
+> 关联：[LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) · [CONFIG.md](CONFIG.md)  
+> **20% 阈值防徘徊实现**（本仓库当前固件）：[BATTERY_20PCT_DYNAMIC_DETECT_FLOW.md](BATTERY_20PCT_DYNAMIC_DETECT_FLOW.md) §8
 
-**版本**：v1.0 · 2026-06-10
+**版本**：v1.0 · 2026-06-10（阈值说明以 v1.0 为准；20% 产品见上链文档）
 
 ---
 
@@ -172,11 +173,11 @@ sequenceDiagram
 
 | 日志关键字 | 含义 |
 |------------|------|
-| `进入低功耗 battery` | 电量 ≤10%，断 T3x |
-| `退出低功耗 battery_recover` | 电量 >18%，拉 T3x |
+| `进入低功耗 battery` | 电量 ≤20%（连续确认），断 T3x |
+| `退出低功耗 battery_recover` | 电量 >20% 退出 rest；含误进 rest 纠正 |
 | `USB插入，忽略低电量限制` | 插上座子，电量环被掐断 |
-| `t3x_policy 跳过唤醒` + `battery<=15%` | 未插 USB，低电门禁 |
-| `进入低功耗 usb_remove` | 拔座进 rest（与电量无关） |
+| `t3x_policy 跳过唤醒` + `battery<=20%` | 未插 USB，低电门禁 |
+| ~~`进入低功耗 usb_remove`~~ | ~~已废弃~~：高电量拔座不再无条件 rest |
 
 **典型电量振荡**：`battery_recover` 与 `进入低功耗 battery` **交替出现**，间隔约 **10s** 量级（`BATTERY_CFG.sample_interval_ms`）或略长（含 IPC 关机时序）。
 
@@ -188,7 +189,8 @@ sequenceDiagram
 |------|------|------|
 | `remainPower` | ADC 映射电量 % | 与 USB **无关**；插电后仍可能很低 |
 | `usbInserted` | USB 座是否插入 | 1=GPIO27 插入 |
-| `lowPowerMode` | rest / normal | **业务休眠**，不等于「低电量」本身 |
+| `lowPowerMode` | rest / normal | **业务休眠**；**≤20% 才应因电量进 rest** |
+| 异常组合 | `remainPower=62` + `usbInserted=0` + `lowPowerMode=rest` | 旧固件 `usb_remove` 误进；新固件 `tryExitMismatchedRest` 纠正 |
 
 云端若只看 `remainPower` 低而以为 T3x 应断电，可能与设备侧「插 USB 仍允许 T3x」不一致。
 

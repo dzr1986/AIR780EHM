@@ -3,7 +3,7 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "snd"
+local LOG_TAG = "sound_prompt"
 local ACK_EVENT = "SOUND_PROMPT_ACK"
 local uart_bridge
 local t3xModule

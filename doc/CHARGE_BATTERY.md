@@ -144,6 +144,8 @@ flowchart TB
 | `adc.channel` | `1` | LuatOS ADC 通道 1 = **ADC1 / BAT_ADC** |
 | `adc.mv_scale` | `3326/1131` | 引脚 mV × scale = 电芯 mV（与 `config.lua` 一致） |
 | `cell.v_max_mv` / `v_min_mv` | 4200 / 3000 | 满电 / 截止 → 100% / 1% |
+| `filter.*` | 见 [CONFIG.md](CONFIG.md) | **ADC 滤波**：trimmed mean + EMA + 满电滞回，抑制 mV/% 跳变 |
+| `adc.mv_calibration` | `3812/3608` | 板级电压校准 |
 | `sample_interval_ms` | `10000` | 采样周期（ms） |
 | `mqtt_report_interval_sec` | `60` | 1003 周期**回退**（`low_power_interval_sec` 未设时）；初值 30s 见 `LOW_POWER_CFG.rest_mqtt_interval_sec` |
 | `led.*` | 70 / 20 等 | 模组红蓝灯阈值与时序 |
@@ -252,8 +254,8 @@ flowchart LR
 
 | 层 | 模块 | 循环内职责 |
 |----|------|------------|
-| 采样 | `vbat.lua` | `adc.open` → 分压换算 → 电芯 mV |
-| 算法 | `vbat.lua` | 百分比映射、`APP_RUNTIME.battery_*` 写入 |
+| 采样 | `vbat.lua` | `adc.open` → 11 次子采样 trimmed mean → EMA → 电芯 mV |
+| 算法 | `vbat.lua` | 百分比映射 + 满电滞回 + 单步限幅 → `APP_RUNTIME.battery_*` |
 | 业务 | `vbat` | `sys.taskInit` 周期 `wait(sample_interval_ms)`、发布 `BATTERY_UPDATE` |
 
 `app.lua` 经 `optMod("battery", "vbat")` 加载；`vbat.lua` 内联 ADC 采样与百分比算法，不依赖 lib/adc_lib。

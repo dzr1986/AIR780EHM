@@ -2,7 +2,7 @@
 
 > **本机示例 IMEI**：`862323084068124`  
 > **MQTTX 抄录**：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)  
-> **完整协议**：[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) · **平台对接**：[§1.2](./MQTT_PROTOCOL.md#12-平台对接须知) · **代码**：`user/net_mqtt.lua`
+> **完整协议**：[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) · **平台对接**：[§1.2](./MQTT_PROTOCOL.md#12-平台对接须知) · **远程控制流程**：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · **代码**：`user/net_mqtt.lua`
 
 ---
 
@@ -53,6 +53,9 @@
 | 1005 SIM | `/panshi/app/862323084068124/sim` |
 | 1010 PIR | `/panshi/app/862323084068124/pir` |
 | 1021 / 1020 编码 | `/panshi/app/862323084068124/encode` |
+| 1022 / 1023 录像时长 | `/panshi/app/862323084068124/record` |
+| 1024 / 1025 帧率 | `/panshi/app/862323084068124/framerate` |
+| 1026 / 1027 人形 | `/panshi/app/862323084068124/personDetect` |
 
 **载荷**：UTF-8 JSON，QoS 建议 **1**，每条消息一个 `dataType`。
 
@@ -75,8 +78,15 @@
 | **2007** | TF/SD 卡状态查询 | **1007** | `tfcard` |
 | **2010** | PIR 策略 / 查询 | **1010** | `pir` |
 | **2011** | 设备停录 | **1011** | `event` |
+| **2012** | 平台开 TF 卡录 | **1012** + **1010** | `event` / `pir` |
 | **2021** | 设置视频/音频编码 | **1021** | `encode` |
 | **2020** | 查询视频/音频编码 | **1020** | `encode` |
+| **2022** | 查询录像时长档位 | **1022** | `record` |
+| **2023** | 设置录像时长档位 | **1023** | `record` |
+| **2024** | 查询帧率 | **1024** | `framerate` |
+| **2025** | 设置帧率 | **1025** | `framerate` |
+| **2026** | 查询人形检测 | **1026** | `personDetect` |
+| **2027** | 设置人形检测 | **1027** | `personDetect` |
 
 **1004 区分**：`"reply":1` → 应答 **2004**；含 `"stage"` → OTA 进度（无 `reply`）。
 
@@ -176,7 +186,8 @@
 | reason | 含义 |
 |--------|------|
 | `mqtt_2002` | 响应本节 2002 enter |
-| `usb_remove` | USB 拔出 |
+| `usb_remove` | legacy：未开 battery_guard 时拔 USB 进 rest |
+| `battery` | 电量 ≤20% 进 rest |
 | `battery` | 低电量 ≤10% |
 | `at` | `AT+LOWPOWER=ENTER` |
 | `boot_no_usb` | 冷启动无 USB |
@@ -798,6 +809,34 @@
 | `pir_retrigger` | 二次 PIR |
 | `manual` | 本地 |
 
+**T3x 已在线时**：4G 额外发 `AT+RECORDCTRL=0,cloud`。详见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012)。
+
+---
+
+## 10a. `2012` — 平台开 TF 卡录 → `1012` / `1010`
+
+**发布**：`/panshi/device/862323084068124/`
+
+```json
+{
+  "dataType": "2012",
+  "messageId": "rec-start-001",
+  "action": "video",
+  "videoMaxDurationSec": 90
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `action` | 固定 `"video"` |
+| `videoMaxDurationSec` | 最长录像秒数；省略时 4G 侧默认 60 |
+
+流程：`pir_ctrl.requestStartFromCloud()` → **1004** `pir_start` + **1012** → GPIO 唤醒 T3x → TF MP4 → **1010** `t3x_active` → 结束 **1011**。
+
+**T3x 已在线时**：`host_uart.recordCtrlStart()` → `AT+RECORDCTRL=1,<videoMaxDurationSec>`。
+
+**应答主题**：`/panshi/app/862323084068124/event`（1012）· `/panshi/app/.../pir`（1010）
+
 ---
 
 ## 11. `2020` — 查询编码参数 → `1020`
@@ -912,7 +951,77 @@
 | `rcmode` | `0`=CBR `1`=VBR `2`=CAPPED_QUALITY |
 | `encoder`（音频） | `1`=G.711A `4`=AAC |
 
-**注意**：与 **2010** `quality` 无关；改分辨率请用本命令，勿用 2010。
+**注意**：与 **2010** `quality` 无关；改分辨率请用本命令，勿用 2010。仅改帧率可用 **2025**（更轻量），见下节。
+
+---
+
+## 12a. `2022` / `2023` — 录像时长档位 → `1022` / `1023`
+
+**发布**：`/panshi/device/862323084068124/`
+
+```json
+{"dataType":"2022","messageId":"rt-q-001"}
+{"dataType":"2023","recordTimeMin":10,"messageId":"rt-s-001"}
+```
+
+`recordTimeMin` 仅允许 **5/10/15/20/30/45/60** 分钟。UART：`AT+RECORDTIME?` / `AT+RECORDTIME=<min>`。
+
+**应答主题**：`/panshi/app/862323084068124/record`
+
+---
+
+## 12b. `2024` / `2025` — 帧率查询/设置 → `1024` / `1025`
+
+**发布**：`/panshi/device/862323084068124/`
+
+查询 camera0 主码流帧率：
+
+```json
+{"dataType":"2024","camera":0,"stream":0,"messageId":"fps-q-001"}
+```
+
+设置为 20fps：
+
+```json
+{"dataType":"2025","camera":0,"stream":0,"framerate":20,"messageId":"fps-s-001"}
+```
+
+**应答主题**：`/panshi/app/862323084068124/framerate`
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1024",
+  "reply": 1,
+  "messageId": "fps-q-001",
+  "ret": 0,
+  "body": {
+    "video": [{"camera":0,"stream":0,"framerate":25}]
+  },
+  "time": "2026-06-26 10:00:00"
+}
+```
+
+4G → T3x：`AT+FRAMERATE?` / `AT+FRAMERATE=0,0,20`。完整流程：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#3-帧率2024--2025)。
+
+---
+
+## 12c. `2026` / `2027` — 人形检测开关 → `1026` / `1027`
+
+**发布**：`/panshi/device/862323084068124/`
+
+```json
+{"dataType":"2026","messageId":"pd-q-001"}
+{"dataType":"2027","enable":1,"messageId":"pd-s-001"}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `enable` | `0` 关闭 / `1` 开启 |
+
+**应答主题**：`/panshi/app/862323084068124/personDetect`
+
+4G → T3x：`AT+PERSONDET?` / `AT+PERSONDET=1`。需 T3x 编译 `WITH_PERSON_DETECT`。详见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §5](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#5-人形检测2026--2027)。
 
 ---
 
@@ -929,9 +1038,14 @@
 9. `2010` + `action=query` → **1010**（**rest 下仍可用**）
 10. `2004` + `reboot` → **1004** `reply=1`（设备重启）
 11. `2002` enter → **1002**（`lowPowerMode=enter`，含 `reason`/`source`）；`2002` exit → **1002**（`lowPowerMode=exit`）
-12. `2011`（录像中）→ **1011**
+12. `2011`（录像中）→ **1011**（T3x 在线时另发 `AT+RECORDCTRL=0,cloud`）
+12a. `2012` → **1004** + **1012** + **1010**（T3x 在线时 `AT+RECORDCTRL=1,<sec>`）
 13. `2020` → **1020**（encode 主题）
 14. `2021` 改码率 → **1021** `needReboot=0`；改分辨率 → `needReboot=1`
+15. `2024` → **1024**（framerate 主题）
+16. `2025` → **1025**
+17. `2026` → **1026**（personDetect 主题）
+18. `2027` → **1027**
 
 单行 JSON 抄录见：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)
 
@@ -950,5 +1064,12 @@
 | 2007 | `handleDownlink2007` | `publishTfCardStatus` |
 | 2010 | `handleDownlink2010` | `publishPirDetect` |
 | 2011 | `handleDownlink2011` | `publishPirRecordStop` |
+| 2012 | `handleDownlink2012` | `publishPirRecordStart` + `recordCtrlStart` |
 | 2021 | `handleDownlink2021` | `publishEncodeReply` → 1021 |
 | 2020 | `handleDownlink2020` | `publishEncodeReply` → 1020 |
+| 2022 | `handleDownlink2022` | `publishRecordTimeReply` → 1022 |
+| 2023 | `handleDownlink2023` | `publishRecordTimeReply` → 1023 |
+| 2024 | `handleDownlink2024` | `publishFramerateReply` → 1024 |
+| 2025 | `handleDownlink2025` | `publishFramerateReply` → 1025 |
+| 2026 | `handleDownlink2026` | `publishPersonDetectReply` → 1026 |
+| 2027 | `handleDownlink2027` | `publishPersonDetectReply` → 1027 |

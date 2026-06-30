@@ -12,7 +12,7 @@
 | USB | 4G | T3x |
 |-----|-----|-----|
 | **插入** | 不进 rest；`HOSTIDLE=1` → `+HOSTIDLE:USB` | `+CAT1:USB,1` → 停止 `HOSTIDLE` 轮询 |
-| **拔出** | `+CAT1:USB,0`；可 `onEnterLowPower(usb_remove)` | `has_event=0` 时可发 `HOSTIDLE=1` |
+| **拔出** | `+CAT1:USB,0`；**仅 ≤20%** 进 rest（`battery`） | `has_event=0` 且 ≤20% 时可发 `HOSTIDLE=1` |
 
 配置：`HOST_USB_CFG`（`config.lua`）。完整时序：[T3X_LOW_POWER.md §2.1](T3X_LOW_POWER.md)。
 

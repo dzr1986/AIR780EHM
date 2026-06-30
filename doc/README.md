@@ -33,6 +33,9 @@
 |------|------|
 | [CHARGE_BATTERY.md](CHARGE_BATTERY.md) | 充电、ADC（`vbat`）、MQTT 1003 |
 | [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) | **低电量/USB/rest/T3x**（场景流程图 + 附录） |
+| [WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) | **工作模式 ①② + 电量 20% 切换 + §9 USB 拔插（仅 ≤20% 进 rest）** |
+| [LOW_POWER_ENTER_STRATEGY.md](LOW_POWER_ENTER_STRATEGY.md) | **电量 rest vs HOSTIDLE 30s 轮询**：是否矛盾、策略切换 |
+| [BATTERY_REST_SWITCH_CONDITIONS.md](BATTERY_REST_SWITCH_CONDITIONS.md) | rest 切换：连续确认、最短常电、最短 rest |
 | [T3X_LOW_POWER.md](T3X_LOW_POWER.md) | **低功耗可配置**：rest 主流程、**conack 与 1001/1002/1003** |
 | [T3X_USB_HOSTIDLE.md](T3X_USB_HOSTIDLE.md) | **USB 插入 ↔ T3x/4G 低功耗互斥** |
 | [T3X_BATTERY_USB_T3X_OSCILLATION.md](T3X_BATTERY_USB_T3X_OSCILLATION.md) | USB+低电量与 T3x 启停循环（纯分析） |
@@ -56,8 +59,11 @@
 
 | 文档 | 说明 |
 |------|------|
-| [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行（含 2006/2007、2021/2020） |
+| [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行（含 2006/2007、2021/2020、2024–2027、2012） |
+| [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) | **远程控制**：帧率/录像/人形（MQTT + AT + 时序） |
+| [T3X_IPC_CLOUD_EXCEPTION_REPORT.md](T3X_IPC_CLOUD_EXCEPTION_REPORT.md) | **T3x IPC 联网异常上报分析**（已上报 vs 缺口） |
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | **本机 IMEI 862323084068314** MQTT 联调手册 |
+| [MQTT_DOWNLINK_862323084068124.txt](MQTT_DOWNLINK_862323084068124.txt) | **IMEI 124** MQTTX 单行 JSON 抄录（含 2024–2027） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
 | [OTA_SERVER.md](OTA_SERVER.md) | **自建 OTA**（固件对接 + 部署清单，不改 lua） |
 | [OTA_PROTOCOL.md](OTA_PROTOCOL.md) | **OTA 协议与升级流程分析**（HTTP + MQTT） |

@@ -57,11 +57,14 @@ _G.APP_EVENTS = {
     PIR_STOP_RECORDING = "pir_stop_recording",
     T3X_RECORD_ACTIVE = "t3x_record_active",
     T3X_RECORD_STOP = "t3x_record_stop",
+    T3X_IPC_ALERT = "t3x_ipc_alert",
     T3X_PERSON_CNT = "t3x_person_cnt",
     PIR_TIMER_EXPIRED = "pir_timer_expired",
     UART_RX_RAW = "uart_rx_raw",
     UART_RX_STRING = "uart_rx_string",
     UART_RX_HEX = "uart_rx_hex",
     HOST_UART_FIRST_AT = "host_uart_first_at",
+    HOST_NET_ID_P2P = "host_net_id_p2p",
+    HOST_NET_ID_GB28181 = "host_net_id_gb28181",
 }
 return _M

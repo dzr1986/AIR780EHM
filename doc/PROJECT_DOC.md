@@ -3,6 +3,7 @@
 > Air780EHM + T3x 摄像头 · LuatOS 方案1（扁平架构）  
 > **配置真源**：[`CONFIG.md`](CONFIG.md)（`config` / `app_config` / `key_config`）· **调用关系**：[`CALL_GRAPH.md`](CALL_GRAPH.md)  
 > **协议专篇**：`MQTT_PROTOCOL.md` · `UART_PROTOCOL.md` · `PIR_PROTOCOL.md`  
+> **远程控制（帧率/录像/人形）**：[`MQTT_CLOUD_REMOTE_CTRL_FLOW.md`](MQTT_CLOUD_REMOTE_CTRL_FLOW.md)  
 > **代码分析**：`CODE_ANALYSIS.md`  
 > Cat.1 录像 / MQTT 1010/1011：[`T3X_RECORD_MQTT_FLOW.md`](T3X_RECORD_MQTT_FLOW.md)
 
@@ -146,7 +147,7 @@ APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 |----|------|
 | 启动 | `net.start()` → `mqttTask`；由 `app.startMqtt` 调用 |
 | 连接 | `mqtt.create` + `autoreconn`；`clientId` = IMEI |
-| 下行 | 2001–2007、2010–2011、**2021/2020** → `pir_ctrl` / `host_uart` / 设备事件 |
+| 下行 | 2001–2007、2010–2012、**2020–2027** → `pir_ctrl` / `host_uart` / 设备事件 |
 | 上行 | 1001–1007、1004 OTA、1010/1011、**1021/1020** 编码 |
 | 离线 | `MQTT_OFFLINE` → app `onMqttOffline` → T3x 脉冲 |
 | 扩展 | `start({ onOffline, onMessage })` 可选，当前 app 未传回调 |
@@ -245,7 +246,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 | 下行 | 上行 |
 |------|------|
 | 2001 唤醒 · 2002 低功耗 · 2003 状态 · 2004 电源/OTA · 2005 SIM · **2006 标识 · 2007 TF 卡** | 1001–1007 对应应答 |
-| 2010 PIR · 2011 停录 · **2021 编码设置 · 2020 编码查询** | 1004 OTA · 1010 PIR · 1011 停录 · **1021/1020 编码** |
+| 2010 PIR · 2011/2012 停录/开录 · **2020/2021 编码** · **2024–2027 帧率/人形** | 1004 OTA · 1010 PIR · 1011/1012 录像 · **1020/1021 编码** · **1024–1027 远程控制** |
 
 ---
 
@@ -415,6 +416,8 @@ log.info("fota", json.encode(require("fota_svc").getState()))
 | `PIR_TRIGGER_INTERVAL.md` | PIR 触发间隔分析（cooldown、门铃参考） |
 | `UART_PROTOCOL.md` | 串口 AT / STR / HEX |
 | `MQTT_PROTOCOL.md` | MQTT 上下行 |
+| `MQTT_CLOUD_REMOTE_CTRL_FLOW.md` | 帧率/录像/人形远程控制（MQTT + AT） |
+| `T3X_IPC_CLOUD_EXCEPTION_REPORT.md` | T3x IPC 联网异常上报分析 |
 | `CODE_ANALYSIS.md` | user/ 整体架构与风险分析 |
 | `PROJECT_DOC.md` | 本文档 |
 

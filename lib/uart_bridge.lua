@@ -3,7 +3,7 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "uartBridge"
+local LOG_TAG = "uart_bridge"
 local CRLF = "\r\n"
 local drv = {
     started = false,
@@ -151,7 +151,7 @@ function start(options)
     uart.setup(drv.uart_id, drv.baud, 8, 0, 0, 0)
     uart.on(drv.uart_id, "recv", on_uart_recv)
     drv.started = true
-    log.info(LOG_TAG, "on", drv.uart_id, drv.baud,
+    log.info(LOG_TAG, "module_on", drv.uart_id, drv.baud,
         "lineProto", drv.line_protocol, "rxMax", drv.rx_line_max)
     return true
 end
