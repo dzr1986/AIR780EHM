@@ -403,6 +403,13 @@ PIR / 按键 / LED / 电池 / OTA 已合并至 `user/pir_ctrl`、`user/periphera
 
 ## 11. 相关文档索引
 
+| 文档 | 内容 |
+|------|------|
+| [LUA_MODULES.md](LUA_MODULES.md) | **30 个 Lua 模块**：职责、流程、依赖矩阵 |
+| [CONFIG.md](CONFIG.md) | 配置字段 |
+| [CALL_GRAPH.md](CALL_GRAPH.md) | 启动与事件 |
+| [POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) | 电量/USB/T3x |
+
 | 文档 | 用途 |
 |------|------|
 | [CODE_DOC_AUDIT.md](./CODE_DOC_AUDIT.md) | 代码↔文档核验流程、`app.start` 真源表 |

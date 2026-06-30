@@ -1,3 +1,5 @@
+-- T3x 上电/唤醒统一门禁：USB、低功耗 rest、低电量、烧录模式
+-- 文档：doc/LUA_MODULES.md §4.3
 require "sys"
 require "config"
 local _modname = ...

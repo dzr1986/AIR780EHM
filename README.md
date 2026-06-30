@@ -25,7 +25,7 @@ main.lua
 | 项 | 值 |
 |----|-----|
 | 配置真源 | `user/config.lua`（硬件）+ `app_config.lua` / `key_config.lua` |
-| 文档 | [`doc/`](doc/)（见 [doc/CONFIG.md](doc/CONFIG.md)） |
+| 文档 | [`doc/`](doc/)（见 [doc/CONFIG.md](doc/CONFIG.md)、[doc/LUA_MODULES.md](doc/LUA_MODULES.md)） |
 | 栈选择 | `APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }` |
 | 核心固件 | `luatos.json` → Air780EHM SOC |
 | 脚本区 | 约 **384KB** 上限；可选模块见 [doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md) |

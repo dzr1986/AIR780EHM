@@ -123,27 +123,32 @@
 | | `medium_threshold` | 20 | 20～70% 蓝闪；≤20% 红闪 |
 | | `high_hold` / `medium_*` / `low_*` | 见 config | `led_ctrl.lua 时序 |
 | **guard** | `enabled` | true | 总开关（另受 `MODULE_FLAGS.battery_guard`） |
-| | `ignore_when_usb_inserted` | true | **GPIO27 插入**时忽略阈值并保持 T3x 上电 |
-| | `pir_suspend_percent` | 15 | 未插 USB 且 ≤15%：暂停 PIR |
-| | `pir_resume_percent` | 20 | &gt;20% 恢复 PIR（滞回，v1.2） |
-| | `t3x_rest_percent` | 10 | ≤10%：`onEnterLowPower` + MQTT 1002 + 断 T3x |
-| | `recover_rest_percent` | 18 | &gt;18% 退出电量休眠（v1.2，减 ADC 抖动） |
-| | `shutdown_percent` | 5 | ≤5%：延时关机 |
+| | `ignore_when_usb_inserted` | true | **GPIO27 插入**时跳过阈值评估；插入时恢复 PIR / 取消关机 |
+| | `host_idle_below_percent` | 20 | 电量 ≤20% 允许 T31 `HOSTIDLE`（4G 仍 normal） |
+| | `host_idle_min_awake_sec` | 30 | 中间档：PIR 唤醒后至少常电 30s 再允许 HOSTIDLE |
+| | `shutdown_percent` | 5 | ≤5%：4G rest + 挂起 PIR + 延时关机 |
 | | `shutdown_delay_ms` | 3000 | 关机前等待；插 USB 可取消 |
+| | `t3x_rest_percent` | 10 | **仅 hybrid 策略**：≤10% 进 4G rest |
+| | `recover_rest_percent` | 10 | **仅 hybrid 策略**：退出 rest 阈值 |
+| | `pir_suspend_percent` | 5 | **仅 hybrid 策略**：挂起 PIR |
 | | `require_valid_sample` | true | 电量 `--` 时不执行 guard |
 
 兼容：`_G.BATTERY_GUARD_CFG` 指向 `BATTERY_CFG.guard`（旧代码/文档可继续用此名）。
 
-### 未插 USB 时的电量动作（摘要）
+完整模块逻辑见 [LUA_MODULES.md](LUA_MODULES.md) §3.5。
+
+### 未插 USB 时的电量动作（`battery` 策略，默认）
 
 ```mermaid
 flowchart LR
-    A[≤15%] --> B[停 PIR]
-    C[≤10%] --> D[1002 + 断 T3xx]
-    E[≤5%] --> F[延时关机]
+    A[>20%] --> B[常电 拒 HOSTIDLE]
+    C[5~20%] --> D[HOSTIDLE 断 T31 PIR可唤醒]
+    E[≤5%] --> F[rest + 延时关机]
 ```
 
-插 **USB_DET（GPIO27）** 后：不执行上表，并 `wake` T3xx。
+`hybrid` 策略另含 ≤`t3x_rest_percent` 进 4G rest，见 `LOW_POWER_ENTER_STRATEGY`。
+
+插 **USB_DET（GPIO27）** 后：`battery_guard` 跳过阈值；在 rest 时 `onExitLowPower` 唤醒 T31（冷启动由 `bootPowerOn` 单独上电）。
 
 ### `SOUND_CFG` 提示音（`config.lua`）
 

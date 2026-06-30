@@ -1,3 +1,6 @@
+-- T3x 协处理器电源控制：GPIO22 上断电、GPIO29 唤醒、优雅 IPC 关机
+-- 休眠互斥：enterSleep 期间 sleep_in_progress；唤醒前 waitSleepIdle
+-- 文档：doc/LUA_MODULES.md §3.7
 require "sys"
 require "config"
 local gpio_util = require "gpio_util"
@@ -32,6 +35,7 @@ local state = {
     last_wake_reason = nil,
     rest_enter_time = nil,
 }
+local sleep_in_progress = false
 
 local modCache = {}
 local function loadMod(name)
@@ -156,7 +160,33 @@ function start()
     return true
 end
 
+function isSleepInProgress()
+    return sleep_in_progress == true
+end
+
+function waitSleepIdle(timeoutMs)
+    if not sleep_in_progress then
+        return true
+    end
+    if not coroutine.running() then
+        return false
+    end
+    timeoutMs = tonumber(timeoutMs) or 20000
+    local elapsed = 0
+    local step = 50
+    while sleep_in_progress and elapsed < timeoutMs do
+        sys.wait(step)
+        elapsed = elapsed + step
+    end
+    return not sleep_in_progress
+end
+
+local function waitBeforeWake()
+    waitSleepIdle(20000)
+end
+
 function powerOn()
+    waitBeforeWake()
     return applyPowerLevel(true)
 end
 
@@ -315,13 +345,19 @@ function enterSleep(opts)
         pm.hibernate()
         return
     end
-    shutdownPoweredT3x(opts)
+    sleep_in_progress = true
+    local ok, err = pcall(shutdownPoweredT3x, opts)
+    sleep_in_progress = false
+    if not ok then
+        log.warn(L, "enter_sleep_fail", tostring(err))
+    end
 end
 
 function wake()
+    waitBeforeWake()
     state.last_wake_reason = rtos.last_wake_reason and rtos.last_wake_reason() or nil
     if not isPoweredOn then
-        powerOn()
+        applyPowerLevel(true)
     end
     pulseMcuInt()
 end
@@ -345,6 +381,7 @@ function getState()
         boot_level = currentBootLevel,
         ota_level = currentOtaLevel,
         power_state = state.power_state,
+        sleep_in_progress = sleep_in_progress,
         last_wake_reason = state.last_wake_reason,
         rest_enter_time = state.rest_enter_time,
         last_action = lastAction,
@@ -397,6 +434,7 @@ end
 
 function ensurePowered(tag, opts)
     opts = type(opts) == "table" and opts or {}
+    waitBeforeWake()
     local policy = t3xPolicyMod()
     if type(policy) == "table" and policy.mayPowerT3x
         and not policy.mayPowerT3x(tag or "t3x_ipc") then

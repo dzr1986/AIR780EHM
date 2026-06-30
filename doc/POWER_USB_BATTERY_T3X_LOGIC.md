@@ -63,7 +63,7 @@ flowchart TB
 |--------|------|-------------------|
 | **P0** | T3x 烧录模式 `T3X_BURN_MODE_ACTIVE` | 暂停 `battery_guard`；专用心跳/供电时序 |
 | **P1** | **USB 插入** `power_status==1` | `battery_guard` **整段跳过**；插入时 **wake T3xx**、恢复 PIR、取消 ≤5% 关机 |
-| **P2** | 未插 USB + **电量** | ≤15% 停 PIR；≤10% 进低功耗+断 T3xx；≤5% 延时关机 |
+| **P2** | 未插 USB + **电量** | >20% 常电；5~20% HOSTIDLE；≤5% rest+关机 |
 | **P3** | **业务低功耗**（USB 拔出 / MQTT 2002 / AT） | `onEnterLowPower` → 断 T3x + 1002（与电量可叠加） |
 | **P4** | **业务唤醒**（PIR / MQTT 离线 / notify_host 等） | 可能 **上电+脉冲**（**当前未统一检查** ③/①，见 §6） |
 

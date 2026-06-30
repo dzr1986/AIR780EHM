@@ -3,9 +3,9 @@ _G[_modname or (...)] = _M
 local RNDIS_ENABLE = 1
 local LOW_POWER_ENABLE = 1
 -- 低功耗「进 rest / 断 T3x」主策略（见 doc/LOW_POWER_ENTER_STRATEGY.md）
--- battery    = 默认三档：>20% 常电；10%<电量≤20% T31 HOSTIDLE 动态休眠；≤10% 4G rest；≤5% 关机
+-- battery    = 默认三档：>20% 常电；5%<电量≤20% T31 HOSTIDLE（PIR 唤醒后 30s 内拒休眠）；≤5% 4G rest + 关机
 -- idle_poll  = 旧方式：不看电量分档，仅 T3x 空闲轮询 HOSTIDLE 断电
--- hybrid     = 电量≤10% rest，>10% 仍允许 HOSTIDLE（纯动态侦测机型）
+-- hybrid     = 电量≤t3x_rest_percent 进 4G rest，>rest 仍允许 HOSTIDLE（纯动态侦测机型）
 local LOW_POWER_ENTER_STRATEGY = "battery"
 local HOST_EVT_ENABLE = 1
 local USB_REENUM_ENABLE = 1 -- 1=允许 T3X 通过 USBRESET 触发 CAT1 重新枚举
@@ -311,19 +311,19 @@ _G.BATTERY_CFG = {
     guard = {
         enabled = true,
         ignore_when_usb_inserted = true,
-        -- 三档电量（2026-06）：>host_idle_below 常电；中间档 HOSTIDLE；≤t3x_rest 进 4G rest
+        -- 三档电量（battery 策略）：>host_idle_below 常电；中间档 HOSTIDLE；≤shutdown 关机
         battery_rest_dynamic_detect = true,
         host_idle_below_percent = 20,   -- 电量 ≤20% 允许 T31 HOSTIDLE（4G 仍 normal，不进 rest）
-        host_idle_min_awake_sec = 30,   -- 中间档：唤醒后至少常电 30s，无事件再 HOSTIDLE
-        t3x_rest_percent = 10,          -- 电量 ≤10% 进 4G rest（动态侦测，PIR 可唤醒）
-        recover_rest_percent = 10,      -- 电量 >10% 连续确认后退出 rest
+        host_idle_min_awake_sec = 30,   -- 中间档：PIR 唤醒后至少常电 30s，再允许 HOSTIDLE
+        t3x_rest_percent = 10,          -- 仅 hybrid 策略：电量 ≤10% 进 4G rest
+        recover_rest_percent = 10,      -- 仅 hybrid 策略：电量 >10% 连续确认后退出 rest
         min_rest_duration_sec = 600,
         min_always_on_duration_sec = 300,
         enter_rest_confirm_count = 2,
         exit_rest_confirm_count = 3,
-        pir_suspend_percent = 5,        -- 仅关机前缘（≤5% 直接 scheduleShutdown）
+        pir_suspend_percent = 5,        -- 仅 hybrid 策略：≤5% 挂起 PIR
         pir_resume_percent = 6,
-        shutdown_percent = 5,           -- 电量 ≤5% 排程整机关机
+        shutdown_percent = 5,           -- 电量 ≤5%：4G rest + 挂起 PIR + 排程整机关机
         shutdown_delay_ms = 3000,
         shutdown_mqtt_wait_ms = 8000,   -- 关机前等待 MQTT 连接（毫秒）
         shutdown_mqtt_grace_ms = 800,   -- 上报后留空给 broker 收包
@@ -340,7 +340,7 @@ _G.T3X_POLICY_CFG = {
     block_mqtt_offline_wake = true,
     block_mqtt_offline_wake_when_usb = true,
     mqtt_offline_wake_cooldown_sec = 120,
-    block_wake_below_percent = 5,       -- 5~10% rest 仍允许 PIR 唤醒；≤5% 拒唤醒并关机
+    block_wake_below_percent = 5,       -- ≤5% 拒 PIR/非 USB 唤醒；5~20% 中间档允许 PIR 唤醒 T31
 }
 _G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
 
