@@ -4,7 +4,7 @@
 > **配置真源**：[`user/config.lua`](../user/config.lua) · 开关 [`user/app_config.lua`](../user/app_config.lua)  
 > **启动顺序**：[`CODE_DOC_AUDIT.md`](CODE_DOC_AUDIT.md) §3 · 调用图 [`CALL_GRAPH.md`](CALL_GRAPH.md)
 
-> **专题索引**：[doc/modules/README.md](modules/README.md)
+> **专题索引**：[doc/modules/README.md](modules/README.md) · **合并/回归**：[PR_MERGE_REGRESSION.md](modules/PR_MERGE_REGRESSION.md)
 
 ---
 
