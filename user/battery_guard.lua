@@ -473,7 +473,9 @@ end
 -- USB 事件入口
 -- ---------------------------------------------------------------------------
 
-function onUsbInserted()
+function onUsbInserted(opts)
+    opts = type(opts) == "table" and opts or {}
+    local source = opts.source
     cancelShutdownTimer()
     local wasRest = guard.rest_by_battery
     local wasPir = guard.pir_suspended
@@ -497,7 +499,8 @@ function onUsbInserted()
             exitedRest = true
         end
     end
-    if not exitedRest and type(hooks.wake_t3x) == "function" then
+    -- 冷启动时 initPowerStatus 早于 t3x_ctrl.start()，由 bootPowerOn 上电，避免与 wake_t3x 重复
+    if not exitedRest and source ~= "boot" and type(hooks.wake_t3x) == "function" then
         hooks.wake_t3x()
     end
 end

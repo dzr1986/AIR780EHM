@@ -224,6 +224,7 @@ local function onExitLowPower(reason)
         end
     end
     sys.publish(E.POWER_EXITED_REST)
+    -- requestT3xWake 经 time_sync.pushBeforeNotify 已含对时+notify_host，勿再调 onT3xWake 避免重复脉冲
     requestT3xWake("exit_low_power", nil, nil, { force_wake = true })
     local lpw = lowPowerWakeupMod()
     if lpw and lpw.onExitRest then
@@ -232,10 +233,6 @@ local function onExitLowPower(reason)
     if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table"
         and sound_prompt.onWakeFromLowPower then
         sound_prompt.onWakeFromLowPower()
-    end
-    if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table"
-        and time_sync.onT3xWake then
-        time_sync.onT3xWake()
     end
 end
 local function onReboot()
@@ -350,9 +347,9 @@ local function enterRestIfNeededAfterUsbRemove(source)
         onEnterLowPower("usb_remove")
     end
 end
-local function exitRestIfNeededAfterUsbInsert()
+local function exitRestIfNeededAfterUsbInsert(source)
     if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
-        battery_guard.onUsbInserted()
+        battery_guard.onUsbInserted({ source = source })
     else
         onExitLowPower("usb_insert")
     end
@@ -370,7 +367,7 @@ local function applyUsbInsertState(inserted, source)
         state.flag_usb = true
         state.usb_insert_tick = nowMs()
         cancelPwrKeyLongPress()
-        exitRestIfNeededAfterUsbInsert()
+        exitRestIfNeededAfterUsbInsert(source)
         notifyT3xUsbHostIdlePolicy(true)
     end
 end
