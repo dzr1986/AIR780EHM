@@ -15,6 +15,7 @@
 | [PROJECT_DOC.md](PROJECT_DOC.md) | 模块职责、业务流程、调试 |
 | [CALL_GRAPH.md](CALL_GRAPH.md) | 启动顺序、require、事件流 |
 | [CODE_ANALYSIS.md](CODE_ANALYSIS.md) | 架构与风险 |
+| [LUA_MODULES.md](LUA_MODULES.md) | **30 个 Lua 模块逻辑分析**（职责/流程/依赖） |
 | [TIME_SYNC.md](TIME_SYNC.md) | SNTP + `AT+TIMESET` 时间同步 |
 
 ### 硬件 / GPIO / 指示灯

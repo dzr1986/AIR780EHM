@@ -1,3 +1,8 @@
+-- 电量档位（battery 策略，默认）
+--   normal     > host_idle_below_percent（20%）：常电，拒绝 HOSTIDLE
+--   host_idle  5% < pct ≤ 20%：仅 T31 HOSTIDLE，4G 不进 rest，PIR 可唤醒 30s 保护
+--   shutdown   ≤ shutdown_percent（5%）：挂起 PIR + 4G rest + 排程关机
+-- 文档：doc/LUA_MODULES.md §3.5
 require "sys"
 require "config"
 local _modname = ...
