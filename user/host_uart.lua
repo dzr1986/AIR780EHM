@@ -2267,6 +2267,34 @@ local function try_ipcpoweroff_line(line)
     return false
 end
 
+--- 主机上行应答行：按序尝试专用解析器（命中即消费，不再走 AT 分发）
+local RX_LINE_TRY_HANDLERS = {
+    try_encode_uart_error,
+    try_sound_ack_line,
+    try_timeset_ack_line,
+    try_gb28181_line,
+    try_wled_line,
+    try_tfformat_line,
+    try_tfcard_line,
+    try_recordtime_line,
+    try_framerate_line,
+    try_recordctrl_line,
+    try_persondet_line,
+    try_record_line,
+    try_venc_line,
+    try_vencset_line,
+    try_audio_line,
+    try_audioset_line,
+    try_mic_line,
+    try_micset_line,
+    try_softphoto_line,
+    try_softphotoset_line,
+    try_ipcstat_line,
+    try_ipcstatus_line,
+    try_ipcpoweroff_line,
+    try_encode_ok_tail,
+}
+
 local function hostFirstAtEvent()
     return (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
 end
@@ -2305,77 +2333,10 @@ local function host_process_line(line)
     if not line or line == "" then
         return nil
     end
-    if try_encode_uart_error(line) then
-        return nil
-    end
-    if try_sound_ack_line(line) then
-        return nil
-    end
-    if try_timeset_ack_line(line) then
-        return nil
-    end
-    if try_gb28181_line(line) then
-        return nil
-    end
-    if try_wled_line(line) then
-        return nil
-    end
-    if try_tfformat_line(line) then
-        return nil
-    end
-    if try_tfcard_line(line) then
-        return nil
-    end
-    if try_recordtime_line(line) then
-        return nil
-    end
-    if try_framerate_line(line) then
-        return nil
-    end
-    if try_recordctrl_line(line) then
-        return nil
-    end
-    if try_persondet_line(line) then
-        return nil
-    end
-    if try_record_line(line) then
-        return nil
-    end
-    if try_venc_line(line) then
-        return nil
-    end
-    if try_vencset_line(line) then
-        return nil
-    end
-    if try_audio_line(line) then
-        return nil
-    end
-    if try_audioset_line(line) then
-        return nil
-    end
-    if try_mic_line(line) then
-        return nil
-    end
-    if try_micset_line(line) then
-        return nil
-    end
-    if try_softphoto_line(line) then
-        return nil
-    end
-    if try_softphotoset_line(line) then
-        return nil
-    end
-    if try_ipcstat_line(line) then
-        return nil
-    end
-    if try_ipcstatus_line(line) then
-        return nil
-    end
-    if try_ipcpoweroff_line(line) then
-        return nil
-    end
-    if try_encode_ok_tail(line) then
-        return nil
+    for _, try_fn in ipairs(RX_LINE_TRY_HANDLERS) do
+        if try_fn(line) then
+            return nil
+        end
     end
     if line:sub(1, 2) == "AT" then
         notify_host_first_at(line)
@@ -2765,22 +2726,9 @@ function isT31StartedForHostQuery()
     return false
 end
 
---- UART 已通 / 在录 / T3x 已上电时值得查 IPCSTAT
+--- T3x 已上电或 UART 已通时值得查 IPCSTAT
 function shouldQueryIpcCloudStat()
-    if not isT31StartedForHostQuery() then
-        return false
-    end
-    if state.host_at_ready then
-        return true
-    end
-    if tonumber(state.t3x_rec_active) == 1 then
-        return true
-    end
-    local life = state.host_ipc_status
-    if life == "ready" or life == "shutting_down" then
-        return true
-    end
-    return true
+    return isT31StartedForHostQuery()
 end
 
 --- 无 IPCSTATUS 缓存但 T3x 可能已运行时，先查 AT+IPCSTATUS?
@@ -2805,21 +2753,20 @@ function mergeTfRecordIntoCloudStat()
 end
 
 --- 1003 发布前：合并本地缓存；须在 task/coroutine 内才单查 AT+IPCSTAT?
-function refreshIpcCloudStatFor1003(timeoutMs)
+--- @param force boolean|nil ipc_alert 后强制拉取，忽略缓存新鲜度
+function refreshIpcCloudStatFor1003(timeoutMs, force)
     timeoutMs = tonumber(timeoutMs) or 2500
+    force = force == true
     mergeTfRecordIntoCloudStat()
     if not coroutine.running() then
         log.info(LOG_TAG, "ipc_stat_skip", "no_coroutine")
         return type(state.host_ipc_cloud_stat) == "table"
     end
-    if not isT31StartedForHostQuery() then
+    if not shouldQueryIpcCloudStat() then
         log.info(LOG_TAG, "ipc_stat_skip", "t31_off")
         return type(state.host_ipc_cloud_stat) == "table"
     end
-    if not shouldQueryIpcCloudStat() then
-        return type(state.host_ipc_cloud_stat) == "table"
-    end
-    if not isIpcCloudStatStale() then
+    if not force and not isIpcCloudStatStale() then
         return true
     end
     if needsHostIpcStatusRefresh() and queryHostIpcStatus then
@@ -2830,7 +2777,8 @@ function refreshIpcCloudStatFor1003(timeoutMs)
     end
     mergeTfRecordIntoCloudStat()
     log.info(LOG_TAG, "ipc_cloud_stat_refresh",
-        isIpcCloudStatStale() and "stale_after_query" or "ok")
+        isIpcCloudStatStale() and "stale_after_query" or "ok",
+        force and "force" or "normal")
     return type(state.host_ipc_cloud_stat) == "table"
 end
 
