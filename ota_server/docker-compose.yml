@@ -1,0 +1,58 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: luat_ota
+      MYSQL_USER: luat
+      MYSQL_PASSWORD: luat123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./deploy/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ota-server:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/luat_ota?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_USERNAME: luat
+      SPRING_DATASOURCE_PASSWORD: luat123
+      LUAT_OTA_ADMIN_TOKEN: "prod-change-this-token"
+      LUAT_OTA_LATEST_VERSION: "2034.001.003"
+      LUAT_MQTT_ENABLED: "true"
+      LUAT_MQTT_HOST: "112.86.146.218"
+      LUAT_MQTT_PORT: "2123"
+      LUAT_MQTT_USERNAME: "fptop1"
+      LUAT_MQTT_PASSWORD: "fptop1.com2025@#$&"
+      LUAT_MQTT_OTA_PUBLIC_BASE_URL: "https://ota.example.com"
+    volumes:
+      - ./firmware:/app/firmware
+      - ./logs:/app/logs
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.25-alpine
+    depends_on:
+      - ota-server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/ota.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

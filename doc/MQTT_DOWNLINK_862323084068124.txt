@@ -1,0 +1,1053 @@
+================================================================================
+  780EHM_PJ — MQTT 协议测试手册（本机 IMEI）
+================================================================================
+
+  设备编号 deviceNo : 862323084068124
+  固件版本         : 2034.001.002（main.lua VERSION）
+  协议规则         : 下行 200x  ↔  上行 100x（个位对齐）
+  代码实现         : user/net_mqtt.lua
+  详细说明         : doc/MQTT_PROTOCOL.md / doc/MQTT_DOWNLINK.md
+                     doc/MQTT_CLIENT_E2E_TEST.md（MQTTX 联调步骤）
+                     doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md（帧率/录像/人形 AT 流程）
+  文档版本         : 2026-06-26
+
+================================================================================
+一、连接与主题（MQTTX / MQTT.fx / 平台侧）
+================================================================================
+
+【App Topic 速查 — 勿混 Publish / Subscribe】
+  下发控制（2004/2002/2011…）  → Publish → /panshi/device/862323084068124/
+  下发状态查询（2003）         → Publish → /panshi/device/862323084068124/  （与控制同一 Topic）
+  接收状态应答（1003）         → Subscribe → /panshi/app/862323084068124/status 或 /#
+  说明：app 路径是设备上报用，App 只 Subscribe；查询不要 Publish 到 app。
+
+【Broker】
+  地址     : 112.86.146.218
+  端口     : 2123
+  SSL/TLS  : 关闭
+  用户名   : fptop1
+  密码     : fptop1.com2025@#$&
+
+【ClientId 注意】
+  平台测试用 ClientId 必须与设备 IMEI 不同（设备侧 ClientId = 862323084068124）
+  建议平台 ClientId : platform-test-001
+
+【平台 — 发布下行命令】
+  主题     : /panshi/device/862323084068124/
+  QoS      : 1
+  格式     : UTF-8 JSON 单行，必须含字段 "dataType"
+
+【平台 — 订阅设备上行】
+  主题     : /panshi/app/862323084068124/#
+  QoS      : 1
+
+【上行主题一览】
+  /panshi/app/862323084068124/wakeup   → 1001 唤醒
+  /panshi/app/862323084068124/rest     → 1002 休眠
+  /panshi/app/862323084068124/status   → 1003 状态（周期 low_power_interval_sec，初值 30s）
+  /panshi/app/862323084068124/event    → 1004 控制回复 / OTA 进度、1011 停录、1012 开录
+  /panshi/app/862323084068124/sim      → 1005 SIM 信息
+  /panshi/app/862323084068124/identity → 1006 设备标识（IMEI + GB28181）
+  /panshi/app/862323084068124/tfcard   → 1007 TF/SD 卡状态
+  /panshi/app/862323084068124/version  → 1008 固件版本（2008 查询）
+  /panshi/app/862323084068124/pir      → 1010 PIR 检测状态
+  /panshi/app/862323084068124/encode  → 1020 编码查询 / 1021 编码设置应答
+  /panshi/app/862323084068124/record  → 1022 录像时长查询 / 1023 设置应答
+  /panshi/app/862323084068124/framerate → 1024 帧率查询 / 1025 设置应答
+  /panshi/app/862323084068124/personDetect → 1026 人形查询 / 1027 设置应答
+
+【设备上电后自动上行（无需下发）】
+  1. MQTT conack：常电 → 1001；已在 rest → 1002+1003（不发 1001）
+  2. 周期 low_power_interval_sec（初值 30s）→ 1003（status）
+
+================================================================================
+二、200x ↔ 100x 对照总表
+================================================================================
+
+  下行      含义（平台→设备）              上行      上行主题
+  ------    --------------------------    ------    ----------
+  2001      唤醒查询                      1001      wakeup
+  2002      低功耗 进入/退出               1002      rest（仅 enter 成功后）
+  2003      状态查询 / 配置 interval(GETCFG)  1003      status
+  2004      重启 / 关机 / OTA / 白光灯 WLED   1004      event
+  2005      SIM 卡信息查询                 1005      sim
+  2006      IMEI + GB28181 标识查询         1006      identity
+  2007      TF/SD 卡状态查询               1007      tfcard
+  2008      固件版本查询（仅 4G）           1008      version
+  2010      PIR 策略配置 / 状态查询         1010      pir
+  2011      平台停录（TF 卡）               1011      event
+  2012      平台开录（TF 卡）               1012      event
+  2020      查询视频/音频编码参数           1020      encode
+  2021      设置视频/音频编码参数           1021      encode
+  2022      查询录像时长档位（分钟）         1022      record
+  2023      设置录像时长档位                 1023      record
+  2024      查询帧率                         1024      framerate
+  2025      设置帧率                         1025      framerate
+  2026      查询人形检测开关                 1026      personDetect
+  2027      设置人形检测开关                 1027      personDetect
+
+  1004 区分：含 "reply":1 → 应答 2004；含 "stage" → OTA 进度（无 reply）
+  2012 开录受理后另发 1004 action=pir_start（同 event 主题）
+  编码参数详见 doc/REMOTE_ENCODE_CONFIG.md
+  帧率/录像/人形 AT 流程详见 doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md
+
+================================================================================
+三、下行命令明细（复制到 MQTTX Publish）
+================================================================================
+
+------------------------------------------------------------------------------
+3.1  2001 — 唤醒查询  →  1001
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 下行 2001 立即发 1001（载荷同 conack 常电 1001）
+
+  【1001 触发对照 — conack 自动 ≠ 2001 查询】
+  conack 常电     → 主动 1001
+  conack rest     → 不发 1001，发 1002+1003
+  2001 查询(rest) → 仍应答 1001（不代表已出 rest；看 1003.lowPowerMode）
+  PIR auto(rest)  → 不发 1001
+
+【下行 — 发布到 /panshi/device/862323084068124/】
+{"dataType":"2001"}
+
+【可选字段】
+  messageId  string  否  平台流水号，当前仅日志
+
+【上行 — 订阅 wakeup，约 1 秒内】
+  主题 : /panshi/app/862323084068124/wakeup
+  示例 :
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1001",
+  "time": "2026-05-19 12:00:00"
+}
+
+------------------------------------------------------------------------------
+3.2  2002 — 低功耗控制  →  1002（进入时）
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 进入低功耗成功后发 1002；退出不发 1002
+  说明 : 业务低功耗仅 T3x 断电，模组保持 Cat.1/MQTT（不断网）
+
+【进入低功耗 — 任选一种】
+{"dataType":"2002","lowPowerMode":"enter"}
+{"dataType":"2002","action":1}
+
+【退出低功耗 — 任选一种】
+{"dataType":"2002","lowPowerMode":"exit"}
+{"dataType":"2002","action":0}
+
+【字段】
+  dataType      string  是  固定 "2002"
+  lowPowerMode  string  二选一  "enter" | "exit"
+  action        number  二选一  1=进入  0=退出
+
+【上行 1002 — 仅 enter 成功时，主题 rest】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1002",
+  "lowPowerMode": "enter",
+  "reason": "mqtt_2002",
+  "source": "enter",
+  "time": "2026-06-09 10:55:17"
+}
+
+  lowPowerMode  : 固定 "enter"（进 rest 事件；当前态看 1003.lowPowerMode）
+  reason        : mqtt_2002 | usb_remove | battery | at | boot_no_usb | unknown
+  source        : enter（当场上报）| reconnect（MQTT 重连补报）
+
+【reconnect 补报示例】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1002",
+  "lowPowerMode": "enter",
+  "reason": "boot_no_usb",
+  "source": "reconnect",
+  "time": "2026-06-06 12:00:00"
+}
+
+【串口等价】
+  AT+LOWPOWER=ENTER
+  AT+LOWPOWER=EXIT
+
+------------------------------------------------------------------------------
+3.3  2003 — 状态查询 / interval 配置  →  1003
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 任意 2003 均立即应答 1003
+  周期 : 另按 low_power_interval_sec 主动 1003（初值 30s；2003 interval / AT+SETCFG 可改）
+
+【仅查询状态】
+{"dataType":"2003"}
+
+【设置 interval（同时改 1003 周期 + GETCFG）】
+{"dataType":"2003","interval":30}
+
+【字段】
+  dataType  string  是  固定 "2003"
+  interval  number  否  秒 → APP_RUNTIME.low_power_interval_sec
+                              同时重设 1003 定时器；与 AT+SETCFG=interval 同源
+                              未设时回退 mqtt_report_interval_sec（默认 60）
+
+【上行 1003 — 主题 status】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1003",
+  "powerStatus": 1,
+  "usbInserted": 1,
+  "charging": 1,
+  "remainPower": "85",
+  "batteryMv": "4079",
+  "lowPowerMode": "normal",
+  "time": "2026-05-19 12:02:00"
+}
+
+  powerStatus   : 0/1  兼容字段，同 usbInserted（GPIO27 USB 座插入）
+  usbInserted   : 0=未插 USB  1=已插 USB（GPIO27）
+  charging      : 0=未在充电/已满  1=充电中（GPIO17 CHG_STATE）
+  remainPower   : 电量百分比（ADC）或 "--"
+  batteryMv     : 电芯电压 mV 或 "--"
+  lowPowerMode  : "normal" | "rest"
+
+【获取方式】
+  ① 订阅 /panshi/app/{IMEI}/status
+  ② 下发 {"dataType":"2003"} → 立即应答 1003
+  ③ 设备按 low_power_interval_sec（初值 30s）主动 1003；USB/充电/电量变化也会上报
+
+  【平台注意 — 1003 周期】
+  出厂默认 30s（非 60s）。验收按 60s 须先 {"dataType":"2003","interval":60}
+  或改 config.lua 的 rest_mqtt_interval_sec。mqtt_report_interval_sec=60 仅作回退。
+
+------------------------------------------------------------------------------
+3.4  2004 — 电源 / OTA 控制  →  1004
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 先 1004(reply=1) 立即回复；OTA 过程继续 1004(stage=...)
+
+---- 3.4.1 重启（action=reboot）----
+
+  分类     : 控制命令
+  方向     : 平台 → 设备（下行 2004）→ 设备 → 平台（上行 1004）
+  设备行为 : 先回 1004 确认，约 500ms 后模组重启；重启连网后自动再发 1001
+
+【MQTTX 操作 — 重启】
+  ① 已订阅 : /panshi/app/862323084068124/#
+  ② 新建发布 :
+       主题  : /panshi/device/862323084068124/
+       QoS   : 1
+       载荷  : 见下方【下行 JSON】
+  ③ 点「发布」后，在订阅窗应收到【上行 JSON】（dataType=1004 且 reply=1）
+  ④ 约 0.5～2s 后设备重启，日志断开；重连后再收 1001（wakeup）
+
+【下行 — 发布到 /panshi/device/862323084068124/】
+{"dataType":"2004","action":"reboot","messageId":"cmd-001"}
+
+【下行字段说明】
+  字段        类型    必填  本例取值      说明
+  dataType    string  是    "2004"        固定，电源/OTA 控制
+  action      string  是    "reboot"      重启（同义: restart）
+  messageId   string  否    "cmd-001"     平台流水号，1004 原样回传
+
+【上行 — 订阅 /panshi/app/862323084068124/event ，通常 1 秒内】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "cmd-001",
+  "action": "reboot",
+  "ret": 0,
+  "message": "ok",
+  "time": "2026-05-19 12:03:00"
+}
+
+【上行字段说明】
+  deviceNo    : "862323084068124"  设备 IMEI
+  dataType    : "1004"             控制回复（非 OTA 进度）
+  reply       : 1                  固定为 1，表示应答 2004（与 stage 区分）
+  messageId   : "cmd-001"          与下行一致
+  action      : "reboot"           与下行一致
+  ret         : 0                  0=已接受执行  -1=未知 action
+  message     : "ok"               固定为 ok（重启/关机受理）
+  time        : 本地时间字符串
+
+【判定成功】
+  - 订阅窗收到上表 JSON，且 reply=1、ret=0、message=ok
+  - 设备日志: 发布控制回复(1004): reboot 0 ok
+  - 随后: 设备重启 → MQTT 断开 → 重连 → 再收 1001
+
+【串口等价】
+  AT+REBOOT
+
+---- 3.4.2 关机（action=off）----
+
+  分类     : 控制命令
+  方向     : 平台 → 设备 → 平台（1004 回复后关机）
+
+【MQTTX 操作 — 关机】
+  主题  : /panshi/device/862323084068124/
+  QoS   : 1
+  载荷  : 见下方【下行 JSON】
+  注意  : 关机后设备离线，一般不再收 MQTT
+
+【下行 — 发布到 /panshi/device/862323084068124/】
+{"dataType":"2004","action":"off","messageId":"cmd-002"}
+
+【下行字段说明】
+  dataType    string  是    "2004"
+  action      string  是    "off"         同义: shutdown / poweroff
+  messageId   string  否    "cmd-002"
+
+【上行 — 订阅 /panshi/app/862323084068124/event】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "cmd-002",
+  "action": "off",
+  "ret": 0,
+  "message": "ok",
+  "time": "2026-05-19 12:03:30"
+}
+
+【串口等价】
+  AT+POWEROFF
+
+---- 3.4.3 OTA（合宙 IoT，无 url）----
+【下行】
+  注：product_key 为 2026-05 本机实测抄录；现行真源 user/main.lua PRODUCT_KEY（MQTT 2004 可省略该字段）
+{"dataType":"2004","action":"ota","version":"2034.001.002","product_key":"F6Br8JzE5056NwGtHqAz1IMV0wrt1S2e","messageId":"ota-001"}
+
+【上行 ① — 受理回复 reply=1】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "ota-001",
+  "action": "ota",
+  "ret": 0,
+  "message": "ota_accepted",
+  "time": "2026-05-19 12:04:00"
+}
+
+【上行 ② — OTA 进度 stage（同主题 event）】
+  starting :
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "stage": "starting",
+  "ret": 0,
+  "message": "check_upgrade",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
+  "time": "2026-05-19 12:04:01"
+}
+
+  success（约 1s 后设备重启）:
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "stage": "success",
+  "ret": 0,
+  "message": "download_ok",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
+  "time": "2026-05-19 12:05:00"
+}
+
+  failed 示例:
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "stage": "failed",
+  "ret": 1,
+  "message": "connect_failed",
+  "currentVersion": "2034.001.001",
+  "targetVersion": "2034.001.002",
+  "time": "2026-05-19 12:05:00"
+}
+
+  stage 取值 : starting | busy | success | failed
+  ret 常见   : 0 成功  1 连接失败  2 URL 错误  5 版本格式错误  -1 忙
+
+---- 3.4.4 OTA（自建服务器，带 url）----
+【下行】
+{"dataType":"2004","action":"ota","url":"http://192.168.1.5:8000/firmware.bin","version":"2034.001.002","timeout":300000,"full_url":0,"messageId":"ota-002"}
+
+  full_url=1 表示 url 前自动加 "###" 前缀（LuatOS libfota2 约定）
+
+【2004 公共字段】
+  dataType     string  是   "2004"
+  action       string  是*  reboot | restart | off | shutdown | poweroff | ota | upgrade | fota
+  messageId    string  否   原样回传到 1004 reply
+  version      string  OTA  目标版本 内核号.XXX.ZZZ（如 2034.001.002）；非法 1004 ret=-1 invalid_version_format
+  product_key  string  OTA  合宙项目 key
+  url          string  OTA  固件下载地址
+  timeout      number  OTA  超时毫秒
+  full_url     0/1     OTA  url 是否已含完整参数
+
+  未知 action → ret=-1, message=unknown_action
+
+【串口等价】
+  AT+REBOOT
+  AT+POWEROFF
+  AT+OTA
+
+---- 3.4.5 白光灯 WLED（开/关/查询）----
+  方向 : 平台 → 设备
+  应答 : 立即 1004（reply=1，含 enable 字段）
+
+【MQTTX 操作 — 开灯】
+  主题  : /panshi/device/862323084068124/
+  QoS   : 1
+  载荷  : {"dataType":"2004","action":"wled","enable":1,"messageId":"wled-001"}
+
+【MQTTX 操作 — 关灯】
+  载荷  : {"dataType":"2004","action":"wled","enable":0,"messageId":"wled-002"}
+  同义  : {"dataType":"2004","action":"wled_off","messageId":"wled-002"}
+
+【MQTTX 操作 — 查询状态】
+  订阅  : /panshi/app/862323084068124/event
+  载荷  : {"dataType":"2004","action":"wled_query","messageId":"wled-q1"}
+  同义  : {"dataType":"2004","action":"wled","query":1,"messageId":"wled-q1"}
+
+【下行字段说明】
+  action     wled / wled_on / wled_off / wled_query
+  enable     0 关 / 1 开（wled 时必填；wled_on/wled_off 可省略）
+  query      1 表示查询（与 action=wled 同用）
+
+【上行 — 订阅 /panshi/app/862323084068124/event】
+  控制成功:
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "wled-001",
+  "action": "wled",
+  "ret": 0,
+  "message": "ok",
+  "enable": 1,
+  "time": "2026-05-19 12:04:30"
+}
+
+  查询应答（enable 为当前状态 0/1）:
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "messageId": "wled-q1",
+  "action": "wled",
+  "ret": 0,
+  "message": "ok",
+  "enable": 0,
+  "time": "2026-05-19 12:04:35"
+}
+
+【4G → T3x 串口转发】
+  MQTT 开/关 → 4G 发 AT+WLED=0/1 至 T3x（config WLED_CFG.forward_to_t3x=true）
+  串口直控   : AT+WLED=1 / AT+WLED=0
+  串口查询   : AT+WLED?  → +WLED:0 或 +WLED:1（4G 侧缓存状态；T3x 侧 cat1_host 亦支持 AT+WLED）
+
+------------------------------------------------------------------------------
+3.5  2005 — SIM 卡信息查询  →  1005
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 立即 1005
+
+【下行】
+{"dataType":"2005"}
+{"dataType":"2005","messageId":"sim-001"}
+
+【上行 — 主题 sim，约 1 秒内】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1005",
+  "imei": "862323084068124",
+  "imsi": "460115068472303",
+  "iccid": "89860325247557685660",
+  "status": "1",
+  "csq": "20",
+  "rssi": "-73",
+  "rsrp": "-100",
+  "snr": "15",
+  "simid": "0",
+  "ip": "10.23.163.107",
+  "apn": "ctnet.MNC011.MCC460.GPRS",
+  "time": "2026-05-19 12:06:00"
+}
+
+------------------------------------------------------------------------------
+【2006 与 2007 共用说明】— 为何两条？为何非秒回？
+------------------------------------------------------------------------------
+  两条不同业务，都要问 T3x，故共用 pendingHostQueue 入队 + GPIO 唤醒：
+
+  下行      上行    主题        查什么
+  2006      1006    identity    Cat.1 IMEI + T3x GB28181 ID（AT+GB28181?）
+  2007      1007    tfcard      T3x TF/SD 容量（AT+TFCARD?）
+
+  发 2006 只回 1006，发 2007 只回 1007（不会一发回两条）。
+  与 2003/2005 不同：那些只查 4G，可秒回。
+
+  T3x 已在线     → 通常 1～数秒内应答
+  T3x 休眠/rest  → 入队 → 唤醒 → UART 查询 → 数秒～十数秒后 1006/1007
+  超时           → 2006: gb28181Id 空 ret=-1；2007: tfPresent=0 ret=-1
+
+  详述见 MQTT_PROTOCOL.md §1.2
+
+------------------------------------------------------------------------------
+3.6  2006 — IMEI + GB28181 标识查询  →  1006
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 1006（主题 identity）；T3x 未就绪时先入队唤醒，就绪后应答（非秒回）
+  说明 : Cat.1 读本地 IMEI；经 UART 发 AT+GB28181? 读 T3x GB28181 ID
+         T3x 未上电时会先 powerOn；就绪后也可能自动上报 1006
+
+【下行】
+{"dataType":"2006"}
+{"dataType":"2006","messageId":"id-query-001"}
+
+【上行 — 主题 identity，约数秒内】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1006",
+  "imei": "862323084068124",
+  "gb28181Id": "34020000001320000001",
+  "ret": 0,
+  "messageId": "id-query-001",
+  "time": "2026-05-24 12:00:00"
+}
+
+  gb28181Id  : T3x client.ini → gb28181_id；未配置或超时为空，ret=-1
+
+【串口等价】
+  T3xx→Cat.1: AT+IPCINFO?
+  Cat.1→T3xx: AT+GB28181?
+
+------------------------------------------------------------------------------
+3.7  2007 — TF/SD 卡状态查询  →  1007（机制同 3.6 说明）
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 1007（主题 tfcard）；T3x 未就绪时先入队唤醒，就绪后应答
+  说明 : Cat.1 经 UART 发 AT+TFCARD? 读 T3x 挂载点容量（client.ini tf_mount_path）
+
+【下行】
+{"dataType":"2007","messageId":"tf-001"}
+
+【上行 — 主题 tfcard】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1007",
+  "tfPresent": 1,
+  "totalMb": 16384,
+  "usedMb": 1024,
+  "freeMb": 15360,
+  "ret": 0,
+  "messageId": "tf-001",
+  "time": "2026-05-24 12:00:00"
+}
+
+  tfPresent  : 0=无卡或未挂载  1=已挂载可读容量
+  无卡时 totalMb/usedMb/freeMb 均为 0
+
+【串口等价】
+  Cat.1→T3xx: AT+TFCARD?
+
+------------------------------------------------------------------------------
+3.7a  2008 — 固件版本查询  →  1008
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 1008（主题 version）；仅查 Cat.1 固件，不需 T3x 在线，秒回
+
+【下行】
+{"dataType":"2008","messageId":"ver-001"}
+
+【上行 — 主题 version】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1008",
+  "scriptVersion": "001.000.002",
+  "firmwareVersion": "2034.001.002",
+  "coreVersion": "2034",
+  "project": "PANSHI_CAT1",
+  "buildTag": "v20260614",
+  "productKey": "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x",
+  "messageId": "ver-001",
+  "time": "2026-06-14 14:00:00"
+}
+
+  firmwareVersion : 与 2004 OTA version、1004.currentVersion 一致（合宙 IoT 版）
+
+------------------------------------------------------------------------------
+3.8  2010 — PIR 策略 / 状态查询  →  1010
+
+【策略来源】出厂默认 action=video；/pir_mqtt_cfg.json 持久化；OTA 后一次性将旧 photo 迁为 video（schemaVersion→2）。
+  完整流程见 PIR_PROTOCOL.md §2.4 / §4；下行手册见 MQTT_DOWNLINK.md §9.0。
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : action=query 时立即 1010；人体触发硬件后自动 1010（无需下行，仅常电）
+
+  【rest 与 2010】
+  2010 查询（query/query:1/action:status）→ rest 下仍立即 1010
+  2010 配置                              → 写入策略，出 rest 后生效
+  硬件 PIR 触发                          → rest 下忽略（无 1010/1001）
+
+---- 3.8.1 配置 PIR 策略（下次 PIR 触发生效）----
+【下行】
+{"dataType":"2010","action":"video","uploadMode":"auto","quality":"high","videoMaxDurationSec":90,"stopOnSecondPir":1,"stopOnCloud":1}
+
+【字段】
+  action               photo | video | both     触发后拍照/录像
+  uploadMode           auto | manual           auto 时常电触发 MQTT 1001；rest 不发 1001
+  quality              high | low
+  videoMaxDurationSec  number                 最长录像秒（别名 maxDurationSec）
+  stopOnSecondPir      0/1                    录像中再次 PIR 是否停录
+  stopOnCloud          0/1                    是否响应 2011
+  startOnCloud         0/1                    是否响应 2012 平台开录
+
+【拍照策略示例】
+{"dataType":"2010","action":"photo","uploadMode":"auto","quality":"high"}
+
+---- 3.8.2 查询 PIR 状态 ----
+【下行】
+{"dataType":"2010","action":"query"}
+{"dataType":"2010","query":1}
+{"dataType":"2010","action":"status"}
+
+【上行 1010 — 主题 pir】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1010",
+  "status": "query",
+  "pirStatus": "query",
+  "recording": 0,
+  "action": "video",
+  "uploadMode": "auto",
+  "quality": "high",
+  "time": "2026-05-19 12:07:00"
+}
+
+  status        : 硬件触发常为 "1"；2010 query 应答为 "query"
+  pirStatus     : detected | t3x_active | snapshot_saved | retrigger | query
+  recording     : 0/1  是否正在录像会话中
+  active        : 可选 1  T3x 首个 I 帧已写盘（常伴 t3x_active）
+  snapshotPath  : 可选    pirStatus=snapshot_saved 时 T3x SD 路径
+
+【PIR 硬件触发时自动 1010 示例】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1010",
+  "status": "1",
+  "pirStatus": "detected",
+  "recording": 0,
+  "action": "video",
+  "uploadMode": "auto",
+  "quality": "high",
+  "time": "2026-05-19 12:08:00"
+}
+
+  若 uploadMode=auto 且非常电 rest，随后还会有 1001（wakeup）；rest 下 pir_ctrl 忽略 PIR，不发 1001。
+
+【抓拍完成 1010 示例 — pirStatus=snapshot_saved】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1010",
+  "status": "1",
+  "pirStatus": "snapshot_saved",
+  "recording": 0,
+  "action": "photo",
+  "uploadMode": "auto",
+  "quality": "high",
+  "snapshotPath": "/mnt/sd/snap/20260609_120000.jpg",
+  "time": "2026-05-19 15:02:00"
+}
+
+【录像写盘确认 1010 示例 — t3x_active + active=1】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1010",
+  "status": "1",
+  "pirStatus": "t3x_active",
+  "recording": 1,
+  "active": 1,
+  "action": "video",
+  "uploadMode": "auto",
+  "quality": "high",
+  "time": "2026-05-19 15:01:00"
+}
+
+------------------------------------------------------------------------------
+3.9  2011 — 平台停录（TF 卡）  →  1011
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  条件 : 设备正在录像 且 stopOnCloud=1（2010 配置）
+  应答 : 停录完成后发 1011（T3x 写盘时可能延迟；经 PIR 状态机）
+  T3x 在线 : 4G 另发 AT+RECORDCTRL=0,cloud
+
+【下行】
+{"dataType":"2011","messageId":"test-001"}
+
+【上行 — 主题 event】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1011",
+  "reason": "cloud",
+  "source": "4g",
+  "uploadMode": "auto",
+  "quality": "high",
+  "time": "2026-05-19 12:09:00"
+}
+
+  source        : 4g（4G 停录）| t3x（T3x AT+RECORD=0 回报）
+  reason 其它取值 : timer | pir_retrigger | manual | done | device | ...
+
+  详述 : doc/mqtt_2011_1011_flow.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4
+
+------------------------------------------------------------------------------
+3.9a  2012 — 平台开录（TF 卡）  →  1012 / 1010
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  条件 : 未在录像 且 startOnCloud=1（2010 配置 recordPolicy）
+  应答 : 受理后 1004 action=pir_start + 1012；T3x 写盘后 1010 t3x_active（pir）
+  T3x 在线 : 4G 另发 AT+RECORDCTRL=1,<videoMaxDurationSec>
+
+【下行 — 最简】
+{"dataType":"2012","messageId":"start-001"}
+
+【下行 — 带最长录像秒数】
+{
+  "dataType": "2012",
+  "messageId": "start-002",
+  "action": "video",
+  "videoMaxDurationSec": 90
+}
+
+【字段】
+  action               可选 photo|video|both，省略用当前 2010 配置
+  videoMaxDurationSec  最长录像秒，省略默认 60
+  uploadMode/quality   可选，与 2010 媒体字段一致
+
+【上行 1004 受理 — 主题 event】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1004",
+  "reply": 1,
+  "action": "pir_start",
+  "ret": 0,
+  "message": "ok",
+  "messageId": "start-001",
+  "time": "2026-06-26 12:00:00"
+}
+
+【上行 1012 — 主题 event】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1012",
+  "reason": "device",
+  "source": "4g",
+  "action": "video",
+  "uploadMode": "auto",
+  "quality": "high",
+  "recording": 1,
+  "time": "2026-06-26 12:00:01"
+}
+
+  详述 : doc/mqtt_2012_1012_flow.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4
+
+------------------------------------------------------------------------------
+3.10  2020 — 查询视频/音频编码参数  →  1020
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 encode，dataType=1020
+  说明 : T31x 休眠时需先唤醒；参数存于 T31x syscfg.ini，4G 仅 UART 转发
+  详见 : doc/REMOTE_ENCODE_CONFIG.md
+
+【查询全部已启用 camera 视频码流】
+{"dataType":"2020","messageId":"q-all"}
+
+【查询 camera0 子码流】
+{"dataType":"2020","camera":0,"stream":1,"messageId":"q-sub"}
+
+【查询 camera0 音频】
+{"dataType":"2020","scope":"audio","camera":0,"messageId":"q-audio"}
+
+【字段】
+  dataType   string  是  固定 "2020"
+  camera     number  否  0–3，省略=全部已启用 camera
+  stream     number  否  0=主码流 1=子码流（仅视频）
+  scope      string  否  缺省=视频；"audio"=音频
+  messageId  string  否  平台流水号，应答原样带回
+
+【上行 — 主题 encode】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1020",
+  "reply": 1,
+  "messageId": "q-all",
+  "ret": 0,
+  "message": "ok",
+  "body": {
+    "video": [
+      {"camera":0,"stream":0,"enable":1,"width":1920,"height":1080,"bitrate":1200,"framerate":25,"rcmode":2,"encoder":4},
+      {"camera":0,"stream":1,"enable":1,"width":640,"height":360,"bitrate":512,"framerate":25,"rcmode":2,"encoder":4}
+    ]
+  },
+  "time": "2026-06-07 12:00:00"
+}
+
+------------------------------------------------------------------------------
+3.11  2021 — 设置视频/音频编码参数  →  1021
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 encode，dataType=1021
+  说明 : 仅 bitrate 可热更新（needReboot=0）；分辨率/帧率/编码器等需重启 T31x
+  串口 : Cat.1→T3x AT+VENCSET= / AT+AUDIOSET=
+
+【仅改码率（热更新）】
+{"dataType":"2021","camera":0,"stream":0,"bitrate":800,"messageId":"set-br"}
+
+【改分辨率（需重启）】
+{
+  "dataType": "2021",
+  "camera": 0,
+  "stream": 0,
+  "width": 1280,
+  "height": 720,
+  "bitrate": 1024,
+  "framerate": 25,
+  "rcmode": 2,
+  "encoder": 4,
+  "messageId": "set-res"
+}
+
+【设置音频】
+{
+  "dataType": "2021",
+  "scope": "audio",
+  "camera": 0,
+  "enable": 1,
+  "encoder": 4,
+  "samplerate": 8000,
+  "bitwidth": 16,
+  "soundmode": 1,
+  "volume": 80,
+  "messageId": "set-audio"
+}
+
+【字段摘要】
+  camera/stream  视频必填；stream 0=主 1=子
+  scope=audio    音频模式，此时不需 stream
+  encoder        视频 1=H.264 4=H.265；音频 1=G.711A 4=AAC
+  rcmode         1=FIXQP 2=CBR 3=VBR
+
+【上行 — 主题 encode】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1021",
+  "reply": 1,
+  "messageId": "set-br",
+  "ret": 0,
+  "message": "ok",
+  "needReboot": 0,
+  "body": {"camera":0,"stream":0,"bitrate":800},
+  "time": "2026-06-07 12:00:00"
+}
+
+  needReboot=1 表示 T31x 将重启。仅改帧率可用 2025（更轻量），见 3.13。
+
+------------------------------------------------------------------------------
+3.12  2022 / 2023 — 录像时长档位  →  1022 / 1023
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 record
+  说明 : T3x rec_time 固定档位 5/10/15/20/30/45/60 分钟
+  串口 : AT+RECORDTIME? / AT+RECORDTIME=<min>
+
+【查询】
+{"dataType":"2022","messageId":"rt-q-001"}
+
+【设置 10 分钟】
+{"dataType":"2023","recordTimeMin":10,"messageId":"rt-s-001"}
+
+【上行 1022 — 主题 record】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1022",
+  "reply": 1,
+  "messageId": "rt-q-001",
+  "ret": 0,
+  "recordTimeMin": 10,
+  "allowedMin": [5, 10, 15, 20, 30, 45, 60],
+  "time": "2026-06-26 10:00:00"
+}
+
+------------------------------------------------------------------------------
+3.13  2024 / 2025 — 帧率查询/设置  →  1024 / 1025
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 framerate
+  说明 : 仅改帧率，不含分辨率/编码器；T3x 休眠时需先唤醒
+  串口 : AT+FRAMERATE? / AT+FRAMERATE=cam,stream,fps
+
+【查询 camera0 主码流】
+{"dataType":"2024","camera":0,"stream":0,"messageId":"fps-q-001"}
+
+【设置为 20fps】
+{"dataType":"2025","camera":0,"stream":0,"framerate":20,"messageId":"fps-s-001"}
+
+【上行 1024 — 主题 framerate】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1024",
+  "reply": 1,
+  "messageId": "fps-q-001",
+  "ret": 0,
+  "message": "ok",
+  "body": {
+    "video": [{"camera":0,"stream":0,"framerate":25}]
+  },
+  "time": "2026-06-26 10:00:00"
+}
+
+  详述 : doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3
+
+------------------------------------------------------------------------------
+3.14  2026 / 2027 — 人形检测开关  →  1026 / 1027
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 personDetect
+  说明 : 需 T3x 编译 WITH_PERSON_DETECT
+  串口 : AT+PERSONDET? / AT+PERSONDET=0|1
+
+【查询】
+{"dataType":"2026","messageId":"pd-q-001"}
+
+【开启】
+{"dataType":"2027","enable":1,"messageId":"pd-s-001"}
+
+【关闭】
+{"dataType":"2027","enable":0,"messageId":"pd-s-002"}
+
+【上行 1026 — 主题 personDetect】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1026",
+  "reply": 1,
+  "messageId": "pd-q-001",
+  "ret": 0,
+  "enable": 1,
+  "time": "2026-06-26 10:00:00"
+}
+
+  详述 : doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §5
+
+================================================================================
+四、MQTTX 操作步骤（建议顺序）
+================================================================================
+
+  1. 新建连接，填入第一节 Broker 参数，ClientId 勿用 862323084068124
+  2. 连接成功后，添加订阅: /panshi/app/862323084068124/#  QoS 1
+  3. 确认设备已上电、日志 mqtt=已连接，应先收到 1001（或 rest 时 1002+1003）、之后按 low_power_interval_sec 收到 1003
+  4. 新建消息 → 主题 /panshi/device/862323084068124/ → 粘贴第三节 JSON → 发布
+  5. 在订阅窗口按 dataType 核对上行
+
+【推荐测试顺序】
+  ① 2001 → 收 1001（rest 下亦应答；同时 1003.lowPowerMode 可能仍为 rest）
+  ② 2003 → 收 1003
+  ③ 2005 → 收 1005
+  ④ 2006 → 收 1006（identity）
+  ⑤ 2007 → 收 1007（tfcard）
+  ⑤a 2008 → 收 1008（version，秒回）
+  ⑥ 2010 配置 → 人体触发 → 收 1010（常电 auto 时可能 1001；rest 无 PIR/无 1001）
+  ⑦ 2010 query → 收 1010 pirStatus=query（rest 下仍可用；硬件 PIR 在 rest 无 1010）
+  ⑧ 2004 reboot → 收 1004 reply=1（设备将重启）
+  ⑨ 2002 enter → 收 1002（含 reason/source）；2002 exit → 收 1002 exit（无 1002 见 MQTT_PROTOCOL §4）
+  ⑩ 2004 ota（谨慎）→ 1004 reply + stage
+  ⑪ 2012（startOnCloud=1）→ 1004 pir_start + 1012；写盘后 1010 t3x_active
+  ⑫ 2011（录像中，stopOnCloud=1）→ 1011
+  ⑬ 2020 → 1020（encode 主题，body.video / body.audio）
+  ⑭ 2021 改码率 → 1021 needReboot=0；改分辨率 → needReboot=1
+  ⑮ 2024 → 1024（framerate 主题）
+  ⑯ 2025 framerate=20 → 1025
+  ⑰ 2026 → 1026（personDetect 主题，需 T3x 人形功能）
+  ⑱ 2027 enable=1 → 1027
+  ⑲ 2022 → 1022（record 主题）
+  ⑳ 2023 recordTimeMin=10 → 1023
+
+================================================================================
+五、日志与串口自检
+================================================================================
+
+【设备日志关键字】
+  net_mqtt conack       → 常电发 1001；rest 发 1002+1003
+  pub 1001              → 唤醒上报（wakeup）
+  pub 1002              → 进 rest 事件（rest，含 reason/source）
+  pub 1003              → 状态上报（status，含 lowPowerMode）
+  发布控制回复(1004)    → 2004 应答
+  发布 SIM(1005)        → 2005 应答
+  发布设备标识(1006)    → 2006 应答 / T3x 就绪自动
+  发布 TF 卡(1007)      → 2007 应答
+  发布 PIR 检测(1010)   → PIR 上报
+  pub 1020 / pub 1021   → 编码查询/设置应答
+  pub 1024 / pub 1025   → 帧率查询/设置应答
+  pub 1026 / pub 1027   → 人形检测查询/设置应答
+  pub 1012 / pir_start  → 2012 平台开录
+
+【正常日志示例 — 周期 1003（pong → 发布状态 → sent）】
+
+  说明:
+  - 设备 MQTT 连上后，按 low_power_interval_sec（初值 30s）自动发 1003 到 .../status
+  - 下列 pong / sent 为 LuatOS mqtt 库内部事件，不是平台 JSON 字段，对接可忽略
+  - 平台只需订阅 /panshi/app/862323084068124/status 收 dataType=1003
+
+  串口典型顺序（时间戳仅供对照）:
+
+  [07:16:38.xxx] I/user.net MQTT事件: pong
+  [07:16:39.xxx] I/user.net 发布状态(1003): /panshi/app/862323084068124/status
+  [07:16:39.xxx] I/user.net MQTT事件: sent 227
+
+  含义:
+  | 日志行                         | 含义 |
+  |--------------------------------|------|
+  | MQTT事件: pong                 | 与 Broker 心跳正常，链路仍在线 |
+  | 发布状态(1003): .../status     | 已组包并调用 publish，主题为 status |
+  | MQTT事件: sent N               | 第 N 条 MQTT 报文已从模组发出（含本条 1003）|
+
+  与 MQTTX 对照:
+  - 出现「发布状态(1003)」后 1 秒内，订阅窗应收 JSON，dataType 为 "1003"
+  - 示例载荷见第三节 3.3【上行 1003 — 主题 status】
+  - 若日志有 1003 但订阅窗无消息: 查 ClientId 是否误用设备 IMEI、Broker/主题是否一致
+
+  其它常见上行日志（非周期）:
+  | 日志 | 对应上行 |
+  |------|----------|
+  | 发布唤醒(1001): .../wakeup     | 常电 conack 或 2001 查询（rest conack 不发） |
+  | 发布控制回复(1004): reboot ... | 2004 reboot/off/ota 受理 |
+  | 发布 SIM(1005): .../sim        | 2005 查询 |
+  | 发布设备标识(1006): .../identity | 2006 查询 / 自动上报 |
+  | 发布 TF 卡(1007): .../tfcard   | 2007 查询 |
+  | 发布版本(1008): .../version    | 2008 查询 |
+  | pub 1024 / pub 1025            | 2024/2025 帧率 |
+  | pub 1026 / pub 1027            | 2026/2027 人形 |
+
+【串口 AT — 远程控制等价】
+  2024/2025 帧率     : AT+FRAMERATE? / AT+FRAMERATE=0,0,20
+  2012/2011 直连录   : AT+RECORDCTRL=1,90 / AT+RECORDCTRL=0,cloud（T3x 在线时）
+  2026/2027 人形     : AT+PERSONDET? / AT+PERSONDET=1
+  2022/2023 录像时长 : AT+RECORDTIME? / AT+RECORDTIME=10
+  详见 doc/UART_AT_COMMANDS.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md
+
+【串口 AT — 连接状态】
+  AT+GETCFG
+  返回含 online=1 表示 MQTT 已连接
+
+================================================================================
+六、仅上行（无对应下行 200x）
+================================================================================
+
+  1001  常电 conack / 2001（含 rest）/ PIR auto（非 rest）
+  1002  进 rest 事件（2002 enter / USB 拔出 / 低电量等；含 reason、source）
+  1003  2003 应答 + low_power_interval_sec 周期（初值 30s）
+  1010  PIR 硬件边沿（另可用 2010 query 主动查）
+  1011  停录事件（另可用 2011 触发 cloud）
+  1012  开录事件（另可用 2012 触发 cloud）
+
+================================================================================

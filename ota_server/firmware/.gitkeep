@@ -1,0 +1,8 @@
+请将 Luatools 生成的 dfota 差分包放在此目录。
+
+示例文件名（任选其一，或在 application.yml 中配置）：
+  - update.bin
+  - 2034.001.003.bin
+  - dfota_final.bin
+
+差分包制作：Luatools → SOC 量产及远程升级 → 差分工具（需 2.1.89+）

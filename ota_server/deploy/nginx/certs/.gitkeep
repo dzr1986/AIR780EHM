@@ -1,0 +1,2 @@
+# 占位：请放入 fullchain.pem 与 privkey.pem
+# 测试可用 deploy/nginx/README.md 中的 openssl 自签命令
