@@ -343,7 +343,7 @@ local function enterRestIfNeededAfterUsbRemove(source)
         return
     end
     if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
-        -- 电量策略：≤10% 进 rest；10~20% 仅 T31 HOSTIDLE；>20% 常电
+        -- 电量策略：>20% 常电；5~20% 仅 T31 HOSTIDLE；≤5% 4G rest + 关机
         -- 勿在拔 USB 时无条件 onEnterLowPower("usb_remove")
         battery_guard.onUsbRemoved()
     elseif _G.APP_RUNTIME.low_power_mode == 0 then
@@ -608,6 +608,10 @@ local function tryEnterT3xBurnMode()
     return true
 end
 local function wakeT3xForPir(tag, sid, evt)
+    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table"
+        and battery_guard.noteT3xAwakeForHostIdle then
+        battery_guard.noteT3xAwakeForHostIdle()
+    end
     if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
         local wakeSid = sid or ((_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1)
         local opts = nil
