@@ -2,6 +2,7 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
 local LOG_TAG = "host_event"
 local TYPE_BIT = { wake = 1, pir = 2, record = 4, mqtt = 8 }
 local PIR_PENDING_LAST = {
@@ -9,9 +10,15 @@ local PIR_PENDING_LAST = {
     retrigger = true,
     hw_accept = true,
 }
+
+-- ---------------------------------------------------------------------------
+-- 配置与字段解析
+-- ---------------------------------------------------------------------------
+
 local function cfg()
     return _G.HOST_EVT_CFG or {}
 end
+
 function isEnabled()
     local fc = _G.FEATURE_CFG
     if fc and fc.host_evt == false then
@@ -19,6 +26,7 @@ function isEnabled()
     end
     return cfg().enabled ~= false
 end
+
 local function typeEnabled(name)
     local mask = tonumber(cfg().types_mask)
     if mask == nil then
@@ -27,6 +35,7 @@ local function typeEnabled(name)
     local bit = TYPE_BIT[name] or 0
     return bit ~= 0 and (mask & bit) ~= 0
 end
+
 local function fieldInt(body, key, default)
     if not body or body == "" then
         return default
@@ -34,6 +43,7 @@ local function fieldInt(body, key, default)
     local v = body:match(key .. "=(%d+)")
     return v and tonumber(v) or default
 end
+
 local function fieldStr(body, key, default)
     if not body or body == "" then
         return default
@@ -41,80 +51,136 @@ local function fieldStr(body, key, default)
     local v = body:match(key .. "=([^,]+)")
     return v or default
 end
-local function appendType(types, name)
-    types[#types + 1] = name
+
+local function emptySummary()
+    return {
+        has_event = 0,
+        pending = "none",
+        types = "",
+        sid = 0,
+        evt = -1,
+    }
 end
+
+-- ---------------------------------------------------------------------------
+-- 各类型 pending 收集（wake / pir / record / mqtt）
+-- ---------------------------------------------------------------------------
+
+local function resolvePendingWake(pirBody, wakeValid, wakeSid, wakeEvt)
+    if wakeValid then
+        return true, wakeSid or 0, wakeEvt or 0
+    end
+    if not pirBody or fieldInt(pirBody, "pending_wake", 0) ~= 1 then
+        return false, wakeSid or 0, wakeEvt or 0
+    end
+    return true,
+        fieldInt(pirBody, "pending_sid", wakeSid or 0),
+        fieldInt(pirBody, "pending_evt", wakeEvt or 0)
+end
+
+local function collectWake(types, ctx)
+    if not typeEnabled("wake") or not ctx.pendingWake then
+        return
+    end
+    types[#types + 1] = "wake"
+    if ctx.primary == "none" then
+        ctx.primary = "wake"
+        ctx.sid = ctx.wakeSid
+        ctx.evt = ctx.wakeEvt
+    end
+end
+
+local function collectPir(types, ctx)
+    if not typeEnabled("pir") or not ctx.pirBody then
+        return
+    end
+    local last = fieldStr(ctx.pirBody, "last", "none")
+    local lastTs = fieldInt(ctx.pirBody, "last_ts", 0)
+    local maxAge = tonumber(cfg().pir_pending_max_age_sec) or 120
+    if not PIR_PENDING_LAST[last] or lastTs <= 0 then
+        return
+    end
+    local age = os.time() - lastTs
+    if age < 0 or age > maxAge then
+        return
+    end
+    types[#types + 1] = "pir"
+    if ctx.primary == "none" then
+        ctx.primary = "pir"
+    end
+end
+
+local function collectRecord(types, ctx)
+    if not typeEnabled("record") or not ctx.pirBody then
+        return
+    end
+    if fieldInt(ctx.pirBody, "recording", 0) ~= 1 then
+        return
+    end
+    types[#types + 1] = "record"
+    if ctx.primary == "none" then
+        ctx.primary = "record"
+    end
+end
+
+local function collectMqtt(types, ctx)
+    if not typeEnabled("mqtt") then
+        return
+    end
+    local rt = _G.APP_RUNTIME or {}
+    if tonumber(rt.online_status) ~= 1 or tonumber(rt.low_power_mode) == 1 then
+        return
+    end
+    local ok, net = pcall(require, "net_mqtt")
+    if not ok or not net or not net.hasPendingHostWork or not net.hasPendingHostWork() then
+        return
+    end
+    types[#types + 1] = "mqtt"
+    if ctx.primary == "none" then
+        ctx.primary = "mqtt"
+    end
+end
+
 function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
     if not isEnabled() then
-        return {
-            has_event = 0,
-            pending = "none",
-            types = "",
-            sid = 0,
-            evt = -1,
-        }
+        return emptySummary()
     end
+
+    local pendingWake, sid, evt = resolvePendingWake(pirBody, wakeValid, wakeSid, wakeEvt)
     local types = {}
-    local primary = "none"
-    local sid, evt = 0, -1
-    local pendingWake = wakeValid
-    if not pendingWake and pirBody then
-        pendingWake = fieldInt(pirBody, "pending_wake", 0) == 1
-        if pendingWake then
-            wakeSid = fieldInt(pirBody, "pending_sid", wakeSid or 0)
-            wakeEvt = fieldInt(pirBody, "pending_evt", wakeEvt or 0)
-        end
-    end
-    if typeEnabled("wake") and pendingWake then
-        appendType(types, "wake")
-        primary = "wake"
-        sid = wakeSid or 0
-        evt = wakeEvt or 0
-    end
-    if typeEnabled("pir") and pirBody then
-        local last = fieldStr(pirBody, "last", "none")
-        local lastTs = fieldInt(pirBody, "last_ts", 0)
-        local maxAge = tonumber(cfg().pir_pending_max_age_sec) or 120
-        if PIR_PENDING_LAST[last] and lastTs > 0 then
-            local age = os.time() - lastTs
-            if age >= 0 and age <= maxAge then
-                appendType(types, "pir")
-                if primary == "none" then
-                    primary = "pir"
-                end
-            end
-        end
-    end
-    if typeEnabled("record") and pirBody and fieldInt(pirBody, "recording", 0) == 1 then
-        appendType(types, "record")
-        if primary == "none" then
-            primary = "record"
-        end
-    end
-    if typeEnabled("mqtt") then
-        local rt = _G.APP_RUNTIME or {}
-        if tonumber(rt.online_status) == 1 and tonumber(rt.low_power_mode) ~= 1 then
-            local ok, net = pcall(require, "net_mqtt")
-            if ok and net and net.hasPendingHostWork and net.hasPendingHostWork() then
-                appendType(types, "mqtt")
-                if primary == "none" then
-                    primary = "mqtt"
-                end
-            end
-        end
-    end
+    local ctx = {
+        pirBody = pirBody,
+        pendingWake = pendingWake,
+        wakeSid = sid,
+        wakeEvt = evt,
+        primary = "none",
+        sid = 0,
+        evt = -1,
+    }
+
+    collectWake(types, ctx)
+    collectPir(types, ctx)
+    collectRecord(types, ctx)
+    collectMqtt(types, ctx)
+
     local has = #types > 0
     return {
         has_event = has and 1 or 0,
-        pending = primary,
+        pending = ctx.primary,
         types = table.concat(types, ","),
-        sid = sid,
-        evt = evt,
+        sid = ctx.sid,
+        evt = ctx.evt,
     }
 end
+
+-- ---------------------------------------------------------------------------
+-- 对外判定
+-- ---------------------------------------------------------------------------
+
 function hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
     return summarize(pirBody, wakeValid, wakeSid, wakeEvt).has_event == 1
 end
+
 function isDispatchable(sum)
     if type(sum) ~= "table" or sum.has_event ~= 1 then
         return false
@@ -127,6 +193,7 @@ function isDispatchable(sum)
     end
     return true
 end
+
 function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
     if not isEnabled() or cfg().block_t3x_sleep_when_pending == false then
         return false
@@ -136,4 +203,5 @@ function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
     end
     return hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
 end
+
 return _M

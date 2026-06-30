@@ -3,6 +3,7 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
 local pir_ctrl
 local hooks = {}
 local guard = {
@@ -15,6 +16,11 @@ local guard = {
     enter_confirm_streak = 0,
     exit_confirm_streak = 0,
 }
+
+-- ---------------------------------------------------------------------------
+-- 配置与开关
+-- ---------------------------------------------------------------------------
+
 local function cfg()
     if type(_G.BATTERY_GUARD_CFG) == "table" then
         return _G.BATTERY_GUARD_CFG
@@ -22,9 +28,11 @@ local function cfg()
     local root = _G.BATTERY_CFG or {}
     return type(root.guard) == "table" and root.guard or {}
 end
+
 local function pctThreshold(key)
     return tonumber(cfg()[key])
 end
+
 local function intCfg(key, default)
     local v = tonumber(cfg()[key])
     if v == nil then
@@ -32,6 +40,7 @@ local function intCfg(key, default)
     end
     return v
 end
+
 local function enabled()
     local fc = _G.FEATURE_CFG
     if fc and fc.low_power == false then
@@ -46,6 +55,7 @@ local function enabled()
     end
     return true
 end
+
 function isUsbInserted()
     if cfg().ignore_when_usb_inserted == false then
         return false
@@ -59,6 +69,11 @@ function isUsbInserted()
     end
     return false
 end
+
+-- ---------------------------------------------------------------------------
+-- PIR / rest 状态机
+-- ---------------------------------------------------------------------------
+
 local function loadPirCtrl()
     if pir_ctrl then
         return pir_ctrl
@@ -69,12 +84,19 @@ local function loadPirCtrl()
     end
     return pir_ctrl
 end
+
+local function resetConfirmStreaks()
+    guard.enter_confirm_streak = 0
+    guard.exit_confirm_streak = 0
+end
+
 local function cancelShutdownTimer()
     if guard.shutdown_timer and sys.timerStop then
         sys.timerStop(guard.shutdown_timer)
     end
     guard.shutdown_timer = nil
 end
+
 local function isBlocked()
     if hooks.is_burn_active and hooks.is_burn_active() then
         return true, "t3x_burn"
@@ -84,6 +106,7 @@ local function isBlocked()
     end
     return false
 end
+
 local function suspendPir()
     if guard.pir_suspended then
         return
@@ -94,6 +117,7 @@ local function suspendPir()
         guard.pir_suspended = true
     end
 end
+
 local function resumePir()
     if not guard.pir_suspended then
         return
@@ -104,17 +128,18 @@ local function resumePir()
     end
     guard.pir_suspended = false
 end
+
 local function dynamicDetectEnabled()
     return cfg().battery_rest_dynamic_detect ~= false
 end
+
 local function enterBatteryRest()
     if guard.rest_by_battery then
         return
     end
     guard.rest_by_battery = true
     guard.rest_enter_ts = os.time()
-    guard.enter_confirm_streak = 0
-    guard.exit_confirm_streak = 0
+    resetConfirmStreaks()
     if _G.APP_RUNTIME then
         _G.APP_RUNTIME.battery_dynamic_rest = dynamicDetectEnabled() and 1 or 0
     end
@@ -122,6 +147,7 @@ local function enterBatteryRest()
         hooks.on_enter_low_power("battery")
     end
 end
+
 local function exitBatteryRest()
     if not guard.rest_by_battery then
         return
@@ -129,8 +155,7 @@ local function exitBatteryRest()
     guard.rest_by_battery = false
     guard.rest_exit_ts = os.time()
     guard.rest_enter_ts = 0
-    guard.enter_confirm_streak = 0
-    guard.exit_confirm_streak = 0
+    resetConfirmStreaks()
     if _G.APP_RUNTIME then
         _G.APP_RUNTIME.battery_dynamic_rest = 0
     end
@@ -138,15 +163,18 @@ local function exitBatteryRest()
         hooks.on_exit_low_power("battery_recover")
     end
 end
+
 function isBatteryDynamicRest()
     if not dynamicDetectEnabled() then
         return false
     end
     return guard.rest_by_battery == true
 end
+
 function shouldAllowPirInRest()
     return isBatteryDynamicRest()
 end
+
 --- 一直录像常电：电量 >t3x_rest_percent 且非 rest 时拒绝 HOSTIDLE 休眠
 function shouldAllowHostIdleSleep()
     if cfg().block_host_idle_above_recover == false then
@@ -165,6 +193,25 @@ function shouldAllowHostIdleSleep()
     end
     return true
 end
+
+-- ---------------------------------------------------------------------------
+-- evaluate 分阶段决策
+-- ---------------------------------------------------------------------------
+
+local function loadPctThresholds()
+    return {
+        shutdown = pctThreshold("shutdown_percent"),
+        rest = pctThreshold("t3x_rest_percent"),
+        recover = pctThreshold("recover_rest_percent"),
+        pir_suspend = pctThreshold("pir_suspend_percent"),
+        pir_resume = pctThreshold("pir_resume_percent"),
+    }
+end
+
+local function thresholdsReady(t)
+    return t.shutdown and t.rest and t.recover and t.pir_suspend and t.pir_resume
+end
+
 local function canEnterRestNow()
     local minOn = intCfg("min_always_on_duration_sec", 0)
     if minOn > 0 and guard.rest_exit_ts > 0 then
@@ -174,6 +221,7 @@ local function canEnterRestNow()
     end
     return true
 end
+
 local function canExitRestNow()
     local minRest = intCfg("min_rest_duration_sec", 0)
     if minRest > 0 and guard.rest_enter_ts > 0 then
@@ -183,11 +231,9 @@ local function canExitRestNow()
     end
     return true
 end
+
 local function tryEnterBatteryRest(pct, restPct)
-    local need = intCfg("enter_rest_confirm_count", 1)
-    if need < 1 then
-        need = 1
-    end
+    local need = math.max(1, intCfg("enter_rest_confirm_count", 1))
     if pct <= restPct then
         guard.enter_confirm_streak = guard.enter_confirm_streak + 1
     else
@@ -206,11 +252,9 @@ local function tryEnterBatteryRest(pct, restPct)
     end
     enterBatteryRest()
 end
+
 local function tryExitBatteryRest(pct, recoverPct)
-    local need = intCfg("exit_rest_confirm_count", 1)
-    if need < 1 then
-        need = 1
-    end
+    local need = math.max(1, intCfg("exit_rest_confirm_count", 1))
     if pct > recoverPct then
         guard.exit_confirm_streak = guard.exit_confirm_streak + 1
     else
@@ -225,6 +269,7 @@ local function tryExitBatteryRest(pct, recoverPct)
     end
     exitBatteryRest()
 end
+
 --- 已在 rest 但非电量 rest（如历史 usb_remove 误进）：电量 >recover 时立即退出
 local function tryExitMismatchedRest(pct, recoverPct)
     if pct == nil or recoverPct == nil or pct <= recoverPct then
@@ -241,6 +286,7 @@ local function tryExitMismatchedRest(pct, recoverPct)
         hooks.on_exit_low_power("battery_recover")
     end
 end
+
 local function scheduleShutdown()
     if guard.shutdown_timer then
         return
@@ -258,21 +304,49 @@ local function scheduleShutdown()
         end
     end, delay)
 end
+
+local function handleShutdownZone(pct, shutdownPct)
+    if pct > shutdownPct then
+        return false
+    end
+    suspendPir()
+    enterBatteryRest()
+    scheduleShutdown()
+    return true
+end
+
+local function handleRestZone(pct, t)
+    if guard.rest_by_battery then
+        tryExitBatteryRest(pct, t.recover)
+    else
+        tryEnterBatteryRest(pct, t.rest)
+        tryExitMismatchedRest(pct, t.recover)
+    end
+end
+
+local function handlePirZone(pct, t)
+    if pct <= t.pir_suspend then
+        suspendPir()
+    elseif pct > t.pir_resume then
+        resumePir()
+    end
+end
+
 function evaluate(pct, mv)
     if not enabled() then
         return
     end
-    local blocked = isBlocked()
-    if blocked then
+    if isBlocked() then
         return
     end
+
     pct = tonumber(pct)
-    if pct == nil then
-        if cfg().require_valid_sample ~= false then
-            return
-        end
+    if pct == nil and cfg().require_valid_sample ~= false then
+        return
     end
     guard.last_percent = pct
+
+    -- 阶段 1：USB 供电路径（优先于电量阈值）
     if isUsbInserted() then
         cancelShutdownTimer()
         if guard.rest_by_battery or guard.pir_suspended then
@@ -280,36 +354,34 @@ function evaluate(pct, mv)
         end
         return
     end
+
     if pct == nil then
         return
     end
-    local shutdownPct = pctThreshold("shutdown_percent")
-    local restPct = pctThreshold("t3x_rest_percent")
-    local recoverPct = pctThreshold("recover_rest_percent")
-    local pirSuspendPct = pctThreshold("pir_suspend_percent")
-    local pirResumePct = pctThreshold("pir_resume_percent")
-    if not shutdownPct or not restPct or not recoverPct or not pirSuspendPct or not pirResumePct then
+
+    local t = loadPctThresholds()
+    if not thresholdsReady(t) then
         return
     end
-    if pct <= shutdownPct then
-        suspendPir()
-        enterBatteryRest()
-        scheduleShutdown()
+
+    -- 阶段 2：关机区（≤shutdown_percent）
+    if handleShutdownZone(pct, t.shutdown) then
         return
     end
+
     cancelShutdownTimer()
-    if guard.rest_by_battery then
-        tryExitBatteryRest(pct, recoverPct)
-    else
-        tryEnterBatteryRest(pct, restPct)
-        tryExitMismatchedRest(pct, recoverPct)
-    end
-    if pct <= pirSuspendPct then
-        suspendPir()
-    elseif pct > pirResumePct then
-        resumePir()
-    end
+
+    -- 阶段 3：rest 进出（t3x_rest / recover）
+    handleRestZone(pct, t)
+
+    -- 阶段 4：PIR 挂起/恢复
+    handlePirZone(pct, t)
 end
+
+-- ---------------------------------------------------------------------------
+-- USB 事件入口
+-- ---------------------------------------------------------------------------
+
 function onUsbInserted()
     cancelShutdownTimer()
     local wasRest = guard.rest_by_battery
@@ -318,8 +390,7 @@ function onUsbInserted()
     guard.pir_suspended = false
     guard.rest_enter_ts = 0
     guard.rest_exit_ts = 0
-    guard.enter_confirm_streak = 0
-    guard.exit_confirm_streak = 0
+    resetConfirmStreaks()
     if _G.APP_RUNTIME then
         _G.APP_RUNTIME.battery_dynamic_rest = 0
     end
@@ -337,6 +408,7 @@ function onUsbInserted()
         hooks.wake_t3x()
     end
 end
+
 function onUsbRemoved()
     local pct = guard.last_percent
     if pct == nil and _G.APP_RUNTIME then
@@ -344,6 +416,7 @@ function onUsbRemoved()
     end
     evaluate(pct, nil)
 end
+
 function onUsbChanged(inserted)
     if inserted then
         onUsbInserted()
@@ -351,9 +424,11 @@ function onUsbChanged(inserted)
         onUsbRemoved()
     end
 end
+
 function onBatteryUpdate(pct, mv)
     evaluate(pct, mv)
 end
+
 function start(opts)
     hooks = type(opts) == "table" and opts or {}
     local pct = _G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.battery_percent)
@@ -365,6 +440,7 @@ function start(opts)
     end
     return true
 end
+
 function getState()
     return {
         enabled = enabled(),
@@ -380,4 +456,5 @@ function getState()
         exit_confirm_streak = guard.exit_confirm_streak,
     }
 end
+
 return _M
