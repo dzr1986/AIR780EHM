@@ -260,6 +260,8 @@ applyUsbInsertState(inserted, source)
 
 ### 4.3 `t3x_policy.lua` — T3x 唤醒门禁
 
+> 专题：[T3X_POLICY_GATE.md](modules/T3X_POLICY_GATE.md) · 硬件休眠：[T3X_POWER_WAKEUP.md](modules/T3X_POWER_WAKEUP.md)
+
 ```
 mayPowerT3x(reason)
   USB 插入 → 允许（mqtt_offline 除外可配）
@@ -278,7 +280,7 @@ bootPowerOn → t3x_ctrl.powerOn（经 mayPowerT3x("boot")）
 |------|------|
 | `usb_charge` | GPIO27/CHG_STATE 中断；发布 `GPIO_USB_DET_CHANGED` |
 | `usb_policy` | USB 插入时 `blocksHostIdle` / `blocks4gRest` |
-| `usb_rndis` | USB 网卡 tethering、IP_READY 刷新 |
+| `usb_rndis` | USB 网卡 tethering、IP_READY 刷新（见 [USB_RNDIS_FLOW.md](modules/USB_RNDIS_FLOW.md)） |
 
 ### 4.5 `low_power_wakeup.lua`
 
@@ -288,13 +290,19 @@ bootPowerOn → t3x_ctrl.powerOn（经 mayPowerT3x("boot")）
 
 ### 4.6 `host_event.lua`
 
+> 专题：[HOST_EVENT_PENDING.md](modules/HOST_EVENT_PENDING.md)
+
 汇总 T3x 待处理业务（wake / pir / record / mqtt）→ `has_event` 供 HOSTIDLE 与 `enterSleep` 门禁。
 
 ### 4.7 `cellular_bootstrap.lua`
 
+> 专题：[CELLULAR_BOOTSTRAP.md](modules/CELLULAR_BOOTSTRAP.md)
+
 SIM/APN 探测、`IP_READY` 等待、运营商映射。`main` 与 `net_mqtt` 共用。
 
 ### 4.8 `device_id.lua` / `watchdog.lua`
+
+> 专题：[LIB_RUNTIME_UTILS.md](modules/LIB_RUNTIME_UTILS.md)
 
 | 模块 | 职责 |
 |------|------|

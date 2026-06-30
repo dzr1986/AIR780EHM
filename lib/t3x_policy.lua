@@ -1,4 +1,4 @@
--- 文档：doc/modules/T3X_POWER_WAKEUP.md
+-- 专题：doc/modules/T3X_POLICY_GATE.md（硬件见 T3X_POWER_WAKEUP.md）
 require "sys"
 require "config"
 local _modname = ...

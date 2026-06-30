@@ -19,4 +19,9 @@
 | [USB_CHARGE_POLICY.md](USB_CHARGE_POLICY.md) | `usb_charge` GPIO 检测 + `usb_policy` rest/HOSTIDLE 门禁 |
 | [LOW_POWER_WAKEUP.md](LOW_POWER_WAKEUP.md) | mqtt/tcp 唤醒通道、`net_tcp` 桩、rest 进/出钩子 |
 | [LIB_UART_GPIO.md](LIB_UART_GPIO.md) | `uart_bridge` 串口层 + `gpio_util` GPIO 封装 |
+| [T3X_POLICY_GATE.md](T3X_POLICY_GATE.md) | `t3x_policy` 唤醒门禁、`requestT3xWake` 分发 |
+| [HOST_EVENT_PENDING.md](HOST_EVENT_PENDING.md) | `host_event` HOSTEVT 待处理汇总与休眠门禁 |
+| [CELLULAR_BOOTSTRAP.md](CELLULAR_BOOTSTRAP.md) | SIM/APN 识别、`IP_READY` 入网引导 |
+| [USB_RNDIS_FLOW.md](USB_RNDIS_FLOW.md) | USB RNDIS 网卡模式（可选） |
+| [LIB_RUNTIME_UTILS.md](LIB_RUNTIME_UTILS.md) | `device_id` IMEI · `watchdog` 硬件喂狗 |
 

@@ -1,4 +1,5 @@
 require "sys"
+-- 硬件 WDT 喂狗；专题 doc/modules/LIB_RUNTIME_UTILS.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
