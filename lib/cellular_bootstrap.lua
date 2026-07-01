@@ -316,10 +316,6 @@ function applyApnForSim()
         lastState.apn = apnMode or ""
     end
     exportRuntime()
-    log.info(LOG_TAG, "operator_update", lastState.operator_name, operator,
-        imsi ~= "" and imsi or "--",
-        iccid ~= "" and iccid:sub(1, 10) .. "..." or "--",
-        lastState.apn ~= "" and lastState.apn or apnMode or "--")
     return ok, operator
 end
 local function waitSimInfo(timeoutMs)
@@ -391,10 +387,6 @@ function waitForNetwork()
             exportRuntime()
             return true, ip
         end
-        log.warn(LOG_TAG, "net_fail", "attempt", attempt,
-            "status", mobile.status and mobile.status() or "?",
-            "csq", mobile.csq and mobile.csq() or "?",
-            "apn", readCurrentApn())
         if attempt < maxAttempts then
             if attempt == 1 and lastState.operator == "unicom" then
                 local fallback = cfg().unicom_apn_fallback

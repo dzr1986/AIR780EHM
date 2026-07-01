@@ -66,7 +66,6 @@ require "key_config"
 if _G.FEATURE_CFG then
     local okLp, lpw = pcall(require, "low_power_wakeup")
     if okLp and lpw and lpw.modeLabel then
-        log.info("main", "低功耗唤醒通道", lpw.modeLabel())
     end
 end
 local app = require "app"
@@ -76,7 +75,6 @@ local t3x_ctrl = require "t3x_ctrl"
 if not isEntry then
     return app
 end
-log.info("main", "build", BUILD_TAG, "core", rtos.version(), "project", PROJECT)
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, true)
 end

@@ -259,7 +259,6 @@ local function set_pending_wake(sid, evt)
     state.pending_sid = tonumber(sid) or 1
     state.pending_evt = tonumber(evt) or 0
     state.pending_valid = true
-    log.info(LOG_TAG, "pending_evt", state.pending_sid, state.pending_evt)
 end
 
 local function clear_pending_wake()
@@ -454,12 +453,10 @@ local function uart_p2pcfg(cmd)
         return RSP_ERROR
     end
     if not is_valid_p2p_uid(uid) or not is_valid_p2p_product(product) then
-        log.warn(LOG_TAG, "p2pcfg_invalid", uid or "", product or "")
         return RSP_ERROR
     end
     state.p2p_uid = uid
     state.p2p_product = product
-    log.info(LOG_TAG, "p2pcfg_ok", uid, product)
     local E = _G.APP_EVENTS or {}
     sys.publish(E.HOST_NET_ID_P2P or "APP_HOST_NET_ID_P2P", uid, product)
     return string.format(
@@ -476,17 +473,14 @@ local function uart_gb28181cfg(cmd)
     end
     if not is_valid_gb28181_device_id(device_id)
             or not is_valid_gb28181_password(password) then
-        log.warn(LOG_TAG, "gb28181cfg_invalid", device_id or "")
         return RSP_ERROR
     end
     if imei and imei ~= "" and not is_valid_imei(imei) then
-        log.warn(LOG_TAG, "gb28181cfg_imei_invalid", imei)
         return RSP_ERROR
     end
     state.host_gb28181_id = device_id
     state.gb28181_password = password
     state.gb28181_imei = (imei and imei ~= "") and imei or nil
-    log.info(LOG_TAG, "gb28181cfg_ok", device_id, imei or "")
     local E = _G.APP_EVENTS or {}
     sys.publish(
         E.HOST_NET_ID_GB28181 or "APP_HOST_NET_ID_GB28181",
@@ -584,7 +578,6 @@ local function uart_mqttcfg(cmd)
     if not cfg then
         return rsp_line("mqtt_config_uart", false)
     end
-    log.info(LOG_TAG, "mqtt_config_uart", cfg.host, cfg.port, cfg.ssl and 1 or 0)
     if hooks.on_mqtt_cfg then
         hooks.on_mqtt_cfg(cfg)
     end
@@ -594,7 +587,6 @@ end
 local function uart_servcreate(cmd)
     local okLp, lpw = pcall(require, "low_power_wakeup")
     if okLp and lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
-        log.info(LOG_TAG, "server_channel_disabled")
         return rsp_body("server_channel_add", "DISABLED")
     end
     local ch = parse_servcreate_args(cmd:match("^AT%+SERVCREATE=(.+)$"))
@@ -602,7 +594,6 @@ local function uart_servcreate(cmd)
         return RSP_ERROR
     end
     state.channel = ch
-    log.info(LOG_TAG, "server_channel_add", ch.sid, ch.server_ip, ch.server_port)
     if hooks.on_servcreate then
         hooks.on_servcreate(ch)
     elseif okLp and lpw and lpw.applyTcpChannel then
@@ -618,11 +609,9 @@ local function uart_servclose(cmd)
     end
     local okLp, lpw = pcall(require, "low_power_wakeup")
     if okLp and lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
-        log.info(LOG_TAG, "server_channel_link_disabled", sid)
         state.channel = nil
         return rsp_body("server_channel_remove", "DISABLED")
     end
-    log.info(LOG_TAG, "server_channel_remove", sid)
     if hooks.on_servclose then
         hooks.on_servclose(sid)
     elseif okLp and lpw and lpw.closeTcpChannel then
@@ -666,7 +655,6 @@ local function uart_hostidle(cmd)
         if cmd == "AT+HOSTIDLE=0" then
             return rsp_body("HOSTIDLE", "OK")
         end
-        log.info(LOG_TAG, "host_idle_usb_block")
         return CRLF .. "+HOSTIDLE:USB" .. CRLF
     end
     local hostBody = build_hostevt_body()
@@ -732,7 +720,6 @@ local function uart_record_notify(cmd)
     if arg == "1" then
         state.t3x_rec_active = 1
         state.t3x_last_reason = "active"
-        log.info(LOG_TAG, "record_start")
         if patchHostIpcCloudStat then
             patchHostIpcCloudStat({ recordingT3x = 1 })
         end
@@ -743,7 +730,6 @@ local function uart_record_notify(cmd)
     local reason = arg:match("^0,reason=(.+)$") or "unknown"
     state.t3x_rec_active = 0
     state.t3x_last_reason = reason
-    log.info(LOG_TAG, "record_stop", reason)
     if patchHostIpcCloudStat then
         patchHostIpcCloudStat({ recordingT3x = 0 })
     end
@@ -763,7 +749,6 @@ local function uart_person_cnt_notify(cmd)
         return RSP_ERROR
     end
     local n = tonumber(cnt) or 0
-    log.info(LOG_TAG, "person_count", n)
     local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_PERSON_CNT or "APP_T3X_PERSON_CNT", n)
     return string.format(CRLF .. "+PERSONCNT:ok,count=%d" .. CRLF, n) .. ok_tail()
@@ -787,7 +772,6 @@ local function uart_ipc_alert_notify(cmd)
         return RSP_ERROR
     end
     detail = detail or ""
-    log.info(LOG_TAG, "ipc_alert_uart", code, detail)
     local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_IPC_ALERT or "APP_T3X_IPC_ALERT", code, detail)
     return string.format(CRLF .. "+IPCALERT:OK,code=%s" .. CRLF, code) .. ok_tail()
@@ -804,7 +788,6 @@ function uart_ipcstatus_notify(cmd)
         return RSP_ERROR
     end
     state.host_ipc_status = st
-    log.info(LOG_TAG, "ipcstatus_push", st)
     if patchHostIpcCloudStat then
         patchHostIpcCloudStat({ ipcReady = ipc_ready_from_lifecycle(st) })
     end
@@ -824,11 +807,8 @@ function uart_ipcstat_notify(cmd)
     end
     local snap = parse_ipcstat_line("+IPCSTAT:" .. body)
     if not snap then
-        log.warn(LOG_TAG, "ipcstat_push_parse_fail", body)
         return RSP_ERROR
     end
-    log.info(LOG_TAG, "ipcstat_push",
-        snap.ipcReady, snap.tfPresent, snap.recordingT3x, snap.cat1Link)
     if commitHostIpcCloudStat then
         commitHostIpcCloudStat(snap)
     else
@@ -849,11 +829,9 @@ function uart_tfcard_notify(cmd)
     end
     local snap = parse_tfcard_line("+TFCARD:" .. body)
     if not snap.parsed then
-        log.warn(LOG_TAG, "tfcard_push_parse_fail", body)
         return RSP_ERROR
     end
     state.host_tf_card = snap
-    log.info(LOG_TAG, "tfcard_push", snap.present)
     if patchHostIpcCloudStat then
         patchHostIpcCloudStat({ tfPresent = (tonumber(snap.present) or 0) == 1 and 1 or 0 })
     end
@@ -866,7 +844,6 @@ local function uart_snapshot_notify(cmd)
     if not path or path == "" then
         return RSP_ERROR
     end
-    log.info(LOG_TAG, "snapshot_done", path)
     local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_SNAPSHOT_DONE or "APP_T3X_SNAPSHOT_DONE", path)
     return string.format(CRLF .. "+SNAPSHOT:ok,path=%s" .. CRLF, path) .. ok_tail()
@@ -892,7 +869,6 @@ local function uart_ril(cmd)
         return RSP_ERROR
     end
     state.passthrough = (n == 1)
-    log.info(LOG_TAG, "runtime_ivs", n)
     return rsp_fmt("RIL_PERSONCNT", "%d", n)
 end
 
@@ -923,7 +899,6 @@ local function uart_lowpower(cmd)
     if cmd == "AT+LOWPOWER=ENTER" then
         local up = usb_policy_mod()
         if up and up.blocks4gRest and up.blocks4gRest() then
-            log.info(LOG_TAG, "lowpower_usb_block")
             return CRLF .. "+LOWPOWER:USB" .. CRLF
         end
         if (rt.power_status or 0) == 0 and (rt.low_power_mode or 0) == 0 then
@@ -995,11 +970,9 @@ local function forward_wled_to_host(on, timeoutMs)
         return true
     end
     if _G.MODULE_FLAGS and (_G.MODULE_FLAGS.t3x_app == false or _G.MODULE_FLAGS.uart_bridge == false) then
-        log.warn(LOG_TAG, "wled_no_uart")
         return false
     end
     if not wled_ensure_t3x_powered() then
-        log.warn(LOG_TAG, "wled_no_policy")
         return false
     end
     timeoutMs = tonumber(timeoutMs) or tonumber(wc.ack_timeout_ms) or 3000
@@ -1017,18 +990,14 @@ local function forward_wled_to_host(on, timeoutMs)
         err_log = "wled_error",
         on_response = function(got, val, tmo)
             if got and type(val) == "table" and val.ok then
-                log.info(LOG_TAG, "wled_fwd_ok", val.on or on)
                 return true
             end
             if got and type(val) == "table" and val.ok == false then
-                log.warn(LOG_TAG, "wled_ipc_error")
                 return false
             end
-            log.warn(LOG_TAG, "wled_timeout", tmo)
             return false
         end,
         on_no_t3x = function()
-            log.warn(LOG_TAG, "wled_no_policy")
             return false
         end,
     })
@@ -1060,7 +1029,6 @@ function queryHostWled(timeoutMs)
                 return rsp.on
             end
             if got == false then
-                log.warn(LOG_TAG, "wled_query_timeout", tmo)
             end
             return wled_get()
         end,
@@ -1102,13 +1070,11 @@ local function wled_set(on, opts)
             wled_state.last_forward_ms = mcu and mcu.ticks and mcu.ticks() or 0
             return ok
         end
-        log.warn(LOG_TAG, "wled_sync_not_in_task")
         return false
     end
     sys.taskInit(function()
         if forward_wled_to_host(on, opts.timeout_ms) then
             wled_state.last_forward_ms = mcu and mcu.ticks and mcu.ticks() or 0
-            log.info(LOG_TAG, "wled_state", on)
         end
     end)
     return true
@@ -1171,7 +1137,6 @@ local function usb_recovery_allowed(cfg)
         return false, "BUSY"
     end
     if t3x_rest_blocks_usb_reset() then
-        log.info(LOG_TAG, "usb_block_host_idle")
         return false, "REST"
     end
     return true, nil
@@ -1229,7 +1194,6 @@ local function usb_recovery_run_async(tag, cfg, do_fn)
         usb_recovery_guard.busy = false
         usb_recovery_guard.last_sec = os.time()
         usb_recovery_guard.count = (usb_recovery_guard.count or 0) + 1
-        log.info(LOG_TAG, tag, ok and "ok" or "fail", "count", usb_recovery_guard.count)
         if not ok then
             export_usb_recovery_runtime({
                 state = "idle",
@@ -1284,7 +1248,6 @@ local function uart_usbreset(cmd)
             if pok and pms then
                 pulse_ms = tonumber(pms) or 0
             elseif not pok then
-                log.warn(LOG_TAG, "usb_pulse_fail", tostring(pret))
             end
         end
         if pulse_ms > 0 then
@@ -1334,7 +1297,6 @@ local function uart_usbrecovery(cmd)
         usb_netdev = stateLower == "ok" and 1 or 0,
         last_err = lastErr,
     })
-    log.info(LOG_TAG, "usb_recovery", stateLower, count)
     publish_usb_recovery_changed()
     return CRLF .. "+USBRECOVERY:" .. state .. CRLF .. ok_tail()
 end
@@ -1362,7 +1324,6 @@ function resetUsbRecoveryFromCloud()
     })
     usb_recovery_guard.count = 0
     publish_usb_recovery_changed()
-    log.info(LOG_TAG, "usb_recovery_reset")
     return true
 end
 
@@ -1692,7 +1653,6 @@ local function try_tfcard_line(line)
     end
     local snap = parse_tfcard_line(line)
     if not snap.parsed then
-        log.warn(LOG_TAG, "tfcard_parse_fail", line)
         return false
     end
     state.host_tf_card = snap
@@ -2271,14 +2231,12 @@ local function notify_host_first_at(cmd)
     note_uart_link_ok()
     state.uart_recovery_attempts = 0
     state.uart_recovery_last_sec = 0
-    log.info(LOG_TAG, "first_at", cmd or "")
     if patchHostIpcCloudStat then
         patchHostIpcCloudStat({ cat1Link = 1 })
     end
     sys.taskInit(function()
         sys.wait(300)
         if not isT31StartedForHostQuery() then
-            log.info(LOG_TAG, "first_at_skip_ipcstat", "t31_off")
             return
         end
         if queryHostIpcCloudStat then
@@ -2319,7 +2277,6 @@ function uart_at_cmd(cmd)
     if not cmd or cmd == "" then
         return RSP_ERROR
     end
-    log.info(LOG_TAG, "uart_at_tx", cmd)
     state.last_command = cmd
     cmd = cmd:gsub("%?$", "")
     if hooks.on_at_ext then
@@ -2411,7 +2368,6 @@ end
 run_host_query = function(opts)
     if not coroutine.running() then
         if opts.err_log then
-            log.warn(LOG_TAG, "host_query_skip", "no_task", opts.at_cmd or "")
         end
         if opts.cache_key and state[opts.cache_key] ~= nil then
             return state[opts.cache_key]
@@ -2423,7 +2379,6 @@ run_host_query = function(opts)
     end
     if isHostInboundQuiet() then
         if opts.err_log then
-            log.info(LOG_TAG, "host_query_skip", "push_quiet", opts.at_cmd or "")
         end
         if opts.cache_key and state[opts.cache_key] ~= nil then
             return state[opts.cache_key]
@@ -2435,7 +2390,6 @@ run_host_query = function(opts)
     end
     if state[opts.busy_key] then
         if opts.busy_log then
-            log.warn(LOG_TAG, opts.busy_log)
         end
         if opts.busy_return ~= nil then
             return opts.busy_return
@@ -2471,14 +2425,12 @@ run_host_query = function(opts)
         end
         if not uart_bridge.sendString then
             if opts.no_uart_log then
-                log.warn(LOG_TAG, opts.no_uart_log)
             end
             if opts.on_no_uart then
                 result = opts.on_no_uart()
             end
             return
         end
-        log.info(LOG_TAG, opts.at_cmd, timeoutMs, opts.log_extra or "")
         if opts.before_send then
             opts.before_send()
         end
@@ -2490,7 +2442,6 @@ run_host_query = function(opts)
     state[opts.busy_key] = false
     if not ok then
         if opts.err_log then
-            log.warn(LOG_TAG, opts.err_log, err)
         end
         if opts.on_error then
             return opts.on_error(err)
@@ -2545,7 +2496,6 @@ host_set = function(spec)
             return
         end
         if spec.log_tag then
-            log.info(LOG_TAG, spec.log_tag, atCmd, timeoutMs)
         end
         uart_bridge.sendString(atCmd, true)
         local got, rsp = sys.waitUntil(spec.ack_event, timeoutMs)
@@ -2621,10 +2571,8 @@ function queryHostGb28181(timeoutMs)
         on_response = function(got, id, tmo)
             if got and id ~= nil then
                 state.host_gb28181_id = id
-                log.info(LOG_TAG, "gb28181_id", id ~= "" and id or "")
                 return state.host_gb28181_id
             end
-            log.warn(LOG_TAG, "gb28181_timeout", tmo)
             return state.host_gb28181_id
         end,
         on_error = noop_nil,
@@ -2776,11 +2724,9 @@ function refreshIpcCloudStatFor1003(timeoutMs, force)
     force = force == true
     mergeTfRecordIntoCloudStat()
     if not coroutine.running() then
-        log.info(LOG_TAG, "ipc_stat_skip", "no_coroutine")
         return type(state.host_ipc_cloud_stat) == "table"
     end
     if not shouldQueryIpcCloudStat() then
-        log.info(LOG_TAG, "ipc_stat_skip", "t31_off")
         return type(state.host_ipc_cloud_stat) == "table"
     end
     if not force and not isIpcCloudStatStale() then
@@ -2793,9 +2739,6 @@ function refreshIpcCloudStatFor1003(timeoutMs, force)
         queryHostIpcCloudStat(timeoutMs)
     end
     mergeTfRecordIntoCloudStat()
-    log.info(LOG_TAG, "ipc_cloud_stat_refresh",
-        isIpcCloudStatStale() and "stale_after_query" or "ok",
-        force and "force" or "normal")
     return type(state.host_ipc_cloud_stat) == "table"
 end
 
@@ -2820,25 +2763,20 @@ function reconcileHostRecordSession(timeoutMs)
         return false
     end
     if not coroutine.running() then
-        log.info(LOG_TAG, "record_reconcile_skip", "no_task")
         return false
     end
     if not state.host_at_ready then
-        log.info(LOG_TAG, "record_reconcile_skip", "no_at")
         return false
     end
     if isHostUartQueryBusy() then
         local reason = isHostInboundQuiet() and "push_quiet" or "uart_busy"
-        log.info(LOG_TAG, "record_reconcile_skip", reason)
         return false
     end
     if not isT31StartedForHostQuery() then
-        log.info(LOG_TAG, "record_reconcile_skip", "t31_off")
         return false
     end
     local snap = queryHostRecord(timeoutMs or 3500)
     if type(snap) ~= "table" then
-        log.info(LOG_TAG, "record_reconcile_skip", "query_fail")
         return false
     end
     local t3xActive = (tonumber(snap.running) or 0) == 1
@@ -2857,7 +2795,6 @@ function reconcileHostRecordSession(timeoutMs)
     if pir_ctrl.syncStopFromT3x then
         uploadMode, quality = pir_ctrl.syncStopFromT3x(reason)
     end
-    log.info(LOG_TAG, "record_sync_stop", reason)
     local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_RECORD_STOP or "APP_T3X_RECORD_STOP", reason, uploadMode, quality)
     return true
@@ -2890,7 +2827,6 @@ function queryHostIpcCloudStat(timeoutMs)
         on_response = function(got, snap)
             if got and type(snap) == "table" then
                 commitHostIpcCloudStat(snap)
-                log.info(LOG_TAG, "ipc_cloud_stat_ok")
                 return snap
             end
             return getCachedHostIpcCloudStat()
@@ -2948,8 +2884,6 @@ local function run_uart_power_cycle_recovery(attempt)
     if not ok or type(t3x) ~= "table" then
         return false
     end
-    log.info(LOG_TAG, "uart_recovery_cycle", attempt or 0,
-        "off_ms", rc.power_off_ms, "on_ms", rc.power_on_wait_ms)
     if is_t3x_powered_on() and t3x.powerOff then
         t3x.powerOff()
         sys.wait(rc.power_off_ms)
@@ -2989,8 +2923,6 @@ local function maybe_uart_recovery_after_miss(source)
         return
     end
     if state.uart_recovery_attempts >= rc.max_attempts then
-        log.warn(LOG_TAG, "uart_recovery_exhausted",
-            state.uart_recovery_attempts, source or "")
         return
     end
     local last = tonumber(state.uart_recovery_last_sec) or 0
@@ -2999,15 +2931,12 @@ local function maybe_uart_recovery_after_miss(source)
     end
     state.uart_recovery_busy = true
     state.uart_recovery_attempts = state.uart_recovery_attempts + 1
-    log.info(LOG_TAG, "uart_recovery_sched", state.uart_recovery_attempts,
-        source or "", "miss", state.ipc_uart_miss_streak)
     sys.taskInit(function()
         local okRun, errRun = pcall(function()
             run_uart_power_cycle_recovery(state.uart_recovery_attempts)
         end)
         state.uart_recovery_busy = false
         if not okRun then
-            log.warn(LOG_TAG, "uart_recovery_fail", tostring(errRun))
         end
     end)
 end
@@ -3018,7 +2947,6 @@ function resetHostLinkState()
     state.host_ipc_status = nil
     state.host_ipc_cloud_stat = nil
     reset_uart_recovery_miss()
-    log.info(LOG_TAG, "link_reset")
 end
 
 function queryHostIpcStatus(timeoutMs)
@@ -3047,11 +2975,9 @@ function queryHostIpcStatus(timeoutMs)
             if got and st then
                 note_uart_link_ok()
                 state.host_ipc_status = st
-                log.info(LOG_TAG, "ipc_status", st)
                 return st
             end
             state.host_ipc_status = "idle"
-            log.info(LOG_TAG, "ipc_status_no_response")
             maybe_uart_recovery_after_miss("ipc_status")
             return "idle"
         end,
@@ -3061,7 +2987,6 @@ end
 
 function hostIpcPowerOff(playSound, timeoutMs)
     if state.ipc_poweroff_busy then
-        log.warn(LOG_TAG, "ipcstatus_busy")
         return false
     end
     state.ipc_poweroff_busy = true
@@ -3074,7 +2999,6 @@ function hostIpcPowerOff(playSound, timeoutMs)
             return
         end
         if not uart_bridge.sendString then
-            log.warn(LOG_TAG, "ipcstatus_no_uart")
             return
         end
 
@@ -3084,21 +3008,17 @@ function hostIpcPowerOff(playSound, timeoutMs)
         else
             cmd = "AT+IPCPOWEROFF=1"
         end
-        log.info(LOG_TAG, cmd, timeoutMs)
         uart_bridge.sendString(cmd, true)
         local got = sys.waitUntil(SYS_EVT.IPCPOWEROFF_ACK, timeoutMs)
         if got then
             success = true
             state.host_ipc_status = "idle"
-            log.info(LOG_TAG, "ipcstatus_done")
         else
-            log.warn(LOG_TAG, "ipcstatus_timeout", timeoutMs)
         end
     end)
 
     state.ipc_poweroff_busy = false
     if not ok then
-        log.warn(LOG_TAG, "ipcstatus_error", err)
         return false
     end
     return success
@@ -3120,16 +3040,13 @@ function waitHostIpcReady(timeoutMs, pollMs)
             return true
         end
         if st == "shutting_down" then
-            log.info(LOG_TAG, "power_off_ack")
         end
 
         if deadline and mcu and mcu.ticks then
             if mcu.ticks() >= deadline then
-                log.warn(LOG_TAG, "ready_timeout", timeoutMs)
                 return false
             end
         elseif (os.time() - start) * 1000 >= timeoutMs then
-            log.warn(LOG_TAG, "ready_timeout", timeoutMs)
             return false
         end
         sys.wait(pollMs)
@@ -3164,11 +3081,8 @@ function queryHostRecord(timeoutMs)
         on_response = function(got, snap, tmo)
             if got and type(snap) == "table" then
                 state.host_record = snap
-                log.info(LOG_TAG, "record_query",
-                    snap.running, snap.active, snap.ch, snap.reason)
                 return state.host_record
             end
-            log.warn(LOG_TAG, "record_query_timeout", tmo)
             return nil
         end,
         on_error = noop_nil,
@@ -3195,10 +3109,8 @@ function queryHostRecordTime(timeoutMs)
         on_response = function(got, snap, tmo)
             if got and type(snap) == "table" and snap.parsed then
                 state.host_record_time = snap
-                log.info(LOG_TAG, "recordtime_query", snap.minutes)
                 return state.host_record_time
             end
-            log.warn(LOG_TAG, "recordtime_timeout", tmo)
             return state.host_record_time
         end,
         on_error = noop_nil,
@@ -3269,7 +3181,6 @@ function queryHostFramerate(opts)
                 state.host_framerate = rows
                 return rows
             end
-            log.warn(LOG_TAG, "framerate_timeout", tmo)
             return state.host_framerate
         end,
         on_error = noop_nil,
@@ -3364,7 +3275,6 @@ function queryHostPersonDetect(timeoutMs)
                 state.host_person_detect = snap
                 return snap
             end
-            log.warn(LOG_TAG, "persondet_timeout", tmo)
             return state.host_person_detect
         end,
         on_error = noop_nil,
@@ -3422,7 +3332,6 @@ function queryHostMic(opts)
                 state.host_mic = rows
                 return rows
             end
-            log.warn(LOG_TAG, "mic_timeout", tmo)
             return state.host_mic
         end,
         on_error = noop_nil,
@@ -3473,7 +3382,6 @@ function queryHostSoftPhoto(timeoutMs)
                 state.host_softphoto = snap
                 return snap
             end
-            log.warn(LOG_TAG, "softphoto_timeout", tmo)
             return state.host_softphoto
         end,
         on_error = noop_nil,
@@ -3535,11 +3443,8 @@ function queryHostTfCard(timeoutMs)
         on_response = function(got, snap, tmo)
             if got and type(snap) == "table" and snap.parsed then
                 state.host_tf_card = snap
-                log.info(LOG_TAG, "tfcard_query",
-                    snap.present, snap.total_mb, snap.used_mb, snap.free_mb)
                 return state.host_tf_card
             end
-            log.warn(LOG_TAG, "tfcard_timeout", tmo)
             return nil
         end,
         on_error = noop_nil,
@@ -3581,7 +3486,6 @@ function formatHostTfCard(opts)
             error("no_uart")
         end
         local atCmd = string.format("AT+TFFORMAT=1,reboot=%d", reboot)
-        log.info(LOG_TAG, "tfformat_tx", atCmd, timeoutMs)
         uart_bridge.sendString(atCmd, true)
         local deadline = (os.time() * 1000) + timeoutMs
         local started = false
@@ -3595,14 +3499,11 @@ function formatHostTfCard(opts)
             if got and type(val) == "table" then
                 if val.phase == "started" then
                     started = true
-                    log.info(LOG_TAG, "tfformat_started")
                 elseif val.phase == "ok" then
-                    log.info(LOG_TAG, "tfformat_ok", val.reboot or 0)
                     outcome.ok = true
                     outcome.detail = val
                     return
                 elseif val.phase == "error" then
-                    log.warn(LOG_TAG, "tfformat_ipc_error", val.ret or "error")
                     error(tostring(val.ret or "ipc_error"))
                 end
             end
@@ -3617,7 +3518,6 @@ function formatHostTfCard(opts)
         return true, outcome.detail
     end
     if not okRun then
-        log.warn(LOG_TAG, "tfformat_fail", tostring(errRun))
         return false, tostring(errRun)
     end
     return false, outcome.reason
@@ -3631,7 +3531,6 @@ function setPirActionDevinfo()
     local ok, pc = pcall(require, "pir_ctrl")
     if ok and type(pc) == "table" and pc.setMediaConfig then
         pc.setMediaConfig({ action = "devinfo" })
-        log.info(LOG_TAG, "pir_defer")
         return true
     end
     return false
@@ -3730,13 +3629,10 @@ local function queryHostEncodeInner(opts)
             if got then
                 local body, err = finish_encode_query(val, isAudio)
                 if body then
-                    log.info(LOG_TAG, "encode_query", isAudio and "audio" or "video", #(val or {}))
                     return body
                 end
-                log.warn(LOG_TAG, "encode_bad_response", err or "bad", tmo)
                 return nil
             end
-            log.warn(LOG_TAG, "encode_timeout", tmo)
             return nil
         end,
         on_error = noop_nil,
@@ -3862,7 +3758,6 @@ function start(opts)
     bind_start_hooks(opts)
     uart_bridge.setOnLine(on_uart_line)
     started = true
-    log.info(LOG_TAG, "host_uart_on")
     return true
 end
 
@@ -3872,7 +3767,6 @@ function stop()
     end
     uart_bridge.setOnLine(nil)
     started = false
-    log.info(LOG_TAG, "host_uart_off")
     return true
 end
 
@@ -3895,7 +3789,6 @@ function push_usb_host_idle_state(inserted)
         line = line .. CRLF
     end
     writeFn(line)
-    log.info(LOG_TAG, "usb_host_idle", inserted and "block" or "allow")
     return true
 end
 
@@ -3922,7 +3815,6 @@ function push_net_led_state(online)
         line = line .. CRLF
     end
     writeFn(line)
-    log.info(LOG_TAG, "net_status_led", online and "1" or "0")
     return true
 end
 
@@ -3934,7 +3826,6 @@ function notify_host(sid, evt)
     local okPol, policy = pcall(require, "t3x_policy")
     if okPol and type(policy) == "table" and policy.mayPowerT3x
         and not policy.mayPowerT3x("notify_host") then
-        log.info(LOG_TAG, "net_host_skip", policy.getDenyReason and policy.getDenyReason() or "")
         return false
     end
 
@@ -3952,7 +3843,6 @@ function notify_host(sid, evt)
     if t3xModule.pulseMcuInt then
         return t3xModule.pulseMcuInt()
     end
-    log.warn(LOG_TAG, "pulse_net_no_policy")
     return false
 end
 

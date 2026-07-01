@@ -151,8 +151,6 @@ function start(options)
     uart.setup(drv.uart_id, drv.baud, 8, 0, 0, 0)
     uart.on(drv.uart_id, "recv", on_uart_recv)
     drv.started = true
-    log.info(LOG_TAG, "module_on", drv.uart_id, drv.baud,
-        "lineProto", drv.line_protocol, "rxMax", drv.rx_line_max)
     return true
 end
 function stop()

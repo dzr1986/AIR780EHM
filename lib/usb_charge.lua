@@ -98,8 +98,6 @@ local function updateUsb(inserted, fromIrq)
         return
     end
     last_usb = inserted
-    log.info(LOG_TAG, "USB_DET GPIO" .. tostring(usbPin()),
-        inserted and "插入" or "拔出", fromIrq and "IRQ" or "init")
     if inserted and fromIrq then
         local okPeri, peri = pcall(require, "peripheral")
         if okPeri and peri and peri.cancelLongPress then
@@ -114,8 +112,6 @@ updateChg = function(charging, fromIrq)
         return
     end
     last_chg = charging
-    log.info(LOG_TAG, "CHG_STATE GPIO" .. tostring(chgPin()),
-        charging and "充电中(硬件CHG_RED)" or "充满或未充(硬件CHG_BLUE)", fromIrq and "IRQ" or "init")
     publishChgChange(charging)
 end
 local function onUsbIrq(_level)
@@ -146,9 +142,6 @@ function start()
     started = true
     last_usb = readUsbInserted()
     last_chg = effectiveCharging()
-    log.info(LOG_TAG, "已启动(中断)",
-        "USB_DET GPIO" .. tostring(c.usb_det_pin), last_usb and "插入" or "拔出",
-        "CHG_STATE GPIO" .. tostring(c.chg_state_pin), last_chg and "充电" or "未充")
     return true
 end
 function getLevel()

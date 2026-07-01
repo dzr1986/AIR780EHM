@@ -168,7 +168,6 @@ local function refreshAfterCellularIp()
     applyPmUsb()
     refreshing = false
     sys.publish(EVT_REFRESH_END)
-    log.info(LOG_TAG, "refresh_done", readCellularIp() or "--")
     if not bootStable then
         publishBootStable()
     end
@@ -231,19 +230,15 @@ local function cycleRndis(pauseMs, extraWait)
 end
 local function finishBootOpen()
     if refreshAllowed() then
-        log.info(LOG_TAG, "boot_wait_ip")
         local ready, ip = waitCellularReady()
         if ready and not ipReadyRefreshed then
-            log.info(LOG_TAG, "boot_refresh", ip or "--")
             if not refreshAfterCellularIp() then
                 publishBootStable()
             end
         else
-            log.warn(LOG_TAG, "boot_skip_refresh", ready and 1 or 0, ip or "--")
             publishBootStable()
         end
     else
-        log.info(LOG_TAG, "boot_no_usb_refresh")
         publishBootStable()
     end
 end
@@ -305,7 +300,6 @@ function switch(opts)
     local on_wait_ms = tonumber(opts.on_wait_ms) or 500
     local ok, err = cycleRndis(off_ms, on_wait_ms)
     if ok then
-        log.info(LOG_TAG, "switch_rndis", readCellularIp() or "--")
     end
     return ok, err
 end
@@ -335,7 +329,6 @@ function rebind(opts)
         log.error(LOG_TAG, "rebind_fail", runtime.last_error)
         return false, runtime.last_error
     end
-    log.info(LOG_TAG, "rebind_ok", readCellularIp() or "--")
     return true
 end
 function enableAsync(opts)

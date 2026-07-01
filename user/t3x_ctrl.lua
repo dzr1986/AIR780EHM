@@ -66,10 +66,6 @@ local function gpioLv(pin, lv)
 end
 
 local function logGpio(action, entry_pwr, entry_boot, entry_ota, pwrLv, bootLv, otaLv)
-    log.info(L, action,
-        "pwr", gpioLv(entry_pwr and entry_pwr.pin, pwrLv),
-        "boot", gpioLv(entry_boot and entry_boot.pin, bootLv),
-        "ota", gpioLv(entry_ota and entry_ota.pin, otaLv))
 end
 
 local function getWakePulseMs()
@@ -204,13 +200,8 @@ function pulseWakeup()
 end
 
 function enterBootMode()
-    log.info(L, "t3x_boot_mode_enter")
     local entry_pwr, _, entry_boot, entry_ota = ensurePins()
     if not t3xPowerPin or not t3xBootModePin or not t3xOtaPin then
-        log.warn(L, "t3x_boot_mode_enter_fail",
-            "pwr", gpioLv(entry_pwr and entry_pwr.pin, nil),
-            "boot", gpioLv(entry_boot and entry_boot.pin, nil),
-            "ota", gpioLv(entry_ota and entry_ota.pin, nil))
         return false
     end
     powerOff()
@@ -263,10 +254,8 @@ function pulseUsbDebugEn(opts)
 end
 
 function exitBootMode()
-    log.info(L, "t3x_boot_mode_exit")
     local entry_pwr, _, entry_boot, entry_ota = ensurePins()
     if not t3xBootModePin or not t3xOtaPin then
-        log.warn(L, "t3x_boot_mode_exit_fail")
         return false
     end
     local bootOff = 1 - bootModeLevel
@@ -330,7 +319,6 @@ function enterSleep(opts)
     local ok, err = pcall(shutdownPoweredT3x, opts)
     sleep_in_progress = false
     if not ok then
-        log.warn(L, "enter_sleep_fail", tostring(err))
     end
 end
 

@@ -241,12 +241,10 @@ local function onReboot()
     end, 500)
 end
 local function onPowerOff(reason)
-    log.warn(L, "power_off", reason or "unknown")
     local function shutdownNow()
         if reason == "battery" then
             local okBg, bg = pcall(require, "battery_guard")
             if okBg and type(bg) == "table" and bg.isUsbInserted and bg.isUsbInserted() then
-                log.info(L, "power_off_cancel_usb")
                 return
             end
         end
@@ -395,10 +393,8 @@ local function setupWatchdog()
     if wdtMod and wdtMod.start then
         local ok = wdtMod.start(_G.WDT_CFG)
         if not ok then
-            log.warn(L, "watchdog_start_failed")
         end
     else
-        log.warn(L, "watchdog_module_missing")
     end
 end
 stopWatchdogBeforePowerOff = function()
@@ -428,7 +424,6 @@ local function getImei()
 end
 function startMqtt()
     if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
-        log.warn(L, "t3x_burn_skip_mqtt")
         return false
     end
     if state.mqtt_started then
@@ -548,7 +543,6 @@ local function shutdownServicesForT3xBurn(cfg)
     _G.T3X_BURN_MODE_ACTIVE = true
     state.t3x_burn_active = true
     state.heartbeat_paused = true
-    log.info(L, "t3x_burn_stop_services")
     if cfg.suspend_pir ~= false and pir_ctrl.suspend then
         pir_ctrl.suspend()
     end
@@ -566,9 +560,7 @@ local function shutdownServicesForT3xBurn(cfg)
         if type(usbRndis) == "table" and usbRndis.disable then
             local rndisOk, rndisErr = usbRndis.disable()
             if rndisOk then
-                log.info(L, "t3x_burn_rndis_stop_ok")
             else
-                log.warn(L, "t3x_burn_rndis_stop_fail", rndisErr)
             end
         end
     end
@@ -580,10 +572,8 @@ local function shutdownServicesForT3xBurn(cfg)
 end
 local function tryEnterT3xBurnMode()
     local cfg = _G.T3X_BURN_CFG or {}
-    log.info(L, "t3x_burn_start")
     local ok, detail = checkT3xBurnPreconditions()
     if not ok then
-        log.warn(L, "t3x_burn_cond_fail", detail)
         if gpioModule and gpioModule.runLedPattern then
             gpioModule.runLedPattern("blink_red")
         end
@@ -591,14 +581,11 @@ local function tryEnterT3xBurnMode()
     end
     shutdownServicesForT3xBurn(cfg)
     if not t3xModule or not t3xModule.enterBootMode then
-        log.warn(L, "t3x_burn_no_module")
         return false
     end
     if not t3xModule.enterBootMode() then
-        log.warn(L, "t3x_burn_enter_boot_fail")
         return false
     end
-    log.info(L, "t3x_burn_wait_coproc")
     return true
 end
 local function wakeT3xForPir(tag, sid, evt)
@@ -768,18 +755,15 @@ local function buildSystemEventHandlers()
             if state.usb_insert_tick > 0 and (_G.APP_RUNTIME.power_status or 0) == 1 then
                 local elapsed = nowMs() - state.usb_insert_tick
                 if elapsed < usbPwrkeyGraceMs() then
-                    log.info(L, "pwrkey_long_ignored_usb_grace", elapsed, "mqtt_start")
                     return
                 end
             end
             onPowerOff("user")
         end },
         { E.GPIO_BOOTKEY_LONG, function()
-            log.info(L, "t3x_burn_key_long")
             sys.taskInit(tryEnterT3xBurnMode)
         end },
         { E.GPIO_COPROC_READY, function()
-            log.info(L, "coproc_ready")
             if t3xModule then
                 t3xModule.exitBootMode()
             end
@@ -788,7 +772,6 @@ local function buildSystemEventHandlers()
                 _G.T3X_BURN_MODE_ACTIVE = false
                 state.t3x_burn_active = false
                 state.heartbeat_paused = false
-                log.info(L, "t3x_burn_end")
             end
         end },
         { E.GPIO_USB_DET_CHANGED, function(inserted)
@@ -903,14 +886,6 @@ local function startHeartbeat()
             if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
                 usbInserted = usbCharge.isUsbInserted() and 1 or 0
             end
-            log.info(L, string.format(
-                "heartbeat count=%d usb_inserted=%d low_power_mode=%d battery_percent=%s battery_mv=%s power_status=%d",
-                state.heartbeat_count,
-                usbInserted,
-                rt.low_power_mode or 0,
-                tostring(rt.battery_percent or "--") .. "%",
-                tostring(rt.battery_mv or "--"),
-                rt.power_status or 0))
         end
     end, 10000)
 end

@@ -238,7 +238,6 @@ local function batteryTask()
     applyAdcRange(adc)
     adc.open(channel)
     local scale = resolveMvScale()
-    log.info(LOG_TAG, BUILD_TAG, "channel", channel, "scale", string.format("%.4f", scale))
     while true do
         local pinMv = readPinMillivolts(adc, channel)
         if pinMv then

@@ -115,7 +115,6 @@ local function scheduleIpcCloudStatRefresh(force)
     if force then
         ipc_stat_refresh_force = true
     elseif isT3xIdleForIpcRefresh() then
-        log.info(L, "ipc_stat_skip", "t3x_idle")
         return
     end
     if ipc_stat_refresh_pending then
@@ -128,7 +127,6 @@ local function scheduleIpcCloudStatRefresh(force)
         local doForce = ipc_stat_refresh_force
         ipc_stat_refresh_force = false
         if not doForce and isT3xIdleForIpcRefresh() then
-            log.info(L, "ipc_stat_skip", "t3x_idle")
             return
         end
         refreshIpcCloudStatBefore1003(2500, doForce)
@@ -164,7 +162,6 @@ local function scheduleRecordReconcile()
         local ok, reason = canReconcileRecord()
         if not ok then
             if reason then
-                log.info(L, "record_reconcile_skip", reason)
             end
             return
         end
@@ -220,7 +217,6 @@ function publishAlert(alertCode, alertDetail)
     alertCode = tostring(alertCode or "unknown")
     alertDetail = tostring(alertDetail or "")
     if not _deps.publish_uplink or not _deps.dt_ul_control then
-        log.warn(L, "unbound")
         return
     end
 

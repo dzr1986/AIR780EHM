@@ -136,7 +136,6 @@ end
 local function subscribeDownlink(client)
     local filter = getSubTopicFilter()
     local pkgid = client:subscribe(filter, 1)
-    log.info(L, "mqtt_sub", filter, pkgid or "fail")
     return pkgid ~= nil
 end
 
@@ -184,7 +183,6 @@ local function publishUplink(opts)
     opts = opts or {}
     if not isConnected then
         if opts.warn ~= false then
-            log.warn(L, opts.no_conn or NC)
         end
         return false
     end
@@ -192,7 +190,6 @@ local function publishUplink(opts)
     local payload = opts.payload or formatUplink(opts.dataType, opts.fields)
     sys.publish("mqtt_pub", topic, payload, opts.qos or 1)
     if opts.log then
-        log.info(L, opts.log, topic, table.unpack(opts.log_args or {}))
     end
     if opts.app_event_fn then
         opts.app_event_fn(topic, payload)
@@ -237,27 +234,18 @@ function bootstrapNetwork()
         local ipOk, ip
 
         if cellular and cellular.waitForNetwork and (_G.MODULE_FLAGS.cellular ~= false) then
-            log.info(L, "cellular_ready")
             ipOk, ip = cellular.waitForNetwork()
         else
-            log.info(L, "wait_ip")
             ipOk = sys.waitUntil("IP_READY", 300000)
             ip = (socket and socket.localIP and socket.localIP()) or nil
         end
 
         if ipOk and ip then
-            log.info(L, "got_ip", ip)
         else
-            log.warn(L, "ip_timeout", ip or "nil",
-                "status", mobile and mobile.status and mobile.status() or "?",
-                "csq", mobile and mobile.csq and mobile.csq() or "?",
-                "operator", _G.APP_RUNTIME and _G.APP_RUNTIME.sim_operator_name or "?")
         end
         if not netReadyPublished then
             netReadyPublished = true
             local id = getDeviceId()
-            log.info(L, "device_id", id)
-            log.info(L, "net_register", id, ipOk and ip ~= nil)
             sys.publish("net_ready", id, ipOk and ip ~= nil)
         end
     end)
@@ -266,17 +254,14 @@ end
 
 local function waitForNetworkReady()
     if netReadyPublished then
-        log.info(L, "net_register_ok")
         return true, getDeviceId()
     end
     if socket and socket.localIP then
         local ip = socket.localIP()
         if ip and ip ~= "" and ip ~= "0.0.0.0" then
-            log.info(L, "net_register_skip", ip)
             return true, getDeviceId()
         end
     end
-    log.info(L, "wait_net_register")
     local gotReady, deviceId = sys.waitUntil("net_ready", 300000)
     if not gotReady then
         gotReady = sys.waitUntil("IP_READY", 120000)
@@ -394,17 +379,14 @@ local function saveIvCfg(sec)
         updated_at = os.time(),
     })
     if not payload then
-        log.warn(L, "iv_config_encode_fail")
         return false
     end
     local wf = io.open(IV_CFG, "w")
     if not wf then
-        log.warn(L, "iv_config_save_fail", IV_CFG)
         return false
     end
     wf:write(payload)
     wf:close()
-    log.info(L, "iv_config_saved", IV_CFG, sec)
     return true
 end
 
@@ -416,21 +398,16 @@ local function loadIvCfg()
     local s = f:read("*a")
     f:close()
     if not s or s == "" then
-        log.warn(L, "iv_config_empty", IV_CFG)
         return
     end
     local ok, d = pcall(json.decode, s)
     if not ok or type(d) ~= "table" then
-        log.warn(L, "iv_config_decode_fail", IV_CFG)
         return
     end
     local sec = clampIv(d.status_interval_sec)
     if sec then
         syncIv(sec)
-        log.info(L, "iv_config_loaded", IV_CFG, sec,
-            tonumber(d.schemaVersion) or 0)
     else
-        log.warn(L, "iv_config_bad_section", IV_CFG)
     end
 end
 
@@ -509,9 +486,7 @@ local function setupBatteryStatusReport()
 end
 
 local function handleDownlink2001(data)
-    log.info(L, "downlink_2001")
     if data.messageId then
-        log.info(L, "downlink_2001_msg", data.messageId)
     end
     publishWakeup()
 end
@@ -543,22 +518,17 @@ local function handleDownlink2002(data)
     local mode = resolve2002Mode(data)
     if mode == "enter" then
         if usbBlocks4gRest() then
-            log.info(L, "downlink_2002_usb_block")
             return
         end
-        log.info(L, "downlink_2002_enter")
         sys.publish(APP_EVENTS.POWER_ENTER_REST)
     elseif mode == "exit" then
-        log.info(L, "downlink_2002_exit")
         sys.publish(APP_EVENTS.POWER_EXIT_REST)
     else
-        log.warn(L, "downlink_2002_invalid", data.lowPowerMode, data.action)
     end
 end
 
 local function handleDownlink2003(data)
     if data.usbRecoveryReset == 1 or data.action == "usbRecoveryReset" then
-        log.info(L, "downlink_2003_usb_refresh")
         local hu = getHostUart()
         local ok = false
         if hu and hu.resetUsbRecoveryFromCloud then
@@ -572,20 +542,16 @@ local function handleDownlink2003(data)
         return
     end
     if data.interval ~= nil then
-        log.info(L, "downlink_2003_interval", data.interval)
     else
-        log.info(L, "downlink_2003_query")
     end
     local messageId = data.messageId or ""
     local configRet = 0
     local configMsg = "ok"
     if data.interval ~= nil then
         if setStatusIntervalSec(data.interval, true) then
-            log.info(L, "downlink_2003_ok", getStatusReportIntervalSec())
         else
             configRet = -1
             configMsg = "invalid_interval"
-            log.warn(L, "downlink_2003_invalid", data.interval)
         end
     end
     publishStatus({
@@ -621,14 +587,12 @@ end
 local function runWledQuery2004(reply)
     sys.taskInit(function()
         local on = fetchWledFromHost()
-        log.info(L, "downlink_2004_wled_query", on)
         reply(0, "ok", "wled", { enable = on })
     end)
 end
 
 local function runWledSet2004(reply, on)
     sys.taskInit(function()
-        log.info(L, "downlink_2004_wled", on)
         local hu = getHostUart()
         local ok = true
         if hu and hu.setWled then
@@ -684,23 +648,19 @@ end
 
 local DL2004_ACTIONS = {
     reboot = function(_data, reply)
-        log.info(L, "downlink_2004_reboot")
         reply(0, "ok", "reboot")
         sys.publish(APP_EVENTS.DEVICE_REBOOT_REQUEST)
     end,
     off = function(_data, reply)
-        log.info(L, "downlink_2004_poweroff")
         reply(0, "ok", "off")
         sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
     end,
     ota = function(data, reply)
-        log.info(L, "downlink_2004_ota")
         if _G.validateBuildVersion then
             local v = data.version
             if v and v ~= "" then
                 local ok = _G.validateBuildVersion(tostring(v))
                 if not ok then
-                    log.warn(L, "downlink_2004_version_bad", v)
                     reply(-1, "invalid_version_format", "ota")
                     return
                 end
@@ -722,7 +682,6 @@ local function handleDownlink2004(data)
     if resolved == "wled_set" then
         local on = parse2004WledEnable(data.action, data)
         if on ~= 0 and on ~= 1 then
-            log.warn(L, "downlink_2004_wled_error", tostring(on))
             reply(-1, "invalid_wled", "wled")
             return
         end
@@ -734,14 +693,11 @@ local function handleDownlink2004(data)
         fn(data, reply)
         return
     end
-    log.warn(L, "downlink_2004_unknown", data.action)
     reply(-1, "unknown_action", data.action or "")
 end
 
 local function handleDownlink2005(data)
-    log.info(L, "downlink_2005")
     if data.messageId then
-        log.info(L, "downlink_2005_msg", data.messageId)
     end
     publishSimInfo()
 end
@@ -788,7 +744,6 @@ local function enqueuePendingHostWork(dtype, data)
         data = data,
         ts = os.time(),
     }
-    log.info(L, "host_queue_push", dtype, #pendingHostQueue)
 end
 
 local function wakeT3xForPendingHost()
@@ -814,7 +769,6 @@ function drainPendingHostWork()
     end
     local batch = pendingHostQueue
     pendingHostQueue = {}
-    log.info(L, "host_queue_pop", #batch)
     for _, item in ipairs(batch) do
         local handler = DOWNLINK_HANDLERS[item.dtype]
         if handler and item.data then
@@ -826,7 +780,6 @@ end
 
 local function handleHostDownlink(dtype, data, runFn)
     if HOST_DL_NEEDS_T3X[dtype] and not isT3xHostReady() then
-        log.info(L, "downlink_queued_t3x", dtype)
         enqueuePendingHostWork(dtype, data)
         wakeT3xForPendingHost()
         return
@@ -866,9 +819,7 @@ local function wrapHostDownlink(dlType, handler, isQuery)
 end
 
 local function handleDownlink2006(data)
-    log.info(L, "downlink_2006")
     if data.messageId then
-        log.info(L, "downlink_2006_msg", data.messageId)
     end
     handleHostDownlink(DT.DL_DEVICE_ID, data, function()
         sys.taskInit(function()
@@ -890,7 +841,6 @@ end
 
 local function refreshTfCardStatus(messageId)
     if not tfCardEnabled() then
-        log.warn(L, "downlink_2007_disabled")
         publishTfCardStatus({ present = 0, total_mb = 0, used_mb = 0, free_mb = 0 }, messageId)
         return
     end
@@ -902,7 +852,6 @@ local function refreshTfCardStatus(messageId)
         snap = hu.getCachedHostTfCard()
     end
     if snap == nil then
-        log.warn(L, "downlink_2007_timeout")
         publishTfCardStatus({ present = 0, total_mb = 0, used_mb = 0, free_mb = 0, timeout = true }, messageId)
         return
     end
@@ -910,9 +859,7 @@ local function refreshTfCardStatus(messageId)
 end
 
 local function handleDownlink2007(data)
-    log.info(L, "downlink_2007")
     if data.messageId then
-        log.info(L, "downlink_2007_msg", data.messageId)
     end
     handleHostDownlink(DT.DL_TF_CARD, data, function()
         sys.taskInit(function()
@@ -973,9 +920,7 @@ function publishVersion(opts)
 end
 
 local function handleDownlink2008(data)
-    log.info(L, "downlink_2008")
     if data.messageId then
-        log.info(L, "downlink_2008_msg", data.messageId)
     end
     publishVersion({ messageId = downlinkMessageId(data) })
 end
@@ -998,20 +943,17 @@ local function stopRecordingBeforeTfFormat()
             reason = "tfcard_format",
             timeout_ms = tonumber(tfFormatCfg().record_stop_timeout_ms) or 15000,
         })
-        log.info(L, "downlink_2009_recordctrl", rok and 1 or 0, rmsg or "")
     end
     sys.wait(tonumber(tfFormatCfg().pre_format_wait_ms) or 500)
 end
 
 local function runTfCardFormat(messageId, reboot)
     if not tfFormatEnabled() then
-        log.warn(L, "downlink_2009_disabled")
         publishTfFormatResult(-1, "disabled", messageId, { reboot = reboot })
         return
     end
     local hu = getHostUart()
     if not hu or not hu.formatHostTfCard then
-        log.warn(L, "downlink_2009_no_fn")
         publishTfFormatResult(-1, "no_uart", messageId, { reboot = reboot })
         return
     end
@@ -1034,13 +976,10 @@ local function runTfCardFormat(messageId, reboot)
 end
 
 local function handleDownlink2009(data)
-    log.info(L, "downlink_2009")
     if data.messageId then
-        log.info(L, "downlink_2009_msg", data.messageId)
     end
     local action = data.action or "format"
     if action ~= "format" then
-        log.warn(L, "downlink_2009_unknown", action)
         publishTfFormatResult(-1, "unknown_action", data.messageId, {})
         return
     end
@@ -1113,7 +1052,6 @@ end
 
 local function handleDownlink2010(data)
     if is2010Query(data) then
-        log.info(L, "downlink_2010_query")
         publishPirDetect(buildPirDetectExtra("query", nil, nil, nil, nil))
         return
     end
@@ -1135,16 +1073,12 @@ local function handleDownlink2010(data)
             startOnCloud = data.startOnCloud,
         })
         local pirState = pir_ctrl.getState()
-        log.info(L, "downlink_2010_config",
-            json.encode(pirState.mediaConfig),
-            json.encode(pirState.recordPolicy))
         local media = pirState.mediaConfig or {}
         publishPirFromState({
             pirStatus = "config_ok",
             action = media.action or "video",
         })
     else
-        log.warn(L, "downlink_2010_invalid")
         publishPirFromState({
             pirStatus = "config_rejected",
             status = "config_rejected",
@@ -1155,9 +1089,7 @@ end
 local function handleDownlink2011(data)
     local messageId = data.messageId or ""
     if messageId ~= "" then
-        log.info(L, "downlink_2011_msg", messageId)
     else
-        log.info(L, "downlink_2011_stop")
     end
     local ok, err = pir_ctrl.requestStopFromCloud({ messageId = messageId })
     if ok then
@@ -1167,7 +1099,6 @@ local function handleDownlink2011(data)
             if hu and hu.recordCtrlStop then
                 sys.taskInit(function()
                     local rok, rmsg = hu.recordCtrlStop({ reason = "cloud", timeout_ms = 8000 })
-                    log.info(L, "downlink_2011_recordctrl", rok and 1 or 0, rmsg or "")
                 end)
             end
         end
@@ -1175,8 +1106,6 @@ local function handleDownlink2011(data)
         local st = pir_ctrl.getState()
         local pol = st.recordPolicy or {}
         err = err or "rejected"
-        log.warn(L, "downlink_2011_error", err, "rec", st.recording and 1 or 0,
-            "cloud", pol.stopOnCloud and 1 or 0)
         publishControlReply("pir_stop", -1, err, { messageId = messageId })
     end
 end
@@ -1185,12 +1114,9 @@ local function handleDownlink2012(data)
     sys.taskInit(function()
         local messageId = downlinkMessageId(data)
         if data.messageId then
-            log.info(L, "downlink_2012_msg", data.messageId)
         else
-            log.info(L, "downlink_2012_start")
         end
         if not pir_ctrl.requestStartFromCloud then
-            log.warn(L, "downlink_2012_error", "no_fn")
             publishControlReply("pir_start", -1, "no_fn", { messageId = messageId })
             return
         end
@@ -1219,7 +1145,6 @@ local function handleDownlink2012(data)
                             max_sec = maxSec,
                             timeout_ms = 10000,
                         })
-                        log.info(L, "downlink_2012_recordctrl", rok and 1 or 0, rmsg or "")
                         if not rok then
                             publishIpcAlert("recordctrl_fail", rmsg or "start")
                         end
@@ -1228,7 +1153,6 @@ local function handleDownlink2012(data)
             end
         else
             local err = result or "rejected"
-            log.warn(L, "downlink_2012_error", err)
             publishControlReply("pir_start", -1, err, { messageId = messageId })
         end
     end)
@@ -1289,7 +1213,6 @@ local function handleDownlinkEncode(data, isQuery)
             if result then
                 publishEncodeReply(dlType, 0, "ok", result, data.messageId)
             else
-                log.warn(L, "downlink_2020_fail", err or "query_fail")
                 publishEncodeReply(dlType, -1, err or "query_fail", nil, data.messageId)
             end
             return
@@ -1367,7 +1290,6 @@ local function makeHostQuerySetHandler(spec)
                     publishReply(dlType, 0, "ok", body, messageId)
                 else
                     if spec.queryFailLog then
-                        log.warn(L, spec.queryFailLog, err or "query_fail")
                     end
                     publishReply(dlType, -1, err or "query_fail", failBody, messageId)
                 end
@@ -1386,7 +1308,6 @@ local function makeHostQuerySetHandler(spec)
                 end
             else
                 if spec.setFailLog then
-                    log.warn(L, spec.setFailLog, msg or "fail")
                 end
                 publishReply(dlType, -1, msg or "fail", failBody or extra, messageId)
             end
@@ -1751,7 +1672,6 @@ registerHostQuerySetHandlers(DOWNLINK_HANDLERS)
 
 local function dispatchDownlink(topic, payload)
     if not isDownlinkTopic(topic) then
-        log.warn(L, "downlink_topic_mismatch", topic, getSubTopicFilter())
         return
     end
 
@@ -1765,12 +1685,9 @@ local function dispatchDownlink(topic, payload)
     local handler = dataType and DOWNLINK_HANDLERS[dataType]
 
     if handler then
-        log.info(L, "downlink_dispatch", dataType)
         handler(data)
     elseif dataType then
-        log.warn(L, "unknown_data_type", dataType)
     else
-        log.warn(L, "no_data_type")
     end
 
     publishAppEvent("MQTT_SERVER_DATA", data, payload)
@@ -1780,7 +1697,6 @@ local function dispatchDownlink(topic, payload)
 end
 
 local function handleServerMessage(topic, payload)
-    log.info(L, "mqtt_rx", topic, payload)
     sys.taskInit(function()
         dispatchDownlink(topic, payload)
     end)
@@ -1824,7 +1740,6 @@ function setMqttConfig(cfg)
         return false
     end
     _G.MQTT_CFG = normalized
-    log.info(L, "mqtt_config", _G.MQTT_CFG.host, _G.MQTT_CFG.port)
     return true
 end
 
@@ -1834,7 +1749,6 @@ end
 
 function restart()
     sys.taskInit(function()
-        log.info(L, "mqtt_restart")
         stop()
         sys.wait(800)
         start()
@@ -1845,7 +1759,6 @@ end
 local function mqttTask()
     local gotReady, deviceId = waitForNetworkReady()
     if not gotReady then
-        log.warn(L, "cellular_not_ready")
     end
     local mcfg = _G.MQTT_CFG or {}
     if not mcfg.host or mcfg.host == "" then
@@ -1860,20 +1773,13 @@ local function mqttTask()
         return
     end
 
-    log.info(L, "mqtt_start")
-    log.info(L, "client_id", tostring(clientId))
-    log.info(L, "mqtt_server", mcfg.host, mcfg.port)
-
     if socket and socket.adapter and socket.dft then
         local waitIp = 0
         while not socket.adapter(socket.dft()) and waitIp < 120 do
-            log.info(L, "wait_adapter", waitIp)
             sys.waitUntil("IP_READY", 5000)
             waitIp = waitIp + 1
         end
         if not socket.adapter(socket.dft()) then
-            log.warn(L, "no_adapter",
-                socket.localIP and socket.localIP() or "nil")
         end
     end
 
@@ -1883,19 +1789,16 @@ local function mqttTask()
 
     sys.subscribe("IP_READY", function()
         if mqttClient and not isConnected then
-            log.info(L, "ip_ready")
             pcall(function() mqttClient:connect() end)
         end
     end)
 
     mqttClient:on(function(client, event, data, payload)
-        log.info(L, "mqtt_event", event, data or "")
 
         if event == "conack" then
             isConnected = true
             _G.APP_RUNTIME.online_status = 1
             state.reconnect_count = 0
-            log.info(L, "mqtt_connected")
             subscribeDownlink(client)
             sys.publish(mqttConnectedEvent())
             pcall(function()
@@ -1914,7 +1817,6 @@ local function mqttTask()
             isConnected = false
             _G.APP_RUNTIME.online_status = 0
             state.reconnect_count = (state.reconnect_count or 0) + 1
-            log.warn(L, "mqtt_disconnect", "reconn", state.reconnect_count)
             publishAppEvent("MQTT_OFFLINE")
             pcall(function()
                 local hu = getHostUart()
@@ -1926,7 +1828,6 @@ local function mqttTask()
 
         elseif event == "error" or event == "connect" then
             if payload then
-                log.warn(L, "mqtt", event, payload)
             end
         end
     end)
@@ -1935,7 +1836,6 @@ local function mqttTask()
     setupBatteryStatusReport()
     local conOk = sys.waitUntil(mqttConnectedEvent(), 90000)
     if not conOk then
-        log.warn(L, "connect_timeout_90s")
     end
 
     startStatusReportTimer()
@@ -2069,7 +1969,6 @@ end
 function publishConnectUplink()
     local rt = _G.APP_RUNTIME or {}
     if tonumber(rt.low_power_mode) == 1 then
-        log.info(L, "reconnect_count_23")
         publishRest({ reason = rt.last_rest_reason or "unknown", source = "reconnect" })
         publishStatus()
     else
@@ -2122,7 +2021,6 @@ end
 
 function refreshAndPublishDeviceIdentity(messageId)
     if not identityEnabled() then
-        log.warn(L, "identity_missing")
         return
     end
     sys.taskInit(function()
@@ -2151,7 +2049,6 @@ end
 
 function refreshAndPublishTfCardStatus(messageId)
     if not tfCardEnabled() then
-        log.warn(L, "downlink_2007_fail")
         return
     end
     sys.taskInit(function()
@@ -2222,7 +2119,6 @@ function notifyPowerOff(reason, callback)
         local waitMs = tonumber(guardCfg.shutdown_mqtt_wait_ms) or 8000
         local graceMs = tonumber(guardCfg.shutdown_mqtt_grace_ms) or 800
         if not isConnected then
-            log.info(L, "poweroff_mqtt_wait", waitMs, reason)
             if mqttClient and mqttClient.connect then
                 pcall(function() mqttClient:connect() end)
             end
@@ -2234,10 +2130,8 @@ function notifyPowerOff(reason, callback)
                 publishControlReply("off", 0, msg, {})
             end
             publishStatus({ skip_ipc_stat_refresh = true, warn = false })
-            log.info(L, "poweroff_mqtt_sent", reason)
             sys.wait(graceMs)
         else
-            log.warn(L, "poweroff_mqtt_skip", reason)
         end
         if type(callback) == "function" then
             callback()
@@ -2279,7 +2173,6 @@ end
 
 local function publishPirFromState(overrides)
     if not isConnected then
-        log.warn(L, NC)
         return
     end
     local st = pir_ctrl.getState()
@@ -2357,7 +2250,6 @@ end
 
 function publishPirRecordStart(action, uploadMode, quality, opts)
     if not isConnected then
-        log.warn(L, NC)
         return
     end
     opts = type(opts) == "table" and opts or {}
@@ -2379,12 +2271,10 @@ end
 
 function publishPirRecordStop(reason, uploadMode, quality, opts)
     if not isConnected then
-        log.warn(L, NC)
         return
     end
     if pir_ctrl.canPublishStopMqtt and not pir_ctrl.canPublishStopMqtt() then
         opts = type(opts) == "table" and opts or {}
-        log.info(L, "record_stop_duplicate", reason, opts.source or "4g")
         return
     end
     if pir_ctrl.markStopMqttPublished then
@@ -2428,7 +2318,6 @@ end
 
 function publishRaw(topicSuffix, payload, qos)
     if not isConnected or not mqttClient then
-        log.warn(L, "not_connected_raw", topicSuffix)
         return false
     end
     if not topicSuffix or topicSuffix == "" or not payload or payload == "" then
@@ -2441,18 +2330,16 @@ function publishRaw(topicSuffix, payload, qos)
         topic = getPubTopic() .. topicSuffix
     end
     sys.publish("mqtt_pub", topic, payload, qos or 1)
-    log.info(L, "mqtt_publish_raw", topic, #payload)
     return true
 end
 
 function start(options)
-    if started then log.warn(L, "already_started"); return false end
+    if started then return false end
     if options then
         if options.onOffline then callbacks.onOffline = options.onOffline end
         if options.onMessage then callbacks.onMessage = options.onMessage end
     end
 
-    log.info(L, "net_start")
     setupIdentityAutoPublish()
     if not pendingHostDrainHooked then
         pendingHostDrainHooked = true
@@ -2482,7 +2369,6 @@ function stop()
     if not started and not mqttClient then
         return false
     end
-    log.info(L, "mqtt_stop")
     local rt = _G.APP_RUNTIME or {}
     if isConnected and mqttClient and publishRest and tonumber(rt.low_power_mode) == 1 then
         pcall(publishRest, {
@@ -2505,7 +2391,6 @@ function stop()
     isConnected = false
     _G.APP_RUNTIME.online_status = 0
     started = false
-    log.info(L, "mqtt_off")
     return true
 end
 

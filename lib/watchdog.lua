@@ -43,15 +43,12 @@ function start(opts)
     end
     mergeConfig(opts or _G.WDT_CFG)
     if config.enabled == false then
-        log.info(LOG_TAG, "disabled")
         return false
     end
     if not wdt or not wdt.init then
-        log.warn(LOG_TAG, "no_wdt_api")
         return false
     end
     if not isModuleBsp() then
-        log.warn(LOG_TAG, "no_bsp_wdt", rtos.bsp and rtos.bsp() or "?")
         return false
     end
     local timeout = tonumber(config.timeout_ms) or 9000
@@ -64,9 +61,6 @@ function start(opts)
     feedOnce()
     feedTimerId = sys.timerLoopStart(feedOnce, interval)
     started = true
-    log.info(LOG_TAG, "module_on",
-        "bsp", rtos.bsp and rtos.bsp() or "?",
-        "timeout", timeout, "feed", interval)
     return true
 end
 function feed()
