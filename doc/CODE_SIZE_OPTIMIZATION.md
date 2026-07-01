@@ -86,19 +86,23 @@ git diff main --stat user/host_uart.lua
 
 | 手段 | 约省 Flash | 功能影响 |
 |------|-----------|----------|
-| `luatos.json` → `only_luac_code: False` | 本工程 luac 常 **大于** 源码合计，改回源码打包可腾出约百 KB 余量 | 无 |
-| 剥离 `log.info` / `log.warn` | ~16KB | 无；`python3 scripts/flash_strip_logs.py`（保留 `log.error`） |
+| `flash_minify_ws.py`（缩进→tab、去空行） | ~50KB | 无 |
+| 剥离 `log.info` / `log.warn` + 死字段清理 | ~18KB | 无；`flash_strip_logs.py` + `flash_cleanup_dead.py` |
+| `luatos.json` → `default_lib: False` | 视工程而定（不重复打包默认扩展库） | 本工程 `lib/` 已自备 |
+| `luatos.json` → `only_luac_code: True` | 源码压缩后 luac 可再缩 | 无 |
 | 去掉 Lua 纯注释行 | ~15KB | 无；`python3 scripts/flash_strip_comments.py` |
-| `luatos.json` → `only_luac_code: True` | 部分工程可缩体积；**本仓库 404KB 源码编译后仍顶满 512KB** | 无 |
 | `MODULE_FLAGS=false` | **不省 Flash** | 仅省 RAM |
 
 **RNDIS 保持开启**：`RNDIS_ENABLE=1`，完整 `lib/usb_rndis.lua` 参与编译。
 
-**发布前一键瘦身**（注释已剥离后）：
+**发布前一键瘦身**：
 
 ```bash
+python3 scripts/flash_strip_comments.py
 python3 scripts/flash_strip_logs.py
-wc -c user/*.lua user/*.json lib/*.lua | tail -1   # 目标 < 450KB
+python3 scripts/flash_cleanup_dead.py
+python3 scripts/flash_minify_ws.py
+wc -c user/*.lua user/*.json lib/*.lua | tail -1   # 目标 < 400KB
 ```
 
 若仍超限，再评估 SKU 级裁剪（见 `doc/CAT1_SLIMMING_FLOW.md` §7）。
