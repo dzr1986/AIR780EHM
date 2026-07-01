@@ -9,7 +9,7 @@
   详细说明         : doc/MQTT_PROTOCOL.md / doc/MQTT_DOWNLINK.md
                      doc/MQTT_CLIENT_E2E_TEST.md（MQTTX 联调步骤）
                      doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md（帧率/录像/人形 AT 流程）
-  文档版本         : 2026-06-26
+  文档版本         : 2026-06-30
 
 ================================================================================
 一、连接与主题（MQTTX / MQTT.fx / 平台侧）
@@ -55,6 +55,7 @@
   /panshi/app/862323084068124/record  → 1022 录像时长查询 / 1023 设置应答
   /panshi/app/862323084068124/framerate → 1024 帧率查询 / 1025 设置应答
   /panshi/app/862323084068124/personDetect → 1026 人形查询 / 1027 设置应答
+  /panshi/app/862323084068124/softPhoto  → 1030 软光敏查询 / 1031 设置应答
 
 【设备上电后自动上行（无需下发）】
   1. MQTT conack：常电 → 1001；已在 rest → 1002+1003（不发 1001）
@@ -85,11 +86,14 @@
   2025      设置帧率                         1025      framerate
   2026      查询人形检测开关                 1026      personDetect
   2027      设置人形检测开关                 1027      personDetect
+  2030      查询软光敏参数（IRCUT 阈值）       1030      softPhoto
+  2031      设置软光敏参数                   1031      softPhoto
 
   1004 区分：含 "reply":1 → 应答 2004；含 "stage" → OTA 进度（无 reply）
   2012 开录受理后另发 1004 action=pir_start（同 event 主题）
   编码参数详见 doc/REMOTE_ENCODE_CONFIG.md
   帧率/录像/人形 AT 流程详见 doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md
+  软光敏详见 doc/MQTT_MIC_SOFTPHOTO_REMOTE_FLOW.md · MQTT_PROTOCOL.md §4.16
 
 ================================================================================
 三、下行命令明细（复制到 MQTTX Publish）
@@ -939,6 +943,82 @@
 
   详述 : doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §5
 
+------------------------------------------------------------------------------
+3.15  2030 / 2031 — 软光敏参数  →  1030 / 1031
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 主题 softPhoto
+  说明 : T3x [soft_photosensitive] 段；设置后无需重启，检测线程下一轮生效
+         T3x 休眠/rest 时入队唤醒（同 2006/2022–2029）
+  串口 : AT+SOFTPHOTO? / AT+SOFTPHOTOSET=
+
+【查询】
+{"dataType":"2030","messageId":"sp-q-001"}
+
+【设置 — 8 字段均必填（亦支持 snake_case 别名）】
+{
+  "dataType": "2031",
+  "enable": 1,
+  "nightModeThreshold": 500,
+  "dayModeThreshold": 800,
+  "dayModeAltThreshold": 600,
+  "gbGainThreshold": 100,
+  "gbGainRecordInit": 50,
+  "checkTime": 10,
+  "checkCount": 3,
+  "messageId": "sp-s-001"
+}
+
+【字段】
+  enable               0/1   软光敏总开关
+  nightModeThreshold   夜间模式阈值
+  dayModeThreshold     白天模式阈值
+  dayModeAltThreshold  白天备选阈值
+  gbGainThreshold      GB 增益阈值
+  gbGainRecordInit     GB 增益记录初值
+  checkTime            检测周期（秒）
+  checkCount           连续判定次数
+
+【上行 1030 — 主题 softPhoto】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1030",
+  "reply": 1,
+  "messageId": "sp-q-001",
+  "ret": 0,
+  "message": "ok",
+  "enable": 1,
+  "nightModeThreshold": 500,
+  "dayModeThreshold": 800,
+  "dayModeAltThreshold": 600,
+  "gbGainThreshold": 100,
+  "gbGainRecordInit": 50,
+  "checkTime": 10,
+  "checkCount": 3,
+  "time": "2026-06-27 12:00:00"
+}
+
+【上行 1031 — 主题 softPhoto】
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1031",
+  "reply": 1,
+  "messageId": "sp-s-001",
+  "ret": 0,
+  "message": "ok",
+  "enable": 1,
+  "nightModeThreshold": 500,
+  "dayModeThreshold": 800,
+  "dayModeAltThreshold": 600,
+  "gbGainThreshold": 100,
+  "gbGainRecordInit": 50,
+  "checkTime": 10,
+  "checkCount": 3,
+  "time": "2026-06-27 12:00:05"
+}
+
+  详述 : doc/MQTT_MIC_SOFTPHOTO_REMOTE_FLOW.md · doc/MQTT_PROTOCOL.md §4.16
+
 ================================================================================
 四、MQTTX 操作步骤（建议顺序）
 ================================================================================
@@ -971,6 +1051,8 @@
   ⑱ 2027 enable=1 → 1027
   ⑲ 2022 → 1022（record 主题）
   ⑳ 2023 recordTimeMin=10 → 1023
+  ㉑ 2030 → 1030（softPhoto 主题，需 T3x 在线或等待唤醒）
+  ㉒ 2031 设置 8 字段 → 1031
 
 ================================================================================
 五、日志与串口自检
@@ -989,6 +1071,7 @@
   pub 1020 / pub 1021   → 编码查询/设置应答
   pub 1024 / pub 1025   → 帧率查询/设置应答
   pub 1026 / pub 1027   → 人形检测查询/设置应答
+  pub 1030 / pub 1031   → 软光敏查询/设置应答
   pub 1012 / pir_start  → 2012 平台开录
 
 【正常日志示例 — 周期 1003（pong → 发布状态 → sent）】
@@ -1027,11 +1110,13 @@
   | 发布版本(1008): .../version    | 2008 查询 |
   | pub 1024 / pub 1025            | 2024/2025 帧率 |
   | pub 1026 / pub 1027            | 2026/2027 人形 |
+  | pub 1030 / pub 1031            | 2030/2031 软光敏 |
 
 【串口 AT — 远程控制等价】
   2024/2025 帧率     : AT+FRAMERATE? / AT+FRAMERATE=0,0,20
   2012/2011 直连录   : AT+RECORDCTRL=1,90 / AT+RECORDCTRL=0,cloud（T3x 在线时）
   2026/2027 人形     : AT+PERSONDET? / AT+PERSONDET=1
+  2030/2031 软光敏   : AT+SOFTPHOTO? / AT+SOFTPHOTOSET=1,500,800,600,100,50,10,3
   2022/2023 录像时长 : AT+RECORDTIME? / AT+RECORDTIME=10
   详见 doc/UART_AT_COMMANDS.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md
 
