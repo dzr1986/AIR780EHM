@@ -1,5 +1,4 @@
 require "sys"
--- USB RNDIS 网卡（MODULE_FLAGS.rndis）；专题 doc/modules/USB_RNDIS_FLOW.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
