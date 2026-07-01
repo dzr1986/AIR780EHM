@@ -19,6 +19,26 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 local NC = "mqtt_not_connected"
 local L = "net_mqtt"
+local function mqttLogEnabled()
+	return _G.APP_META and _G.APP_META.log_enabled == true
+end
+local function mqttInfo(...)
+	if log and log.info then
+		log.info(L, ...)
+	end
+end
+local function mqttWarn(...)
+	if log and log.warn then
+		log.warn(L, ...)
+	elseif log and log.info then
+		log.info(L, ...)
+	end
+end
+local function mqttError(...)
+	if log and log.error then
+		log.error(L, ...)
+	end
+end
 local DT = {
 	UL_WAKEUP = "1001",
 	UL_REST = "1002",
@@ -124,6 +144,11 @@ end
 local function subscribeDownlink(client)
 	local filter = getSubTopicFilter()
 	local pkgid = client:subscribe(filter, 1)
+	if pkgid then
+		mqttInfo("subscribe_downlink", filter, pkgid)
+	else
+		mqttWarn("subscribe_downlink_failed", filter)
+	end
 	return pkgid ~= nil
 end
 local function isDownlinkTopic(topic)
@@ -162,9 +187,15 @@ local function formatUplink(dataType, fields)
 end
 local function publishUplink(opts)
 	opts = opts or {}
-	if not isConnected then return false end
+	if not isConnected then
+		mqttWarn("publish_skip_not_connected", opts.dataType or "", opts.suffix or "")
+		return false
+	end
 	local topic = getPubTopic() .. (opts.suffix or "event")
 	local payload = opts.payload or formatUplink(opts.dataType, opts.fields)
+	if opts.dataType ~= DT.UL_STATUS or mqttLogEnabled() then
+		mqttInfo("uplink", opts.dataType or "", topic)
+	end
 	sys.publish("mqtt_pub", topic, payload, opts.qos or 1)
 	if opts.app_event_fn then
 		opts.app_event_fn(topic, payload)
@@ -1542,15 +1573,18 @@ local function dispatchDownlink(topic, payload)
 	end
 	local ok, data = pcall(json.decode, payload)
 	if not ok then
-		log.error(L, "json_decode_error", data)
+		mqttError("json_decode_error", data)
 		return
 	end
 	local dataType = normalizeDataType(data)
+	mqttInfo("downlink", dataType or "nil", topic)
 	local handler = dataType and DOWNLINK_HANDLERS[dataType]
 	if handler then
 		handler(data)
 	elseif dataType then
+		mqttWarn("downlink_unknown_datatype", dataType)
 	else
+		mqttWarn("downlink_missing_datatype")
 	end
 	publishAppEvent("MQTT_SERVER_DATA", data, payload)
 	if callbacks.onMessage then
@@ -1615,13 +1649,13 @@ local function mqttTask()
 	local gotReady, deviceId = waitForNetworkReady()
 	local mcfg = _G.MQTT_CFG or {}
 	if not mcfg.host or mcfg.host == "" then
-		log.error(L, "mqtt_no_host_config")
+		mqttError("mqtt_no_host_config")
 		return
 	end
 	local clientId = (mcfg.client_id and mcfg.client_id ~= "") and mcfg.client_id
 		or (deviceId or getDeviceId())
 	if not mqtt or not mqtt.create then
-		log.error(L, "mqtt_no_login_config")
+		mqttError("mqtt_no_login_config")
 		return
 	end
 	if socket and socket.adapter and socket.dft then
@@ -1634,6 +1668,7 @@ local function mqttTask()
 	mqttClient = mqtt.create(nil, mcfg.host, mcfg.port, mcfg.ssl)
 	mqttClient:auth(clientId, mcfg.username, mcfg.password)
 	mqttClient:autoreconn(true, 3000)
+	mqttInfo("mqtt_connecting", mcfg.host, tonumber(mcfg.port) or 1883, clientId)
 	sys.subscribe("IP_READY", function()
 		if mqttClient and not isConnected then
 			pcall(function() mqttClient:connect() end)
@@ -1641,6 +1676,7 @@ local function mqttTask()
 	end)
 	mqttClient:on(function(client, event, data, payload)
 		if event == "conack" then
+			mqttInfo("mqtt_conack", getSubTopicFilter())
 			isConnected = true
 			_G.APP_RUNTIME.online_status = 1
 			state.reconnect_count = 0
@@ -1660,6 +1696,7 @@ local function mqttTask()
 			isConnected = false
 			_G.APP_RUNTIME.online_status = 0
 			state.reconnect_count = (state.reconnect_count or 0) + 1
+			mqttWarn("mqtt_disconnect", state.reconnect_count)
 			publishAppEvent("MQTT_OFFLINE")
 			pcall(function()
 				local hu = getHostUart()
@@ -1669,6 +1706,11 @@ local function mqttTask()
 			end)
 			if callbacks.onOffline then callbacks.onOffline() end
 		elseif event == "error" or event == "connect" then
+			if event == "error" then
+				mqttWarn("mqtt_error", tostring(data or ""))
+			elseif mqttLogEnabled() then
+				mqttInfo("mqtt_event_connect")
+			end
 		end
 	end)
 	mqttClient:connect()
