@@ -87,10 +87,9 @@ git diff main --stat user/host_uart.lua
 | 手段 | 约省 Flash | 功能影响 |
 |------|-----------|----------|
 | `luatos.json` → `only_luac_code: True` | 显著（源码→luac） | 无 |
-| `RNDIS_ENABLE=0` + `lib/usb_rndis.lua` 桩 | ~10KB | 无 RNDIS 网卡调试 |
-| 去掉 Lua 纯注释行（`scripts` 或发布前） | ~15KB | 无 |
+| 去掉 Lua 纯注释行 | ~15KB | 无；`python3 scripts/flash_strip_comments.py` |
 | `MODULE_FLAGS=false` | **不省 Flash** | 仅省 RAM |
 
-完整 RNDIS 恢复：`archive/lib/usb_rndis_full.lua` 覆盖 `lib/usb_rndis.lua`，`RNDIS_ENABLE=1`。
+**RNDIS 保持开启**：`RNDIS_ENABLE=1`，完整 `lib/usb_rndis.lua` 参与编译。
 
-量产推荐：`only_luac_code=True`、`RNDIS_ENABLE=0`，详见 `doc/CAT1_SLIMMING_FLOW.md` §7。
+若仍超限，再评估 SKU 级裁剪（见 `doc/CAT1_SLIMMING_FLOW.md` §7）。

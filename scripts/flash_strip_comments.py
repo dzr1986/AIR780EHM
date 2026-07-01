@@ -6,7 +6,6 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SKIP = {"usb_rndis.lua"}
 
 
 def strip_file(path: pathlib.Path) -> int:
@@ -46,8 +45,6 @@ def main() -> int:
     total = 0
     for d in ("user", "lib"):
         for p in sorted((ROOT / d).rglob("*.lua")):
-            if p.name in SKIP:
-                continue
             saved = strip_file(p)
             total += saved
     print(f"flash_strip_comments: saved {total} bytes")

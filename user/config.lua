@@ -1,6 +1,6 @@
 module(..., package.seeall)
 _G[_modname or (...)] = _M
-local RNDIS_ENABLE = 0
+local RNDIS_ENABLE = 1
 local LOW_POWER_ENABLE = 1
 local LOW_POWER_ENTER_STRATEGY = "battery"
 local HOST_EVT_ENABLE = 1
