@@ -47,6 +47,17 @@ local function resolveOtaVersion(ver)
 	end
 	return ver
 end
+local function localIotVersion()
+	if _G.IOT_VERSION and _G.IOT_VERSION ~= "" then
+		return _G.IOT_VERSION
+	end
+	if _G.VERSION and _G.VERSION ~= "" then
+		local v = resolveOtaVersion(_G.VERSION)
+		if v and v ~= "" then return v end
+		return _G.VERSION
+	end
+	return nil
+end
 local function defaultFirmwareName()
 	local bsp = rtos.bsp()
 	if bsp:find("-") then bsp = bsp:sub(1, bsp:find("-") - 1) end
@@ -76,6 +87,7 @@ local function buildIotOpts(data)
 			or _G.IOT_VERSION or _G.VERSION,
 		timeout = config.timeout_ms,
 	}
+	opts.requested_version = opts.version
 	local fw = data.firmware_name or data.firmwareName
 	if fw and fw ~= "" then opts.firmware_name = fw end
 	local imei = data.imei or data.deviceId or data.device_id
@@ -165,8 +177,23 @@ local function autoOta(data)
 		reportStatus("starting", 0, "check_upgrade", data)
 		sys.wait(config.request_delay_ms or 500)
 		local done = false
+		local fallbackTried = false
 		local function wrapped_cb(ret)
 			if done then return end
+			if ret ~= 0 and not opts.custom and not fallbackTried then
+				local fallbackVer = localIotVersion()
+				if fallbackVer and fallbackVer ~= "" and tostring(fallbackVer) ~= tostring(opts.version or "") then
+					fallbackTried = true
+					if log and log.warn then
+						log.warn(L, "ota_retry_with_local_version",
+							"requested=" .. tostring(opts.requested_version or "") ..
+							" current=" .. tostring(fallbackVer))
+					end
+					opts.version = fallbackVer
+					requestLibFota(opts, wrapped_cb)
+					return
+				end
+			end
 			done = true
 			if log and log.info then 
 				local retMsg = FOTA_RET[ret] or { "failed", "unknown_ret_" .. tostring(ret) }
