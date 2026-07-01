@@ -107,6 +107,8 @@ local HOST_DL_NEEDS_T3X = {
     [DT.DL_DEVICE_ID] = true,
     [DT.DL_TF_CARD] = true,
     [DT.DL_TF_FORMAT] = true,
+    [DT.DL_ENCODE_QUERY] = true,
+    [DT.DL_ENCODE_SET] = true,
     [DT.DL_RECORD_TIME_QUERY] = true,
     [DT.DL_RECORD_TIME_SET] = true,
     [DT.DL_FRAMERATE_QUERY] = true,
@@ -134,6 +136,33 @@ end
 
 local function getPubTopic() return "/panshi/app/" .. getDeviceId() .. "/" end
 local function getSubTopic() return "/panshi/device/" .. getDeviceId() .. "/" end
+
+local function mqttConnectedEvent()
+    return (_G.APP_EVENTS or {}).MQTT_CONNECTED or "mqtt_connected"
+end
+
+--- 含尾斜杠/无尾斜杠/子路径；平台 Publish 到 device 均可收到
+local function getSubTopicFilter()
+    return "/panshi/device/" .. getDeviceId() .. "/#"
+end
+
+local function subscribeDownlink(client)
+    local filter = getSubTopicFilter()
+    local pkgid = client:subscribe(filter, 1)
+    log.info(L, "mqtt_sub", filter, pkgid or "fail")
+    return pkgid ~= nil
+end
+
+local function isDownlinkTopic(topic)
+    if type(topic) ~= "string" or topic == "" then
+        return true
+    end
+    local prefix = "/panshi/device/" .. getDeviceId()
+    if topic == prefix or topic == prefix .. "/" then
+        return true
+    end
+    return topic:sub(1, #prefix + 1) == prefix .. "/"
+end
 
 local function publishAppEvent(eventKey, ...)
     local name = APP_EVENTS and APP_EVENTS[eventKey]
@@ -175,7 +204,8 @@ local function publishUplink(opts)
     end
     local topic = getPubTopic() .. (opts.suffix or "event")
     local payload = opts.payload or formatUplink(opts.dataType, opts.fields)
-    mqttClient:publish(topic, payload, opts.qos or 1)
+    -- 经 mqtt_pub 队列发布，避免在 mqtt recv 回调内直接 publish 失败
+    sys.publish("mqtt_pub", topic, payload, opts.qos or 1)
     if opts.log then
         log.info(L, opts.log, topic, table.unpack(opts.log_args or {}))
     end
@@ -796,6 +826,7 @@ end
 
 local function handleHostDownlink(dtype, data, runFn)
     if HOST_DL_NEEDS_T3X[dtype] and not isT3xHostReady() then
+        log.info(L, "downlink_queued_t3x", dtype)
         enqueuePendingHostWork(dtype, data)
         wakeT3xForPendingHost()
         return
@@ -1002,7 +1033,7 @@ local function setupIdentityAutoPublish()
     sys.subscribe(evt, function()
         maybeAutoPublishIdentity()
     end)
-    sys.subscribe("APP_MQTT_CONNECTED", function()
+    sys.subscribe(mqttConnectedEvent(), function()
         maybeAutoPublishIdentity()
     end)
 end
@@ -1644,13 +1675,24 @@ DOWNLINK_HANDLERS = {
     [DT.DL_PIR_CFG] = handleDownlink2010,
     [DT.DL_PIR_STOP] = handleDownlink2011,
     [DT.DL_PIR_START] = handleDownlink2012,
-    [DT.DL_ENCODE_SET] = handleDownlink2021,
-    [DT.DL_ENCODE_QUERY] = handleDownlink2020,
+    [DT.DL_ENCODE_SET] = function(data)
+        handleHostDownlink(DT.DL_ENCODE_SET, data, function()
+            handleDownlinkEncode(data, false)
+        end)
+    end,
+    [DT.DL_ENCODE_QUERY] = function(data)
+        handleHostDownlink(DT.DL_ENCODE_QUERY, data, function()
+            handleDownlinkEncode(data, true)
+        end)
+    end,
 }
 registerHostQuerySetHandlers(DOWNLINK_HANDLERS)
 
-local function handleServerMessage(topic, payload)
-    log.info(L, "mqtt_rx", topic, payload)
+local function dispatchDownlink(topic, payload)
+    if not isDownlinkTopic(topic) then
+        log.warn(L, "downlink_topic_mismatch", topic, getSubTopicFilter())
+        return
+    end
 
     local ok, data = pcall(json.decode, payload)
     if not ok then
@@ -1673,6 +1715,14 @@ local function handleServerMessage(topic, payload)
     if callbacks.onMessage then
         callbacks.onMessage(topic, payload)
     end
+end
+
+local function handleServerMessage(topic, payload)
+    log.info(L, "mqtt_rx", topic, payload)
+    -- 下行处理放到 task，与上行 mqtt_pub 队列配合，避免 recv 回调上下文限制
+    sys.taskInit(function()
+        dispatchDownlink(topic, payload)
+    end)
 end
 
 -- ============================================================
@@ -1794,9 +1844,8 @@ local function mqttTask()
             _G.APP_RUNTIME.online_status = 1
             state.reconnect_count = 0
             log.info(L, "mqtt_connected")
-            client:subscribe(getSubTopic())
-            local ev = (_G.APP_EVENTS or {}).MQTT_CONNECTED or "APP_MQTT_CONNECTED"
-            sys.publish(ev)
+            subscribeDownlink(client)
+            sys.publish(mqttConnectedEvent())
             pcall(function()
                 local hu = getHostUart()
                 if hu and hu.push_net_led_state then
@@ -1832,7 +1881,7 @@ local function mqttTask()
 
     mqttClient:connect()
     setupBatteryStatusReport()
-    local conOk = sys.waitUntil("APP_MQTT_CONNECTED", 90000)
+    local conOk = sys.waitUntil(mqttConnectedEvent(), 90000)
     if not conOk then
         log.warn(L, "connect_timeout_90s")
     end
@@ -2143,7 +2192,7 @@ function notifyPowerOff(reason, callback)
             if mqttClient and mqttClient.connect then
                 pcall(function() mqttClient:connect() end)
             end
-            sys.waitUntil("APP_MQTT_CONNECTED", waitMs)
+            sys.waitUntil(mqttConnectedEvent(), waitMs)
         end
         if isConnected then
             if reason ~= "mqtt" then
@@ -2366,7 +2415,7 @@ function publishRaw(topicSuffix, payload, qos)
     else
         topic = getPubTopic() .. topicSuffix
     end
-    mqttClient:publish(topic, payload, qos or 1)
+    sys.publish("mqtt_pub", topic, payload, qos or 1)
     log.info(L, "mqtt_publish_raw", topic, #payload)
     return true
 end

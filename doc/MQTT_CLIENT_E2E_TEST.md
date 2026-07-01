@@ -340,6 +340,8 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | 现象 | 可能原因 | 处理 |
 |------|----------|------|
 | Publish 后无任何上行 | Topic 写成 `/panshi/app/...` | 下行必须用 `device` |
+| Publish 后无任何上行 | 下行 Topic 无尾斜杠 | 设备已订阅 `/panshi/device/{IMEI}/#`，两种均可；仍无响应查日志 `mqtt_rx` |
+| Publish 后无应答但有 `mqtt_rx` | recv 回调内 publish 失败（旧固件） | 升级含 `mqtt_pub` 队列发布的 `net_mqtt` |
 | 设备频繁掉线 | 测试 ClientId = IMEI | 改掉测试端 ClientId |
 | JSON 无响应 | 缺 `dataType` 或非法 JSON | 查设备日志 `json_decode_error` / `no_data_type` |
 | `unknown_data_type` | 未实现的 200x | 查 [NET_MQTT_DOWNLINK_DISPATCH](modules/NET_MQTT_DOWNLINK_DISPATCH.md) 表 |
