@@ -1,10 +1,9 @@
 require "sys"
+local libfota2 = require "libfota2"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local L = "fota_svc"
-local IOT_UPGRADE_URL = "http://iot.openluat.com/api/site/firmware_upgrade?"
-local IOT_HOST = "iot.openluat.com"
 local started = false
 local busy = false
 local lastResult = nil
@@ -58,64 +57,6 @@ local function defaultDeviceQuery()
 	if wlan and wlan.getMac then return "mac=" .. wlan.getMac() end
 	return "uid=" .. mcu.unique_id():toHex()
 end
-local function fotaHttpTask(cbFnc, opts)
-	local ret = 0
-	local code, _, body = http.request(
-		opts.method, opts.url, opts.headers, opts.body, opts,
-		opts.server_cert, opts.client_cert, opts.client_key, opts.client_password
-	).wait()
-	if code == 200 or code == 206 then
-		ret = (body == 0) and 4 or 0
-	elseif code == -4 then ret = 1
-	elseif code == -5 then ret = 3
-	elseif code == 401 or code == 403 or code >= 300 then
-		ret = 3
-	else
-		ret = 4
-	end
-	cbFnc(ret)
-end
-local function buildIotUpgradeUrl(opts)
-	if not opts.project_key then
-		opts.project_key = _G.PRODUCT_KEY
-		if not opts.project_key then
-			return false
-		end
-	end
-	if not opts.version then opts.version = _G.IOT_VERSION or _G.VERSION end
-	local iotVer = resolveOtaVersion(opts.version)
-	if not iotVer then
-		return false
-	end
-	opts.version = iotVer
-	if not opts.firmware_name then opts.firmware_name = defaultFirmwareName() end
-	local query
-	if opts.imei then
-		opts.url = string.format("%simei=%s&project_key=%s&firmware_name=%s&version=%s",
-			opts.url, opts.imei, opts.project_key, opts.firmware_name, opts.version)
-	else
-		query = defaultDeviceQuery()
-		opts.url = string.format("%s%s&project_key=%s&firmware_name=%s&version=%s",
-			opts.url, query, opts.project_key, opts.firmware_name, opts.version)
-	end
-	return true, query
-end
-local function httpFotaRequest(cbFnc, opts)
-	opts = opts or {}
-	if fota then opts.fota = true
-	else os.remove("/update.bin"); opts.dst = "/update.bin" end
-	cbFnc = cbFnc or function() end
-	if not opts.url then opts.url = IOT_UPGRADE_URL end
-	if opts.url:sub(1, 3) ~= "###" and not opts.url_done then
-		local ok = buildIotUpgradeUrl(opts)
-		if not ok then cbFnc(5); return end
-	else
-		opts.url = opts.url:sub(4)
-	end
-	opts.url_done = true
-	opts.method = opts.method or "GET"
-	sys.taskInit(fotaHttpTask, cbFnc, opts)
-end
 local function buildIotOpts(data)
 	data = type(data) == "table" and data or {}
 	local url = data.url or data.otaUrl or data.firmwareUrl
@@ -123,7 +64,11 @@ local function buildIotOpts(data)
 		if data.url_no_query or data.full_url == true or data.full_url == 1 then
 			url = "###" .. url
 		end
-		return { url = url, timeout = config.timeout_ms }
+		return {
+			url = url,
+			timeout = config.timeout_ms,
+			custom = true,
+		}
 	end
 	local opts = {
 		project_key = data.project_key or data.projectKey or _G.PRODUCT_KEY,
@@ -133,6 +78,8 @@ local function buildIotOpts(data)
 	}
 	local fw = data.firmware_name or data.firmwareName
 	if fw and fw ~= "" then opts.firmware_name = fw end
+	opts.imei = data.imei or data.deviceId or data.device_id
+	opts.fota = true
 	return opts
 end
 local function validateIotConfig(opts)
@@ -158,6 +105,28 @@ local function fota_cb(ret)
 	if ret == 0 and row[3] and config.auto_reboot_on_success ~= false then
 		rtos.reboot()
 	end
+end
+local function requestLibFota(opts, cbFnc)
+	opts = opts or {}
+	cbFnc = cbFnc or function() end
+	if opts.custom then
+		local url = opts.url
+		if url:sub(1, 3) == "###" then
+			url = url:sub(4)
+		end
+		libfota2.request(cbFnc, {
+			url = url,
+			timeout = opts.timeout,
+		})
+		return
+	end
+	libfota2.request(cbFnc, {
+		project_key = opts.project_key,
+		version = opts.version,
+		timeout = opts.timeout,
+		imei = opts.imei,
+		firmware_name = opts.firmware_name,
+	})
 end
 local function autoOta(data)
 	sys.taskInit(function()
@@ -186,7 +155,7 @@ local function autoOta(data)
 			return
 		end
 		busy = true
-		if log and log.info then log.info(L, "ota_checking", "url=" .. tostring(opts.url or "")) end
+		if log and log.info then log.info(L, "ota_checking", "url=" .. tostring(opts.url or "") .. " custom=" .. tostring(opts.custom == true)) end
 		reportStatus("starting", 0, "check_upgrade", data)
 		sys.wait(config.request_delay_ms or 500)
 		local done = false
@@ -199,7 +168,7 @@ local function autoOta(data)
 			end
 			fota_cb(ret)
 		end
-		httpFotaRequest(wrapped_cb, opts)
+		requestLibFota(opts, wrapped_cb)
 		local timeoutMs = tonumber(config.callback_timeout_ms) or 320000
 		sys.wait(timeoutMs)
 		if not done then

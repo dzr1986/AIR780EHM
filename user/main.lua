@@ -1,7 +1,7 @@
 PROJECT = "PANSHI_CAT1"
-VERSION = "001.000.004"
+VERSION = "001.000.001"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
-local SCRIPT_VERSION_PATTERN = "^%d%d%d%.%d%d%d%.%d%d%d$"
+local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function validateBuildVersion(ver)
 	if type(ver) ~= "string" or not ver:match(SCRIPT_VERSION_PATTERN) then
 		return nil
@@ -13,7 +13,7 @@ local function buildIotOtaVersion(scriptVer)
 	if not v then
 		return nil
 	end
-	local x, _, z = v:match("^(%d%d%d)%.(%d%d%d)%.(%d%d%d)$")
+	local x, _, z = v:match("^(%d+)%.(%d+)%.(%d+)$")
 	local coreVer = rtos and rtos.version and rtos.version()
 	if not coreVer or coreVer == "" then
 		return nil
@@ -34,13 +34,13 @@ local function resolveIotOtaVersion(ver)
 	if core and core ~= "" then
 		core = core:sub(1, 1) == "V" and core:sub(2) or core
 	end
-	if coreInVer and core and coreInVer == core and ver:match("^%d+%.%d%d%d%.%d%d%d$") then
+	if coreInVer and core and coreInVer == core and ver:match("^%d+%.%d+%.%d+$") then
 		return ver
 	end
 	return nil
 end
 if not validateBuildVersion(VERSION) then
-	error("main: VERSION 须为 xxx.yyy.zzz 脚本版(如 001.000.002), 当前=" .. tostring(VERSION))
+	error("main: VERSION 须为 nnn.nnn.nnn 脚本版(如 2044.001.003), 当前=" .. tostring(VERSION))
 end
 _G.validateBuildVersion = validateBuildVersion
 _G.buildIotOtaVersion = buildIotOtaVersion
