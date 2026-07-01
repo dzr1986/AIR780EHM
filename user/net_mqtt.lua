@@ -1778,9 +1778,6 @@ function publishStatus(opts)
 			escJson(usbRecoveryLastErr),
 			extra,
 			ipc_sup.ipcCloudStatFields()),
-			"usb", snap.usb_inserted, "chg", snap.charging,
-			"bat", snap.battery_percent, "interval", intervalSec,
-			"usb_recovery", usbRecovery,
 		},
 		on_published = function()
 			lastBatteryStatusPublishSec = os.time()
