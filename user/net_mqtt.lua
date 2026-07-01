@@ -1,6 +1,7 @@
 --- MQTT 低功耗长连接（LOW_POWER_WAKEUP_CFG.mode="mqtt" 时为唤醒主通道）
 -- 与 net_tcp.lua 二选一；策略见 doc/modules/LOW_POWER_WAKEUP.md
 -- 协议：下行 200x ↔ 上行 100x，见 doc/MQTT_PROTOCOL.md
+-- 联调抄录：doc/MQTT_DOWNLINK_862323084068124.txt
 -- 分发：DOWNLINK_HANDLERS / DL2004_ACTIONS / HOST_UART_QUERY_SET_SPECS
 --       见 doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- @module net_mqtt
@@ -39,6 +40,7 @@ local DT = {
     UL_DEVICE_ID = "1006",
     UL_TF_CARD = "1007",
     UL_TF_FORMAT = "1009",
+    UL_VERSION_QUERY = "1008",
     UL_PIR_DETECT = "1010",
     UL_PIR_STOP = "1011",
     UL_PIR_START = "1012",
@@ -62,6 +64,7 @@ local DT = {
     DL_DEVICE_ID = "2006",
     DL_TF_CARD = "2007",
     DL_TF_FORMAT = "2009",
+    DL_VERSION_QUERY = "2008",
     DL_PIR_CFG = "2010",
     DL_PIR_STOP = "2011",
     DL_PIR_START = "2012",   -- → UL 1012 event
@@ -545,6 +548,21 @@ local function handleDownlink2001(data)
 end
 
 -- [2002] 休眠/低功耗 → 1002（enter/exit 成功后由 app 上报 rest 主题）
+local function resolve2002Mode(data)
+    local mode = data.lowPowerMode
+    if mode == "enter" or mode == "exit" then
+        return mode
+    end
+    local action = tonumber(data.action)
+    if action == 1 then
+        return "enter"
+    end
+    if action == 0 then
+        return "exit"
+    end
+    return nil
+end
+
 local function usbBlocks4gRest()
     local ok, up = pcall(require, "usb_policy")
     if ok and type(up) == "table" and up.blocks4gRest then
@@ -554,18 +572,19 @@ local function usbBlocks4gRest()
 end
 
 local function handleDownlink2002(data)
-    if data.lowPowerMode == "enter" then
+    local mode = resolve2002Mode(data)
+    if mode == "enter" then
         if usbBlocks4gRest() then
-            log.info(L, "downlink_2002_unknown")
+            log.info(L, "downlink_2002_usb_block")
             return
         end
         log.info(L, "downlink_2002_enter")
         sys.publish(APP_EVENTS.POWER_ENTER_REST)
-    elseif data.lowPowerMode == "exit" then
+    elseif mode == "exit" then
         log.info(L, "downlink_2002_exit")
         sys.publish(APP_EVENTS.POWER_EXIT_REST)
     else
-        log.warn(L, "downlink_2002_invalid", data.lowPowerMode)
+        log.warn(L, "downlink_2002_invalid", data.lowPowerMode, data.action)
     end
 end
 
@@ -659,6 +678,21 @@ local function runWledSet2004(reply, on)
     end)
 end
 
+local function normalize2004Action(action)
+    if action == nil then
+        return action
+    end
+    action = tostring(action)
+    local aliases = {
+        restart = "reboot",
+        shutdown = "off",
+        poweroff = "off",
+        upgrade = "ota",
+        fota = "ota",
+    }
+    return aliases[action] or action
+end
+
 local function resolve2004Action(action, data)
     if action == "wled_query" or action == "wled?" then
         return "wled_query"
@@ -716,6 +750,7 @@ local DL2004_ACTIONS = {
 }
 
 local function handleDownlink2004(data)
+    data.action = normalize2004Action(data.action)
     local reply = makeDownlink2004Reply(data)
     local resolved = resolve2004Action(data.action, data)
     if resolved == "wled_set" then
@@ -925,6 +960,67 @@ local function handleDownlink2007(data)
     end)
 end
 
+--- 收集固件版本快照（2008 → 1008，仅 4G，秒回）
+local function collectVersionSnapshot(messageId)
+    local scriptVersion = tostring(_G.VERSION or "")
+    local firmwareVersion = ""
+    if _G.resolveIotOtaVersion then
+        firmwareVersion = _G.resolveIotOtaVersion(scriptVersion) or ""
+    elseif _G.IOT_VERSION then
+        firmwareVersion = tostring(_G.IOT_VERSION)
+    end
+    local coreVersion = ""
+    if rtos and rtos.version then
+        coreVersion = rtos.version() or ""
+        if coreVersion:sub(1, 1) == "V" or coreVersion:sub(1, 1) == "v" then
+            coreVersion = coreVersion:sub(2)
+        end
+    end
+    return {
+        scriptVersion = scriptVersion,
+        firmwareVersion = firmwareVersion,
+        coreVersion = coreVersion,
+        project = tostring(_G.PROJECT or ""),
+        buildTag = tostring(_G.BUILD_TAG or ""),
+        productKey = tostring(_G.PRODUCT_KEY or ""),
+        messageId = messageId,
+    }
+end
+
+--- 1008 固件版本（应答 2008；主题 version）
+function publishVersion(opts)
+    opts = type(opts) == "table" and opts or {}
+    local snap = collectVersionSnapshot(opts.messageId)
+    local mid = ""
+    if snap.messageId and snap.messageId ~= "" then
+        mid = string.format(',"messageId":"%s"', escJson(tostring(snap.messageId)))
+    end
+    publishUplink({
+        suffix = "version",
+        dataType = DT.UL_VERSION_QUERY,
+        fields = string.format(
+            ',"scriptVersion":"%s","firmwareVersion":"%s","coreVersion":"%s","project":"%s","buildTag":"%s","productKey":"%s"%s',
+            escJson(snap.scriptVersion),
+            escJson(snap.firmwareVersion),
+            escJson(snap.coreVersion),
+            escJson(snap.project),
+            escJson(snap.buildTag),
+            escJson(snap.productKey),
+            mid),
+        log = "publish_1008_version",
+        log_args = { snap.firmwareVersion, snap.scriptVersion },
+    })
+end
+
+-- [2008] 固件版本查询 → 1008（仅 Cat.1，秒回）
+local function handleDownlink2008(data)
+    log.info(L, "downlink_2008")
+    if data.messageId then
+        log.info(L, "downlink_2008_msg", data.messageId)
+    end
+    publishVersion({ messageId = downlinkMessageId(data) })
+end
+
 local function tfFormatCfg()
     return _G.HOST_TFCARD_FORMAT_CFG or {}
 end
@@ -1050,8 +1146,16 @@ local function buildPirDetectExtra(pirStatus, action, uploadMode, quality, recor
     }
 end
 
+local function is2010Query(data)
+    if data.query == 1 or data.query == true then
+        return true
+    end
+    local act = data.action
+    return act == "query" or act == "status"
+end
+
 local function handleDownlink2010(data)
-    if data.action == "query" then
+    if is2010Query(data) then
         log.info(L, "downlink_2010_query")
         publishPirDetect(buildPirDetectExtra("query", nil, nil, nil, nil))
         return
@@ -1123,6 +1227,7 @@ end
 --- 2012 平台开录（TF 卡）→ 1012（event）；T3x 写盘后另有 1010 t3x_active（pir）
 local function handleDownlink2012(data)
     sys.taskInit(function()
+        local messageId = downlinkMessageId(data)
         if data.messageId then
             log.info(L, "downlink_2012_msg", data.messageId)
         else
@@ -1130,9 +1235,9 @@ local function handleDownlink2012(data)
         end
         if not pir_ctrl.requestStartFromCloud then
             log.warn(L, "downlink_2012_error", "no_fn")
+            publishControlReply("pir_start", -1, "no_fn", { messageId = messageId })
             return
         end
-        local messageId = downlinkMessageId(data)
         local ok, result = pir_ctrl.requestStartFromCloud({
             action = data.action,
             uploadMode = data.uploadMode,
@@ -1265,6 +1370,7 @@ end
 
 
 local RECORD_TIME_ALLOWED = "5|10|15|20|30|45|60"
+local RECORD_TIME_ALLOWED_JSON = "[5,10,15,20,30,45,60]"
 
 --- 2022–2031：T3x UART query/set 下行公共工厂
 local function makeQuerySetReplyPublisher(spec)
@@ -1352,7 +1458,7 @@ local HOST_UART_QUERY_SET_SPECS = {
                     extra = extra .. string.format(',"recordTimeMin":%d', tonumber(b.minutes) or 0)
                 end
                 if b.allowedMin then
-                    extra = extra .. string.format(',"allowedMin":"%s"', escJson(b.allowedMin))
+                    extra = extra .. ',"allowedMin":' .. RECORD_TIME_ALLOWED_JSON
                 end
             end
             return extra
@@ -1422,7 +1528,7 @@ local HOST_UART_QUERY_SET_SPECS = {
                 timeout_ms = timeoutMs,
             })
             if type(rows) == "table" then
-                return { streams = rows }
+                return { video = rows }
             end
             return nil, "query_fail"
         end,
@@ -1672,6 +1778,7 @@ DOWNLINK_HANDLERS = {
     [DT.DL_DEVICE_ID] = handleDownlink2006,
     [DT.DL_TF_CARD] = handleDownlink2007,
     [DT.DL_TF_FORMAT] = handleDownlink2009,
+    [DT.DL_VERSION_QUERY] = handleDownlink2008,
     [DT.DL_PIR_CFG] = handleDownlink2010,
     [DT.DL_PIR_STOP] = handleDownlink2011,
     [DT.DL_PIR_START] = handleDownlink2012,
@@ -1704,6 +1811,7 @@ local function dispatchDownlink(topic, payload)
     local handler = dataType and DOWNLINK_HANDLERS[dataType]
 
     if handler then
+        log.info(L, "downlink_dispatch", dataType)
         handler(data)
     elseif dataType then
         log.warn(L, "unknown_data_type", dataType)

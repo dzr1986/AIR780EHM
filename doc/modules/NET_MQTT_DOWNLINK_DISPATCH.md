@@ -30,6 +30,7 @@ MQTT subscribe /panshi/device/{imei}/
 | 2005 | `handleDownlink2005` | 1005 sim | 否 |
 | 2006 | `handleDownlink2006` | 1006 identity | **是** |
 | 2007 | `handleDownlink2007` | 1007 tfcard | **是** |
+| 2008 | `handleDownlink2008` | 1008 version | 否 |
 | 2009 | `handleDownlink2009` | 1009 tfcard format | **是** |
 | 2010 | `handleDownlink2010` | 1010 pir | 否 |
 | 2011 | `handleDownlink2011` | 1011 stop | 可选 |
@@ -54,7 +55,13 @@ MQTT subscribe /panshi/device/{imei}/
 | `wled_query` | 异步查 T3x/缓存 | 1004 wled enable |
 | `wled_set` | 异步 `setWled` | 1004 wled enable |
 
+别名（`normalize2004Action`）：`restart`→`reboot`；`shutdown`/`poweroff`→`off`；`upgrade`/`fota`→`ota`。
+
 别名：`wled?` / `wled`+`query=1` → `wled_query`；`wled_on`/`wled_off`/`wled` → `wled_set`。
+
+**2002**：`lowPowerMode` enter/exit 或 `action` 1/0（见 `MQTT_DOWNLINK_862323084068124.txt` §3.2）。
+
+**2010 查询**：`action=query|status` 或 `query=1` → 立即 1010。
 
 ---
 

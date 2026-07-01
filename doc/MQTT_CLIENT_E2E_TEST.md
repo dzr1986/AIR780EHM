@@ -120,6 +120,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | **S1** | `{"dataType":"2003"}` | `1003` @ `.../status` | 确认在线、`remainPower`、`lowPowerMode` |
 | **S2** | `{"dataType":"2001"}` | `1001` @ `.../wakeup` | rest 下也会答 1001，**不代表已出 rest** |
 | **S3** | `{"dataType":"2005"}` | `1005` @ `.../sim` | IMEI/ICCID/CSQ |
+| **S3a** | `{"dataType":"2008"}` | `1008` @ `.../version` | 固件版本，秒回 |
 | **S4** | `{"dataType":"2004","action":"wled_query"}` | `1004` @ `.../event`，`reply:1` | 需 T3x 或缓存 |
 | **S5** | `{"dataType":"2010","action":"query"}` | `1010` @ `.../pir` | 4G 侧 PIR 状态 |
 | **S6** | `{"dataType":"2020"}` | `1020` @ `.../encode` | **需 T3x 在线** |
