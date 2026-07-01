@@ -54,6 +54,7 @@ local state = {
 	hex_report = false,
 	host_at_ready = false,
 	first_host_at = nil,
+	host_ready_seen = false,
 	host_gb28181_id = nil,
 	p2p_uid = nil,
 	p2p_product = nil,
@@ -2068,6 +2069,7 @@ local function notify_host_first_at(cmd)
 	end
 	state.host_at_ready = true
 	state.first_host_at = cmd
+	state.host_ready_seen = true
 	note_uart_link_ok()
 	state.uart_recovery_attempts = 0
 	state.uart_recovery_last_sec = 0
@@ -2685,6 +2687,9 @@ local function run_uart_power_cycle_recovery(attempt)
 end
 local function maybe_uart_recovery_after_miss(source)
 	if not uart_recovery_enabled() then
+		return
+	end
+	if state.host_ready_seen ~= true then
 		return
 	end
 	if state.host_at_ready then

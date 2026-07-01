@@ -65,6 +65,25 @@ local function getHostUart()
 	end
 	return host_uart
 end
+local function hostFirstAtEvent()
+	return (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+end
+local function waitHostReady(timeoutMs)
+	local hu = getHostUart()
+	if hu and hu.isHostAtReady and hu.isHostAtReady() then
+		return true
+	end
+	timeoutMs = tonumber(timeoutMs) or tonumber(cfg().host_boot_wait_ms) or 1500
+	if timeoutMs <= 0 then
+		return false
+	end
+	local got = sys.waitUntil(hostFirstAtEvent(), timeoutMs)
+	if not got then
+		return false
+	end
+	hu = getHostUart()
+	return hu and hu.isHostAtReady and hu.isHostAtReady() or false
+end
 local ipcMod
 local function t3xOn(extra)
 	if ipcMod == nil then
@@ -122,7 +141,10 @@ function pushToHost(force)
 	end
 	tsInfo("sync_push", t, force == true and 1 or 0)
 	t3xOn()
-	sys.wait(tonumber(cfg().host_boot_wait_ms) or 1500)
+	if not waitHostReady(tonumber(cfg().host_boot_wait_ms) or 1500) then
+		tsWarn("host_not_ready")
+		return false
+	end
 	ub.sendString("AT+TIMESET=" .. t, true)
 	local timeoutMs = tonumber(cfg().ack_timeout_ms) or 800
 	local ok = waitTimesetAck(timeoutMs)
