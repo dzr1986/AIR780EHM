@@ -45,7 +45,11 @@ end
 _G.validateBuildVersion = validateBuildVersion
 _G.buildIotOtaVersion = buildIotOtaVersion
 _G.resolveIotOtaVersion = resolveIotOtaVersion
+_G.VERSION = VERSION
+_G.PROJECT = PROJECT
+_G.PRODUCT_KEY = PRODUCT_KEY
 BUILD_TAG = "v20260614"
+_G.BUILD_TAG = BUILD_TAG
 local moduleName = ...
 local isEntry = moduleName == nil
 require "sys"

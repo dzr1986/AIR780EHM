@@ -971,10 +971,11 @@ local function collectVersionSnapshot(messageId)
     end
     local coreVersion = ""
     if rtos and rtos.version then
-        coreVersion = rtos.version() or ""
-        if coreVersion:sub(1, 1) == "V" or coreVersion:sub(1, 1) == "v" then
-            coreVersion = coreVersion:sub(2)
+        local raw = rtos.version() or ""
+        if raw:sub(1, 1) == "V" or raw:sub(1, 1) == "v" then
+            raw = raw:sub(2)
         end
+        coreVersion = raw:match("^(%d+)") or raw
     end
     return {
         scriptVersion = scriptVersion,
