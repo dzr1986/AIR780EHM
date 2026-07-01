@@ -38,6 +38,23 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local L = "app_main"
+local function appInfo(...)
+	if log and log.info then
+		log.info(L, ...)
+	end
+end
+local function appWarn(...)
+	if log and log.warn then
+		log.warn(L, ...)
+	elseif log and log.info then
+		log.info(L, ...)
+	end
+end
+local function appError(...)
+	if log and log.error then
+		log.error(L, ...)
+	end
+end
 local stopWatchdogBeforePowerOff
 local E = APP_EVENTS
 local started = false
@@ -154,6 +171,7 @@ end
 local function doEnterLowPowerBody(reason)
 	reason = reason or "unknown"
 	if not setLowPowerMode(true) then return end
+	appInfo("enter_low_power", reason)
 	_G.APP_RUNTIME.last_rest_reason = reason
 	sys.publish(E.POWER_ENTERED_REST)
 	if t3xModule and t3xModule.enterSleep then
@@ -205,6 +223,7 @@ end
 local function onExitLowPower(reason)
 	reason = reason or "unknown"
 	if not setLowPowerMode(false) then return end
+	appInfo("exit_low_power", reason)
 	_G.APP_RUNTIME.last_rest_reason = nil
 	if state.mqtt_started and netModule and netModule.publishRest then
 		if reason == "usb_insert" then
@@ -235,12 +254,14 @@ local function onExitLowPower(reason)
 	end
 end
 local function onReboot()
+	appWarn("device_reboot_request")
 	stopWatchdogBeforePowerOff()
 	sys.timerStart(function()
 	if pm and pm.reboot then pm.reboot() end
 	end, 500)
 end
 local function onPowerOff(reason)
+	appWarn("device_poweroff_request", tostring(reason or "unknown"))
 	local function shutdownNow()
 		if reason == "battery" then
 			local okBg, bg = pcall(require, "battery_guard")
@@ -352,6 +373,7 @@ end
 local function applyUsbInsertState(inserted, source)
 	local v = inserted and 1 or 0
 	state.last_usb_state = v
+	appInfo("usb_state", v, tostring(source or ""))
 	_G.APP_RUNTIME.power_status = v
 	sys.publish(E.GPIO_VBUS_CHANGED, v)
 	if v == 0 then
@@ -422,18 +444,23 @@ local function getImei()
 end
 function startMqtt()
 	if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
+		appWarn("mqtt_start_skip_burn_mode")
 		return false
 	end
 	if state.mqtt_started then
+		appInfo("mqtt_already_started")
 		return false
 	end
 	if not _G.MODULE_FLAGS.mqtt then
+		appWarn("mqtt_module_disabled")
 		return false
 	end
 	if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "net_mqtt") then
+		appError("mqtt_module_not_ready")
 		return false
 	end
 	state.mqtt_started = true
+	appInfo("mqtt_start")
 	netModule.start()
 	return true
 end
@@ -538,6 +565,7 @@ local function checkT3xBurnPreconditions()
 end
 local function shutdownServicesForT3xBurn(cfg)
 	cfg = cfg or _G.T3X_BURN_CFG or {}
+	appWarn("t3x_burn_prepare")
 	_G.T3X_BURN_MODE_ACTIVE = true
 	state.t3x_burn_active = true
 	state.heartbeat_paused = true
@@ -547,6 +575,7 @@ local function shutdownServicesForT3xBurn(cfg)
 	if cfg.stop_mqtt ~= false and state.mqtt_started and netModule and netModule.stop then
 		netModule.stop()
 		state.mqtt_started = false
+		appInfo("t3x_burn_mqtt_stopped")
 	end
 	if cfg.stop_uart ~= false then
 		local ub = _G.uart_bridge or uart_bridge
@@ -558,7 +587,9 @@ local function shutdownServicesForT3xBurn(cfg)
 		if type(usbRndis) == "table" and usbRndis.disable then
 			local rndisOk, rndisErr = usbRndis.disable()
 			if rndisOk then
+				appInfo("t3x_burn_rndis_disabled")
 			else
+				appWarn("t3x_burn_rndis_disable_fail", tostring(rndisErr or ""))
 			end
 		end
 	end
@@ -572,6 +603,7 @@ local function tryEnterT3xBurnMode()
 	local cfg = _G.T3X_BURN_CFG or {}
 	local ok, detail = checkT3xBurnPreconditions()
 	if not ok then
+		appWarn("t3x_burn_denied", tostring(detail or "unknown"))
 		if gpioModule and gpioModule.runLedPattern then
 			gpioModule.runLedPattern("blink_red")
 		end
@@ -579,11 +611,14 @@ local function tryEnterT3xBurnMode()
 	end
 	shutdownServicesForT3xBurn(cfg)
 	if not t3xModule or not t3xModule.enterBootMode then
+		appError("t3x_burn_no_t3x_module")
 		return false
 	end
 	if not t3xModule.enterBootMode() then
+		appError("t3x_burn_enter_bootmode_fail")
 		return false
 	end
+	appWarn("t3x_burn_entered")
 	return true
 end
 local function wakeT3xForPir(tag, sid, evt)
@@ -880,8 +915,10 @@ local function startHeartbeat()
 end
 function start(gpio, net, t3x_ctrl)
 	if started then
+		appInfo("app_already_started")
 		return false
 	end
+	appInfo("app_start")
 	gpioModule, netModule, t3xModule = gpio, net, t3x_ctrl
 	_G.device_imei = getImei()
 	setupEventHandlers()
@@ -937,6 +974,7 @@ function start(gpio, net, t3x_ctrl)
 	setupFota()
 	startHeartbeat()
 	started = true
+	appInfo("app_started")
 	return true
 end
 function getState()

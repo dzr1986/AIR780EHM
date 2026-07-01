@@ -5,6 +5,23 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local L = "t3x_ctrl"
+local function t3xInfo(...)
+	if log and log.info then
+		log.info(L, ...)
+	end
+end
+local function t3xWarn(...)
+	if log and log.warn then
+		log.warn(L, ...)
+	elseif log and log.info then
+		log.info(L, ...)
+	end
+end
+local function t3xError(...)
+	if log and log.error then
+		log.error(L, ...)
+	end
+end
 local isPoweredOn = false
 local currentPowerLevel = nil
 local isInBootMode = false
@@ -99,6 +116,7 @@ end
 local function applyPowerLevel(on)
 	ensurePins()
 	if not t3xPowerPin then
+		t3xError("power_pin_missing")
 		return false
 	end
 	local level = on and powerOnLevel or powerOffLevel
@@ -108,6 +126,7 @@ local function applyPowerLevel(on)
 	t3xPowerPin(level)
 	currentPowerLevel = level
 	isPoweredOn = on
+	t3xInfo("power", on and "on" or "off", level)
 	state.power_state = on and "on" or "off"
 	lastAction = on and "powerOn" or "powerOff"
 	if on then
@@ -120,6 +139,7 @@ local function applyPowerLevel(on)
 end
 function start()
 	ensurePins()
+	t3xInfo("start")
 	local policy = t3xPolicyMod()
 	if type(policy) == "table" and policy.bootPowerOn then
 		policy.bootPowerOn(_M)
@@ -161,6 +181,7 @@ function pulseMcuInt()
 	local _, entry_int = getEntries()
 	ensurePins()
 	if not t3xMcuIntPin then
+		t3xError("mcu_int_pin_missing")
 		return false
 	end
 	local idle, active = getMcuIntLevels(entry_int)
@@ -178,8 +199,10 @@ end
 function enterBootMode()
 	local entry_pwr, _, entry_boot, entry_ota = ensurePins()
 	if not t3xPowerPin or not t3xBootModePin or not t3xOtaPin then
+		t3xError("enter_bootmode_pin_missing")
 		return false
 	end
+	t3xWarn("enter_bootmode")
 	powerOff()
 	logGpio("t3x_power_off", entry_pwr, entry_boot, entry_ota,
 		powerOffLevel, currentBootLevel, currentOtaLevel)
@@ -230,6 +253,7 @@ end
 function exitBootMode()
 	local entry_pwr, _, entry_boot, entry_ota = ensurePins()
 	if not t3xBootModePin or not t3xOtaPin then
+		t3xError("exit_bootmode_pin_missing")
 		return false
 	end
 	local bootOff = 1 - bootModeLevel
@@ -240,6 +264,7 @@ function exitBootMode()
 	currentOtaLevel = otaOff
 	isInBootMode = false
 	lastAction = "exitBootMode"
+	t3xInfo("exit_bootmode")
 	return true
 end
 local function shouldBlockSleep(opts)
@@ -274,12 +299,15 @@ local function shutdownPoweredT3x(opts)
 end
 function enterSleep(opts)
 	if state.power_state == "sleeping" then
+		t3xInfo("sleep_already")
 		return
 	end
 	opts = type(opts) == "table" and opts or {}
 	if shouldBlockSleep(opts) then
+		t3xWarn("sleep_blocked_pending_work")
 		return false
 	end
+	t3xInfo("enter_sleep", opts.modemHibernate == true and "hibernate" or "normal")
 	state.power_state = "sleeping"
 	state.rest_enter_time = os.time()
 	if opts.modemHibernate == true then
@@ -289,10 +317,14 @@ function enterSleep(opts)
 	sleep_in_progress = true
 	local ok, err = pcall(shutdownPoweredT3x, opts)
 	sleep_in_progress = false
+	if not ok then
+		t3xError("enter_sleep_fail", tostring(err or ""))
+	end
 end
 function wake()
 	waitBeforeWake()
 	state.last_wake_reason = rtos.last_wake_reason and rtos.last_wake_reason() or nil
+	t3xInfo("wake", tostring(state.last_wake_reason or ""))
 	if not isPoweredOn then
 		applyPowerLevel(true)
 	end
@@ -362,11 +394,13 @@ function ensurePowered(tag, opts)
 	local policy = t3xPolicyMod()
 	if type(policy) == "table" and policy.mayPowerT3x
 		and not policy.mayPowerT3x(tag or "t3x_ipc") then
+		t3xWarn("ensure_power_denied", tostring(tag or "t3x_ipc"))
 		return false
 	end
 	if isPoweredOn then
 		return true
 	end
+	t3xInfo("ensure_power_on", tostring(tag or "t3x_ipc"))
 	powerOn()
 	local waitMs = resolvePowerWaitMs(opts)
 	if waitMs > 0 and ipcInTask() then

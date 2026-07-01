@@ -3,6 +3,19 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+local L = "time_sync"
+local function tsInfo(...)
+	if log and log.info then
+		log.info(L, ...)
+	end
+end
+local function tsWarn(...)
+	if log and log.warn then
+		log.warn(L, ...)
+	elseif log and log.info then
+		log.info(L, ...)
+	end
+end
 local ACK_EVENT = "TIME_SYNC_ACK"
 local DEFAULT_MIN_UNIX = 1704067200 -- 2024-01-01 UTC
 local uart_bridge
@@ -88,10 +101,12 @@ local function waitTimesetAck(timeoutMs)
 end
 function pushToHost(force)
 	if not enabled() then
+		tsWarn("sync_disabled")
 		return false
 	end
 	local t = os.time()
 	if not isTimeValid(t) then
+		tsWarn("time_invalid", tostring(t))
 		return false
 	end
 	if not force then
@@ -102,8 +117,10 @@ function pushToHost(force)
 	end
 	local ub = getUart()
 	if not ub or not ub.sendString then
+		tsWarn("uart_unavailable")
 		return false
 	end
+	tsInfo("sync_push", t, force == true and 1 or 0)
 	t3xOn()
 	sys.wait(tonumber(cfg().host_boot_wait_ms) or 1500)
 	ub.sendString("AT+TIMESET=" .. t, true)
@@ -111,7 +128,9 @@ function pushToHost(force)
 	local ok = waitTimesetAck(timeoutMs)
 	if ok then
 		lastPushedUnix = t
+		tsInfo("sync_ack_ok", t)
 	else
+		tsWarn("sync_ack_timeout", timeoutMs)
 	end
 	return ok
 end
@@ -127,6 +146,7 @@ function onSntpSuccess(unix, server)
 	if not enabled() or cfg().sync_on_sntp == false then
 		return
 	end
+	tsInfo("sntp_ok", tostring(server or ""), tostring(unix or ""))
 	pushToHostAsync(true)
 end
 function onT3xWake()
@@ -190,9 +210,11 @@ local function sntpTrySync(runtimeConfig)
 		socket.sntp(server)
 		if sys.waitUntil("NTP_UPDATE", runtimeConfig.timeout) then
 			local t = os.time()
+			tsInfo("sntp_update", server, t)
 			sys.publish(runtimeConfig.success_event, t, server)
 			return true
 		end
+		tsWarn("sntp_timeout", server)
 		sys.wait(runtimeConfig.retry_wait)
 	end
 	return false

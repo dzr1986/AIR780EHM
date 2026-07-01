@@ -3,6 +3,19 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+local L = "battery_guard"
+local function bgInfo(...)
+	if log and log.info then
+		log.info(L, ...)
+	end
+end
+local function bgWarn(...)
+	if log and log.warn then
+		log.warn(L, ...)
+	elseif log and log.info then
+		log.info(L, ...)
+	end
+end
 local pir_ctrl
 local hooks = {}
 local TIER_NORMAL = "normal"
@@ -150,6 +163,7 @@ local function enterBatteryRest()
 	if guard.rest_by_battery then
 		return
 	end
+	bgWarn("enter_battery_rest", tostring(guard.last_percent or "nil"))
 	guard.rest_by_battery = true
 	guard.rest_enter_ts = os.time()
 	resetConfirmStreaks()
@@ -164,6 +178,7 @@ local function exitBatteryRest()
 	if not guard.rest_by_battery then
 		return
 	end
+	bgInfo("exit_battery_rest", tostring(guard.last_percent or "nil"))
 	guard.rest_by_battery = false
 	guard.rest_exit_ts = os.time()
 	guard.rest_enter_ts = 0
@@ -296,11 +311,14 @@ local function scheduleShutdown()
 		return
 	end
 	local delay = tonumber(cfg().shutdown_delay_ms) or 3000
+	bgWarn("schedule_shutdown", delay, tostring(guard.last_percent or "nil"))
 	guard.shutdown_timer = sys.timerStart(function()
 		guard.shutdown_timer = nil
 		if isUsbInserted() then
+			bgInfo("shutdown_canceled_usb")
 			return
 		end
+		bgWarn("shutdown_execute")
 		if type(hooks.on_power_off) == "function" then
 			hooks.on_power_off()
 		elseif pm and pm.shutdown then
@@ -394,6 +412,7 @@ end
 function onUsbInserted(opts)
 	opts = type(opts) == "table" and opts or {}
 	local source = opts.source
+	bgInfo("usb_inserted", tostring(source or ""))
 	cancelShutdownTimer()
 	local wasRest = guard.rest_by_battery
 	local wasPir = guard.pir_suspended
@@ -422,6 +441,7 @@ function onUsbInserted(opts)
 	end
 end
 function onUsbRemoved()
+	bgInfo("usb_removed")
 	local pct = guard.last_percent
 	if pct == nil and _G.APP_RUNTIME then
 		pct = tonumber(_G.APP_RUNTIME.battery_percent)
@@ -436,10 +456,16 @@ function onUsbChanged(inserted)
 	end
 end
 function onBatteryUpdate(pct, mv)
+	local prev = guard.last_percent
 	evaluate(pct, mv)
+	if tonumber(pct) and prev ~= tonumber(pct) then
+		local tier = getBatteryTier(pct)
+		bgInfo("battery_update", tonumber(pct), tostring(tier or "nil"))
+	end
 end
 function start(opts)
 	hooks = type(opts) == "table" and opts or {}
+	bgInfo("start", tostring(getStrategy()))
 	local pct = _G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.battery_percent)
 	if pct then
 		sys.taskInit(function()

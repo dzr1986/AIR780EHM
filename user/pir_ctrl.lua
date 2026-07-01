@@ -5,6 +5,18 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local L = "pirc"
+local function pirInfo(...)
+	if log and log.info then
+		log.info(L, ...)
+	end
+end
+local function pirWarn(...)
+	if log and log.warn then
+		log.warn(L, ...)
+	elseif log and log.info then
+		log.info(L, ...)
+	end
+end
 local PIR_MEDIA = {
 	ACTION = { PHOTO = "photo", VIDEO = "video", BOTH = "both", DEVINFO = "devinfo" },
 	UPLOAD_MODE = { AUTO = "auto", MANUAL = "manual" },
@@ -382,12 +394,15 @@ function requestStartFromCloud(opts)
 	opts = type(opts) == "table" and opts or {}
 	local policy = getRecordPolicy()
 	if not policy.startOnCloud then
+		pirWarn("cloud_start_denied_policy")
 		return false, "denied"
 	end
 	if suspended then
+		pirWarn("cloud_start_denied_suspended")
 		return false, "suspended"
 	end
 	if session.recording then
+		pirWarn("cloud_start_denied_busy")
 		return false, "busy"
 	end
 	local cur = getMediaConfig()
@@ -398,6 +413,7 @@ function requestStartFromCloud(opts)
 	})
 	local A = PIR_MEDIA.ACTION
 	if media.action == A.DEVINFO then
+		pirWarn("cloud_start_denied_devinfo")
 		return false, "devinfo"
 	end
 	if media.action == A.PHOTO then
@@ -410,15 +426,18 @@ function requestStartFromCloud(opts)
 	end
 	statBump("cnt_start_cloud")
 	statLast("cloud_start")
+	pirInfo("cloud_start", media.action, media.uploadMode, media.quality)
 	publishActionEvents(media)
 	return true, media
 end
 function requestStopFromCloud(opts)
 	opts = type(opts) == "table" and opts or {}
 	if not getRecordPolicy().stopOnCloud then
+		pirWarn("cloud_stop_denied_policy")
 		return false, "stop_on_cloud_denied"
 	end
 	if not session.recording then
+		pirWarn("cloud_stop_denied_not_recording")
 		return false, "not_recording"
 	end
 	session.cloud_stop_message_id = opts.messageId
@@ -426,8 +445,10 @@ function requestStopFromCloud(opts)
 	requestT3xStopRecord(reason)
 	if not publishStopRecording(reason) then
 		session.cloud_stop_message_id = nil
+		pirWarn("cloud_stop_failed")
 		return false, "stop_failed"
 	end
+	pirInfo("cloud_stop", tostring(opts.messageId or ""))
 	return true
 end
 function requestStopManual()
@@ -482,11 +503,13 @@ function start()
 	local E = _G.APP_EVENTS or {}
 	sys.subscribe(E.PIR_HW_TRIGGERED, onPirTriggered)
 	handlerStarted = true
+	pirInfo("start")
 	return true
 end
 function suspend()
 	suspended = true
 	statLast("suspend")
+	pirWarn("suspend")
 	if session.recording then
 		publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
 	end
@@ -495,6 +518,7 @@ function suspend()
 end
 function resume()
 	suspended = false
+	pirInfo("resume")
 	return true
 end
 function isSuspended()
@@ -570,6 +594,7 @@ function onPirTriggered()
 	clearEffectiveMediaAction()
 	local ignore = shouldIgnorePirTrigger()
 	if ignore then
+		pirInfo("trigger_ignored", ignore)
 		local st = PIR_IGNORE_STATS[ignore]
 		if st then
 			statBump(st.cnt)
@@ -584,6 +609,7 @@ function onPirTriggered()
 	end
 	statBump("cnt_biz_detected")
 	statLast("detected")
+	pirInfo("trigger_detected")
 	publishPirGpioEvent("detected", media)
 	if media.action == PIR_MEDIA.ACTION.DEVINFO then
 		handlePirDevinfo()
