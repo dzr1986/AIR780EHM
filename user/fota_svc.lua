@@ -78,7 +78,8 @@ local function buildIotOpts(data)
 	}
 	local fw = data.firmware_name or data.firmwareName
 	if fw and fw ~= "" then opts.firmware_name = fw end
-	opts.imei = data.imei or data.deviceId or data.device_id
+	local imei = data.imei or data.deviceId or data.device_id
+	if imei and imei ~= "" then opts.imei = imei end
 	opts.fota = true
 	return opts
 end
@@ -120,13 +121,15 @@ local function requestLibFota(opts, cbFnc)
 		})
 		return
 	end
-	libfota2.request(cbFnc, {
+	-- 对齐 fota_test.lua：IOT 场景优先使用轻参数，让 libfota2 使用默认 imei/firmware_name 规则
+	local req = {
 		project_key = opts.project_key,
 		version = opts.version,
 		timeout = opts.timeout,
-		imei = opts.imei,
-		firmware_name = opts.firmware_name,
-	})
+	}
+	if opts.imei and opts.imei ~= "" then req.imei = opts.imei end
+	if opts.firmware_name and opts.firmware_name ~= "" then req.firmware_name = opts.firmware_name end
+	libfota2.request(cbFnc, req)
 end
 local function autoOta(data)
 	sys.taskInit(function()
