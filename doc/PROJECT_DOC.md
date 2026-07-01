@@ -238,6 +238,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 ## 4. MQTT 与串口
 
 - **MQTT 上下行完整协议**（主题、JSON 字段、触发时机）：**[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md)**
+- **TF 卡格式化统一入口（2009/1009）**：**[mqtt_tfcard_format_flow.md](./mqtt_tfcard_format_flow.md)**
 - **串口协议**：**[UART_PROTOCOL.md](./UART_PROTOCOL.md)**
 - **PIR 字段与停录逻辑**：**[PIR_PROTOCOL.md](./PIR_PROTOCOL.md)**
 
@@ -245,7 +246,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 
 | 下行 | 上行 |
 |------|------|
-| 2001 唤醒 · 2002 低功耗 · 2003 状态 · 2004 电源/OTA · 2005 SIM · **2006 标识 · 2007 TF 卡** | 1001–1007 对应应答 |
+| 2001 唤醒 · 2002 低功耗 · 2003 状态 · 2004 电源/OTA · 2005 SIM · **2006 标识 · 2007 TF 卡 · 2009 TF 格式化** | 1001–1007 对应应答 · 1009 格式化结果 |
 | 2010 PIR · 2011/2012 停录/开录 · **2020/2021 编码** · **2024–2027 帧率/人形** | 1004 OTA · 1010 PIR · 1011/1012 录像 · **1020/1021 编码** · **1024–1027 远程控制** |
 
 ---

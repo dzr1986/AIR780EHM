@@ -66,6 +66,7 @@
 | [T3X_IPC_CLOUD_EXCEPTION_REPORT.md](T3X_IPC_CLOUD_EXCEPTION_REPORT.md) | **T3x IPC 联网异常上报分析**（已上报 vs 缺口） |
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | **本机 IMEI 862323084068314** MQTT 联调手册 |
 | [MQTT_DOWNLINK_862323084068124.txt](MQTT_DOWNLINK_862323084068124.txt) | **IMEI 124** MQTTX 单行 JSON 抄录（含 2024–2027） |
+| [mqtt_tfcard_format_flow.md](mqtt_tfcard_format_flow.md) | **统一入口：TF 卡格式化 2009/1009**（协议、时序、错误码、联调日志） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
 | [MQTT_CLIENT_E2E_TEST.md](MQTT_CLIENT_E2E_TEST.md) | **MQTT 客户端 E2E 联调**（MQTTX / mosquitto / 冒烟清单） |
 | [OTA_SERVER.md](OTA_SERVER.md) | **自建 OTA**（固件对接 + 部署清单，不改 lua） |

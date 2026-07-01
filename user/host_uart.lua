@@ -3203,6 +3203,14 @@ end
 local function tfcard_format_cfg()
 	return _G.HOST_TFCARD_FORMAT_CFG or {}
 end
+local function normalizeLuaErrorReason(err)
+	local s = tostring(err or "error")
+	local tail = s:match(": ([^:]+)$")
+	if tail and tail ~= "" then
+		return tail
+	end
+	return s
+end
 function formatHostTfCard(opts)
 	opts = type(opts) == "table" and opts or {}
 	local cfg = tfcard_format_cfg()
@@ -3266,7 +3274,7 @@ function formatHostTfCard(opts)
 		return true, outcome.detail
 	end
 	if not okRun then
-		return false, tostring(errRun)
+		return false, normalizeLuaErrorReason(errRun)
 	end
 	return false, outcome.reason
 end
