@@ -169,24 +169,34 @@ local function autoOta(data)
 		lastPayload = data
 		requestCount = requestCount + 1
 		lastRequestTime = os.time()
+		local logMsg = string.format("ota_start request_count=%d version=%s product_key=%s", requestCount, tostring(data.version or ""), tostring(data.product_key or ""))
+		if log and log.info then log.info(L, logMsg) end
 		local netOk, ip = waitNetworkReady(config.network_wait_ms)
 		if not netOk then
+			if log and log.warn then log.warn(L, "ota_network_fail", "timeout=" .. tostring(config.network_wait_ms)) end
 			reportStatus("failed", 1, "network_not_ready", data)
 			return
 		end
+		if log and log.info then log.info(L, "ota_network_ok", "ip=" .. tostring(ip or "")) end
 		local opts = buildIotOpts(data)
 		local valid, err = validateIotConfig(opts)
 		if not valid then
+			if log and log.warn then log.warn(L, "ota_config_invalid", tostring(err or "")) end
 			reportStatus("failed", 5, err, data)
 			return
 		end
 		busy = true
+		if log and log.info then log.info(L, "ota_checking", "url=" .. tostring(opts.url or "")) end
 		reportStatus("starting", 0, "check_upgrade", data)
 		sys.wait(config.request_delay_ms or 500)
 		local done = false
 		local function wrapped_cb(ret)
 			if done then return end
 			done = true
+			if log and log.info then 
+				local retMsg = FOTA_RET[ret] or { "failed", "unknown_ret_" .. tostring(ret) }
+				log.info(L, "ota_callback", "ret=" .. tostring(ret) .. " stage=" .. tostring(retMsg[1]) .. " msg=" .. tostring(retMsg[2]))
+			end
 			fota_cb(ret)
 		end
 		httpFotaRequest(wrapped_cb, opts)
@@ -194,6 +204,7 @@ local function autoOta(data)
 		sys.wait(timeoutMs)
 		if not done then
 			busy = false
+			if log and log.warn then log.warn(L, "ota_callback_timeout", "timeout=" .. tostring(timeoutMs)) end
 			reportStatus("failed", -1, "callback_timeout", data)
 		end
 	end)

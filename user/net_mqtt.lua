@@ -604,18 +604,22 @@ local DL2004_ACTIONS = {
 		sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
 	end,
 	ota = function(data, reply)
+		mqttInfo("downlink_2004_ota", "action=ota version=" .. tostring(data.version or "") .. " product_key=" .. tostring(data.product_key or "") .. " messageId=" .. tostring(data.messageId or ""))
 		if _G.validateBuildVersion then
 			local v = data.version
 			if v and v ~= "" then
 				local ok = _G.validateBuildVersion(tostring(v))
 				if not ok then
+					mqttWarn("ota_invalid_version", "version=" .. tostring(v))
 					reply(-1, "invalid_version_format", "ota")
 					return
 				end
 				data.version = ok
+				mqttInfo("ota_version_valid", "version=" .. tostring(ok))
 			end
 		end
 		reply(0, "ota_accepted", "ota")
+		mqttInfo("ota_accepted", "preparing OTA update")
 		publishAppEvent("DEVICE_OTA_REQUEST", data)
 	end,
 	wled_query = function(_data, reply)
