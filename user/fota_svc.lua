@@ -71,7 +71,7 @@ local function buildIotOpts(data)
 		}
 	end
 	local opts = {
-		project_key = data.project_key or data.projectKey or _G.PRODUCT_KEY,
+		project_key = (data.product_key or data.project_key or data.projectKey) or _G.PRODUCT_KEY,
 		version = data.version or data.targetVersion or data.firmwareVersion
 			or _G.IOT_VERSION or _G.VERSION,
 		timeout = config.timeout_ms,
@@ -138,8 +138,11 @@ local function autoOta(data)
 		lastPayload = data
 		requestCount = requestCount + 1
 		lastRequestTime = os.time()
-		local logMsg = string.format("ota_start request_count=%d version=%s product_key=%s", requestCount, tostring(data.version or ""), tostring(data.product_key or ""))
-		if log and log.info then log.info(L, logMsg) end
+	local logMsg = string.format("ota_start request_count=%d version=%s product_key=%s mqtt_pk=%s", requestCount, 
+		tostring(data.version or ""), 
+		tostring(data.product_key or _G.PRODUCT_KEY or ""),
+		tostring(data.product_key or ""))
+	if log and log.info then log.info(L, logMsg) end
 		local netOk, ip = waitNetworkReady(config.network_wait_ms)
 		if not netOk then
 			if log and log.warn then log.warn(L, "ota_network_fail", "timeout=" .. tostring(config.network_wait_ms)) end

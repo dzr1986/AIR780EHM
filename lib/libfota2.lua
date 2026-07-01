@@ -58,6 +58,14 @@ local function fota_task(cbFnc, opts)
     local url = opts.url
     local code, headers, body = http.request(opts.method, opts.url, opts.headers, opts.body, opts, opts.server_cert,
                                     opts.client_cert, opts.client_key, opts.client_password).wait()
+    if string.find(url, "iot.openluat.com") and type(code) == "number" and code < 0 and url:sub(1, 7) == "http://" then
+        local retry_url = "https://" .. url:sub(8)
+        log.info("libfota2", "retry_https", retry_url)
+        opts.url = retry_url
+        url = retry_url
+        code, headers, body = http.request(opts.method, opts.url, opts.headers, opts.body, opts, opts.server_cert,
+                                    opts.client_cert, opts.client_key, opts.client_password).wait()
+    end
     -- log.info("http fota", code, headers, body)
     if code == 200 or code == 206 then
         if body == 0 then
@@ -76,9 +84,13 @@ local function fota_task(cbFnc, opts)
         local msg, json_body, result
         if string.find(url, hziot) then
             log.info("使用合宙服务器,接下来解析body里的code")
-            json_body, result = json.decode(body)
+            if type(body) == "string" and body ~= "" then
+                json_body, result = json.decode(body)
+            else
+                result = 0
+            end
             -- 如果json解析失败，证明服务器下发的不是json
-            if result == 1 and isjson(body) then
+            if result == 1 and type(body) == "string" and isjson(body) then
                 code = json_body["code"]
             else
                 -- 这个值随便取的，只要不和其他定义重复就行
@@ -156,7 +168,7 @@ function libfota2.request(cbFnc, opts)
     end
     -- 处理URL
     if not opts.url then
-        opts.url = "http://iot.openluat.com/api/site/firmware_upgrade?"
+        opts.url = "https://iot.openluat.com/api/site/firmware_upgrade?"
     end
     local query = ""
     if opts.url:sub(1, 3) ~= "###" and not opts.url_done then
