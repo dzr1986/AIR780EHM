@@ -1,11 +1,3 @@
---- MQTT 低功耗长连接（LOW_POWER_WAKEUP_CFG.mode="mqtt" 时为唤醒主通道）
--- 与 net_tcp.lua 二选一；策略见 doc/modules/LOW_POWER_WAKEUP.md
--- 协议：下行 200x ↔ 上行 100x，见 doc/MQTT_PROTOCOL.md
--- 联调抄录：doc/MQTT_DOWNLINK_862323084068124.txt
--- 分发：DOWNLINK_HANDLERS / DL2004_ACTIONS / HOST_UART_QUERY_SET_SPECS
---       见 doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
--- @module net_mqtt
--- @release 2026.5.19
 
 require "sys"
 require "config"
@@ -30,7 +22,6 @@ _G[_modname] = _M
 local NC = "mqtt_not_connected"
 local L = "net_mqtt"
 
--- 协议编号（200x 下行 ↔ 100x 上行）
 local DT = {
     UL_WAKEUP = "1001",
     UL_REST = "1002",
@@ -82,7 +73,6 @@ local DT = {
     DL_SOFTPHOTO_SET = "2031",       -- → UL 1031 softPhoto（AT+SOFTPHOTOSET=）
 }
 
--- 模块状态
 local started = false
 local mqttClient = nil
 local isConnected = false
@@ -103,7 +93,6 @@ local state = {
     last_publish_topic = nil,
 }
 
---- 需 T3x 在线才能完成的下行（T3x 休眠时入队，hasPendingHostWork 阻塞休眠）
 local pendingHostQueue = {}
 local pendingHostDrainHooked = false
 local HOST_DL_NEEDS_T3X = {
@@ -125,10 +114,6 @@ local HOST_DL_NEEDS_T3X = {
 }
 local DOWNLINK_HANDLERS
 
--- ============================================================
--- MQTT工具函数
--- ============================================================
-
 local function getDeviceId()
     local ok, did = pcall(require, "device_id")
     if ok and type(did) == "table" and did.getDeviceId then
@@ -144,7 +129,6 @@ local function mqttConnectedEvent()
     return (_G.APP_EVENTS or {}).MQTT_CONNECTED or "mqtt_connected"
 end
 
---- 含尾斜杠/无尾斜杠/子路径；平台 Publish 到 device 均可收到
 local function getSubTopicFilter()
     return "/panshi/device/" .. getDeviceId() .. "/#"
 end
@@ -189,7 +173,6 @@ local function mqttTimestamp()
     return os.date("%Y-%m-%d %H:%M:%S")
 end
 
---- @param fields string 以逗号开头的扩展字段，如 ',"powerStatus":1'
 local function formatUplink(dataType, fields)
     fields = fields or ""
     return string.format(
@@ -207,7 +190,6 @@ local function publishUplink(opts)
     end
     local topic = getPubTopic() .. (opts.suffix or "event")
     local payload = opts.payload or formatUplink(opts.dataType, opts.fields)
-    -- 经 mqtt_pub 队列发布，避免在 mqtt recv 回调内直接 publish 失败
     sys.publish("mqtt_pub", topic, payload, opts.qos or 1)
     if opts.log then
         log.info(L, opts.log, topic, table.unpack(opts.log_args or {}))
@@ -222,10 +204,6 @@ local function publishUplink(opts)
     end
     return true
 end
-
--- ============================================================
--- 蜂窝入网
--- ============================================================
 
 local netReadyPublished = false
 local bootstrapStarted = false
@@ -286,7 +264,6 @@ function bootstrapNetwork()
     return true
 end
 
---- 等待蜂窝就绪（避免 net_ready 已发布而 mqttTask 后启动导致永远等不到）
 local function waitForNetworkReady()
     if netReadyPublished then
         log.info(L, "net_register_ok")
@@ -310,17 +287,12 @@ local function waitForNetworkReady()
     return gotReady ~= false and gotReady ~= nil, deviceId
 end
 
--- ============================================================
--- 下行解析
--- ============================================================
-
 local function normalizeDataType(data)
     if type(data) ~= "table" or data.dataType == nil then
         return nil
     end
     return tostring(data.dataType)
 end
-
 
 local function collectSimSnapshot()
     local snap = {
@@ -379,7 +351,6 @@ local function collectBatterySnapshot()
             snap.charging = uc.isCharging() and 1 or 0
         end
     end
-    -- 与 usbInserted 联动：未插 USB 时 charging 必为 0（防 GPIO17 悬空误报）
     if snap.usb_inserted ~= 1 then
         snap.charging = 0
     end
@@ -482,7 +453,6 @@ function setStatusIntervalSec(sec, persist)
     return true
 end
 
---- 1003 周期（秒）：持久化 → APP_RUNTIME → LOW_POWER_CFG → BATTERY 回退
 local function getStatusReportIntervalSec()
     local sec = clampIv((_G.APP_RUNTIME or {}).low_power_interval_sec)
     if sec then
@@ -538,7 +508,6 @@ local function setupBatteryStatusReport()
     end)
 end
 
--- [2001] 唤醒查询 → 1001
 local function handleDownlink2001(data)
     log.info(L, "downlink_2001")
     if data.messageId then
@@ -547,7 +516,6 @@ local function handleDownlink2001(data)
     publishWakeup()
 end
 
--- [2002] 休眠/低功耗 → 1002（enter/exit 成功后由 app 上报 rest 主题）
 local function resolve2002Mode(data)
     local mode = data.lowPowerMode
     if mode == "enter" or mode == "exit" then
@@ -588,7 +556,6 @@ local function handleDownlink2002(data)
     end
 end
 
--- [2003] 状态/配置 → 1003（带 interval 时落盘并回显同一 interval）
 local function handleDownlink2003(data)
     if data.usbRecoveryReset == 1 or data.action == "usbRecoveryReset" then
         log.info(L, "downlink_2003_usb_refresh")
@@ -628,7 +595,6 @@ local function handleDownlink2003(data)
     })
 end
 
--- [2004] 电源/OTA 控制 → 1004(reply) + OTA 过程 1004(stage)
 local function fetchWledFromHost()
     local on = getWledState()
     local hu = getHostUart()
@@ -772,7 +738,6 @@ local function handleDownlink2004(data)
     reply(-1, "unknown_action", data.action or "")
 end
 
--- [2005] SIM 查询 → 1005
 local function handleDownlink2005(data)
     log.info(L, "downlink_2005")
     if data.messageId then
@@ -873,7 +838,6 @@ local function downlinkMessageId(data)
     return data.messageId or data.msgId or ""
 end
 
---- 100x reply 上行公共骨架（各业务通过 appendFields 扩展 body）
 local function publishReplyBase(opts)
     local fields = string.format(
         ',"reply":1,"messageId":"%s","ret":%s,"message":"%s"',
@@ -893,7 +857,6 @@ local function publishReplyBase(opts)
     })
 end
 
---- 需 T3x 在线的 query/set 下行包装（2022–2031 等）
 local function wrapHostDownlink(dlType, handler, isQuery)
     return function(data)
         handleHostDownlink(dlType, data, function()
@@ -902,7 +865,6 @@ local function wrapHostDownlink(dlType, handler, isQuery)
     end
 end
 
--- [2006] IMEI + GB28181 查询 → 1006
 local function handleDownlink2006(data)
     log.info(L, "downlink_2006")
     if data.messageId then
@@ -947,7 +909,6 @@ local function refreshTfCardStatus(messageId)
     publishTfCardStatus(snap, messageId)
 end
 
--- [2007] TF/SD 卡状态查询 → 1007
 local function handleDownlink2007(data)
     log.info(L, "downlink_2007")
     if data.messageId then
@@ -960,7 +921,6 @@ local function handleDownlink2007(data)
     end)
 end
 
---- 收集固件版本快照（2008 → 1008，仅 4G，秒回）
 local function collectVersionSnapshot(messageId)
     local scriptVersion = tostring(_G.VERSION or "")
     local firmwareVersion = ""
@@ -988,7 +948,6 @@ local function collectVersionSnapshot(messageId)
     }
 end
 
---- 1008 固件版本（应答 2008；主题 version）
 function publishVersion(opts)
     opts = type(opts) == "table" and opts or {}
     local snap = collectVersionSnapshot(opts.messageId)
@@ -1013,7 +972,6 @@ function publishVersion(opts)
     })
 end
 
--- [2008] 固件版本查询 → 1008（仅 Cat.1，秒回）
 local function handleDownlink2008(data)
     log.info(L, "downlink_2008")
     if data.messageId then
@@ -1030,7 +988,6 @@ local function tfFormatEnabled()
     return tfFormatCfg().enabled ~= false
 end
 
---- 格式化前：停 4G PIR 会话 + T3x AT+RECORDCTRL=0（T3x 侧仍会 FIFO 停录双保险）
 local function stopRecordingBeforeTfFormat()
     if pir_ctrl.suspend then
         pir_ctrl.suspend()
@@ -1076,7 +1033,6 @@ local function runTfCardFormat(messageId, reboot)
     end
 end
 
--- [2009] TF/SD 卡格式化 → 1009
 local function handleDownlink2009(data)
     log.info(L, "downlink_2009")
     if data.messageId then
@@ -1225,7 +1181,6 @@ local function handleDownlink2011(data)
     end
 end
 
---- 2012 平台开录（TF 卡）→ 1012（event）；T3x 写盘后另有 1010 t3x_active（pir）
 local function handleDownlink2012(data)
     sys.taskInit(function()
         local messageId = downlinkMessageId(data)
@@ -1369,11 +1324,9 @@ local function handleDownlink2020(data)
     handleDownlinkEncode(data, true)
 end
 
-
 local RECORD_TIME_ALLOWED = "5|10|15|20|30|45|60"
 local RECORD_TIME_ALLOWED_JSON = "[5,10,15,20,30,45,60]"
 
---- 2022–2031：T3x UART query/set 下行公共工厂
 local function makeQuerySetReplyPublisher(spec)
     return function(dlType, retCode, message, body, messageId)
         local ulType = (dlType == spec.queryDl) and spec.ulQuery or spec.ulSet
@@ -1828,15 +1781,10 @@ end
 
 local function handleServerMessage(topic, payload)
     log.info(L, "mqtt_rx", topic, payload)
-    -- 下行处理放到 task，与上行 mqtt_pub 队列配合，避免 recv 回调上下文限制
     sys.taskInit(function()
         dispatchDownlink(topic, payload)
     end)
 end
-
--- ============================================================
--- MQTT 配置（t3x 经 AT+MQTTCFG 下发后覆盖 _G.MQTT_CFG）
--- ============================================================
 
 local function normMqttCfg(cfg)
     if not cfg or not cfg.host or cfg.host == "" then
@@ -1856,7 +1804,6 @@ local function normMqttCfg(cfg)
     }
 end
 
---- 与当前 _G.MQTT_CFG 是否一致（T3x bootstrap 同参 MQTTCFG 时跳过重连）
 function isSameMqttConfig(cfg)
     local nextCfg = normMqttCfg(cfg)
     local cur = normMqttCfg(_G.MQTT_CFG or {})
@@ -1894,10 +1841,6 @@ function restart()
     end)
     return true
 end
-
--- ============================================================
--- MQTT任务
--- ============================================================
 
 local function mqttTask()
     local gotReady, deviceId = waitForNetworkReady()
@@ -2009,11 +1952,6 @@ local function mqttTask()
     isConnected = false
 end
 
--- ============================================================
--- 上行发布（100x）
--- ============================================================
-
---- host_event：mqtt 类待处理（2006/2007/2009 入队 + 2011 停录待 T3x 同步 1011）
 function hasPendingHostWork()
     if #pendingHostQueue > 0 then
         return true
@@ -2025,7 +1963,6 @@ function hasPendingHostWork()
     return false
 end
 
---- 1001 唤醒
 function publishWakeup()
     publishUplink({
         suffix = "wakeup",
@@ -2035,7 +1972,6 @@ function publishWakeup()
     })
 end
 
---- 1002 rest 事件（enter: opts.source=enter|reconnect；exit: opts.lowPowerMode=exit）
 function publishRest(opts)
     opts = type(opts) == "table" and opts or {}
     local mode = opts.lowPowerMode or "enter"
@@ -2068,7 +2004,6 @@ function publishRest(opts)
     })
 end
 
---- 1003 状态（电量 / USB / 充电 / 低功耗 / interval 与周期定时一致）
 function publishStatus(opts)
     opts = type(opts) == "table" and opts or {}
     local snap = collectBatterySnapshot()
@@ -2131,7 +2066,6 @@ function publishStatus(opts)
     })
 end
 
---- MQTT 连接成功后的首条上行：rest 发 1002+1003，常电发 1001
 function publishConnectUplink()
     local rt = _G.APP_RUNTIME or {}
     if tonumber(rt.low_power_mode) == 1 then
@@ -2143,7 +2077,6 @@ function publishConnectUplink()
     end
 end
 
---- 1005 SIM 信息（应答 2005）
 function publishSimInfo()
     local snap = collectSimSnapshot()
     publishUplink({
@@ -2170,7 +2103,6 @@ function publishSimInfo()
     })
 end
 
---- 1006 设备标识（Cat.1 IMEI + T3x GB28181 ID，应答 2006）
 function publishDeviceIdentity(imei, gb28181Id, messageId)
     local deviceNo = getDeviceId()
     imei = imei or deviceNo
@@ -2198,7 +2130,6 @@ function refreshAndPublishDeviceIdentity(messageId)
     end)
 end
 
---- 1007 TF/SD 卡状态（应答 2007）
 function publishTfCardStatus(snap, messageId)
     snap = type(snap) == "table" and snap or {}
     local present = (snap.present == 1 or snap.present == true) and 1 or 0
@@ -2228,7 +2159,6 @@ function refreshAndPublishTfCardStatus(messageId)
     end)
 end
 
---- 1009 TF/SD 卡格式化结果（应答 2009）
 function publishTfFormatResult(retCode, message, messageId, extra)
     extra = type(extra) == "table" and extra or {}
     local rebootField = ""
@@ -2250,14 +2180,10 @@ function publishTfFormatResult(retCode, message, messageId, extra)
     })
 end
 
---- §6.2：从 host_uart 缓存取 IPC 扩展状态字段 JSON 片段（实现见 ipc_supervision.lua）
-
---- §6.3：T3x AT+IPCALERT → 1004 action=ipc_alert（实现见 ipc_supervision.lua）
 function publishIpcAlert(alertCode, alertDetail)
     return ipc_sup.publishAlert(alertCode, alertDetail)
 end
 
---- 1004 控制回复（应答 2004；reply=1，与 OTA stage 区分）
 function publishControlReply(action, retCode, message, extra)
     extra = type(extra) == "table" and extra or {}
     local enableField = ""
@@ -2289,7 +2215,6 @@ local POWEROFF_NOTIFY_MSG = {
     low_power = "low_power_shutdown",
 }
 
---- 关机前通知 MQTT 后台（低电量等）：尽量连上 → 1004 off + 1003 → 再 callback
 function notifyPowerOff(reason, callback)
     sys.taskInit(function()
         reason = reason or "unknown"
@@ -2320,7 +2245,6 @@ function notifyPowerOff(reason, callback)
     end)
 end
 
---- 1004 OTA 进度/结果（stage 字段，无 reply）
 local function mqttBuildVersion(ver)
     if ver == nil or ver == "" then
         return ""
@@ -2353,7 +2277,6 @@ function publishOtaStatus(stage, retCode, message, extra)
     })
 end
 
---- 1010 PIR 检测状态（2010 策略生效后硬件触发，或 2010 query；T3x 写盘确认时 pirStatus=t3x_active）
 local function publishPirFromState(overrides)
     if not isConnected then
         log.warn(L, NC)
@@ -2375,7 +2298,6 @@ local function publishPirFromState(overrides)
     })
 end
 
---- 1010 统一入口（app / 2010 配置等）
 function publishPirEvent(overrides)
     publishPirFromState(overrides)
 end
@@ -2416,7 +2338,6 @@ function publishPirDetect(extra)
     })
 end
 
---- T3x JPEG 已写入 SD → 1010（pirStatus=snapshot_saved，附 snapshotPath，不传图内容）
 function publishPirSnapshotDone(path)
     publishPirFromState({
         pirStatus = "snapshot_saved",
@@ -2425,7 +2346,6 @@ function publishPirSnapshotDone(path)
     })
 end
 
---- T3x 首个 I 帧写盘确认 → 1010（pirStatus=t3x_active, active=1）
 function publishPirRecordActive()
     publishPirFromState({
         pirStatus = "t3x_active",
@@ -2435,7 +2355,6 @@ function publishPirRecordActive()
     })
 end
 
---- 1012 PIR 录像开始（2012 平台开 TF 卡录受理，source=4g 表调度侧非上云）
 function publishPirRecordStart(action, uploadMode, quality, opts)
     if not isConnected then
         log.warn(L, NC)
@@ -2458,7 +2377,6 @@ function publishPirRecordStart(action, uploadMode, quality, opts)
     })
 end
 
---- 1011 PIR 录像停止（4G 定时/2011 设备停录，或 T3x AT+RECORD=0）
 function publishPirRecordStop(reason, uploadMode, quality, opts)
     if not isConnected then
         log.warn(L, NC)
@@ -2494,7 +2412,6 @@ function publishPirRecordStop(reason, uploadMode, quality, opts)
     })
 end
 
---- T3x AT+RECORD=0 → 1011（reason 为 T3x 原值，source=t3x）
 function publishT3xRecordStop(reason, uploadMode, quality)
     local st = pir_ctrl.getState()
     publishPirRecordStop(
@@ -2509,7 +2426,6 @@ function publish(topic, data, qos)
     sys.publish("mqtt_pub", topic, data, qos or 1)
 end
 
---- T3x 经 AT+MQTTPUB=<suffix>;<json> 委托 4G 发布；suffix 拼在 getPubTopic() 后
 function publishRaw(topicSuffix, payload, qos)
     if not isConnected or not mqttClient then
         log.warn(L, "not_connected_raw", topicSuffix)
@@ -2562,7 +2478,6 @@ function start(options)
     return true
 end
 
---- 关停 MQTT 与发布任务（t3x 烧录前由 app 调用）
 function stop()
     if not started and not mqttClient then
         return false

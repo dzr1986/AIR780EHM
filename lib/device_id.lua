@@ -1,4 +1,3 @@
--- IMEI 解析；专题 doc/modules/LIB_RUNTIME_UTILS.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M

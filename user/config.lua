@@ -1,11 +1,7 @@
 module(..., package.seeall)
 _G[_modname or (...)] = _M
-local RNDIS_ENABLE = 1
+local RNDIS_ENABLE = 0
 local LOW_POWER_ENABLE = 1
--- 低功耗「进 rest / 断 T3x」主策略（见 doc/LOW_POWER_ENTER_STRATEGY.md）
--- battery    = 默认三档：>20% 常电；5%<电量≤20% T31 HOSTIDLE（PIR 唤醒后 30s 内拒休眠）；≤5% 4G rest + 关机
--- idle_poll  = 旧方式：不看电量分档，仅 T3x 空闲轮询 HOSTIDLE 断电
--- hybrid     = 电量≤t3x_rest_percent 进 4G rest，>rest 仍允许 HOSTIDLE（纯动态侦测机型）
 local LOW_POWER_ENTER_STRATEGY = "battery"
 local HOST_EVT_ENABLE = 1
 local USB_REENUM_ENABLE = 1 -- 1=允许 T3X 通过 USBRESET 触发 CAT1 重新枚举
@@ -273,14 +269,12 @@ _G.BATTERY_CFG = {
         range = nil,
         divider = { r_kohm = 1000, rx_kohm = 510 },
         mv_scale = 3326 / 1131,
-        -- 实测校准：ADC 换算约 3608mV 时万用表电芯 3812mV（2026-06）
         mv_calibration = 3812 / 3608,
     },
     cell = {
         v_max_mv = 4200,
         v_min_mv = 3000,
     },
-    -- ADC 滤波：抑制 mV/percent 抖动（满电附近 4200mV 阈值尤其敏感）
     filter = {
         sample_count = 11,
         sample_spacing_ms = 20,
@@ -311,7 +305,6 @@ _G.BATTERY_CFG = {
     guard = {
         enabled = true,
         ignore_when_usb_inserted = true,
-        -- 三档电量（battery 策略）：>host_idle_below 常电；中间档 HOSTIDLE；≤shutdown 关机
         battery_rest_dynamic_detect = true,
         host_idle_below_percent = 20,   -- 电量 ≤20% 允许 T31 HOSTIDLE（4G 仍 normal，不进 rest）
         host_idle_min_awake_sec = 30,   -- 中间档：PIR 唤醒后至少常电 30s，再允许 HOSTIDLE
@@ -432,7 +425,6 @@ _G.HOST_IPC_CFG = {
     t3x_power_wait_ms = 800,
     host_boot_wait_ms = 1500,
     boot_sound_wait_ready = true,
-    -- USB 已插且 IPCSTATUS 长期无应答：powerOff → powerOn → MCU INT 脉冲
     uart_recovery = {
         enabled = true,
         miss_threshold = 5,

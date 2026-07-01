@@ -74,6 +74,23 @@
 ## 5. 度量命令
 
 ```bash
-wc -l user/host_uart.lua user/net_mqtt.lua user/app.lua
+wc -c user/*.lua lib/*.lua | tail -1
 git diff main --stat user/host_uart.lua
 ```
+
+---
+
+## 6. Flash 512KB 顶满（LuatTools 合并失败）
+
+**现象**：`文件总数据量(512kb)超过了固件脚本区空间(512kb)`。
+
+| 手段 | 约省 Flash | 功能影响 |
+|------|-----------|----------|
+| `luatos.json` → `only_luac_code: True` | 显著（源码→luac） | 无 |
+| `RNDIS_ENABLE=0` + `lib/usb_rndis.lua` 桩 | ~10KB | 无 RNDIS 网卡调试 |
+| 去掉 Lua 纯注释行（`scripts` 或发布前） | ~15KB | 无 |
+| `MODULE_FLAGS=false` | **不省 Flash** | 仅省 RAM |
+
+完整 RNDIS 恢复：`archive/lib/usb_rndis_full.lua` 覆盖 `lib/usb_rndis.lua`，`RNDIS_ENABLE=1`。
+
+量产推荐：`only_luac_code=True`、`RNDIS_ENABLE=0`，详见 `doc/CAT1_SLIMMING_FLOW.md` §7。

@@ -1,6 +1,5 @@
 require "sys"
 require "config"
--- USB_DET / CHG_STATE 中断；专题 doc/modules/USB_CHARGE_POLICY.md
 local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
@@ -83,7 +82,6 @@ local function readCharging()
     end
     return gpio.get(pin) == cfg().chg_active_level
 end
---- 有效充电态：须 USB 已插入且 CHG_STATE 有效（避免 GPIO17 悬空误报）
 local function effectiveCharging()
     return readUsbInserted() and readCharging()
 end

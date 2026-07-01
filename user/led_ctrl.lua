@@ -1,6 +1,5 @@
 require "sys"
 require "config"
--- GPIO21 蓝灯状态机；专题 doc/modules/PERIPHERAL_LED_FLOW.md
 local gpio_util = require "gpio_util"
 local _M = { _VERSION = "1.2.0" }
 module(..., package.seeall)

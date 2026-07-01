@@ -1,7 +1,6 @@
 require "sys"
 require "sysplus"
 require "config"
--- 外设聚合：按键 / LED / PIR 硬件；专题 doc/modules/PERIPHERAL_LED_FLOW.md
 local gpio_util = require "gpio_util"
 local led_ctrl = require "led_ctrl"
 local pir_ctrl = require "pir_ctrl"

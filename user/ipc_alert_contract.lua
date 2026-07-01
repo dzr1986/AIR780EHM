@@ -1,11 +1,6 @@
---[[
-  T3x IPC ↔ Cat.1 共享 alertCode 契约（镜像真源：app/cat1/ipc_alert_contract.h）
-  文档：doc/T3X_IPC_ALERT_CONTRACT.md
-]]
 
 local M = {}
 
---- IPC 经 AT+IPCALERT 上报的码；map1011 / reconcile 为 Cat.1 侧策略
 M.IPC_ALERT = {
     tf_mount_fail         = { map1011 = false, reconcile = false },
     uart_notify_fail      = { map1011 = false, reconcile = true },
@@ -23,7 +18,6 @@ M.IPC_ALERT = {
     ipcpoweroff_busy      = { map1011 = false, reconcile = false },
 }
 
---- Cat.1 本地产生、不经 IPC UART 的码
 M.CAT1_ONLY = {
     encode_runtime_fail = { map1011 = false, reconcile = false },
 }

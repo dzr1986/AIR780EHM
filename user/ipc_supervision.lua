@@ -1,7 +1,3 @@
---- Cat.1 侧 IPC 异常监督（镜像 app/cat1/ipc_supervision.*）
--- 专题：doc/modules/IPC_SUPERVISION_FLOW.md
--- 契约：ipc_alert_contract.lua ↔ ipc_alert_contract.h
--- @module ipc_supervision
 
 require "sys"
 
@@ -13,7 +9,6 @@ _G[_modname] = _M
 local L = "ipc_sup"
 local _deps = {}
 
---- IPCALERT → 1003 扩展字段增量 patch（T3x 主动推送为主，alert 作补充）
 local ALERT_CLOUD_PATCH = {
     tf_mount_fail = { tfPresent = 0 },
     time_sync_fail = { timeSynced = 0 },
@@ -21,21 +16,15 @@ local ALERT_CLOUD_PATCH = {
     gb28181_register_fail = { gb28181Online = 0 },
 }
 
---- 后台调度去重（1003 发布后 / ipc_alert 后各一条）
 local ipc_stat_refresh_pending = false
 local ipc_stat_refresh_force = false
 local record_reconcile_pending = false
 
---- 由 net_mqtt 在模块加载完成后注入上行依赖
 function bind(deps)
     if type(deps) == "table" then
         _deps = deps
     end
 end
-
--- ---------------------------------------------------------------------------
--- 依赖与 host_uart 懒加载
--- ---------------------------------------------------------------------------
 
 local function publishUplink(opts)
     if _deps.publish_uplink then
@@ -72,10 +61,6 @@ local function pirCtrlMod()
     return nil
 end
 
--- ---------------------------------------------------------------------------
--- 1003 IPC 扩展状态（§6.2）
--- ---------------------------------------------------------------------------
-
 function ipcCloudStatFields()
     local hu = hostUartMod()
     if not hu or not hu.getCachedHostIpcCloudStat then
@@ -101,7 +86,6 @@ function mergeHostIpcCloudCache()
     end
 end
 
---- 1003 发布前刷新（须在 coroutine/task 内才发 AT 查询；否则仅 merge 缓存）
 function refreshIpcCloudStatBefore1003(timeoutMs, force)
     local hu = hostUartMod()
     if not hu then
@@ -118,7 +102,6 @@ function refreshIpcCloudStatBefore1003(timeoutMs, force)
     return type(hu.getCachedHostIpcCloudStat and hu.getCachedHostIpcCloudStat()) == "table"
 end
 
---- T3x 休眠/未上电时跳过后台 IPCSTAT 拉取（省电）
 local function isT3xIdleForIpcRefresh()
     local hu = hostUartMod()
     if not hu or not hu.isT31StartedForHostQuery then
@@ -127,7 +110,6 @@ local function isT3xIdleForIpcRefresh()
     return hu.isT31StartedForHostQuery() ~= true
 end
 
---- 1003 on_published(force=false) / ipc_alert 后(force=true) 调度 IPCSTAT 刷新
 local function scheduleIpcCloudStatRefresh(force)
     force = force == true
     if force then
@@ -152,10 +134,6 @@ local function scheduleIpcCloudStatRefresh(force)
         refreshIpcCloudStatBefore1003(2500, doForce)
     end)
 end
-
--- ---------------------------------------------------------------------------
--- 录像会话对账（§4.3）
--- ---------------------------------------------------------------------------
 
 local function canReconcileRecord()
     local pc = pirCtrlMod()
@@ -197,10 +175,6 @@ local function scheduleRecordReconcile()
     end)
 end
 
--- ---------------------------------------------------------------------------
--- IPCALERT 处理（§6.3）
--- ---------------------------------------------------------------------------
-
 local function patchCloudStatFromAlert(alertCode)
     local patch = ALERT_CLOUD_PATCH[tostring(alertCode or "")]
     if not patch then
@@ -238,12 +212,10 @@ local function handleMap1011(alertCode)
     publishT3xRecordStop(alertCode, uploadMode, quality)
 end
 
---- host_uart AT+IPCALERT 解析后或 app 事件总线入口
 function onAlert(alertCode, alertDetail)
     publishAlert(alertCode, alertDetail)
 end
 
---- T3x AT+IPCALERT → 1004 action=ipc_alert；部分码映射 1011（契约表）
 function publishAlert(alertCode, alertDetail)
     alertCode = tostring(alertCode or "unknown")
     alertDetail = tostring(alertDetail or "")
@@ -252,7 +224,6 @@ function publishAlert(alertCode, alertDetail)
         return
     end
 
-    -- 1. 补丁 1003 缓存 → 2. 发 1004 → 3. 1011 / 对账 → 4. 强制 IPCSTAT
     patchCloudStatFromAlert(alertCode)
     publishIpcAlertUplink(alertCode, alertDetail)
     handleMap1011(alertCode)

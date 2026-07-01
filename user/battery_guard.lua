@@ -1,4 +1,3 @@
--- 电量档位（battery 策略）：doc/modules/BATTERY_GUARD_TIERS.md
 require "sys"
 require "config"
 local _modname = ...
@@ -23,10 +22,6 @@ local guard = {
     exit_confirm_streak = 0,
     host_idle_wake_ts = 0,
 }
-
--- ---------------------------------------------------------------------------
--- 配置与开关
--- ---------------------------------------------------------------------------
 
 local function cfg()
     if type(_G.BATTERY_GUARD_CFG) == "table" then
@@ -85,10 +80,6 @@ function isUsbInserted()
     return false
 end
 
--- ---------------------------------------------------------------------------
--- 电量档位
--- ---------------------------------------------------------------------------
-
 function getBatteryTier(pct)
     pct = tonumber(pct)
     if pct == nil then
@@ -115,10 +106,6 @@ local function syncBatteryTier(pct)
     end
     return tier
 end
-
--- ---------------------------------------------------------------------------
--- PIR / rest 状态机
--- ---------------------------------------------------------------------------
 
 local function loadPirCtrl()
     if pir_ctrl then
@@ -221,7 +208,6 @@ function shouldAllowPirInRest()
     return isBatteryDynamicRest()
 end
 
---- >20% 常电：拒绝 HOSTIDLE；5~20% 中间档：允许 HOSTIDLE 断 T31
 function shouldAllowHostIdleSleep()
     if cfg().block_host_idle_above_recover == false then
         return true
@@ -229,7 +215,6 @@ function shouldAllowHostIdleSleep()
     return getBatteryTier(guard.last_percent) == TIER_HOST_IDLE
 end
 
---- 中间档 PIR 唤醒后至少 host_idle_min_awake_sec 内拒绝 HOSTIDLE，保证 T31 进入录像
 function canAcceptHostIdleSleep()
     if not shouldAllowHostIdleSleep() then
         return false
@@ -248,10 +233,6 @@ end
 function markT3xWoken()
     noteT3xAwakeForHostIdle()
 end
-
--- ---------------------------------------------------------------------------
--- evaluate 分阶段决策
--- ---------------------------------------------------------------------------
 
 local function loadPctThresholds()
     return {
@@ -330,7 +311,6 @@ local function tryExitBatteryRest(pct, recoverPct)
     exitBatteryRest()
 end
 
---- 已在 rest 但非电量 rest（如历史 usb_remove 误进）：电量恢复时立即退出
 local function tryExitMismatchedRest(pct, recoverPct)
     if pct == nil or recoverPct == nil or pct <= recoverPct then
         return
@@ -375,7 +355,6 @@ local function handleShutdownZone(pct, shutdownPct)
     return true
 end
 
---- battery 策略：>20% 常电；5~20% HOSTIDLE；≤5% 关机
 local function evaluateBatteryStrategy(pct, t)
     local tier = syncBatteryTier(pct)
 
@@ -395,7 +374,6 @@ local function evaluateBatteryStrategy(pct, t)
     tryExitMismatchedRest(pct, t.host_idle)
 end
 
---- hybrid 策略：保留 ≤t3x_rest_percent 进 4G rest 的旧逻辑
 local function handleRestZoneHybrid(pct, t)
     if guard.rest_by_battery then
         tryExitBatteryRest(pct, t.recover)
@@ -439,7 +417,6 @@ function evaluate(pct, mv)
     end
     guard.last_percent = pct
 
-    -- 阶段 1：USB 供电（优先于电量阈值）
     if isUsbInserted() then
         cancelShutdownTimer()
         if guard.rest_by_battery or guard.pir_suspended then
@@ -465,10 +442,6 @@ function evaluate(pct, mv)
         evaluateBatteryStrategy(pct, t)
     end
 end
-
--- ---------------------------------------------------------------------------
--- USB 事件入口
--- ---------------------------------------------------------------------------
 
 function onUsbInserted(opts)
     opts = type(opts) == "table" and opts or {}
@@ -496,7 +469,6 @@ function onUsbInserted(opts)
             exitedRest = true
         end
     end
-    -- 冷启动时 initPowerStatus 早于 t3x_ctrl.start()，由 bootPowerOn 上电，避免与 wake_t3x 重复
     if not exitedRest and source ~= "boot" and type(hooks.wake_t3x) == "function" then
         hooks.wake_t3x()
     end

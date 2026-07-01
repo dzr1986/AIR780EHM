@@ -1,7 +1,3 @@
---- 主机串口：AT/HEX/STR 协议 + uart_bridge + GPIO 唤醒
--- 分发：AT_CMD_TABLE / RX_LINE_HANDLER_REGISTRY
---       见 doc/modules/HOST_UART_AT_DISPATCH.md
--- @module host_uart
 
 require "sys"
 require "config"
@@ -101,7 +97,6 @@ local state = {
 local started = false
 local t3xModule = nil
 
---- 前向声明（notify handler 在文件前部，解析函数在后部）
 local normalize_ipc_cloud_stat
 local parse_ipcstat_line
 local parse_tfcard_line
@@ -127,10 +122,6 @@ local function isHostInboundQuiet()
     end
     return host_now_ms() < until_ms
 end
-
--- ---------------------------------------------------------------------------
--- 应答与工具
--- ---------------------------------------------------------------------------
 
 local function ok_tail()
     return CRLF .. "OK" .. CRLF
@@ -264,10 +255,6 @@ local function parse_servcreate_args(args)
     }
 end
 
--- ---------------------------------------------------------------------------
--- 唤醒 pending
--- ---------------------------------------------------------------------------
-
 local function set_pending_wake(sid, evt)
     state.pending_sid = tonumber(sid) or 1
     state.pending_evt = tonumber(evt) or 0
@@ -280,7 +267,6 @@ local function clear_pending_wake()
     state.pending_evt = -1
 end
 
---- 供 host_event / PIRSTAT 读取 pending HOSTEVT（不清除；消费走 AT+HOSTEVT? + AT+HOSTEVTCLR）
 function getHostEvtPending()
     if state.pending_valid then
         return true, state.pending_sid, state.pending_evt
@@ -294,10 +280,6 @@ local function echo_rx_hex_if_enabled(data)
     end
     hooks.uart_write(CRLF .. "+RXHEX:" .. encode_hex(data) .. CRLF)
 end
-
--- ---------------------------------------------------------------------------
--- AT / 简写行处理
--- ---------------------------------------------------------------------------
 
 local function uart_at_ack(_cmd)
     return ok_tail()
@@ -315,7 +297,6 @@ local function pir_field_int(pirBody, key, default)
     return v and tonumber(v) or default
 end
 
---- 从 pir_runtime body 提取 T3x media_dispatch 所需字段（与 PIRSTAT 同源）
 local function build_hostevt_media_suffix(pirBody)
     if not pirBody or pirBody == "" then
         return ",recording=0,action=video,max_sec=60,last_stop=none"
@@ -427,12 +408,10 @@ local function esc_ipc_field(s)
     return (s:gsub(",", "_"):gsub("=", "_"))
 end
 
---- P2P UID：固定 8 位，允许大小写字母与数字（如 DDDDDDDD、JFZTQ5U5）
 local function is_valid_p2p_uid(uid)
     return type(uid) == "string" and #uid == 8 and uid:match("^[A-Za-z0-9]+$") ~= nil
 end
 
---- P2P product：1~31 位数字（如 2025001），按字符串保存，不做数值上界截断
 local function is_valid_p2p_product(product)
     return type(product) == "string"
         and #product >= 1 and #product <= 31
@@ -469,7 +448,6 @@ local function parse_gb28181cfg_body(body)
     return nil
 end
 
---- T3x 下发 P2P 身份：AT+P2PCFG=<uid>,<product>
 local function uart_p2pcfg(cmd)
     local uid, product = cmd:match("^AT%+P2PCFG=([^,]+),([^,]+)$")
     if not uid or not product then
@@ -490,7 +468,6 @@ local function uart_p2pcfg(cmd)
     ) .. ok_tail()
 end
 
---- T3x 下发 GB28181 身份：AT+GB28181CFG=<device_id>,<password>[,<imei>]
 local function uart_gb28181cfg(cmd)
     local body = cmd:match("^AT%+GB28181CFG=(.+)$")
     local device_id, password, imei = parse_gb28181cfg_body(body)
@@ -574,7 +551,6 @@ local function uart_mqttpub(cmd)
     return CRLF .. "+MQTTPUB:ERROR" .. CRLF
 end
 
---- AT+MQTTCFG=host;port;ssl;user;password;client_id（字段以 ; 分隔，密码勿含 ;）
 local function parse_mqttcfg_body(body)
     if not body or body == "" then
         return nil
@@ -673,12 +649,10 @@ local function uart_pirstat_query(_cmd)
     return rsp_body("PIRSTAT", build_pirstat_body())
 end
 
---- 与 AT+PIRSTAT? 同源（t3x_ctrl 休眠前门禁用）
 function buildPirstatBody()
     return build_pirstat_body()
 end
 
---- T3x 无待处理业务时请求 4G 对 T3x 断电（先由 AT+PIRSTAT? 看 has_work / pending_wake）
 local function uart_hostidle(cmd)
     local fc = _G.FEATURE_CFG
     if fc and fc.host_evt == false then
@@ -750,7 +724,6 @@ local function uart_pirclr(_cmd)
     return rsp_line("PIRCLR", false)
 end
 
---- T3x 上报录像状态：AT+RECORD=1 / AT+RECORD=0,reason=...
 local function uart_record_notify(cmd)
     local arg = cmd:match("^AT%+RECORD=(.+)$")
     if not arg or arg == "" then
@@ -784,7 +757,6 @@ local function uart_record_notify(cmd)
     return string.format(CRLF .. "+RECORD:0,reason=%s" .. CRLF, reason) .. ok_tail()
 end
 
---- T3x IVS 人形个数：AT+PERSONCNT=N（PIR 录像会话内）
 local function uart_person_cnt_notify(cmd)
     local cnt = cmd:match("^AT%+PERSONCNT=(%d+)$")
     if not cnt then
@@ -797,7 +769,6 @@ local function uart_person_cnt_notify(cmd)
     return string.format(CRLF .. "+PERSONCNT:ok,count=%d" .. CRLF, n) .. ok_tail()
 end
 
---- T3x 归一化 PIR action：AT+PIRMEDIA=photo|video|both
 local function uart_pir_media_notify(cmd)
     local action = cmd:match("^AT%+PIRMEDIA=(.+)$")
     if not action or action == "" then
@@ -810,7 +781,6 @@ local function uart_pir_media_notify(cmd)
     return string.format(CRLF .. "+PIRMEDIA:ok,action=%s" .. CRLF, action) .. ok_tail()
 end
 
---- T3x §6.3 事件：AT+IPCALERT=code[,detail]
 local function uart_ipc_alert_notify(cmd)
     local code, detail = cmd:match("^AT%+IPCALERT=([^,]+),?(.*)$")
     if not code or code == "" then
@@ -827,7 +797,6 @@ local function ipc_ready_from_lifecycle(st)
     return (st == "ready") and 1 or 0
 end
 
---- T3x 主动推送 IPC 生命周期：AT+IPCSTATUS=ready|idle|shutting_down
 function uart_ipcstatus_notify(cmd)
     note_host_inbound_push()
     local st = cmd:match("^AT%+IPCSTATUS=(.+)$")
@@ -843,7 +812,6 @@ function uart_ipcstatus_notify(cmd)
     return string.format(CRLF .. "+IPCSTATUS:OK,status=%s" .. CRLF, st) .. ok_tail()
 end
 
---- T3x 主动推送扩展状态：AT+IPCSTAT=ipcReady=1,...
 function uart_ipcstat_notify(cmd)
     note_host_inbound_push()
     local body = cmd:match("^AT%+IPCSTAT=(.+)$")
@@ -869,7 +837,6 @@ function uart_ipcstat_notify(cmd)
     return rsp_line("IPCSTAT", true) .. ok_tail()
 end
 
---- T3x 主动推送 TF 卡：AT+TFCARD=present=1,total_mb=...
 function uart_tfcard_notify(cmd)
     note_host_inbound_push()
     local body = cmd:match("^AT%+TFCARD=(.+)$")
@@ -894,7 +861,6 @@ function uart_tfcard_notify(cmd)
     return rsp_line("TFCARD", true) .. ok_tail()
 end
 
---- T3x 抓拍完成：AT+SNAPSHOT=/mnt/sdcard/snap/...
 local function uart_snapshot_notify(cmd)
     local path = cmd:match("^AT%+SNAPSHOT=(.+)$")
     if not path or path == "" then
@@ -996,10 +962,6 @@ local function uart_poweroff(_cmd)
     return CRLF .. "+POWEROFF:OK" .. CRLF
 end
 
--- ---------------------------------------------------------------------------
--- 白光灯 WLED（4G 状态 + UART 转发 T3x）；见 doc/UART_PROTOCOL.md · MQTT 2004
--- ---------------------------------------------------------------------------
-
 local wled_state = { on = 0, last_forward_ms = 0 }
 
 local function wled_cfg()
@@ -1027,7 +989,6 @@ local function wled_ensure_t3x_powered()
     return false
 end
 
---- 须在 task 内调用；向 T3x 发 AT+WLED=0|1 并等待 +WLED:
 local function forward_wled_to_host(on, timeoutMs)
     local wc = wled_cfg()
     if wc.forward_to_t3x == false then
@@ -1074,7 +1035,6 @@ local function forward_wled_to_host(on, timeoutMs)
     return okFwd == true
 end
 
---- 须在 task 内调用；向 T3x 发 AT+WLED? 并同步 4G 缓存
 function queryHostWled(timeoutMs)
     local wc = wled_cfg()
     if wc.forward_to_t3x == false then
@@ -1181,7 +1141,6 @@ local usb_recovery_guard = {
     count = 0,
 }
 
---- 防御：4G rest 且 T3x 已断电时不 rebind（正常 rest 下 T3x 不会发 AT+USBRESET）
 local function t3x_rest_blocks_usb_reset()
     local cfg = host_usb_cfg()
     if cfg.block_usb_reset_when_t3x_rest == false then
@@ -1510,10 +1469,6 @@ local function uart_str_line(line)
     return rsp_line("STR", ok)
 end
 
--- ---------------------------------------------------------------------------
--- 表驱动分发（文档：doc/modules/HOST_UART_AT_DISPATCH.md §2）
--- ---------------------------------------------------------------------------
-
 local function uart_cmd_entry(keys, prefix, handler)
     if prefix then
         return { match = "prefix", prefix = prefix, handler = handler }
@@ -1523,10 +1478,8 @@ local function uart_cmd_entry(keys, prefix, handler)
 end
 
 local AT_CMD_TABLE = {
-    -- 握手 / 版本
     uart_cmd_entry("AT", nil, uart_at_ack),
     uart_cmd_entry({ "ATI", "AT+CGMR", "AT+GETVER" }, nil, uart_ati),
-    -- 状态查询
     uart_cmd_entry("AT+GETCFG", nil, uart_getcfg),
     uart_cmd_entry({ "AT+PIRSTAT", "AT+PIRSTAT?" }, nil, uart_pirstat_query),
     uart_cmd_entry("AT+PIRCLR", nil, uart_pirclr),
@@ -1544,7 +1497,6 @@ local AT_CMD_TABLE = {
     uart_cmd_entry("AT+TIME", nil, uart_time_query),
     uart_cmd_entry({ "AT+IMEI", "AT+IMEI?" }, nil, uart_imei),
     uart_cmd_entry({ "AT+IPCINFO", "AT+IPCINFO?" }, nil, uart_ipcinfo_query),
-    -- 链路 / 通道配置
     uart_cmd_entry(nil, "AT+MQTTPUB=", uart_mqttpub),
     uart_cmd_entry({ "AT+WLED?", "AT+WLEDEN?" }, nil, uart_wled),
     uart_cmd_entry(nil, "AT+WLED=", uart_wled),
@@ -1557,7 +1509,6 @@ local AT_CMD_TABLE = {
     uart_cmd_entry(nil, "AT+RIL=", uart_ril),
     uart_cmd_entry(nil, "AT+SENDSTR=", uart_sendstr),
     uart_cmd_entry(nil, "AT+SENDHEX=", uart_sendhex),
-    -- 低功耗 / 休眠
     uart_cmd_entry(nil, "AT+LOWPOWER=", uart_lowpower),
     uart_cmd_entry({ "AT+HOSTIDLE", "AT+HOSTIDLE?" }, nil, uart_hostidle),
     uart_cmd_entry(nil, "AT+HOSTIDLE=", uart_hostidle),
@@ -1565,7 +1516,6 @@ local AT_CMD_TABLE = {
     uart_cmd_entry(nil, "AT+RNDIS=", uart_rndis),
     uart_cmd_entry({ "AT+USBRESET", "AT+USBRESET?" }, nil, uart_usbreset),
     uart_cmd_entry(nil, "AT+USBRECOVERY=", uart_usbrecovery),
-    -- 电源 / OTA
     uart_cmd_entry("AT+REBOOT", nil, uart_reboot),
     uart_cmd_entry("AT+POWEROFF", nil, uart_poweroff),
     uart_cmd_entry({ "AT+OTA", "AT+OTACHECK" }, nil, uart_ota),
@@ -2204,7 +2154,6 @@ normalize_ipc_cloud_stat = function(snap)
     return snap
 end
 
---- T3x 推送 / 本地 patch 写入 1003 扩展状态缓存
 function commitHostIpcCloudStat(snap)
     if type(snap) ~= "table" or next(snap) == nil then
         return nil
@@ -2277,7 +2226,6 @@ local function try_ipcpoweroff_line(line)
     return false
 end
 
---- T3x 上行应答行注册表（按序尝试，命中即消费；文档见 doc/modules/HOST_UART_AT_DISPATCH.md）
 local RX_LINE_HANDLER_REGISTRY = {
     { name = "encode_uart_error", fn = try_encode_uart_error },
     { name = "sound_ack", fn = try_sound_ack_line },
@@ -2366,10 +2314,6 @@ local function host_process_line(line)
     host_plain_line(line)
     return nil
 end
-
--- ---------------------------------------------------------------------------
--- 对外 API
--- ---------------------------------------------------------------------------
 
 function uart_at_cmd(cmd)
     if not cmd or cmd == "" then
@@ -2464,7 +2408,6 @@ local function host_boot_wait_ms(cfg)
         or 1500
 end
 
---- 通用 T3x AT 查询（须在 task 内调用）
 run_host_query = function(opts)
     if not coroutine.running() then
         if opts.err_log then
@@ -2562,7 +2505,6 @@ host_query = function(timeoutMs, opts)
     return run_host_query(opts)
 end
 
---- T3x AT 设置公共模板（busy → 上电 → sendString → waitUntil → parse_rsp）
 host_set = function(spec)
     spec = spec or {}
     local busyKey = spec.busy_key
@@ -2663,7 +2605,6 @@ function getCachedGb28181Cfg()
     }
 end
 
---- 须在 task 内调用；向 T3x 发 AT+GB28181? 并等待 +GB28181:
 function queryHostGb28181(timeoutMs)
     return host_query(timeoutMs, {
         busy_key = "gb28181_query_busy",
@@ -2725,7 +2666,6 @@ local function apply_record_snap_to_cloud(cloud)
     return cloud
 end
 
---- §6.2 状态缓存（T3x 推送 + 过期时单条 AT+IPCSTAT? 兜底）
 local function ipc_cloud_stat_max_age_sec()
     local cfg = ipc_cfg()
     return tonumber(cfg.status_cache_max_age_sec) or 90
@@ -2796,7 +2736,6 @@ function getCachedHostIpcCloudStat()
     })))
 end
 
---- T31(T3x) 是否已上电/运行（GPIO 上电 或 UART 已收到 T3x 来 AT）
 function isT31StartedForHostQuery()
     if state.host_at_ready then
         return true
@@ -2809,12 +2748,10 @@ function isT31StartedForHostQuery()
     return false
 end
 
---- T3x 已上电或 UART 已通时值得查 IPCSTAT
 function shouldQueryIpcCloudStat()
     return isT31StartedForHostQuery()
 end
 
---- 无 IPCSTATUS 缓存但 T3x 可能已运行时，先查 AT+IPCSTATUS?
 function needsHostIpcStatusRefresh()
     local life = state.host_ipc_status
     if life == "ready" or life == "shutting_down" then
@@ -2823,7 +2760,6 @@ function needsHostIpcStatusRefresh()
     return shouldQueryIpcCloudStat()
 end
 
---- 将 AT+TFCARD? / AT+RECORD? 缓存合并进 host_ipc_cloud_stat（1003 字段源）
 function mergeTfRecordIntoCloudStat()
     local cloud = state.host_ipc_cloud_stat
     if type(cloud) ~= "table" then
@@ -2835,8 +2771,6 @@ function mergeTfRecordIntoCloudStat()
     return cloud
 end
 
---- 1003 发布前：合并本地缓存；须在 task/coroutine 内才单查 AT+IPCSTAT?
---- @param force boolean|nil ipc_alert 后强制拉取，忽略缓存新鲜度
 function refreshIpcCloudStatFor1003(timeoutMs, force)
     timeoutMs = tonumber(timeoutMs) or 2500
     force = force == true
@@ -2865,7 +2799,6 @@ function refreshIpcCloudStatFor1003(timeoutMs, force)
     return type(state.host_ipc_cloud_stat) == "table"
 end
 
---- §4.3：4G 会话 recording 与 T3x AT+RECORD? 对账；须在 task 内调用
 function isHostUartQueryBusy()
     return state.record_query_busy == true
         or state.recordtime_query_busy == true
@@ -2930,7 +2863,6 @@ function reconcileHostRecordSession(timeoutMs)
     return true
 end
 
---- 须在 task 内调用；向 T3x 发 AT+IPCSTAT?（§6.2 扩展状态）
 function queryHostIpcCloudStat(timeoutMs)
     return host_query(timeoutMs, {
         busy_key = "ipc_cloud_stat_query_busy",
@@ -3089,7 +3021,6 @@ function resetHostLinkState()
     log.info(LOG_TAG, "link_reset")
 end
 
---- 须在 task 内调用；向 T3x 发 AT+IPCSTATUS?，超时视为 idle（T3x 未上电或无应答）
 function queryHostIpcStatus(timeoutMs)
     return host_query(timeoutMs, {
         busy_key = "ipc_status_query_busy",
@@ -3128,7 +3059,6 @@ function queryHostIpcStatus(timeoutMs)
     })
 end
 
---- 须在 task 内调用；T3x 在线时发 AT+IPCPOWEROFF，等待 +IPCPOWEROFF:OK
 function hostIpcPowerOff(playSound, timeoutMs)
     if state.ipc_poweroff_busy then
         log.warn(LOG_TAG, "ipcstatus_busy")
@@ -3174,7 +3104,6 @@ function hostIpcPowerOff(playSound, timeoutMs)
     return success
 end
 
---- 须在 task 内调用；轮询 AT+IPCSTATUS? 直到 ready 或超时
 function waitHostIpcReady(timeoutMs, pollMs)
     local cfg = ipc_cfg()
     if cfg.enabled == false then
@@ -3207,17 +3136,14 @@ function waitHostIpcReady(timeoutMs, pollMs)
     end
 end
 
---- 须在 task 内调用；向 T3x 发 AT+TFCARD? 并等待 +TFCARD:
 local function record_cfg()
     return _G.HOST_RECORD_CFG or {}
 end
 
---- T3x 是否正在/曾写盘（AT+RECORD=1/0 维护）
 function getT3xRecActive()
     return tonumber(state.t3x_rec_active) or 0
 end
 
---- 须在 task 内调用；向 T3x 发 AT+RECORD? 查询真实写盘状态
 function queryHostRecord(timeoutMs)
     return host_query(timeoutMs, {
         busy_key = "record_query_busy",
@@ -3249,7 +3175,6 @@ function queryHostRecord(timeoutMs)
     })
 end
 
---- 须在 task 内调用；向 T3x 发 AT+RECORDTIME? 查询录像时长档位（分钟）
 function queryHostRecordTime(timeoutMs)
     return host_query(timeoutMs, {
         busy_key = "recordtime_query_busy",
@@ -3284,7 +3209,6 @@ function getCachedHostRecordTime()
     return state.host_record_time
 end
 
---- 须在 task 内调用；向 T3x 发 AT+RECORDTIME=<min>（固定档位 5/10/15/20/30/45/60）
 function setHostRecordTime(opts)
     opts = opts or {}
     return host_set({
@@ -3315,7 +3239,6 @@ function setHostRecordTime(opts)
     })
 end
 
---- MQTT 2024/2025：查询 T3x 帧率（AT+FRAMERATE?）
 function queryHostFramerate(opts)
     opts = opts or {}
     local cam = tonumber(opts.camera)
@@ -3353,7 +3276,6 @@ function queryHostFramerate(opts)
     })
 end
 
---- MQTT 2025：设置 T3x 帧率（AT+FRAMERATE=cam,stream,fps）
 function setHostFramerate(opts)
     opts = opts or {}
     return host_set({
@@ -3381,7 +3303,6 @@ function setHostFramerate(opts)
     })
 end
 
---- MQTT 2012 直连：T3x 已在线时 AT+RECORDCTRL=1[,max_sec]
 function recordCtrlStart(opts)
     opts = opts or {}
     local maxSec = tonumber(opts.max_sec or opts.videoMaxDurationSec) or 60
@@ -3404,7 +3325,6 @@ function recordCtrlStart(opts)
     })
 end
 
---- MQTT 2011 直连：T3x 已在线时 AT+RECORDCTRL=0[,reason]
 function recordCtrlStop(opts)
     opts = opts or {}
     local reason = tostring(opts.reason or "cloud")
@@ -3427,7 +3347,6 @@ function recordCtrlStop(opts)
     })
 end
 
---- MQTT 2026/2027：查询/设置人形检测（AT+PERSONDET? / AT+PERSONDET=）
 function queryHostPersonDetect(timeoutMs)
     return host_query(timeoutMs, {
         busy_key = "persondet_query_busy",
@@ -3477,7 +3396,6 @@ function setHostPersonDetect(opts)
     })
 end
 
---- MQTT 2028/2029：查询/设置麦克风 AI 音量增益（AT+MIC? / AT+MICSET=）
 function queryHostMic(opts)
     opts = opts or {}
     local cam = tonumber(opts.camera)
@@ -3538,7 +3456,6 @@ function setHostMic(opts)
     })
 end
 
---- MQTT 2030/2031：查询/设置软光敏（AT+SOFTPHOTO? / AT+SOFTPHOTOSET=）
 function queryHostSoftPhoto(timeoutMs)
     return host_query(timeoutMs, {
         busy_key = "softphoto_query_busy",
@@ -3633,7 +3550,6 @@ local function tfcard_format_cfg()
     return _G.HOST_TFCARD_FORMAT_CFG or {}
 end
 
---- 须在 task 内调用：停录→umount→格式化→mount（T3x AT+TFFORMAT=1[,reboot=0|1]）
 function formatHostTfCard(opts)
     opts = type(opts) == "table" and opts or {}
     local cfg = tfcard_format_cfg()
@@ -3711,7 +3627,6 @@ function isHostTfFormatBusy()
     return state.tfcard_format_busy == true
 end
 
---- 供 MQTT 2006 / 唤醒前设置 PIRSTAT：action=devinfo,recording=0,max_sec=0
 function setPirActionDevinfo()
     local ok, pc = pcall(require, "pir_ctrl")
     if ok and type(pc) == "table" and pc.setMediaConfig then
@@ -3833,7 +3748,6 @@ local function queryHostEncodeInner(opts)
     return nil, "timeout"
 end
 
---- 查询 T3x 编码参数（video / audio）；须在 task 内调用
 function queryHostEncode(opts)
     local result, err = queryHostEncodeInner(opts)
     if result then
@@ -3962,7 +3876,6 @@ function stop()
     return true
 end
 
---- USB 拔插时通知 T3x：禁止/允许 HOSTIDLE 休眠轮询（+CAT1:USB,1/0）；见 HOST_USB_CFG
 function push_usb_host_idle_state(inserted)
     local cfg = host_usb_cfg()
     local notify = cfg.notify_t3x_usb_state
@@ -3990,7 +3903,6 @@ function isUsbInserted()
     return is_usb_inserted()
 end
 
---- 可选：MQTT 联网态变化时通知 T3x 驱动 NET_STAT_LED（PB17）；见 LED_CFG.notify_t3x_net_led
 function push_net_led_state(online)
     local cfg = _G.LED_CFG or {}
     local notify = cfg.notify_t3x_net_led

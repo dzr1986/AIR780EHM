@@ -1,5 +1,4 @@
 require "config"
--- HOSTEVT 待处理汇总；专题 doc/modules/HOST_EVENT_PENDING.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -11,10 +10,6 @@ local PIR_PENDING_LAST = {
     retrigger = true,
     hw_accept = true,
 }
-
--- ---------------------------------------------------------------------------
--- 配置与字段解析
--- ---------------------------------------------------------------------------
 
 local function cfg()
     return _G.HOST_EVT_CFG or {}
@@ -62,10 +57,6 @@ local function emptySummary()
         evt = -1,
     }
 end
-
--- ---------------------------------------------------------------------------
--- 各类型 pending 收集（wake / pir / record / mqtt）
--- ---------------------------------------------------------------------------
 
 local function resolvePendingWake(pirBody, wakeValid, wakeSid, wakeEvt)
     if wakeValid then
@@ -173,10 +164,6 @@ function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
         evt = ctx.evt,
     }
 end
-
--- ---------------------------------------------------------------------------
--- 对外判定
--- ---------------------------------------------------------------------------
 
 function hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
     return summarize(pirBody, wakeValid, wakeSid, wakeEvt).has_event == 1

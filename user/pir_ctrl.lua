@@ -1,4 +1,3 @@
---- PIR 硬件中断 + 录像会话 + 云端启停；文档：doc/modules/PIR_CTRL_FLOW.md
 require "sys"
 require "config"
 local gpio_util = require "gpio_util"
@@ -292,7 +291,6 @@ local function clearRecordTimer()
     end
 end
 
---- 结束录像会话（可选发 PIR_STOP_RECORDING 事件）
 local function endRecordingSession(reason, opts)
     opts = type(opts) == "table" and opts or {}
     clearRecordTimer()

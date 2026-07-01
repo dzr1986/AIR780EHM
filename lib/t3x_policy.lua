@@ -1,4 +1,3 @@
--- 专题：doc/modules/T3X_POLICY_GATE.md（硬件见 T3X_POWER_WAKEUP.md）
 require "sys"
 require "config"
 local _modname = ...
@@ -8,10 +7,6 @@ _G[_modname] = _M
 local LOG_TAG = "t3x_policy"
 local lastDenyReason = ""
 local lastMqttOfflineWakeSec = 0
-
--- ---------------------------------------------------------------------------
--- 配置与运行时快照
--- ---------------------------------------------------------------------------
 
 local function cfg()
     return _G.T3X_POLICY_CFG or {}
@@ -67,10 +62,6 @@ function isBurnActive()
     return _G.T3X_BURN_MODE_ACTIVE == true
 end
 
--- ---------------------------------------------------------------------------
--- 唤醒原因分类
--- ---------------------------------------------------------------------------
-
 local function isWledWakeReason(reason)
     return tostring(reason or "") == "wled"
 end
@@ -98,10 +89,6 @@ local function allowsWakeInRest(reason)
     end
     return false
 end
-
--- ---------------------------------------------------------------------------
--- mayPowerT3x：T3x 上电/唤醒门禁
--- ---------------------------------------------------------------------------
 
 local function policyDisabled()
     if cfg().enabled == false then
@@ -157,10 +144,6 @@ function mayPowerT3x(reason, opts)
     return passesBatteryGate()
 end
 
--- ---------------------------------------------------------------------------
--- MQTT 离线唤醒
--- ---------------------------------------------------------------------------
-
 function shouldWakeOnMqttOffline()
     lastDenyReason = ""
     if cfg().block_mqtt_offline_wake == false then
@@ -184,10 +167,6 @@ function shouldWakeOnMqttOffline()
     end
     return mayPowerT3x("mqtt_offline")
 end
-
--- ---------------------------------------------------------------------------
--- requestT3xWake：策略通过后分发唤醒
--- ---------------------------------------------------------------------------
 
 local function recordMqttOfflineWake(reason)
     if reason == "mqtt_offline" then

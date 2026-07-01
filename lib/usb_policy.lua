@@ -1,12 +1,7 @@
 require "config"
--- USB 插入时 HOSTIDLE / 4G rest 门禁；专题 doc/modules/USB_CHARGE_POLICY.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-
--- ---------------------------------------------------------------------------
--- USB 插入检测
--- ---------------------------------------------------------------------------
 
 local function usb_cfg()
     return _G.HOST_USB_CFG or {}
@@ -23,10 +18,6 @@ function isUsbInserted()
     local rt = _G.APP_RUNTIME or {}
     return tonumber(rt.power_status) == 1
 end
-
--- ---------------------------------------------------------------------------
--- USB 供电时的策略门禁（读 HOST_USB_CFG 开关）
--- ---------------------------------------------------------------------------
 
 local function usbGatedPolicy(cfgKey)
     if usb_cfg()[cfgKey] == false then

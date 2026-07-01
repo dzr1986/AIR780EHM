@@ -1,4 +1,3 @@
--- 文档：doc/modules/T3X_POWER_WAKEUP.md
 require "sys"
 require "config"
 local gpio_util = require "gpio_util"
@@ -7,10 +6,6 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 
 local L = "t3x_ctrl"
-
--- ---------------------------------------------------------------------------
--- GPIO 与电源状态
--- ---------------------------------------------------------------------------
 
 local isPoweredOn = false
 local currentPowerLevel = nil
@@ -143,10 +138,6 @@ local function applyPowerLevel(on)
     return true
 end
 
--- ---------------------------------------------------------------------------
--- 启动与基础电源控制
--- ---------------------------------------------------------------------------
-
 function start()
     ensurePins()
     local policy = t3xPolicyMod()
@@ -211,10 +202,6 @@ end
 function pulseWakeup()
     return pulseMcuInt()
 end
-
--- ---------------------------------------------------------------------------
--- Boot / OTA 模式
--- ---------------------------------------------------------------------------
 
 function enterBootMode()
     log.info(L, "t3x_boot_mode_enter")
@@ -292,10 +279,6 @@ function exitBootMode()
     lastAction = "exitBootMode"
     return true
 end
-
--- ---------------------------------------------------------------------------
--- 休眠 / 唤醒
--- ---------------------------------------------------------------------------
 
 local function shouldBlockSleep(opts)
     if opts.skip_pending_work_check == true then
@@ -391,10 +374,6 @@ function getState()
         },
     }
 end
-
--- ---------------------------------------------------------------------------
--- IPC 上电 / 优雅关机 / 就绪等待
--- ---------------------------------------------------------------------------
 
 local function ipcCfg()
     return _G.HOST_IPC_CFG or {}

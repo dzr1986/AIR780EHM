@@ -1,15 +1,10 @@
 local _modname = ...
--- rest 期间 mqtt/tcp 唤醒通道策略；专题 doc/modules/LOW_POWER_WAKEUP.md
 module(_modname, package.seeall)
 _G[_modname] = _M
 
 local LOG_TAG = "low_power_wakeup"
 local MODE_MQTT = "mqtt"
 local MODE_TCP = "tcp"
-
--- ---------------------------------------------------------------------------
--- 模式配置（mqtt / tcp 二选一）
--- ---------------------------------------------------------------------------
 
 local function cfg()
     return _G.LOW_POWER_WAKEUP_CFG or {}
@@ -58,10 +53,6 @@ end
 function getModemHibernate()
     return false
 end
-
--- ---------------------------------------------------------------------------
--- net_tcp 懒加载与通道操作
--- ---------------------------------------------------------------------------
 
 local netTcpMod
 

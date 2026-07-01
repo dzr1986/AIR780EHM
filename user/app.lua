@@ -1,5 +1,3 @@
--- 应用编排中心：事件订阅、低功耗、USB、PIR→MQTT、T3x 烧录
--- 专题：doc/modules/APP_EVENT_BUS.md · 总览：doc/LUA_MODULES.md §3.4
 require "sys"
 require "sysplus"
 require "config"
@@ -226,7 +224,6 @@ local function onExitLowPower(reason)
         end
     end
     sys.publish(E.POWER_EXITED_REST)
-    -- requestT3xWake 经 time_sync.pushBeforeNotify 已含对时+notify_host，勿再调 onT3xWake 避免重复脉冲
     requestT3xWake("exit_low_power", nil, nil, { force_wake = true })
     local lpw = lowPowerWakeupMod()
     if lpw and lpw.onExitRest then
@@ -342,8 +339,6 @@ local function enterRestIfNeededAfterUsbRemove(source)
         return
     end
     if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
-        -- 电量策略：>20% 常电；5~20% 仅 T31 HOSTIDLE；≤5% 4G rest + 关机
-        -- 勿在拔 USB 时无条件 onEnterLowPower("usb_remove")
         battery_guard.onUsbRemoved()
     elseif _G.APP_RUNTIME.low_power_mode == 0 then
         onEnterLowPower("usb_remove")
@@ -696,8 +691,6 @@ local function onPirStopRecording(reason, uploadMode, quality)
     end
     wakeT3xForPir("pir_stop")
 end
-
---- PIR / T3x → MQTT 事件桥（pir_ctrl / host_uart 发布，net_mqtt 消费）
 
 local function buildPirMqttHandlers()
     local stopTimer = (_G.APP_PIR_CONFIG and _G.APP_PIR_CONFIG.STOP_REASON

@@ -1,6 +1,5 @@
 require "sys"
 require "config"
--- Cat.1 → T3x 对时（SNTP + AT+TIMESET）；专题 doc/modules/TIME_SYNC_FLOW.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
