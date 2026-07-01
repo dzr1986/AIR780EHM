@@ -52,6 +52,8 @@
 | 1003 状态 | `/panshi/app/862323084068124/status` |
 | 1004 / 1011 | `/panshi/app/862323084068124/event` |
 | 1005 SIM | `/panshi/app/862323084068124/sim` |
+| 1007 TF 卡状态 | `/panshi/app/862323084068124/tfcard` |
+| 1009 TF 卡格式化 | `/panshi/app/862323084068124/tfcard_format` |
 | 1010 PIR | `/panshi/app/862323084068124/pir` |
 | 1021 / 1020 编码 | `/panshi/app/862323084068124/encode` |
 | 1022 / 1023 录像时长 | `/panshi/app/862323084068124/record` |
@@ -77,6 +79,7 @@
 | **2005** | SIM 查询 | **1005** | `sim` |
 | **2006** | IMEI + GB28181 查询 | **1006** | `identity` |
 | **2007** | TF/SD 卡状态查询 | **1007** | `tfcard` |
+| **2009** | TF/SD 卡格式化 | **1009** | `tfcard_format` |
 | **2010** | PIR 策略 / 查询 | **1010** | `pir` |
 | **2011** | 设备停录 | **1011** | `event` |
 | **2012** | 平台开 TF 卡录 | **1012** + **1010** | `event` / `pir` |
@@ -658,6 +661,50 @@
 ```
 
 > T3x 挂载点 `client.ini` → `tf_mount_path`（默认 `/mnt/sd`）；无卡时 `tfPresent=0`，容量为 0；查询超时 `ret=-1`。
+
+---
+
+## 8.3 `2009` — TF/SD 卡格式化 → `1009`
+
+> 完整流程（停录、UART `AT+TFFORMAT`、T3x mkfs、可选 reboot）见 [mqtt_tfcard_format_flow.md](./mqtt_tfcard_format_flow.md)。
+
+**发布**：`/panshi/device/862323084068124/`
+
+```json
+{"dataType":"2009","action":"format","messageId":"fmt-001","reboot":0}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `action` | 固定 `"format"` |
+| `messageId` | 可选，1009 原样回传 |
+| `reboot` | 可选，`0` 不重启；`1` 格式化成功后 T3x 重启 |
+
+设备处理：先尝试停录（`AT+RECORDCTRL=0,tfcard_format`），再发 `AT+TFFORMAT=1,reboot=0|1`；完成后上报 `1009`。
+
+**应答主题**：`/panshi/app/862323084068124/tfcard_format`
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1009",
+  "ret": 0,
+  "message": "ok",
+  "reboot": 0,
+  "messageId": "fmt-001",
+  "time": "2026-06-23 14:30:00"
+}
+```
+
+| `message` 常见值 | 含义 |
+|------------------|------|
+| `ok` | 格式化完成 |
+| `disabled` | 功能被配置关闭 |
+| `busy` | 已有格式化任务 |
+| `timeout` | 等待 T3x 应答超时（默认 120s） |
+| `no_uart` / `t3x_unavailable` | T3x 未唤醒或串口不可用 |
+
+成功且 `reboot=0` 且 `publish_status_after=true` 时，会自动补发一次 `1007` 刷新容量。
 
 ---
 
