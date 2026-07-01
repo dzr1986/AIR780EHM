@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+local utils = require "utils"
 local uart_bridge = require "uart_bridge"
 local _modname = ...
 module(_modname, package.seeall)
@@ -3236,7 +3237,7 @@ function formatHostTfCard(opts)
 	if reboot == nil then
 		reboot = cfg.reboot_after == true or cfg.reboot_after == 1
 	end
-	reboot = (reboot == 1 or reboot == true) and 1 or 0
+	reboot = utils.parseBoolLike(reboot) and 1 or 0
 	state.tfcard_format_busy = true
 	local outcome = { ok = false, reason = "unknown" }
 	local okRun, errRun = pcall(function()

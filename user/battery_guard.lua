@@ -1,21 +1,12 @@
 require "sys"
 require "config"
+local utils = require "utils"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "battery_guard"
-local function bgInfo(...)
-	if log and log.info then
-		log.info(L, ...)
-	end
-end
-local function bgWarn(...)
-	if log and log.warn then
-		log.warn(L, ...)
-	elseif log and log.info then
-		log.info(L, ...)
-	end
-end
+local logFuncs = utils.createLogFunctions("battery_guard")
+local bgInfo = logFuncs.info
+local bgWarn = logFuncs.warn
 local pir_ctrl
 local hooks = {}
 local TIER_NORMAL = "normal"

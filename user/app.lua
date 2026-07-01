@@ -1,6 +1,7 @@
 require "sys"
 require "sysplus"
 require "config"
+local utils = require "utils"
 local function optMod(flag, name, loader)
 	local flags = _G.MODULE_FLAGS
 	if flags and flags[flag] == false then
@@ -37,24 +38,10 @@ local watchdogMod = optMod("watchdog", "watchdog")
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "app_main"
-local function appInfo(...)
-	if log and log.info then
-		log.info(L, ...)
-	end
-end
-local function appWarn(...)
-	if log and log.warn then
-		log.warn(L, ...)
-	elseif log and log.info then
-		log.info(L, ...)
-	end
-end
-local function appError(...)
-	if log and log.error then
-		log.error(L, ...)
-	end
-end
+local logFuncs = utils.createLogFunctions("app_main")
+local appInfo = logFuncs.info
+local appWarn = logFuncs.warn
+local appError = logFuncs.error
 local stopWatchdogBeforePowerOff
 local E = APP_EVENTS
 local started = false

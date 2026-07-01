@@ -1,43 +1,21 @@
 require "sys"
 require "config"
+local utils = require "utils"
 local pir_ctrl = require "pir_ctrl"
 local ipc_sup = require "ipc_supervision"
-local hostUartMod
-local function getHostUart()
-	if hostUartMod == nil then
-		if _G.host_uart then
-			hostUartMod = _G.host_uart
-		else
-			local ok, m = pcall(require, "host_uart")
-			hostUartMod = ok and m or false
-		end
-	end
-	return hostUartMod or nil
-end
+local logFuncs = utils.createLogFunctions("net_mqtt")
+local mqttInfo = logFuncs.info
+local mqttWarn = logFuncs.warn
+local mqttError = logFuncs.error
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local NC = "mqtt_not_connected"
-local L = "net_mqtt"
 local function mqttLogEnabled()
 	return _G.APP_META and _G.APP_META.log_enabled == true
 end
-local function mqttInfo(...)
-	if log and log.info then
-		log.info(L, ...)
-	end
-end
-local function mqttWarn(...)
-	if log and log.warn then
-		log.warn(L, ...)
-	elseif log and log.info then
-		log.info(L, ...)
-	end
-end
-local function mqttError(...)
-	if log and log.error then
-		log.error(L, ...)
-	end
+local function getHostUart()
+	return utils.getHostUart()
 end
 local DT = {
 	UL_WAKEUP = "1001",
@@ -917,7 +895,7 @@ local function handleDownlink2009(data)
 	if reboot == nil then
 		reboot = tfFormatCfg().reboot_after == true or tfFormatCfg().reboot_after == 1
 	end
-	reboot = (reboot == 1 or reboot == true) and 1 or 0
+	reboot = utils.parseBoolLike(reboot) and 1 or 0
 	handleHostDownlink(DT.DL_TF_FORMAT, data, function()
 		sys.taskInit(function()
 			runTfCardFormat(data.messageId, reboot)

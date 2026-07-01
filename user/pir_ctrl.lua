@@ -1,22 +1,13 @@
 require "sys"
 require "config"
+local utils = require "utils"
 local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "pirc"
-local function pirInfo(...)
-	if log and log.info then
-		log.info(L, ...)
-	end
-end
-local function pirWarn(...)
-	if log and log.warn then
-		log.warn(L, ...)
-	elseif log and log.info then
-		log.info(L, ...)
-	end
-end
+local logFuncs = utils.createLogFunctions("pirc")
+local pirInfo = logFuncs.info
+local pirWarn = logFuncs.warn
 local PIR_MEDIA = {
 	ACTION = { PHOTO = "photo", VIDEO = "video", BOTH = "both", DEVINFO = "devinfo" },
 	UPLOAD_MODE = { AUTO = "auto", MANUAL = "manual" },

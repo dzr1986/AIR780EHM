@@ -1,21 +1,12 @@
 require "sys"
 require "config"
+local utils = require "utils"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "time_sync"
-local function tsInfo(...)
-	if log and log.info then
-		log.info(L, ...)
-	end
-end
-local function tsWarn(...)
-	if log and log.warn then
-		log.warn(L, ...)
-	elseif log and log.info then
-		log.info(L, ...)
-	end
-end
+local logFuncs = utils.createLogFunctions("time_sync")
+local tsInfo = logFuncs.info
+local tsWarn = logFuncs.warn
 local ACK_EVENT = "TIME_SYNC_ACK"
 local DEFAULT_MIN_UNIX = 1704067200 -- 2024-01-01 UTC
 local uart_bridge
@@ -56,14 +47,7 @@ local function getUart()
 	return uart_bridge
 end
 local function getHostUart()
-	if host_uart then
-		return host_uart
-	end
-	local ok, mod = pcall(require, "host_uart")
-	if ok then
-		host_uart = mod
-	end
-	return host_uart
+	return utils.getHostUart()
 end
 local function hostFirstAtEvent()
 	return (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"

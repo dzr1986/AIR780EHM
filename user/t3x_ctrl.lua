@@ -1,27 +1,14 @@
 require "sys"
 require "config"
+local utils = require "utils"
 local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "t3x_ctrl"
-local function t3xInfo(...)
-	if log and log.info then
-		log.info(L, ...)
-	end
-end
-local function t3xWarn(...)
-	if log and log.warn then
-		log.warn(L, ...)
-	elseif log and log.info then
-		log.info(L, ...)
-	end
-end
-local function t3xError(...)
-	if log and log.error then
-		log.error(L, ...)
-	end
-end
+local logFuncs = utils.createLogFunctions("t3x_ctrl")
+local t3xInfo = logFuncs.info
+local t3xWarn = logFuncs.warn
+local t3xError = logFuncs.error
 local isPoweredOn = false
 local currentPowerLevel = nil
 local isInBootMode = false
