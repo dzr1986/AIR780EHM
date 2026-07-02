@@ -95,7 +95,7 @@ _G.CELLULAR_CFG = {
 	reset_delay_ms = 30000,
 }
 _G.T3X_BURN_CFG = {
-	min_battery_percent = 12,
+	min_battery_percent = 5,
 	require_battery_valid = true,
 	allow_repeat_enter_boot = true,
 	debug_checks = false,
