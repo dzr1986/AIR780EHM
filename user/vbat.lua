@@ -243,6 +243,10 @@ local function batteryTask()
 		if pinMv then
 			local rawMv = pinToCellMv(pinMv, scale)
 			local cellMv = smoothCellMv(rawMv)
+			local vmax = tonumber(getCellCfg().v_max_mv) or 4200
+			if cellMv > vmax then
+				cellMv = vmax
+			end
 			local rawPct = percentFromCellMv(cellMv)
 			local pct = smoothPercent(cellMv, rawPct)
 			voltageMv = cellMv

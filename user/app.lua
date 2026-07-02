@@ -897,6 +897,20 @@ local function startHeartbeat()
 			if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
 				usbInserted = usbCharge.isUsbInserted() and 1 or 0
 			end
+			local mqttConnected = tonumber(rt.online_status) == 1 and 1 or 0
+			if netModule and type(netModule.getState) == "function" then
+				local ok, ns = pcall(netModule.getState)
+				if ok and type(ns) == "table" and ns.connected ~= nil then
+					mqttConnected = ns.connected and 1 or 0
+				end
+			end
+			appInfo("heartbeat_status",
+				"usb=" .. tostring(usbInserted),
+				"power=" .. tostring(rt.power_status or 0),
+				"bat_mv=" .. tostring(rt.battery_mv or "--"),
+				"bat_pct=" .. tostring(rt.battery_percent or "--"),
+				"mqtt=" .. tostring(mqttConnected),
+				"lowpwr=" .. tostring(rt.low_power_mode or 0))
 		end
 	end, 10000)
 end
