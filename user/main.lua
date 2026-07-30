@@ -1,5 +1,5 @@
 PROJECT = "PANSHI_CAT1"
-VERSION = "001.000.001"
+VERSION = "001.000.004"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function validateBuildVersion(ver)
@@ -48,7 +48,7 @@ _G.resolveIotOtaVersion = resolveIotOtaVersion
 _G.VERSION = VERSION
 _G.PROJECT = PROJECT
 _G.PRODUCT_KEY = PRODUCT_KEY
-BUILD_TAG = "v20260614"
+BUILD_TAG = "v20260730"
 _G.BUILD_TAG = BUILD_TAG
 local moduleName = ...
 local isEntry = moduleName == nil
