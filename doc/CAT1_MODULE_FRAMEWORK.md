@@ -182,10 +182,10 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 
 ### 8.3 后续渐进迁移建议
 
-1. **裸 `pcall(require)` 收敛**：~~全项目仍有约 60 处~~（第三轮已收敛主要文件，见 §9）。
+1. **裸 `pcall(require)` 收敛**：~~全项目仍有约 60 处~~（第三、四轮已全部收敛，全项目 0 残留，见 §9）。
 2. **配置 merge 收敛**：`watchdog.mergeConfig`、`pir_ctrl` 等模块的手工 merge 可逐步换 `cfgman.merge`。
 3. **stop() 补齐**：`vbat`、`time_sync`、`led_ctrl` 等持有定时器的模块补 `stop()`，使 `loader.stopAll()` 可用于 T3x 烧录模式/关机前的整体停机。
-4. **幽灵模块**：`MODULE_FLAGS.mobile_info` 指向的 `lib/mobile_info.lua` 已删除（flag=false + loader 负缓存兜底）；如确认不再恢复，可删除相关 flag 与 `app.lua` 引用。
+4. **幽灵模块**：~~`MODULE_FLAGS.mobile_info`~~（第四轮已删除 flag 及 app.lua/cellular_bootstrap 引用）。
 
 ## 9. 第三轮优化（lazy-require 迁移与响应串收敛）
 
@@ -197,6 +197,7 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 | user/net_mqtt.lua | 7 | getDeviceId/getCellular/collectSimSnapshot/usbBlocks4gRest 等 |
 | user/time_sync.lua | 3 | getUart/t3xOn/pushBeforeNotify |
 | lib/t3x_notify.lua | 4 | notifyViaTimeSync/notifyViaHostUart/fallbackGpioWake/ensurePowered |
+| 第四轮：app/battery_guard/sound_prompt/t3x_ctrl/ipc_supervision/led_ctrl/main + lib host_event/usb_charge/low_power_wakeup/usb_rndis/runtime_power | 16 | 至此全项目 pcall(require) 0 残留；另删除 mobile_info 幽灵 flag 与引用 |
 
 等价性要点：`loader.load` 内部即 pcall + 单一缓存 + `type=="table"` 校验，故原 `ok and type(mod)=="table" and mod or false` 一律简化为 `mod or false`；失败路径（模块缺失）行为不变（负缓存返回 nil）。
 
@@ -213,3 +214,4 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 | escJson 重复实现（net_mqtt / ipc_supervision） | **已统一**：ipc_supervision 通过 `_deps.esc_json` 注入委托 net_mqtt 实现，本地版本仅为注入前兜底，无需改动 |
 | net_mqtt `netReadyPublished/bootstrapStarted` 为死标志 | **不成立**：分别在 bootstrap 流程中写入，用于去重 |
 | host_uart `pulseUsbDebugEn` 定时器泄漏 | **不成立**：调用幂等，无泄漏 |
+| watchdog `mergeConfig` 换 cfgman.merge | **暂不做**：含字段别名映射（timeout→timeout_ms），cfgman.merge 不支持，改造收益为负 |

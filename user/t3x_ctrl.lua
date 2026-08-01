@@ -1,6 +1,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local loader = require "module_loader"
 local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
@@ -110,8 +111,8 @@ local function applyPowerLevel(on)
 	state.power_state = on and "on" or "off"
 	lastAction = on and "powerOn" or "powerOff"
 	if on then
-		local okBg, bg = pcall(require, "battery_guard")
-		if okBg and type(bg) == "table" and bg.markT3xWoken then
+		local bg = loader.load("battery_guard")
+		if bg and bg.markT3xWoken then
 			bg.markT3xWoken()
 		end
 	end

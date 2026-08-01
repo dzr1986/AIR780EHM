@@ -1,3 +1,4 @@
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -46,8 +47,8 @@ local function netTcp()
 		return nil
 	end
 	if netTcpMod == nil then
-		local ok, mod = pcall(require, "net_tcp")
-		netTcpMod = ok and mod or false
+		local mod = loader.load("net_tcp")
+		netTcpMod = mod or false
 	end
 	return netTcpMod or nil
 end

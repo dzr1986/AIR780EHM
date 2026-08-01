@@ -1,4 +1,5 @@
 require "sys"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -91,8 +92,8 @@ local function usbHostPresent()
 	if rt and tonumber(rt.usb_inserted) == 1 then
 		return true
 	end
-	local ok, rp = pcall(require, "runtime_power")
-	if ok and type(rp) == "table" and rp.isUsbInserted then
+	local rp = loader.load("runtime_power")
+	if rp and rp.isUsbInserted then
 		return rp.isUsbInserted() == true
 	end
 	return false

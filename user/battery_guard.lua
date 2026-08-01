@@ -1,6 +1,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -102,10 +103,7 @@ local function loadPirCtrl()
 	if pir_ctrl then
 		return pir_ctrl
 	end
-	local ok, m = pcall(require, "pir_ctrl")
-	if ok then
-		pir_ctrl = m
-	end
+	pir_ctrl = loader.load("pir_ctrl")
 	return pir_ctrl
 end
 local function resetConfirmStreaks()

@@ -1,4 +1,5 @@
 require "config"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -110,8 +111,8 @@ local function collectMqtt(types, ctx)
 	if tonumber(rt.online_status) ~= 1 or tonumber(rt.low_power_mode) == 1 then
 		return
 	end
-	local ok, net = pcall(require, "net_mqtt")
-	if not ok or not net or not net.hasPendingHostWork or not net.hasPendingHostWork() then
+	local net = loader.load("net_mqtt")
+	if not net or not net.hasPendingHostWork or not net.hasPendingHostWork() then
 		return
 	end
 	types[#types + 1] = "mqtt"

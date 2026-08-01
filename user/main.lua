@@ -80,7 +80,7 @@ if _G.__LUATOOLS_SCAN_ANCHOR__ then
 	require "vbat"
 end
 if _G.FEATURE_CFG then
-	pcall(require, "low_power_wakeup")
+	loader.load("low_power_wakeup")
 end
 local app = require "app"
 local peripheral = require "peripheral"

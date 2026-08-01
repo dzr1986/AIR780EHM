@@ -1,4 +1,5 @@
 require "sys"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -66,15 +67,15 @@ local function publishT3xRecordStop(reason, uploadMode, quality)
 	end
 end
 local function hostUartMod()
-	local ok, hu = pcall(require, "host_uart")
-	if ok and type(hu) == "table" then
+	local hu = loader.load("host_uart")
+	if hu then
 		return hu
 	end
 	return nil
 end
 local function pirCtrlMod()
-	local ok, pc = pcall(require, "pir_ctrl")
-	if ok and type(pc) == "table" then
+	local pc = loader.load("pir_ctrl")
+	if pc then
 		return pc
 	end
 	return nil

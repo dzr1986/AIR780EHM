@@ -484,7 +484,6 @@ _G.MODULE_FLAGS = {
 	sound_prompt = true,
 	time_sync = true,
 	sntp = true,
-	mobile_info = false,
 	cellular = true,
 	fota = true,
 	rndis = (_G.FEATURE_CFG and _G.FEATURE_CFG.rndis) == true,

@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+local loader = require "module_loader"
 local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
@@ -98,8 +99,8 @@ local function updateUsb(inserted, fromIrq)
 	end
 	last_usb = inserted
 	if inserted and fromIrq then
-		local okPeri, peri = pcall(require, "peripheral")
-		if okPeri and peri and peri.cancelLongPress then
+		local peri = loader.load("peripheral")
+		if peri and peri.cancelLongPress then
 			peri.cancelLongPress("pwr")
 		end
 	end

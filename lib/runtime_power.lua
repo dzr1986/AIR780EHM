@@ -1,3 +1,4 @@
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -12,16 +13,16 @@ function isBatteryDynamicRest()
 	if rt and tonumber(rt.battery_dynamic_rest) == 1 then
 		return true
 	end
-	local ok, bg = pcall(require, "battery_guard")
-	if ok and type(bg) == "table" and bg.isBatteryDynamicRest then
+	local bg = loader.load("battery_guard")
+	if bg and bg.isBatteryDynamicRest then
 		return bg.isBatteryDynamicRest() == true
 	end
 	return false
 end
 
 function isUsbInserted()
-	local ok, uc = pcall(require, "usb_charge")
-	if ok and type(uc) == "table" and type(uc.isUsbInserted) == "function" then
+	local uc = loader.load("usb_charge")
+	if uc and type(uc.isUsbInserted) == "function" then
 		local ok2, v = pcall(uc.isUsbInserted)
 		if ok2 then
 			return v == true

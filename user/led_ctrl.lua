@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+local loader = require "module_loader"
 local gpio_util = require "gpio_util"
 local cfgman = require "config_manager"
 local _M = { _VERSION = "1.2.0" }
@@ -53,8 +54,8 @@ local function readChargeFlags()
 	local rt = _G.APP_RUNTIME or {}
 	local usb, charging = false, false
 	if _G.MODULE_FLAGS.charge ~= false then
-		local ok, uc = pcall(require, "usb_charge")
-		if ok and type(uc) == "table" then
+		local uc = loader.load("usb_charge")
+		if uc then
 			if uc.isUsbInserted then usb = uc.isUsbInserted() and true or false end
 			if uc.isCharging then charging = uc.isCharging() == 1 end
 		end

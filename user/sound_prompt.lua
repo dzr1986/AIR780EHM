@@ -1,5 +1,6 @@
 require "sys"
 require "config"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -48,18 +49,15 @@ local function getUart()
 	end
 	uart_bridge = _G.uart_bridge
 	if not uart_bridge then
-		local ok, mod = pcall(require, "uart_bridge")
-		if ok then
-			uart_bridge = mod
-		end
+		uart_bridge = loader.load("uart_bridge")
 	end
 	return uart_bridge
 end
 local ipcMod
 local function t3xOn(extra)
 	if ipcMod == nil then
-		local ok, m = pcall(require, "t3x_ctrl")
-		ipcMod = ok and m or false
+		local m = loader.load("t3x_ctrl")
+		ipcMod = m or false
 	end
 	if not ipcMod or not ipcMod.ensurePowered then
 		return false
@@ -126,8 +124,8 @@ function onAppStarted()
 			or tonumber(cfg().boot_delay_ms)
 			or 60000
 		if ipcCfg.enabled ~= false and ipcCfg.boot_sound_wait_ready ~= false then
-			local okIpc, ipc = pcall(require, "t3x_ctrl")
-			if okIpc and ipc and ipc.powerOnWaitReady then
+			local ipc = loader.load("t3x_ctrl")
+			if ipc and ipc.powerOnWaitReady then
 				if not ipc.powerOnWaitReady({
 					ready_timeout_ms = timeoutMs,
 					poll_ms = ipcCfg.ready_poll_ms,

@@ -10,7 +10,6 @@ local host_uart = require "host_uart"
 local ipc_supervision = require "ipc_supervision"
 local batAdc = loader.opt("battery", "vbat")
 local usbCharge = loader.opt("charge", "usb_charge")
-local mobile_info = loader.opt("mobile_info", "mobile_info")
 local fota = loader.opt("fota", "fota_svc")
 local usbRndis = loader.opt("rndis", "usb_rndis")
 local sound_prompt = loader.opt("sound_prompt", "sound_prompt")
@@ -225,8 +224,8 @@ local function onPowerOff(reason)
 	appWarn("device_poweroff_request", tostring(reason or "unknown"))
 	local function shutdownNow()
 		if reason == "battery" then
-			local okBg, bg = pcall(require, "battery_guard")
-			if okBg and type(bg) == "table" and bg.isUsbInserted and bg.isUsbInserted() then
+			local bg = loader.load("battery_guard")
+			if bg and bg.isUsbInserted and bg.isUsbInserted() then
 				return
 			end
 		end
@@ -799,9 +798,6 @@ local function startBackgroundServices()
 	end
 	if _G.MODULE_FLAGS.sntp then
 		startOptionalService(time_sync, "startSntp")
-	end
-	if _G.MODULE_FLAGS.mobile_info then
-		startOptionalService(mobile_info, "start")
 	end
 end
 local function initPowerStatus()
