@@ -38,6 +38,12 @@ local SYS_EVT = {
 local run_host_query
 local host_query
 local host_set
+local function noop_idle()
+	return "idle"
+end
+local function noop_false()
+	return false
+end
 _M.EVT = {
 	SERVER_DATA = 0,
 	CONNECT_FAIL = 1,
@@ -867,6 +873,13 @@ local function wled_ensure_t3x_powered()
 	end
 	return false
 end
+local function wled_get()
+	local rt = _G.APP_RUNTIME
+	if rt and rt.wled_on ~= nil then
+		return rt.wled_on == 1 and 1 or 0
+	end
+	return wled_state.on == 1 and 1 or 0
+end
 local function forward_wled_to_host(on, timeoutMs)
 	local wc = wled_cfg()
 	if wc.forward_to_t3x == false then
@@ -888,18 +901,10 @@ local function forward_wled_to_host(on, timeoutMs)
 		default_timeout = 3000,
 		at_cmd = atCmd,
 		ack_event = SYS_EVT.WLED_ACK,
-		on_response = function(got, val, tmo)
-			if got and type(val) == "table" and val.ok then
-				return true
-			end
-			if got and type(val) == "table" and val.ok == false then
-				return false
-			end
-			return false
+		on_response = function(got, val)
+			return got and type(val) == "table" and val.ok == true
 		end,
-		on_no_t3x = function()
-			return false
-		end,
+		on_no_t3x = noop_false,
 	})
 	return okFwd == true
 end
@@ -920,27 +925,18 @@ function queryHostWled(timeoutMs)
 		default_timeout = 3000,
 		at_cmd = "AT+WLED?",
 		ack_event = SYS_EVT.WLED_ACK,
-		on_response = function(got, rsp, tmo)
+		on_response = function(got, rsp)
 			if got and type(rsp) == "table" and rsp.ok then
 				return rsp.on
 			end
 			return wled_get()
 		end,
-		on_no_t3x = function()
-			return wled_get()
-		end,
+		on_no_t3x = wled_get,
 	})
 	if val == 0 or val == 1 then
 		return val
 	end
 	return wled_get()
-end
-local function wled_get()
-	local rt = _G.APP_RUNTIME
-	if rt and rt.wled_on ~= nil then
-		return rt.wled_on == 1 and 1 or 0
-	end
-	return wled_state.on == 1 and 1 or 0
 end
 local function wled_set(on, opts)
 	opts = type(opts) == "table" and opts or {}
@@ -2319,12 +2315,6 @@ host_set = function(spec)
 	end
 	return okSet, msg, extra
 end
-local function noop_nil()
-	return nil
-end
-local function noop_idle()
-	return "idle"
-end
 function getCachedHostGb28181Id()
 	return state.host_gb28181_id
 end
@@ -2364,7 +2354,6 @@ function queryHostGb28181(timeoutMs)
 			end
 			return state.host_gb28181_id
 		end,
-		on_error = noop_nil,
 	})
 end
 function getCachedHostIpcStatus()
@@ -2574,9 +2563,10 @@ function reconcileHostRecordSession(timeoutMs)
 	return true
 end
 function queryHostIpcCloudStat(timeoutMs)
+	local cached = getCachedHostIpcCloudStat
 	return host_query(timeoutMs, {
 		busy_key = "ipc_cloud_stat_query_busy",
-		busy_return = getCachedHostIpcCloudStat(),
+		busy_return = cached(),
 		policy_tag = "host_ipc",
 		cfg = ipc_cfg(),
 		timeout_cfg_key = "status_query_timeout_ms",
@@ -2584,26 +2574,18 @@ function queryHostIpcCloudStat(timeoutMs)
 		wait_boot = false,
 		at_cmd = "AT+IPCSTAT?",
 		ack_event = SYS_EVT.IPCSTAT_ACK,
-		default_result = getCachedHostIpcCloudStat(),
-		when_disabled = function()
-			return getCachedHostIpcCloudStat()
-		end,
-		on_no_t3x = function()
-			return getCachedHostIpcCloudStat()
-		end,
-		on_no_uart = function()
-			return getCachedHostIpcCloudStat()
-		end,
+		default_result = cached(),
+		when_disabled = cached,
+		on_no_t3x = cached,
+		on_no_uart = cached,
 		on_response = function(got, snap)
 			if got and type(snap) == "table" then
 				commitHostIpcCloudStat(snap)
 				return snap
 			end
-			return getCachedHostIpcCloudStat()
+			return cached()
 		end,
-		on_error = function()
-			return getCachedHostIpcCloudStat()
-		end,
+		on_error = cached,
 	})
 end
 function getCachedHostTfCard()
@@ -2828,7 +2810,6 @@ function queryHostRecord(timeoutMs)
 			end
 			return nil
 		end,
-		on_error = noop_nil,
 	})
 end
 function queryHostRecordTime(timeoutMs)
@@ -2852,7 +2833,6 @@ function queryHostRecordTime(timeoutMs)
 			end
 			return state.host_record_time
 		end,
-		on_error = noop_nil,
 	})
 end
 function getCachedHostRecordTime()
@@ -2915,7 +2895,6 @@ function queryHostFramerate(opts)
 			end
 			return state.host_framerate
 		end,
-		on_error = noop_nil,
 	})
 end
 function setHostFramerate(opts)
@@ -3002,7 +2981,6 @@ function queryHostPersonDetect(timeoutMs)
 			end
 			return state.host_person_detect
 		end,
-		on_error = noop_nil,
 	})
 end
 function setHostPersonDetect(opts)
@@ -3054,7 +3032,6 @@ function queryHostMic(opts)
 			end
 			return state.host_mic
 		end,
-		on_error = noop_nil,
 	})
 end
 function setHostMic(opts)
@@ -3099,7 +3076,6 @@ function queryHostSoftPhoto(timeoutMs)
 			end
 			return state.host_softphoto
 		end,
-		on_error = noop_nil,
 	})
 end
 function setHostSoftPhoto(opts)
@@ -3156,7 +3132,6 @@ function queryHostTfCard(timeoutMs)
 			end
 			return nil
 		end,
-		on_error = noop_nil,
 	})
 end
 local function tfcard_format_cfg()
@@ -3336,7 +3311,6 @@ local function queryHostEncodeInner(opts)
 			end
 			return nil
 		end,
-		on_error = noop_nil,
 	})
 	if result then
 		return result, nil

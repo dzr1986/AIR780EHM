@@ -1486,7 +1486,7 @@ local HOST_UART_QUERY_SET_SPECS = {
 			if not hu.setHostSoftPhoto then
 				return false, "no_host_uart"
 			end
-			local ok, msg, extra = hu.setHostSoftPhoto({
+			local fields = {
 				enable = data.enable,
 				nightModeThreshold = data.nightModeThreshold or data.night_mode_threshold,
 				dayModeThreshold = data.dayModeThreshold or data.day_mode_threshold,
@@ -1495,19 +1495,12 @@ local HOST_UART_QUERY_SET_SPECS = {
 				gbGainRecordInit = data.gbGainRecordInit or data.gb_gain_record_init,
 				checkTime = data.checkTime or data.check_time,
 				checkCount = data.checkCount or data.check_count,
-				timeout_ms = timeoutMs,
-			})
+			}
+			fields.timeout_ms = timeoutMs
+			local ok, msg, extra = hu.setHostSoftPhoto(fields)
+			fields.timeout_ms = nil
 			if ok then
-				return true, "ok", {
-					enable = data.enable,
-					nightModeThreshold = data.nightModeThreshold or data.night_mode_threshold,
-					dayModeThreshold = data.dayModeThreshold or data.day_mode_threshold,
-					dayModeAltThreshold = data.dayModeAltThreshold or data.day_mode_alt_threshold,
-					gbGainThreshold = data.gbGainThreshold or data.gb_gain_threshold,
-					gbGainRecordInit = data.gbGainRecordInit or data.gb_gain_record_init,
-					checkTime = data.checkTime or data.check_time,
-					checkCount = data.checkCount or data.check_count,
-				}
+				return true, "ok", fields
 			end
 			return false, msg or "fail", extra
 		end,
