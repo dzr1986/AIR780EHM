@@ -288,19 +288,35 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 
 ### 5.6 设备标识 / 存储（2006–2009）
 
+**常电 + T3x 已就绪**（串口可见 `HOST_UART_FIRST_AT` / AT 已通）：
+
 ```json
 {"dataType":"2006","messageId":"id-001"}
 ```
+→ 主题 `…/identity` 收 **1006**（含 `imei`、`gb28181Id`、`messageId=id-001`）
 
 ```json
 {"dataType":"2007","messageId":"tf-001"}
 ```
+→ 主题 `…/tfcard` 收 **1007**（`tfPresent`/`totalMb`/`usedMb`/`freeMb`）
+
+```json
+{"dataType":"2008","messageId":"ver-001"}
+```
+→ 主题 `…/version` 收 **1008**（`scriptVersion`/`firmwareVersion` 等；**不依赖 T3x**，应秒回）
 
 ```json
 {"dataType":"2009","messageId":"tfmt-001"}
 ```
 
-上行：`1006` @ `identity`，`1007` @ `tfcard`，格式化进度见 OTA/TF 专题文档。
+**T3x 未就绪时的 pending（2006 / 2007）**
+
+1. 让 T3x 断电或未出 AT（`isHostAtReady=false`），MQTT 仍在线。  
+2. 下发 `2006` / `2007`：此时**不应立刻**出现 1006/1007；串口日志应见 `host_dl_pending`。  
+3. 唤醒 T3x，待首包 AT（`HOST_UART_FIRST_AT`）后约 0.5s：日志 `host_dl_drain`，再收到对应 **1006/1007**。  
+4. 对照：同样条件下发 `2008`，应**立刻** 1008（不进 pending）。
+
+上行：`1006` @ `identity`，`1007` @ `tfcard`，`1008` @ `version`；格式化见 OTA/TF 专题。
 
 ---
 

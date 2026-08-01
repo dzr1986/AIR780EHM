@@ -687,6 +687,7 @@ local function enqueuePendingHostWork(dtype, data)
 		data = data,
 		ts = os.time(),
 	}
+	mqttInfo("host_dl_pending", tostring(dtype), "q=" .. tostring(#pendingHostQueue))
 end
 local function wakeT3xForPendingHost()
 	sys.taskInit(function()
@@ -710,6 +711,7 @@ function drainPendingHostWork()
 	end
 	local batch = pendingHostQueue
 	pendingHostQueue = {}
+	mqttInfo("host_dl_drain", "n=" .. tostring(#batch))
 	for _, item in ipairs(batch) do
 		local handler = DOWNLINK_HANDLERS[item.dtype]
 		if handler and item.data then
@@ -850,7 +852,7 @@ local HOST_DOWNLINK_REFRESH_SPECS = {
 		hostGate = true,
 		async = true,
 		run = function(data)
-			refreshDeviceIdentity(data.messageId)
+			refreshDeviceIdentity(downlinkMessageId(data))
 		end,
 	},
 	{
@@ -858,7 +860,7 @@ local HOST_DOWNLINK_REFRESH_SPECS = {
 		hostGate = true,
 		async = true,
 		run = function(data)
-			refreshTfCardStatus(data.messageId)
+			refreshTfCardStatus(downlinkMessageId(data))
 		end,
 	},
 	{
