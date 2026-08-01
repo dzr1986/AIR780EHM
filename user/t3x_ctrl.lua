@@ -31,15 +31,8 @@ local state = {
 	rest_enter_time = nil,
 }
 local sleep_in_progress = false
-local modCache = {}
 local function loadMod(name)
-	local mod = modCache[name]
-	if mod ~= nil then
-		return mod or nil
-	end
-	local ok, loaded = pcall(require, name)
-	modCache[name] = ok and loaded or false
-	return ok and loaded or nil
+	return utils.lazyRequire(name)
 end
 local function t3xPolicyMod()
 	return loadMod("t3x_policy")

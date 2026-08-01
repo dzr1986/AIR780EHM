@@ -61,10 +61,8 @@ do
 	end
 end
 require "config"
-require "app_config"
-require "key_config"
 if _G.FEATURE_CFG then
-	local okLp, lpw = pcall(require, "low_power_wakeup")
+	pcall(require, "low_power_wakeup")
 end
 local app = require "app"
 local peripheral = require "peripheral"

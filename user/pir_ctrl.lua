@@ -38,15 +38,8 @@ local session = {
 	stop_mqtt_published = false,
 	cloud_stop_message_id = nil,
 }
-local modCache = {}
 local function loadMod(name)
-	local mod = modCache[name]
-	if mod ~= nil then
-		return mod or nil
-	end
-	local ok, loaded = pcall(require, name)
-	modCache[name] = ok and loaded or false
-	return ok and loaded or nil
+	return utils.lazyRequire(name)
 end
 local function netMqttMod()
 	return loadMod("net_mqtt")
@@ -187,9 +180,7 @@ local STOP_CNT = {
 	[PIR_MEDIA.STOP_REASON.MANUAL] = "cnt_stop_manual",
 }
 local function toBool(value, default)
-	if value == nil then return default end
-	if value == false or value == 0 or value == "0" then return false end
-	return true
+	return utils.parseBoolDefault(value, default)
 end
 function normalizePirMediaConfig(config)
 	local input = type(config) == "table" and config or {}
@@ -519,19 +510,12 @@ local function isRestLowPower()
 	if _G.FEATURE_CFG and _G.FEATURE_CFG.low_power == false then
 		return false
 	end
-	local rt = _G.APP_RUNTIME
-	return rt and tonumber(rt.low_power_mode) == 1
+	local rp = loadMod("runtime_power")
+	return rp and rp.isLowPowerMode and rp.isLowPowerMode()
 end
 local function isBatteryDynamicRest()
-	local rt = _G.APP_RUNTIME
-	if rt and tonumber(rt.battery_dynamic_rest) == 1 then
-		return true
-	end
-	local ok, bg = pcall(require, "battery_guard")
-	if ok and type(bg) == "table" and bg.isBatteryDynamicRest then
-		return bg.isBatteryDynamicRest() == true
-	end
-	return false
+	local rp = loadMod("runtime_power")
+	return rp and rp.isBatteryDynamicRest and rp.isBatteryDynamicRest()
 end
 local function isPirHighPriority()
 	local cfg = _G.PIR_CFG or {}

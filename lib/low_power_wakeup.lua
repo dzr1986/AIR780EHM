@@ -1,7 +1,6 @@
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "low_power_wakeup"
 local MODE_MQTT = "mqtt"
 local MODE_TCP = "tcp"
 local function cfg()

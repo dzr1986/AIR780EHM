@@ -465,9 +465,9 @@ local function resolve2002Mode(data)
 	return nil
 end
 local function usbBlocks4gRest()
-	local ok, up = pcall(require, "usb_policy")
-	if ok and type(up) == "table" and up.blocks4gRest then
-		return up.blocks4gRest()
+	local ok, uc = pcall(require, "usb_charge")
+	if ok and type(uc) == "table" and uc.blocks4gRest then
+		return uc.blocks4gRest()
 	end
 	return (_G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.power_status) == 1) or false
 end
@@ -690,14 +690,14 @@ local function enqueuePendingHostWork(dtype, data)
 end
 local function wakeT3xForPendingHost()
 	sys.taskInit(function()
-		local ok, ts = pcall(require, "time_sync")
-		if ok and ts and ts.pushBeforeNotifyAsync then
-			ts.pushBeforeNotifyAsync((_G.HOST_WAKE_CFG or {}).default_sid or 1, 0)
-		else
-			local hu = getHostUart()
-			if hu and hu.notify_host then
-				hu.notify_host((_G.HOST_WAKE_CFG or {}).default_sid or 1, 0)
-			end
+		local ok, tn = pcall(require, "t3x_notify")
+		if ok and tn and tn.wakeHost then
+			tn.wakeHost((_G.HOST_WAKE_CFG or {}).default_sid or 1, 0)
+			return
+		end
+		local hu = getHostUart()
+		if hu and hu.notify_host then
+			hu.notify_host((_G.HOST_WAKE_CFG or {}).default_sid or 1, 0)
 		end
 	end)
 end
@@ -1061,90 +1061,6 @@ local function handleDownlink2012(data)
 		end
 	end)
 end
-local function publishEncodeReply(dlType, retCode, message, body, messageId)
-	local ulType = (dlType == DT.DL_ENCODE_QUERY) and DT.UL_ENCODE_QUERY or DT.UL_ENCODE_SET
-	publishReplyBase({
-		dataType = ulType,
-		suffix = "encode",
-		retCode = retCode,
-		message = message,
-		messageId = messageId,
-		body = body,
-		appendFields = function(b)
-			local extra = ""
-			if type(b) == "table" then
-				if b.needReboot ~= nil then
-					extra = extra .. string.format(',"needReboot":%s',
-						(b.needReboot == true or b.needReboot == 1) and "1" or "0")
-				end
-				if b.runtimeApply ~= nil then
-					extra = extra .. string.format(',"runtimeApply":%d', tonumber(b.runtimeApply) or 0)
-				end
-				local ok, encoded = pcall(json.encode, b)
-				if ok and encoded then
-					extra = extra .. ',"body":' .. encoded
-				end
-			end
-			return extra
-		end,
-	})
-end
-local function handleDownlinkEncode(data, isQuery)
-	sys.taskInit(function()
-		local hu = getHostUart()
-		local dlType = isQuery and DT.DL_ENCODE_QUERY or DT.DL_ENCODE_SET
-		if not hu then
-			publishEncodeReply(dlType, -1, "no_host_uart", nil, data.messageId)
-			return
-		end
-		if isQuery then
-			if not hu.queryHostEncode then
-				publishEncodeReply(dlType, -1, "no_host_uart", nil, data.messageId)
-				return
-			end
-			local encCfg = _G.HOST_ENCODE_CFG or {}
-			local timeoutMs = tonumber(data.timeoutMs) or tonumber(data.timeout_ms)
-				or tonumber(encCfg.query_timeout_ms) or 12000
-			local result, err = hu.queryHostEncode({
-				scope = data.scope,
-				camera = data.camera,
-				stream = data.stream,
-				timeout_ms = timeoutMs,
-			})
-			if result then
-				publishEncodeReply(dlType, 0, "ok", result, data.messageId)
-			else
-				publishEncodeReply(dlType, -1, err or "query_fail", nil, data.messageId)
-			end
-			return
-		end
-		local ok, msg, extra
-		if data.scope == "audio" and hu.setHostAudioEncode then
-			ok, msg, extra = hu.setHostAudioEncode(data)
-		elseif hu.setHostVideoEncode then
-			ok, msg, extra = hu.setHostVideoEncode(data)
-		else
-			ok, msg, extra = false, "unsupported", nil
-		end
-		local body = extra or {}
-		if ok and extra and extra.needReboot ~= nil then
-			body.needReboot = extra.needReboot
-		end
-		if ok and extra and extra.runtimeApply ~= nil then
-			body.runtimeApply = extra.runtimeApply
-		end
-		publishEncodeReply(dlType, ok and 0 or -1, msg or (ok and "ok" or "fail"), body, data.messageId)
-		if ok and extra and tonumber(extra.runtimeApply) == 0 and not extra.needReboot then
-			publishIpcAlert("encode_runtime_fail", data.scope or "video")
-		end
-	end)
-end
-local function handleDownlink2021(data)
-	handleDownlinkEncode(data, false)
-end
-local function handleDownlink2020(data)
-	handleDownlinkEncode(data, true)
-end
 local RECORD_TIME_ALLOWED = "5|10|15|20|30|45|60"
 local RECORD_TIME_ALLOWED_JSON = "[5,10,15,20,30,45,60]"
 local function makeQuerySetReplyPublisher(spec)
@@ -1206,6 +1122,74 @@ local function makeHostQuerySetHandler(spec)
 	end
 end
 local HOST_UART_QUERY_SET_SPECS = {
+	encode = {
+		queryDl = DT.DL_ENCODE_QUERY,
+		setDl = DT.DL_ENCODE_SET,
+		ulQuery = DT.UL_ENCODE_QUERY,
+		ulSet = DT.UL_ENCODE_SET,
+		suffix = "encode",
+		defaultTimeoutMs = 12000,
+		appendFields = function(b)
+			local extra = ""
+			if type(b) == "table" then
+				if b.needReboot ~= nil then
+					extra = extra .. string.format(',"needReboot":%s',
+						(b.needReboot == true or b.needReboot == 1) and "1" or "0")
+				end
+				if b.runtimeApply ~= nil then
+					extra = extra .. string.format(',"runtimeApply":%d', tonumber(b.runtimeApply) or 0)
+				end
+				local ok, encoded = pcall(json.encode, b)
+				if ok and encoded then
+					extra = extra .. ',"body":' .. encoded
+				end
+			end
+			return extra
+		end,
+		queryFn = function(hu, data, timeoutMs)
+			if not hu.queryHostEncode then
+				return nil
+			end
+			local encCfg = _G.HOST_ENCODE_CFG or {}
+			timeoutMs = timeoutMs or tonumber(encCfg.query_timeout_ms) or 12000
+			local result, err = hu.queryHostEncode({
+				scope = data.scope,
+				camera = data.camera,
+				stream = data.stream,
+				timeout_ms = timeoutMs,
+			})
+			if result then
+				return result
+			end
+			return nil, err or "query_fail"
+		end,
+		setFn = function(hu, data, timeoutMs)
+			local ok, msg, extra
+			if data.scope == "audio" and hu.setHostAudioEncode then
+				ok, msg, extra = hu.setHostAudioEncode(data)
+			elseif hu.setHostVideoEncode then
+				ok, msg, extra = hu.setHostVideoEncode(data)
+			else
+				return false, "unsupported"
+			end
+			local body = extra or {}
+			if ok and extra and extra.needReboot ~= nil then
+				body.needReboot = extra.needReboot
+			end
+			if ok and extra and extra.runtimeApply ~= nil then
+				body.runtimeApply = extra.runtimeApply
+			end
+			if ok then
+				return true, "ok", body
+			end
+			return false, msg or "fail", body
+		end,
+		onSetSuccess = function(extra, data)
+			if extra and tonumber(extra.runtimeApply) == 0 and not extra.needReboot then
+				publishIpcAlert("encode_runtime_fail", data.scope or "video")
+			end
+		end,
+	},
 	recordTime = {
 		queryDl = DT.DL_RECORD_TIME_QUERY,
 		setDl = DT.DL_RECORD_TIME_SET,
@@ -1507,14 +1491,16 @@ local HOST_UART_QUERY_SET_SPECS = {
 	},
 }
 local HOST_UART_QUERY_SET_ORDER = {
-	"recordTime", "framerate", "personDetect", "mic", "softPhoto",
+	"encode", "recordTime", "framerate", "personDetect", "mic", "softPhoto",
 }
 local function registerHostQuerySetHandlers(map)
 	for i = 1, #HOST_UART_QUERY_SET_ORDER do
 		local spec = HOST_UART_QUERY_SET_SPECS[HOST_UART_QUERY_SET_ORDER[i]]
-		local handler = makeHostQuerySetHandler(spec)
-		map[spec.queryDl] = wrapHostDownlink(spec.queryDl, handler, true)
-		map[spec.setDl] = wrapHostDownlink(spec.setDl, handler, false)
+		if spec then
+			local handler = makeHostQuerySetHandler(spec)
+			map[spec.queryDl] = wrapHostDownlink(spec.queryDl, handler, true)
+			map[spec.setDl] = wrapHostDownlink(spec.setDl, handler, false)
+		end
 	end
 end
 DOWNLINK_HANDLERS = {
@@ -1530,16 +1516,6 @@ DOWNLINK_HANDLERS = {
 	[DT.DL_PIR_CFG] = handleDownlink2010,
 	[DT.DL_PIR_STOP] = handleDownlink2011,
 	[DT.DL_PIR_START] = handleDownlink2012,
-	[DT.DL_ENCODE_SET] = function(data)
-		handleHostDownlink(DT.DL_ENCODE_SET, data, function()
-			handleDownlinkEncode(data, false)
-		end)
-	end,
-	[DT.DL_ENCODE_QUERY] = function(data)
-		handleHostDownlink(DT.DL_ENCODE_QUERY, data, function()
-			handleDownlinkEncode(data, true)
-		end)
-	end,
 }
 registerHostQuerySetHandlers(DOWNLINK_HANDLERS)
 local function dispatchDownlink(topic, payload)

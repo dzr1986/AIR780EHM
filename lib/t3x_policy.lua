@@ -1,9 +1,10 @@
 require "sys"
 require "config"
+local runtime_power = require "runtime_power"
+local t3x_notify = require "t3x_notify"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "t3x_policy"
 local lastDenyReason = ""
 local lastMqttOfflineWakeSec = 0
 local function cfg()
@@ -17,12 +18,7 @@ function getDenyReason()
 	return lastDenyReason
 end
 function isUsbInserted()
-	local ok, up = pcall(require, "usb_policy")
-	if ok and type(up) == "table" and up.isUsbInserted then
-		return up.isUsbInserted()
-	end
-	local rt = _G.APP_RUNTIME
-	return rt and tonumber(rt.power_status) == 1
+	return runtime_power.isUsbInserted()
 end
 function getBatteryPercent()
 	local rt = _G.APP_RUNTIME
@@ -35,19 +31,10 @@ function getBatteryPercent()
 	return nil
 end
 function isLowPowerMode()
-	local rt = _G.APP_RUNTIME
-	return rt and tonumber(rt.low_power_mode) == 1
+	return runtime_power.isLowPowerMode()
 end
 local function isBatteryDynamicRest()
-	local rt = _G.APP_RUNTIME
-	if rt and tonumber(rt.battery_dynamic_rest) == 1 then
-		return true
-	end
-	local ok, bg = pcall(require, "battery_guard")
-	if ok and type(bg) == "table" and bg.isBatteryDynamicRest then
-		return bg.isBatteryDynamicRest() == true
-	end
-	return false
+	return runtime_power.isBatteryDynamicRest()
 end
 function isBurnActive()
 	return _G.T3X_BURN_MODE_ACTIVE == true
@@ -154,43 +141,6 @@ local function recordMqttOfflineWake(reason)
 		lastMqttOfflineWakeSec = os.time()
 	end
 end
-local function notifyViaTimeSync(sid, evt)
-	local okTs, time_sync = pcall(require, "time_sync")
-	if not okTs or not time_sync or not time_sync.pushBeforeNotifyAsync then
-		return false
-	end
-	if _G.MODULE_FLAGS and _G.MODULE_FLAGS.time_sync == false then
-		return false
-	end
-	time_sync.pushBeforeNotifyAsync(sid, evt)
-	return true
-end
-local function notifyViaHostUart(sid, evt)
-	local hu = _G.host_uart
-	if not hu then
-		local ok, mod = pcall(require, "host_uart")
-		hu = ok and mod or nil
-	end
-	if hu and hu.notify_host then
-		return hu.notify_host(sid, evt) ~= false
-	end
-	return false
-end
-local function fallbackGpioWake(reason)
-	local t3x = _G.t3x_ctrl
-	if not t3x then
-		local ok, mod = pcall(require, "t3x_ctrl")
-		t3x = ok and mod or nil
-	end
-	if not t3x or not t3x.wake then
-		return false
-	end
-	sys.taskInit(function()
-		t3x.wake()
-		recordMqttOfflineWake(reason)
-	end)
-	return true
-end
 function requestT3xWake(reason, sid, evt, opts)
 	reason = reason or "wake"
 	sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
@@ -199,19 +149,11 @@ function requestT3xWake(reason, sid, evt, opts)
 	if not mayPowerT3x(reason, opts) then
 		return false
 	end
-	if not (_G.MODULE_FLAGS and _G.MODULE_FLAGS.t3x_wakeup
-		and (_G.MODULE_FLAGS.t3x_app ~= false)) then
-		return fallbackGpioWake(reason)
-	end
-	if notifyViaTimeSync(sid, evt) then
-		recordMqttOfflineWake(reason)
-		return true
-	end
-	if notifyViaHostUart(sid, evt) then
-		recordMqttOfflineWake(reason)
-		return true
-	end
-	return fallbackGpioWake(reason)
+	return t3x_notify.wakeHost(sid, evt, {
+		on_done = function()
+			recordMqttOfflineWake(reason)
+		end,
+	})
 end
 function bootPowerOn(t3xModule)
 	if not mayPowerT3x("boot") then

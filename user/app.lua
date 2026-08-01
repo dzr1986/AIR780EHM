@@ -63,18 +63,8 @@ local state = {
 local function usbPwrkeyGraceMs()
 	return tonumber((_G.HOST_USB_CFG or {}).pwrkey_grace_ms) or 5000
 end
-local modCache = {}
 local function lazyMod(name)
-	local mod = modCache[name]
-	if mod == nil then
-		local ok, loaded = pcall(require, name)
-		mod = ok and type(loaded) == "table" and loaded or false
-		modCache[name] = mod
-	end
-	return mod ~= false and mod or nil
-end
-local function usbPolicyMod()
-	return lazyMod("usb_policy")
+	return utils.lazyRequire(name)
 end
 local function t3xPolicyMod()
 	return lazyMod("t3x_policy")
@@ -85,19 +75,23 @@ end
 local function deviceIdMod()
 	return lazyMod("device_id")
 end
+local function runtimePowerMod()
+	return lazyMod("runtime_power")
+end
 local function isUsbInserted(opts)
 	opts = opts or {}
-	if _G.MODULE_FLAGS.charge then
-		local up = usbPolicyMod()
-		if up and up.isUsbInserted then
-			return up.isUsbInserted() == true
-		end
-		if type(usbCharge) == "table" and usbCharge.isUsbInserted then
-			return usbCharge.isUsbInserted() == true
-		end
-	end
-	if opts.boot_gpio then
+	if opts.boot_gpio and not (_G.MODULE_FLAGS and _G.MODULE_FLAGS.charge) then
 		return (gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1) or false
+	end
+	if opts.boot_gpio and type(usbCharge) == "table" and usbCharge.isUsbInserted then
+		return usbCharge.isUsbInserted() == true
+	end
+	local rp = runtimePowerMod()
+	if rp and rp.isUsbInserted then
+		return rp.isUsbInserted()
+	end
+	if type(usbCharge) == "table" and usbCharge.isUsbInserted then
+		return usbCharge.isUsbInserted() == true
 	end
 	return (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status or 0) == 1
 end
@@ -144,17 +138,11 @@ local function requestT3xWake(reason, sid, evt, opts)
 		and (_G.MODULE_FLAGS.t3x_policy ~= false) then
 		return policy.requestT3xWake(reason, sid, evt, opts)
 	end
-	if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
-		if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table"
-			and time_sync.pushBeforeNotifyAsync then
-			time_sync.pushBeforeNotifyAsync(sid, evt)
-		else
-			host_uart.notify_host(sid, evt)
-		end
-	elseif t3xModule and t3xModule.pulseWakeup then
-		t3xModule.pulseWakeup()
+	local tn = lazyMod("t3x_notify")
+	if tn and tn.wakeHost then
+		return tn.wakeHost(sid, evt)
 	end
-	return true
+	return false
 end
 local function onMqttOffline()
 	local policy = t3xPolicyMod()
@@ -207,8 +195,7 @@ local function onEnterLowPower(reason)
 	if not isLowPowerFeatureEnabled() then
 		return
 	end
-	local up = usbPolicyMod()
-	if up and up.blocks4gRest and up.blocks4gRest() then
+	if type(usbCharge) == "table" and usbCharge.blocks4gRest and usbCharge.blocks4gRest() then
 		return
 	end
 	if type(sound_prompt) == "table" and sound_prompt.shouldPlay
@@ -760,8 +747,7 @@ local function buildSystemEventHandlers()
 			if not isLowPowerFeatureEnabled() then
 				return
 			end
-			local up = usbPolicyMod()
-			if up and up.blocks4gRest and up.blocks4gRest() then
+			if type(usbCharge) == "table" and usbCharge.blocks4gRest and usbCharge.blocks4gRest() then
 				return
 			end
 			onEnterLowPower("mqtt_2002")

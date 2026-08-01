@@ -1,9 +1,9 @@
--- 通用工具函数模块
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
--- 布尔值解析函数（支持多种格式：true/false/1/0/"true"/"1"/"yes"/"on"等）
+MIN_VALID_UNIX = 1704067200
+
 function parseBoolLike(v)
 	if v == true or v == 1 then
 		return true
@@ -15,7 +15,16 @@ function parseBoolLike(v)
 	return false
 end
 
--- 日志函数工厂：创建带标签的日志函数三元组
+function parseBoolDefault(v, default)
+	if v == nil then
+		return default
+	end
+	if v == false or v == 0 or v == "0" then
+		return false
+	end
+	return true
+end
+
 function createLogFunctions(tag)
 	local funcs = {}
 	funcs.info = function(...)
@@ -38,15 +47,24 @@ function createLogFunctions(tag)
 	return funcs
 end
 
--- 获取 host_uart 模块（支持全局缓存）
+local lazyCache = {}
+function lazyRequire(name)
+	local mod = lazyCache[name]
+	if mod == nil then
+		local ok, loaded = pcall(require, name)
+		mod = (ok and type(loaded) == "table") and loaded or false
+		lazyCache[name] = mod
+	end
+	return mod ~= false and mod or nil
+end
+
 local hostUartMod
 function getHostUart()
 	if hostUartMod == nil then
 		if _G.host_uart then
 			hostUartMod = _G.host_uart
 		else
-			local ok, m = pcall(require, "host_uart")
-			hostUartMod = ok and m or false
+			hostUartMod = lazyRequire("host_uart") or false
 		end
 	end
 	return hostUartMod or nil

@@ -91,9 +91,9 @@ local function usbHostPresent()
 	if rt and tonumber(rt.usb_inserted) == 1 then
 		return true
 	end
-	local ok, up = pcall(require, "usb_policy")
-	if ok and type(up) == "table" and up.isUsbInserted then
-		return up.isUsbInserted() == true
+	local ok, rp = pcall(require, "runtime_power")
+	if ok and type(rp) == "table" and rp.isUsbInserted then
+		return rp.isUsbInserted() == true
 	end
 	return false
 end

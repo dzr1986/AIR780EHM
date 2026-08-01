@@ -160,6 +160,24 @@ function isCharging()
 	end
 	return effectiveCharging() and 1 or 0
 end
+local function usb_cfg()
+	return _G.HOST_USB_CFG or {}
+end
+local function usbGatedPolicy(cfgKey)
+	if usb_cfg()[cfgKey] == false then
+		return false
+	end
+	return isUsbInserted()
+end
+function blocksHostIdle()
+	return usbGatedPolicy("block_host_idle_when_usb")
+end
+function blocks4gRest()
+	return usbGatedPolicy("block_4g_rest_when_usb")
+end
+function mayEnterRest()
+	return not blocks4gRest()
+end
 function getState()
 	return {
 		started = started,

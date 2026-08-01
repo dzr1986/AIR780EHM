@@ -169,26 +169,26 @@ end
 local function host_usb_cfg()
 	return _G.HOST_USB_CFG or {}
 end
-local usbPolicyCache
-local function usb_policy_mod()
-	if usbPolicyCache == nil then
-		local ok, mod = pcall(require, "usb_policy")
-		usbPolicyCache = ok and type(mod) == "table" and mod or false
+local usbChargeCache
+local function usb_charge_mod()
+	if usbChargeCache == nil then
+		local ok, mod = pcall(require, "usb_charge")
+		usbChargeCache = ok and type(mod) == "table" and mod or false
 	end
-	return usbPolicyCache ~= false and usbPolicyCache or nil
+	return usbChargeCache ~= false and usbChargeCache or nil
 end
 local function is_usb_inserted()
-	local up = usb_policy_mod()
-	if up and up.isUsbInserted then
-		return up.isUsbInserted()
+	local uc = usb_charge_mod()
+	if uc and uc.isUsbInserted then
+		return uc.isUsbInserted()
 	end
 	local rt = _G.APP_RUNTIME or {}
 	return tonumber(rt.power_status) == 1
 end
 local function usb_blocks_host_idle()
-	local up = usb_policy_mod()
-	if up and up.blocksHostIdle then
-		return up.blocksHostIdle()
+	local uc = usb_charge_mod()
+	if uc and uc.blocksHostIdle then
+		return uc.blocksHostIdle()
 	end
 	return is_usb_inserted()
 end
@@ -336,9 +336,8 @@ local function uart_hostevt_clr(_cmd)
 	end
 	return rsp_body("HOSTEVTCLR", "OK")
 end
-local DEFAULT_MIN_UNIX = 1704067200
 local function uart_time_query(_cmd)
-	local minTs = (_G.TIME_SYNC_CFG and _G.TIME_SYNC_CFG.min_valid_unix) or DEFAULT_MIN_UNIX
+	local minTs = (_G.TIME_SYNC_CFG and _G.TIME_SYNC_CFG.min_valid_unix) or utils.MIN_VALID_UNIX
 	local t = os.time()
 	if t < minTs then
 		return CRLF .. "+TIME:0" .. CRLF .. ok_tail()
@@ -815,7 +814,7 @@ local function uart_lowpower(cmd)
 	end
 	local rt = _G.APP_RUNTIME or {}
 	if cmd == "AT+LOWPOWER=ENTER" then
-		local up = usb_policy_mod()
+		local up = usb_charge_mod()
 		if up and up.blocks4gRest and up.blocks4gRest() then
 			return CRLF .. "+LOWPOWER:USB" .. CRLF
 		end
@@ -2315,6 +2314,29 @@ host_set = function(spec)
 	end
 	return okSet, msg, extra
 end
+local function cache_on_response(cache_key, require_parsed)
+	return function(got, snap)
+		if got and type(snap) == "table" and (not require_parsed or snap.parsed) then
+			state[cache_key] = snap
+			return snap
+		end
+		return state[cache_key]
+	end
+end
+local function parse_ok_rsp(rsp)
+	if rsp and rsp.ok then
+		return true, "ok", rsp
+	end
+	return false, "error", nil
+end
+local function cached_host_query(timeoutMs, opts)
+	opts = opts or {}
+	if opts.cache_key and opts.require_parsed ~= nil and not opts.on_response then
+		opts.on_response = cache_on_response(opts.cache_key, opts.require_parsed)
+	end
+	opts.require_parsed = nil
+	return host_query(timeoutMs, opts)
+end
 function getCachedHostGb28181Id()
 	return state.host_gb28181_id
 end
@@ -2813,9 +2835,10 @@ function queryHostRecord(timeoutMs)
 	})
 end
 function queryHostRecordTime(timeoutMs)
-	return host_query(timeoutMs, {
+	return cached_host_query(timeoutMs, {
 		busy_key = "recordtime_query_busy",
 		cache_key = "host_record_time",
+		require_parsed = true,
 		policy_tag = "host_recordtime",
 		cfg = record_cfg(),
 		default_timeout = 3000,
@@ -2825,13 +2848,6 @@ function queryHostRecordTime(timeoutMs)
 			if cfg.enabled == false then
 				return state.host_record_time
 			end
-		end,
-		on_response = function(got, snap, tmo)
-			if got and type(snap) == "table" and snap.parsed then
-				state.host_record_time = snap
-				return state.host_record_time
-			end
-			return state.host_record_time
 		end,
 	})
 end
@@ -2915,12 +2931,7 @@ function setHostFramerate(opts)
 			end
 			return true, nil, string.format("AT+FRAMERATE=%d,%d,%d", cam, stream, fps)
 		end,
-		parse_rsp = function(rsp)
-			if rsp.ok then
-				return true, "ok", rsp
-			end
-			return false, "error", nil
-		end,
+		parse_rsp = parse_ok_rsp,
 	})
 end
 function recordCtrlStart(opts)
@@ -2966,21 +2977,15 @@ function recordCtrlStop(opts)
 	})
 end
 function queryHostPersonDetect(timeoutMs)
-	return host_query(timeoutMs, {
+	return cached_host_query(timeoutMs, {
 		busy_key = "persondet_query_busy",
 		cache_key = "host_person_detect",
+		require_parsed = true,
 		policy_tag = "host_persondet",
 		cfg = identity_cfg(),
 		default_timeout = 5000,
 		at_cmd = "AT+PERSONDET?",
 		ack_event = SYS_EVT.PERSONDET_ACK,
-		on_response = function(got, snap, tmo)
-			if got and type(snap) == "table" and snap.parsed then
-				state.host_person_detect = snap
-				return snap
-			end
-			return state.host_person_detect
-		end,
 	})
 end
 function setHostPersonDetect(opts)
@@ -2999,12 +3004,7 @@ function setHostPersonDetect(opts)
 			end
 			return true, nil, string.format("AT+PERSONDET=%d", enable)
 		end,
-		parse_rsp = function(rsp)
-			if rsp.ok then
-				return true, "ok", rsp
-			end
-			return false, "error", nil
-		end,
+		parse_rsp = parse_ok_rsp,
 	})
 end
 function queryHostMic(opts)
@@ -3014,9 +3014,10 @@ function queryHostMic(opts)
 	if cam ~= nil then
 		at_cmd = string.format("AT+MIC?=%d", cam)
 	end
-	return host_query(opts.timeout_ms, {
+	return cached_host_query(opts.timeout_ms, {
 		busy_key = "mic_query_busy",
 		cache_key = "host_mic",
+		require_parsed = false,
 		policy_tag = "host_mic",
 		cfg = identity_cfg(),
 		default_timeout = 8000,
@@ -3024,13 +3025,6 @@ function queryHostMic(opts)
 		ack_event = SYS_EVT.MIC_QUERY,
 		before_send = function()
 			state.mic_rows = {}
-		end,
-		on_response = function(got, rows, tmo)
-			if got and type(rows) == "table" then
-				state.host_mic = rows
-				return rows
-			end
-			return state.host_mic
 		end,
 	})
 end
@@ -3052,30 +3046,19 @@ function setHostMic(opts)
 			end
 			return true, nil, string.format("AT+MICSET=%d,%d,%d", cam, volume, gain)
 		end,
-		parse_rsp = function(rsp)
-			if rsp.ok then
-				return true, "ok", rsp
-			end
-			return false, "error", nil
-		end,
+		parse_rsp = parse_ok_rsp,
 	})
 end
 function queryHostSoftPhoto(timeoutMs)
-	return host_query(timeoutMs, {
+	return cached_host_query(timeoutMs, {
 		busy_key = "softphoto_query_busy",
 		cache_key = "host_softphoto",
+		require_parsed = true,
 		policy_tag = "host_softphoto",
 		cfg = identity_cfg(),
 		default_timeout = 8000,
 		at_cmd = "AT+SOFTPHOTO?",
 		ack_event = SYS_EVT.SOFTPHOTO_QUERY,
-		on_response = function(got, snap, tmo)
-			if got and type(snap) == "table" and snap.parsed then
-				state.host_softphoto = snap
-				return snap
-			end
-			return state.host_softphoto
-		end,
 	})
 end
 function setHostSoftPhoto(opts)
@@ -3108,24 +3091,20 @@ function setHostSoftPhoto(opts)
 				fields[1], fields[2], fields[3], fields[4],
 				fields[5], fields[6], fields[7], fields[8])
 		end,
-		parse_rsp = function(rsp)
-			if rsp.ok then
-				return true, "ok", rsp
-			end
-			return false, "error", nil
-		end,
+		parse_rsp = parse_ok_rsp,
 	})
 end
 function queryHostTfCard(timeoutMs)
-	return host_query(timeoutMs, {
+	return cached_host_query(timeoutMs, {
 		busy_key = "tf_card_query_busy",
 		cache_key = "host_tf_card",
+		require_parsed = true,
 		policy_tag = "host_tfcard",
 		cfg = tf_card_cfg(),
 		default_timeout = 3000,
 		at_cmd = "AT+TFCARD?",
 		ack_event = SYS_EVT.TFCARD_ACK,
-		on_response = function(got, snap, tmo)
+		on_response = function(got, snap)
 			if got and type(snap) == "table" and snap.parsed then
 				state.host_tf_card = snap
 				return state.host_tf_card

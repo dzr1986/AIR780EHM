@@ -1,10 +1,40 @@
 require "sys"
-local contract = require "ipc_alert_contract"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local L = "ipc_sup"
 local _deps = {}
+local IPC_ALERT = {
+	tf_mount_fail         = { map1011 = false, reconcile = false },
+	uart_notify_fail      = { map1011 = false, reconcile = true },
+	snapshot_failed       = { map1011 = true,  reconcile = false },
+	gb28181_register_fail = { map1011 = false, reconcile = true },
+	defer_record_failed   = { map1011 = true,  reconcile = false },
+	hostevt_read_fail     = { map1011 = false, reconcile = false },
+	no_person             = { map1011 = true,  reconcile = false },
+	dispatch_failed       = { map1011 = false, reconcile = true },
+	runtime_wakeup_fail   = { map1011 = false, reconcile = false },
+	time_sync_fail        = { map1011 = true,  reconcile = false },
+	time_invalid          = { map1011 = true,  reconcile = false },
+	usb_recovery_fail     = { map1011 = false, reconcile = true },
+	recordctrl_fail       = { map1011 = true,  reconcile = false },
+	ipcpoweroff_busy      = { map1011 = false, reconcile = false },
+}
+local CAT1_ONLY = {
+	encode_runtime_fail = { map1011 = false, reconcile = false },
+}
+local function alertLookup(code)
+	code = tostring(code or "")
+	return IPC_ALERT[code] or CAT1_ONLY[code]
+end
+local function shouldMap1011(code)
+	local e = alertLookup(code)
+	return e and e.map1011 == true
+end
+local function shouldReconcile(code)
+	local e = alertLookup(code)
+	return e and e.reconcile == true
+end
 local ALERT_CLOUD_PATCH = {
 	tf_mount_fail = { tfPresent = 0 },
 	time_sync_fail = { timeSynced = 0 },
@@ -173,7 +203,7 @@ local function publishIpcAlertUplink(alertCode, alertDetail)
 	})
 end
 local function handleMap1011(alertCode)
-	if not contract.shouldMap1011(alertCode) then
+	if not shouldMap1011(alertCode) then
 		return
 	end
 	local uploadMode, quality = "auto", "high"
@@ -195,7 +225,7 @@ function publishAlert(alertCode, alertDetail)
 	patchCloudStatFromAlert(alertCode)
 	publishIpcAlertUplink(alertCode, alertDetail)
 	handleMap1011(alertCode)
-	if contract.shouldReconcile(alertCode) then
+	if shouldReconcile(alertCode) then
 		scheduleRecordReconcile()
 	end
 	scheduleIpcCloudStatRefresh(true)

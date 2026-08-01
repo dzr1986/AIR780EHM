@@ -8,7 +8,6 @@ local logFuncs = utils.createLogFunctions("time_sync")
 local tsInfo = logFuncs.info
 local tsWarn = logFuncs.warn
 local ACK_EVENT = "TIME_SYNC_ACK"
-local DEFAULT_MIN_UNIX = 1704067200 -- 2024-01-01 UTC
 local uart_bridge
 local host_uart
 local lastPushedUnix = 0
@@ -27,7 +26,7 @@ local function enabled()
 end
 function isTimeValid(t)
 	t = tonumber(t) or os.time()
-	local minTs = tonumber(cfg().min_valid_unix) or DEFAULT_MIN_UNIX
+	local minTs = tonumber(cfg().min_valid_unix) or utils.MIN_VALID_UNIX
 	return t >= minTs
 end
 function getCat1Unix()
