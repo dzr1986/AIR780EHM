@@ -1,6 +1,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local loader = require "module_loader"
 local pir_ctrl = require "pir_ctrl"
 local ipc_sup = require "ipc_supervision"
 local logFuncs = utils.createLogFunctions("net_mqtt")
@@ -105,8 +106,8 @@ local HOST_DL_NEEDS_T3X = {
 }
 local DOWNLINK_HANDLERS
 local function getDeviceId()
-	local ok, did = pcall(require, "device_id")
-	if ok and type(did) == "table" and did.getDeviceId then
+	local did = loader.load("device_id")
+	if did and did.getDeviceId then
 		return did.getDeviceId()
 	end
 	return "unknown_device"
@@ -198,11 +199,7 @@ local function getWledState()
 	return 0
 end
 local function getCellular()
-	local ok, mod = pcall(require, "cellular_bootstrap")
-	if ok then
-		return mod
-	end
-	return nil
+	return loader.load("cellular_bootstrap")
 end
 function bootstrapNetwork()
 	if bootstrapStarted then
@@ -274,8 +271,8 @@ local function collectSimSnapshot()
 	if okApn and apn then
 		snap.apn = apn
 	end
-	local okCell, cellular = pcall(require, "cellular_bootstrap")
-	if okCell and cellular and cellular.resolveOperator then
+	local cellular = loader.load("cellular_bootstrap")
+	if cellular and cellular.resolveOperator then
 		snap.operator, snap.operator_name = cellular.resolveOperator(snap.imsi, snap.iccid, snap.apn)
 	end
 	local rt = _G.APP_RUNTIME
@@ -299,8 +296,8 @@ local function collectBatterySnapshot()
 		charging = 0,
 	}
 	snap.usb_inserted = snap.power_status == 1 and 1 or 0
-	local ok, uc = pcall(require, "usb_charge")
-	if ok and type(uc) == "table" then
+	local uc = loader.load("usb_charge")
+	if uc then
 		if type(uc.isUsbInserted) == "function" then
 			snap.usb_inserted = uc.isUsbInserted() and 1 or 0
 			snap.power_status = snap.usb_inserted
@@ -465,8 +462,8 @@ local function resolve2002Mode(data)
 	return nil
 end
 local function usbBlocks4gRest()
-	local ok, uc = pcall(require, "usb_charge")
-	if ok and type(uc) == "table" and uc.blocks4gRest then
+	local uc = loader.load("usb_charge")
+	if uc and uc.blocks4gRest then
 		return uc.blocks4gRest()
 	end
 	return (_G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.power_status) == 1) or false
@@ -674,8 +671,8 @@ local function isT3xHostReady()
 	if hu and hu.isHostAtReady then
 		return hu.isHostAtReady() == true
 	end
-	local ok, t3x = pcall(require, "t3x_ctrl")
-	if ok and t3x and t3x.getState then
+	local t3x = loader.load("t3x_ctrl")
+	if t3x and t3x.getState then
 		local st = t3x.getState()
 		return st and st.powered_on == true
 	end
@@ -691,8 +688,8 @@ local function enqueuePendingHostWork(dtype, data)
 end
 local function wakeT3xForPendingHost()
 	sys.taskInit(function()
-		local ok, tn = pcall(require, "t3x_notify")
-		if ok and tn and tn.wakeHost then
+		local tn = loader.load("t3x_notify")
+		if tn and tn.wakeHost then
 			tn.wakeHost((_G.HOST_WAKE_CFG or {}).default_sid or 1, 0)
 			return
 		end

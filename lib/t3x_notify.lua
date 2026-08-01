@@ -1,11 +1,12 @@
 require "sys"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
 local function notifyViaTimeSync(sid, evt)
-	local okTs, time_sync = pcall(require, "time_sync")
-	if not okTs or not time_sync or not time_sync.pushBeforeNotifyAsync then
+	local time_sync = loader.load("time_sync")
+	if not time_sync or not time_sync.pushBeforeNotifyAsync then
 		return false
 	end
 	if _G.MODULE_FLAGS and _G.MODULE_FLAGS.time_sync == false then
@@ -18,8 +19,8 @@ end
 local function notifyViaHostUart(sid, evt)
 	local hu = _G.host_uart
 	if not hu then
-		local ok, mod = pcall(require, "host_uart")
-		hu = ok and mod or nil
+		local mod = loader.load("host_uart")
+		hu = mod or nil
 	end
 	if hu and hu.notify_host then
 		return hu.notify_host(sid, evt) ~= false
@@ -30,8 +31,8 @@ end
 local function fallbackGpioWake(onDone)
 	local t3x = _G.t3x_ctrl
 	if not t3x then
-		local ok, mod = pcall(require, "t3x_ctrl")
-		t3x = ok and mod or nil
+		local mod = loader.load("t3x_ctrl")
+		t3x = mod or nil
 	end
 	if not t3x or not t3x.wake then
 		return false
@@ -72,8 +73,8 @@ end
 function ensurePowered(tag, opts)
 	local t3x = _G.t3x_ctrl
 	if not t3x then
-		local ok, mod = pcall(require, "t3x_ctrl")
-		t3x = ok and mod or nil
+		local mod = loader.load("t3x_ctrl")
+		t3x = mod or nil
 	end
 	if t3x and t3x.ensurePowered then
 		return t3x.ensurePowered(tag, opts)

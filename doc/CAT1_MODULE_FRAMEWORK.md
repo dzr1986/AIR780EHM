@@ -180,7 +180,34 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 
 ### 8.3 后续渐进迁移建议
 
-1. **裸 `pcall(require)` 收敛**：全项目仍有约 60 处，改动一处业务文件时顺带换成 `loader.load`（勿一次性全改，避免回归）。
+1. **裸 `pcall(require)` 收敛**：~~全项目仍有约 60 处~~（第三轮已收敛主要文件，见 §9）。
 2. **配置 merge 收敛**：`watchdog.mergeConfig`、`pir_ctrl` 等模块的手工 merge 可逐步换 `cfgman.merge`。
 3. **stop() 补齐**：`vbat`、`time_sync`、`led_ctrl` 等持有定时器的模块补 `stop()`，使 `loader.stopAll()` 可用于 T3x 烧录模式/关机前的整体停机。
 4. **幽灵模块**：`MODULE_FLAGS.mobile_info` 指向的 `lib/mobile_info.lua` 已删除（flag=false + loader 负缓存兜底）；如确认不再恢复，可删除相关 flag 与 `app.lua` 引用。
+
+## 9. 第三轮优化（lazy-require 迁移与响应串收敛）
+
+### 9.1 pcall(require) → loader.load 迁移（47 处）
+
+| 文件 | 迁移点数 | 说明 |
+| --- | --- | --- |
+| user/host_uart.lua | 33 | 全部惰性加载点统一走 loader（含 usbChargeCache 等缓存守卫简化） |
+| user/net_mqtt.lua | 7 | getDeviceId/getCellular/collectSimSnapshot/usbBlocks4gRest 等 |
+| user/time_sync.lua | 3 | getUart/t3xOn/pushBeforeNotify |
+| lib/t3x_notify.lua | 4 | notifyViaTimeSync/notifyViaHostUart/fallbackGpioWake/ensurePowered |
+
+等价性要点：`loader.load` 内部即 pcall + 单一缓存 + `type=="table"` 校验，故原 `ok and type(mod)=="table" and mod or false` 一律简化为 `mod or false`；失败路径（模块缺失）行为不变（负缓存返回 nil）。
+
+### 9.2 host_uart 响应串收敛
+
+- 13 处硬编码 `CRLF.."+TAG:OK/ERROR"..CRLF` 改为 `rsp_line(tag, ok)`；`USBRESET:OK`（带 ok_tail）改为 `rsp_body("USBRESET","OK")`。
+- 删除 `RSP_SETCFG_OK/ERR` 顶部常量，SETCFG 6 处使用点统一 `rsp_line("SETCFG", ...)`。
+- 输出字节完全一致，仅代码收敛。
+
+### 9.3 核实后不处理的项
+
+| 分析建议 | 结论 |
+| --- | --- |
+| escJson 重复实现（net_mqtt / ipc_supervision） | **已统一**：ipc_supervision 通过 `_deps.esc_json` 注入委托 net_mqtt 实现，本地版本仅为注入前兜底，无需改动 |
+| net_mqtt `netReadyPublished/bootstrapStarted` 为死标志 | **不成立**：分别在 bootstrap 流程中写入，用于去重 |
+| host_uart `pulseUsbDebugEn` 定时器泄漏 | **不成立**：调用幂等，无泄漏 |

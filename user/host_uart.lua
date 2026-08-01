@@ -1,6 +1,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local loader = require "module_loader"
 local uart_bridge = require "uart_bridge"
 local _modname = ...
 module(_modname, package.seeall)
@@ -8,8 +9,6 @@ _G[_modname] = _M
 local LOG_TAG = "host_uart"
 local CRLF = "\r\n"
 local RSP_ERROR = CRLF .. "ERROR" .. CRLF
-local RSP_SETCFG_OK = CRLF .. "+SETCFG:OK" .. CRLF
-local RSP_SETCFG_ERR = CRLF .. "+SETCFG:ERROR" .. CRLF
 local SYS_EVT = {
 	GB28181_ACK = "HOST_UART_GB28181_ACK",
 	TFCARD_ACK = "HOST_UART_TFCARD_ACK",
@@ -172,8 +171,8 @@ end
 local usbChargeCache
 local function usb_charge_mod()
 	if usbChargeCache == nil then
-		local ok, mod = pcall(require, "usb_charge")
-		usbChargeCache = ok and type(mod) == "table" and mod or false
+		local mod = loader.load("usb_charge")
+		usbChargeCache = mod or false
 	end
 	return usbChargeCache ~= false and usbChargeCache or nil
 end
@@ -196,8 +195,8 @@ local function get_config_snapshot()
 	local meta = _G.APP_META or {}
 	local rt = _G.APP_RUNTIME or {}
 	local tcp_extra = ""
-	local okLp, lpw = pcall(require, "low_power_wakeup")
-	if okLp and lpw and lpw.appendGetCfgFields then
+	local lpw = loader.load("low_power_wakeup")
+	if lpw and lpw.appendGetCfgFields then
 		tcp_extra = lpw.appendGetCfgFields()
 	end
 	return {
@@ -284,15 +283,15 @@ local function build_hostevt_media_suffix(pirBody)
 end
 local function build_pir_wake_context()
 	local pirBody = ""
-	local ok, pir = pcall(require, "pir_ctrl")
-	if ok and pir and pir.buildAtBody then
+	local pir = loader.load("pir_ctrl")
+	if pir and pir.buildAtBody then
 		pirBody = pir.buildAtBody()
 	end
 	local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
 	local sum
 	local he
-	local okHe, heMod = pcall(require, "host_event")
-	if okHe and heMod and heMod.summarize then
+	local heMod = loader.load("host_event")
+	if heMod and heMod.summarize then
 		he = heMod
 		sum = heMod.summarize(pirBody, wakeValid, wakeSid, wakeEvt)
 	end
@@ -330,8 +329,8 @@ local function uart_hostevt_query(_cmd)
 end
 local function uart_hostevt_clr(_cmd)
 	clear_pending_wake()
-	local ok, pir = pcall(require, "pir_ctrl")
-	if ok and pir and pir.clearConsumableMarkers then
+	local pir = loader.load("pir_ctrl")
+	if pir and pir.clearConsumableMarkers then
 		pir.clearConsumableMarkers()
 	end
 	return rsp_body("HOSTEVTCLR", "OK")
@@ -345,8 +344,8 @@ local function uart_time_query(_cmd)
 	return string.format(CRLF .. "+TIME:%d" .. CRLF, t) .. ok_tail()
 end
 function getDeviceImei()
-	local ok, did = pcall(require, "device_id")
-	if ok and type(did) == "table" and did.getImei then
+	local did = loader.load("device_id")
+	if did and did.getImei then
 		return did.getImei()
 	end
 	return nil
@@ -464,8 +463,8 @@ local function uart_ipcinfo_query(_cmd)
 	local cfg = identity_cfg()
 	if cfg.publish_on_ipcinfo_query == true then
 		sys.taskInit(function()
-			local ok, net = pcall(require, "net_mqtt")
-			if ok and net and net.refreshAndPublishDeviceIdentity then
+			local net = loader.load("net_mqtt")
+			if net and net.refreshAndPublishDeviceIdentity then
 				if gb28181Id == "" then
 					queryHostGb28181(cfg.query_timeout_ms)
 				end
@@ -478,16 +477,16 @@ end
 local function uart_mqttpub(cmd)
 	local suffix, body = cmd:match("^AT%+MQTTPUB=([^;]+);(.+)$")
 	if not suffix or not body or body == "" then
-		return CRLF .. "+MQTTPUB:ERROR" .. CRLF
+		return rsp_line("MQTTPUB", false)
 	end
-	local ok, net = pcall(require, "net_mqtt")
-	if not ok or type(net) ~= "table" or not net.publishRaw then
-		return CRLF .. "+MQTTPUB:ERROR" .. CRLF
+	local net = loader.load("net_mqtt")
+	if not net or not net.publishRaw then
+		return rsp_line("MQTTPUB", false)
 	end
 	if net.publishRaw(suffix, body, 1) then
-		return CRLF .. "+MQTTPUB:OK" .. CRLF
+		return rsp_line("MQTTPUB", true)
 	end
-	return CRLF .. "+MQTTPUB:ERROR" .. CRLF
+	return rsp_line("MQTTPUB", false)
 end
 local function parse_mqttcfg_body(body)
 	if not body or body == "" then
@@ -527,8 +526,8 @@ local function uart_mqttcfg(cmd)
 	return rsp_line("mqtt_config_uart", true) .. ok_tail()
 end
 local function uart_servcreate(cmd)
-	local okLp, lpw = pcall(require, "low_power_wakeup")
-	if okLp and lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
+	local lpw = loader.load("low_power_wakeup")
+	if lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
 		return rsp_body("server_channel_add", "DISABLED")
 	end
 	local ch = parse_servcreate_args(cmd:match("^AT%+SERVCREATE=(.+)$"))
@@ -548,14 +547,14 @@ local function uart_servclose(cmd)
 	if not sid then
 		return RSP_ERROR
 	end
-	local okLp, lpw = pcall(require, "low_power_wakeup")
-	if okLp and lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
+	local lpw = loader.load("low_power_wakeup")
+	if lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
 		state.channel = nil
 		return rsp_body("server_channel_remove", "DISABLED")
 	end
 	if hooks.on_servclose then
 		hooks.on_servclose(sid)
-	elseif okLp and lpw and lpw.closeTcpChannel then
+	elseif lpw and lpw.closeTcpChannel then
 		lpw.closeTcpChannel(sid)
 	end
 	state.channel = nil
@@ -610,17 +609,17 @@ local function uart_hostidle(cmd)
 		if cmd == "AT+HOSTIDLE=0" then
 			return rsp_body("HOSTIDLE", "OK")
 		end
-		local okBg, bg = pcall(require, "battery_guard")
-		if okBg and type(bg) == "table" and bg.shouldAllowHostIdleSleep
+		local bg = loader.load("battery_guard")
+		if bg and bg.shouldAllowHostIdleSleep
 			and bg.shouldAllowHostIdleSleep() == false then
 			return CRLF .. "+HOSTIDLE:BUSY" .. CRLF
 		end
-		if okBg and type(bg) == "table" and bg.canAcceptHostIdleSleep
+		if bg and bg.canAcceptHostIdleSleep
 			and bg.canAcceptHostIdleSleep() == false then
 			return CRLF .. "+HOSTIDLE:BUSY" .. CRLF
 		end
-		local okCtrl, t3x = pcall(require, "t3x_ctrl")
-		if okCtrl and t3x and t3x.enterSleep then
+		local t3x = loader.load("t3x_ctrl")
+		if t3x and t3x.enterSleep then
 			local lp = _G.LOW_POWER_CFG or {}
 			sys.taskInit(function()
 				t3x.enterSleep({
@@ -631,13 +630,13 @@ local function uart_hostidle(cmd)
 			end)
 			return rsp_body("HOSTIDLE", "OK")
 		end
-		return CRLF .. "+HOSTIDLE:ERROR" .. CRLF
+		return rsp_line("HOSTIDLE", false)
 	end
 	return nil
 end
 local function uart_pirclr(_cmd)
-	local ok, pir = pcall(require, "pir_ctrl")
-	if ok and pir and pir.resetCounters then
+	local pir = loader.load("pir_ctrl")
+	if pir and pir.resetCounters then
 		pir.resetCounters()
 		return rsp_line("PIRCLR", true) .. ok_tail()
 	end
@@ -665,8 +664,8 @@ local function uart_record_notify(cmd)
 		patchHostIpcCloudStat({ recordingT3x = 0 })
 	end
 	local uploadMode, quality
-	local ok_pc, pir_ctrl = pcall(require, "pir_ctrl")
-	if ok_pc and pir_ctrl and pir_ctrl.syncStopFromT3x then
+	local pir_ctrl = loader.load("pir_ctrl")
+	if pir_ctrl and pir_ctrl.syncStopFromT3x then
 		uploadMode, quality = pir_ctrl.syncStopFromT3x(reason)
 	end
 	local E = _G.APP_EVENTS or {}
@@ -688,8 +687,8 @@ local function uart_pir_media_notify(cmd)
 	if not action or action == "" then
 		return RSP_ERROR
 	end
-	local ok_pc, pir_ctrl = pcall(require, "pir_ctrl")
-	if ok_pc and pir_ctrl and pir_ctrl.applyEffectiveMediaAction then
+	local pir_ctrl = loader.load("pir_ctrl")
+	if pir_ctrl and pir_ctrl.applyEffectiveMediaAction then
 		pir_ctrl.applyEffectiveMediaAction(action)
 	end
 	return string.format(CRLF .. "+PIRMEDIA:ok,action=%s" .. CRLF, action) .. ok_tail()
@@ -773,8 +772,8 @@ local function uart_snapshot_notify(cmd)
 end
 local function uart_record_query(_cmd)
 	local rec = 0
-	local ok_pc, pir_ctrl = pcall(require, "pir_ctrl")
-	if ok_pc and pir_ctrl and pir_ctrl.isRecording and pir_ctrl.isRecording() then
+	local pir_ctrl = loader.load("pir_ctrl")
+	if pir_ctrl and pir_ctrl.isRecording and pir_ctrl.isRecording() then
 		rec = 1
 	end
 	return string.format(CRLF .. "+RECORD:%d,reason=%s,active=%d" .. CRLF,
@@ -844,11 +843,11 @@ local function uart_timer_action(hook)
 end
 local function uart_reboot(_cmd)
 	uart_timer_action(hooks.on_reboot)
-	return CRLF .. "+REBOOT:OK" .. CRLF
+	return rsp_line("REBOOT", true)
 end
 local function uart_poweroff(_cmd)
 	uart_timer_action(hooks.on_power_off)
-	return CRLF .. "+POWEROFF:OK" .. CRLF
+	return rsp_line("POWEROFF", true)
 end
 local wled_state = { on = 0, last_forward_ms = 0 }
 local function wled_cfg()
@@ -863,8 +862,8 @@ local function wled_export_runtime(on)
 	end
 end
 local function wled_ensure_t3x_powered()
-	local ok, ipc = pcall(require, "t3x_ctrl")
-	if ok and type(ipc) == "table" and ipc.ensurePowered then
+	local ipc = loader.load("t3x_ctrl")
+	if ipc and ipc.ensurePowered then
 		local wc = wled_cfg()
 		return ipc.ensurePowered("wled", {
 			t3x_power_wait_ms = tonumber(wc.t3x_power_wait_ms) or 800,
@@ -998,8 +997,8 @@ local function t3x_rest_blocks_usb_reset()
 	if tonumber(rt.low_power_mode) ~= 1 then
 		return false
 	end
-	local ok, t3x = pcall(require, "t3x_ctrl")
-	if not ok or type(t3x) ~= "table" or not t3x.getState then
+	local t3x = loader.load("t3x_ctrl")
+	if not t3x or not t3x.getState then
 		return false
 	end
 	local st = t3x.getState()
@@ -1111,14 +1110,14 @@ local function uart_usbreset(cmd)
 		end
 		return CRLF .. "+USBRESET:" .. deny .. CRLF
 	end
-	local okMod, usb_rndis = pcall(require, "usb_rndis")
-	if not okMod or type(usb_rndis) ~= "table" then
-		return CRLF .. "+USBRESET:ERROR" .. CRLF
+	local usb_rndis = loader.load("usb_rndis")
+	if not usb_rndis then
+		return rsp_line("USBRESET", false)
 	end
 	usb_recovery_run_async("USBRESET", cfg, function()
 		local pulse_ms = 0
-		local okCtrl, t3x = pcall(require, "t3x_ctrl")
-		if okCtrl and type(t3x) == "table" and t3x.pulseUsbDebugEn then
+		local t3x = loader.load("t3x_ctrl")
+		if t3x and t3x.pulseUsbDebugEn then
 			local pok, pret, pms = pcall(t3x.pulseUsbDebugEn, { high_ms = cfg.usb_debug_en_pulse_ms })
 			if pok and pms then
 				pulse_ms = tonumber(pms) or 0
@@ -1147,7 +1146,7 @@ local function uart_usbreset(cmd)
 		end
 		return false
 	end)
-	return CRLF .. "+USBRESET:OK" .. CRLF .. ok_tail()
+	return rsp_body("USBRESET", "OK")
 end
 local function uart_usbrecovery(cmd)
 	local state, count = cmd:match("^AT%+USBRECOVERY=([^,]+),(%d+)$")
@@ -1200,8 +1199,8 @@ function resetUsbRecoveryFromCloud()
 	return true
 end
 local function uart_rndis(cmd)
-	local okMod, usb_rndis = pcall(require, "usb_rndis")
-	if not okMod or type(usb_rndis) ~= "table" then
+	local usb_rndis = loader.load("usb_rndis")
+	if not usb_rndis then
 		return RSP_ERROR
 	end
 	if cmd == "AT+RNDIS?" or cmd == "AT+RNDIS" then
@@ -1250,30 +1249,30 @@ end
 local function uart_setcfg(cmd)
 	local key, val = cmd:match("^AT%+SETCFG=([^,]+),(.+)$")
 	if not key or not val then
-		return RSP_SETCFG_ERR
+		return rsp_line("SETCFG", false)
 	end
 	local rt = _G.APP_RUNTIME
 	local meta = _G.APP_META
 	if key == "interval" and tonumber(val) and rt then
-		local okMqtt, mqtt = pcall(require, "net_mqtt")
-		if okMqtt and type(mqtt) == "table" and mqtt.setStatusIntervalSec then
+		local mqtt = loader.load("net_mqtt")
+		if mqtt and mqtt.setStatusIntervalSec then
 			if not mqtt.setStatusIntervalSec(tonumber(val), true) then
-				return RSP_SETCFG_ERR
+				return rsp_line("SETCFG", false)
 			end
 		else
 			rt.low_power_interval_sec = tonumber(val)
 			local ev = (_G.APP_EVENTS or {}).MQTT_STATUS_INTERVAL_CHANGED or "APP_MQTT_STATUS_INTERVAL_CHANGED"
 			sys.publish(ev)
 		end
-		return RSP_SETCFG_OK
+		return rsp_line("SETCFG", true)
 	elseif key == "devicemodel" and meta then
 		meta.device_model = val
-		return RSP_SETCFG_OK
+		return rsp_line("SETCFG", true)
 	elseif key == "hexrpt" then
 		state.hex_report = (val == "1" or val == "true" or val == "on")
-		return RSP_SETCFG_OK
+		return rsp_line("SETCFG", true)
 	end
-	return RSP_SETCFG_ERR
+	return rsp_line("SETCFG", false)
 end
 local function uart_hex_line(line)
 	local hex = line:match("^[Hh][Ee][Xx]:(.*)$")
@@ -1401,8 +1400,8 @@ local function try_sound_ack_line(line)
 	if not name then
 		return false
 	end
-	local ok, sp = pcall(require, "sound_prompt")
-	if ok and type(sp) == "table" and sp.onSoundAck then
+	local sp = loader.load("sound_prompt")
+	if sp and sp.onSoundAck then
 		sp.onSoundAck(name)
 	end
 	return true
@@ -1412,8 +1411,8 @@ local function try_timeset_ack_line(line)
 		return false
 	end
 	if line:match("^%+TIMESET:OK$") then
-		local ok, ts = pcall(require, "time_sync")
-		if ok and type(ts) == "table" and ts.onTimesetAck then
+		local ts = loader.load("time_sync")
+		if ts and ts.onTimesetAck then
 			ts.onTimesetAck()
 		end
 		return true
@@ -2159,8 +2158,8 @@ local function ipc_cfg()
 end
 local function ensure_t3x_for_host_query(policy_tag, cfg)
 	cfg = cfg or identity_cfg()
-	local ok, ipc = pcall(require, "t3x_ctrl")
-	if ok and type(ipc) == "table" and ipc.ensurePowered then
+	local ipc = loader.load("t3x_ctrl")
+	if ipc and ipc.ensurePowered then
 		return ipc.ensurePowered(policy_tag or "host_identity", {
 			t3x_power_wait_ms = tonumber(cfg.t3x_power_wait_ms)
 				or tonumber((_G.TIME_SYNC_CFG or {}).t3x_power_wait_ms)
@@ -2420,8 +2419,8 @@ local function overlay_live_ipc_hints(snap)
 	if state.host_at_ready and (tonumber(snap.cat1Link) or 0) == 0 then
 		snap.cat1Link = 1
 	end
-	local ok, t3x = pcall(require, "t3x_ctrl")
-	if ok and type(t3x) == "table" and t3x.getState then
+	local t3x = loader.load("t3x_ctrl")
+	if t3x and t3x.getState then
 		local pst = t3x.getState()
 		if pst and pst.powered_on and (tonumber(snap.cat1Link) or 0) == 0 then
 			snap.cat1Link = 1
@@ -2479,8 +2478,8 @@ function isT31StartedForHostQuery()
 	if state.host_at_ready then
 		return true
 	end
-	local ok, t3x = pcall(require, "t3x_ctrl")
-	if ok and type(t3x) == "table" and t3x.getState then
+	local t3x = loader.load("t3x_ctrl")
+	if t3x and t3x.getState then
 		local st = t3x.getState()
 		return st ~= nil and st.powered_on == true
 	end
@@ -2540,8 +2539,8 @@ function isHostUartQueryBusy()
 		or isHostInboundQuiet()
 end
 function reconcileHostRecordSession(timeoutMs)
-	local ok_pc, pir_ctrl = pcall(require, "pir_ctrl")
-	if not ok_pc or not pir_ctrl or not pir_ctrl.isRecording then
+	local pir_ctrl = loader.load("pir_ctrl")
+	if not pir_ctrl or not pir_ctrl.isRecording then
 		return false
 	end
 	if not pir_ctrl.isRecording() then
@@ -2638,8 +2637,8 @@ note_uart_link_ok = function()
 	reset_uart_recovery_miss()
 end
 local function is_t3x_powered_on()
-	local ok, t3x = pcall(require, "t3x_ctrl")
-	if ok and type(t3x) == "table" and t3x.getState then
+	local t3x = loader.load("t3x_ctrl")
+	if t3x and t3x.getState then
 		local st = t3x.getState()
 		return st ~= nil and st.powered_on == true
 	end
@@ -2647,8 +2646,8 @@ local function is_t3x_powered_on()
 end
 local function run_uart_power_cycle_recovery(attempt)
 	local rc = uart_recovery_cfg()
-	local ok, t3x = pcall(require, "t3x_ctrl")
-	if not ok or type(t3x) ~= "table" then
+	local t3x = loader.load("t3x_ctrl")
+	if not t3x then
 		return false
 	end
 	if is_t3x_powered_on() and t3x.powerOff then
@@ -3195,8 +3194,8 @@ function isHostTfFormatBusy()
 	return state.tfcard_format_busy == true
 end
 function setPirActionDevinfo()
-	local ok, pc = pcall(require, "pir_ctrl")
-	if ok and type(pc) == "table" and pc.setMediaConfig then
+	local pc = loader.load("pir_ctrl")
+	if pc and pc.setMediaConfig then
 		pc.setMediaConfig({ action = "devinfo" })
 		return true
 	end
@@ -3438,8 +3437,8 @@ function notify_host(sid, evt)
 	local cfg = _G.HOST_WAKE_CFG or {}
 	sid = sid or cfg.default_sid or 1
 	evt = evt or _M.EVT.SERVER_DATA
-	local okPol, policy = pcall(require, "t3x_policy")
-	if okPol and type(policy) == "table" and policy.mayPowerT3x
+	local policy = loader.load("t3x_policy")
+	if policy and policy.mayPowerT3x
 		and not policy.mayPowerT3x("notify_host") then
 		return false
 	end
@@ -3450,8 +3449,8 @@ function notify_host(sid, evt)
 	if t3xModule.getState and not t3xModule.getState().powered_on and t3xModule.powerOn then
 		t3xModule.powerOn()
 	end
-	local okBg, bg = pcall(require, "battery_guard")
-	if okBg and type(bg) == "table" and bg.markT3xWoken then
+	local bg = loader.load("battery_guard")
+	if bg and bg.markT3xWoken then
 		bg.markT3xWoken()
 	end
 	if t3xModule.pulseMcuInt then

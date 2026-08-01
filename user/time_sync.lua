@@ -1,6 +1,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -38,10 +39,7 @@ local function getUart()
 	end
 	uart_bridge = _G.uart_bridge
 	if not uart_bridge then
-		local ok, mod = pcall(require, "uart_bridge")
-		if ok then
-			uart_bridge = mod
-		end
+		uart_bridge = loader.load("uart_bridge")
 	end
 	return uart_bridge
 end
@@ -70,8 +68,8 @@ end
 local ipcMod
 local function t3xOn(extra)
 	if ipcMod == nil then
-		local ok, m = pcall(require, "t3x_ctrl")
-		ipcMod = ok and m or false
+		local m = loader.load("t3x_ctrl")
+		ipcMod = m or false
 	end
 	if not ipcMod or not ipcMod.ensurePowered then
 		return false
@@ -161,8 +159,8 @@ function onT3xWake()
 	pushToHostAsync(false)
 end
 function pushBeforeNotify(sid, evt)
-	local okPol, policy = pcall(require, "t3x_policy")
-	if okPol and type(policy) == "table" and policy.requestT3xWake then
+	local policy = loader.load("t3x_policy")
+	if policy and policy.requestT3xWake then
 		if not policy.mayPowerT3x("time_sync_notify") then
 			return
 		end
