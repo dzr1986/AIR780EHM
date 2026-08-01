@@ -159,13 +159,8 @@ local function refreshAfterCellularIp()
 	ipReadyRefreshed = true
 	refreshing = true
 	sys.publish(EVT_REFRESH_BEGIN)
-	mobile.flymode(0, true)
-	sys.wait(FLYMODE_WAIT_MS)
-	mobile.config(mobile.CONF_USB_ETHERNET, 0)
-	sys.wait(500)
-	mobile.config(mobile.CONF_USB_ETHERNET, RNDIS_USB_ETHERNET_MODE)
-	mobile.flymode(0, false)
-	applyPmUsb()
+	rndisCloseCore(500)
+	rndisOpenCore()
 	refreshing = false
 	sys.publish(EVT_REFRESH_END)
 	if not bootStable then

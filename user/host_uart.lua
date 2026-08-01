@@ -316,14 +316,11 @@ local function build_pir_wake_body(hostevt)
 	end
 	return body
 end
-local function build_hostevt_body()
+function buildHostEvtBody()
 	return build_pir_wake_body(true)
 end
-function buildHostEvtBody()
-	return build_hostevt_body()
-end
 local function uart_hostevt_query(_cmd)
-	return rsp_body("HOSTEVT", build_hostevt_body())
+	return rsp_body("HOSTEVT", build_pir_wake_body(true))
 end
 local function uart_hostevt_clr(_cmd)
 	clear_pending_wake()
@@ -342,18 +339,15 @@ local function uart_time_query(_cmd)
 	end
 	return string.format(CRLF .. "+TIME:%d" .. CRLF, t) .. ok_tail()
 end
-local function get_device_imei()
+function getDeviceImei()
 	local ok, did = pcall(require, "device_id")
 	if ok and type(did) == "table" and did.getImei then
 		return did.getImei()
 	end
 	return nil
 end
-function getDeviceImei()
-	return get_device_imei()
-end
 local function uart_imei(_cmd)
-	local imei = get_device_imei()
+	local imei = getDeviceImei()
 	if not imei then
 		return RSP_ERROR
 	end
@@ -454,7 +448,7 @@ local function schedule_gb28181_refresh_if_needed()
 	end)
 end
 local function uart_ipcinfo_query(_cmd)
-	local imei = get_device_imei() or ""
+	local imei = getDeviceImei() or ""
 	local gb28181Id = state.host_gb28181_id or ""
 	schedule_gb28181_refresh_if_needed()
 	local body = string.format(
@@ -570,14 +564,11 @@ local function uart_getcfg(_cmd)
 		s.tcp_extra or ""
 	) .. ok_tail()
 end
-local function build_pirstat_body()
+function buildPirstatBody()
 	return build_pir_wake_body(false)
 end
 local function uart_pirstat_query(_cmd)
-	return rsp_body("PIRSTAT", build_pirstat_body())
-end
-function buildPirstatBody()
-	return build_pirstat_body()
+	return rsp_body("PIRSTAT", build_pir_wake_body(false))
 end
 local function uart_hostidle(cmd)
 	local fc = _G.FEATURE_CFG
@@ -594,7 +585,7 @@ local function uart_hostidle(cmd)
 		end
 		return CRLF .. "+HOSTIDLE:USB" .. CRLF
 	end
-	local hostBody = build_hostevt_body()
+	local hostBody = build_pir_wake_body(true)
 	if hostBody:match("has_event=1") then
 		return CRLF .. "+HOSTIDLE:BUSY" .. CRLF
 	end
@@ -891,15 +882,12 @@ local function forward_wled_to_host(on, timeoutMs)
 	local atCmd = string.format("AT+WLED=%d", on)
 	local okFwd = host_query(timeoutMs, {
 		busy_key = "wled_forward_busy",
-		busy_log = "wled_busy",
 		policy_tag = "wled",
 		cfg = wc,
 		timeout_cfg_key = "ack_timeout_ms",
 		default_timeout = 3000,
 		at_cmd = atCmd,
 		ack_event = SYS_EVT.WLED_ACK,
-		no_uart_log = "wled_no_uart",
-		err_log = "wled_error",
 		on_response = function(got, val, tmo)
 			if got and type(val) == "table" and val.ok then
 				return true
@@ -926,15 +914,12 @@ function queryHostWled(timeoutMs)
 	timeoutMs = tonumber(timeoutMs) or tonumber(wc.ack_timeout_ms) or 3000
 	local val = host_query(timeoutMs, {
 		busy_key = "wled_query_busy",
-		busy_log = "wled_busy",
 		policy_tag = "wled",
 		cfg = wc,
 		timeout_cfg_key = "ack_timeout_ms",
 		default_timeout = 3000,
 		at_cmd = "AT+WLED?",
 		ack_event = SYS_EVT.WLED_ACK,
-		no_uart_log = "wled_no_uart",
-		err_log = "wled_error",
 		on_response = function(got, rsp, tmo)
 			if got and type(rsp) == "table" and rsp.ok then
 				return rsp.on
@@ -2366,15 +2351,12 @@ function queryHostGb28181(timeoutMs)
 	return host_query(timeoutMs, {
 		busy_key = "gb28181_query_busy",
 		cache_key = "host_gb28181_id",
-		busy_log = "gb28181_busy",
 		policy_tag = "host_identity",
 		cfg = identity_cfg(),
 		timeout_cfg_key = "query_timeout_ms",
 		default_timeout = 3000,
 		at_cmd = "AT+GB28181?",
 		ack_event = SYS_EVT.GB28181_ACK,
-		no_uart_log = "gb28181_no_uart",
-		err_log = "gb28181_error",
 		on_response = function(got, id, tmo)
 			if got and id ~= nil then
 				state.host_gb28181_id = id
@@ -2594,7 +2576,6 @@ end
 function queryHostIpcCloudStat(timeoutMs)
 	return host_query(timeoutMs, {
 		busy_key = "ipc_cloud_stat_query_busy",
-		busy_log = "ipc_cloud_stat_busy",
 		busy_return = getCachedHostIpcCloudStat(),
 		policy_tag = "host_ipc",
 		cfg = ipc_cfg(),
@@ -2604,8 +2585,6 @@ function queryHostIpcCloudStat(timeoutMs)
 		at_cmd = "AT+IPCSTAT?",
 		ack_event = SYS_EVT.IPCSTAT_ACK,
 		default_result = getCachedHostIpcCloudStat(),
-		no_uart_log = "ipc_cloud_stat_no_uart",
-		err_log = "ipc_cloud_stat_error",
 		when_disabled = function()
 			return getCachedHostIpcCloudStat()
 		end,
@@ -2734,7 +2713,6 @@ end
 function queryHostIpcStatus(timeoutMs)
 	return host_query(timeoutMs, {
 		busy_key = "ipc_status_query_busy",
-		busy_log = "ipc_status_busy",
 		busy_return = state.host_ipc_status or "idle",
 		policy_tag = "host_ipc",
 		cfg = ipc_cfg(),
@@ -2744,8 +2722,6 @@ function queryHostIpcStatus(timeoutMs)
 		at_cmd = "AT+IPCSTATUS?",
 		ack_event = SYS_EVT.IPCSTATUS_ACK,
 		default_result = "idle",
-		no_uart_log = "ipc_status_no_uart",
-		err_log = "ipc_status_error",
 		when_disabled = function(cfg)
 			if cfg.enabled == false then
 				return state.host_at_ready and "ready" or "idle"
@@ -2840,9 +2816,6 @@ function queryHostRecord(timeoutMs)
 		default_timeout = 3000,
 		at_cmd = "AT+RECORD?",
 		ack_event = SYS_EVT.RECORD_ACK,
-		log_extra = "mqtt_start",
-		no_uart_log = "record_query_no_uart",
-		err_log = "record_query_error",
 		when_disabled = function(cfg)
 			if cfg.enabled == false then
 				return state.host_record
@@ -2867,9 +2840,6 @@ function queryHostRecordTime(timeoutMs)
 		default_timeout = 3000,
 		at_cmd = "AT+RECORDTIME?",
 		ack_event = SYS_EVT.RECORDTIME_ACK,
-		log_extra = "mqtt_start",
-		no_uart_log = "recordtime_no_uart",
-		err_log = "recordtime_error",
 		when_disabled = function(cfg)
 			if cfg.enabled == false then
 				return state.host_record_time
@@ -2897,7 +2867,6 @@ function setHostRecordTime(opts)
 		default_timeout = 3000,
 		timeout_ms = opts.timeout_ms,
 		ack_event = SYS_EVT.RECORDTIME_SET,
-		log_tag = "recordtime_set",
 		prepare = function()
 			local min = tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
 			if min == nil then
@@ -2939,9 +2908,6 @@ function queryHostFramerate(opts)
 		before_send = function()
 			state.framerate_rows = {}
 		end,
-		log_extra = "fpsQ",
-		no_uart_log = "framerate_no_uart",
-		err_log = "framerate_error",
 		on_response = function(got, rows, tmo)
 			if got and type(rows) == "table" then
 				state.host_framerate = rows
@@ -3029,9 +2995,6 @@ function queryHostPersonDetect(timeoutMs)
 		default_timeout = 5000,
 		at_cmd = "AT+PERSONDET?",
 		ack_event = SYS_EVT.PERSONDET_ACK,
-		log_extra = "pdQ",
-		no_uart_log = "persondet_no_uart",
-		err_log = "persondet_error",
 		on_response = function(got, snap, tmo)
 			if got and type(snap) == "table" and snap.parsed then
 				state.host_person_detect = snap
@@ -3084,9 +3047,6 @@ function queryHostMic(opts)
 		before_send = function()
 			state.mic_rows = {}
 		end,
-		log_extra = "micQ",
-		no_uart_log = "mic_no_uart",
-		err_log = "mic_error",
 		on_response = function(got, rows, tmo)
 			if got and type(rows) == "table" then
 				state.host_mic = rows
@@ -3132,9 +3092,6 @@ function queryHostSoftPhoto(timeoutMs)
 		default_timeout = 8000,
 		at_cmd = "AT+SOFTPHOTO?",
 		ack_event = SYS_EVT.SOFTPHOTO_QUERY,
-		log_extra = "spQ",
-		no_uart_log = "softphoto_no_uart",
-		err_log = "softphoto_error",
 		on_response = function(got, snap, tmo)
 			if got and type(snap) == "table" and snap.parsed then
 				state.host_softphoto = snap
@@ -3187,15 +3144,11 @@ function queryHostTfCard(timeoutMs)
 	return host_query(timeoutMs, {
 		busy_key = "tf_card_query_busy",
 		cache_key = "host_tf_card",
-		busy_log = "tfcard_busy",
 		policy_tag = "host_tfcard",
 		cfg = tf_card_cfg(),
 		default_timeout = 3000,
 		at_cmd = "AT+TFCARD?",
 		ack_event = SYS_EVT.TFCARD_ACK,
-		log_extra = "mqtt_start",
-		no_uart_log = "tfcard_no_uart",
-		err_log = "tfcard_error",
 		on_response = function(got, snap, tmo)
 			if got and type(snap) == "table" and snap.parsed then
 				state.host_tf_card = snap
@@ -3367,16 +3320,12 @@ local function queryHostEncodeInner(opts)
 	end
 	local result = host_query(opts.timeout_ms, {
 		busy_key = "encode_query_busy",
-		busy_log = "encode_busy",
 		policy_tag = "host_encode",
 		cfg = cfg,
 		timeout_cfg_key = "query_timeout_ms",
 		default_timeout = 8000,
 		at_cmd = at_cmd,
 		ack_event = ack_event,
-		log_extra = isAudio and "audio" or "video",
-		no_uart_log = "encode_no_uart",
-		err_log = "encode_error",
 		on_response = function(got, val, tmo)
 			if got then
 				local body, err = finish_encode_query(val, isAudio)
@@ -3401,90 +3350,64 @@ function queryHostEncode(opts)
 	end
 	return nil, err or "query_fail"
 end
-local function await_encode_set(event, timeoutMs)
-	local got, rsp = sys.waitUntil(event, timeoutMs)
-	if not got or type(rsp) ~= "table" then
-		return false, "timeout", nil
-	end
-	if rsp.ok then
-		return true, "ok", rsp
-	end
-	return false, "error", rsp
-end
 local function setHostEncode(scope, opts)
-	if state.encode_set_busy then
-		return false, "busy", nil
-	end
-	state.encode_set_busy = true
-	local okSet, msg, extra
-	local ok, e = pcall(function()
-		opts = opts or {}
-		local timeoutMs = encode_timeout_ms(opts)
-		local cam = tonumber(opts.camera) or 0
-		if not ensure_t3x_for_host_query("host_encode_set", identity_cfg()) then
-			okSet, msg = false, "t3x_unavailable"
-			return
-		end
-		if not state.host_at_ready then
-			sys.wait(host_boot_wait_ms(encode_cfg()))
-		end
-		local cur
-		if scope == "audio" then
-			if opts.encoder == nil or opts.samplerate == nil then
-				local q, qerr = queryHostEncodeInner({ scope = "audio", camera = cam, timeout_ms = timeoutMs })
-				if q and q.audio and q.audio[1] then
-					cur = q.audio[1]
+	opts = opts or {}
+	local timeoutMs = encode_timeout_ms(opts)
+	local isAudio = scope == "audio"
+	return host_set({
+		busy_key = "encode_set_busy",
+		policy_tag = "host_encode_set",
+		cfg = identity_cfg(),
+		boot_cfg = encode_cfg(),
+		default_timeout = 8000,
+		timeout_ms = timeoutMs,
+		ack_event = isAudio and SYS_EVT.AUDIO_SET or SYS_EVT.VENC_SET,
+		prepare = function()
+			local cam = tonumber(opts.camera) or 0
+			local cur
+			if isAudio then
+				if opts.encoder == nil or opts.samplerate == nil then
+					local q, qerr = queryHostEncodeInner({ scope = "audio", camera = cam, timeout_ms = timeoutMs })
+					if q and q.audio and q.audio[1] then
+						cur = q.audio[1]
+					elseif qerr then
+						return false, qerr
+					end
+				end
+				cur = cur or {}
+				local en = opts.enable
+				if en == nil then en = cur.enable or 1 end
+				return true, nil, string.format("AT+AUDIOSET=%d,%d,%d,%d,%d,%d,%d,%d",
+					cam, (en == true or en == 1) and 1 or 0,
+					tonumber(opts.encoder or cur.encoder) or 4,
+					tonumber(opts.samplerate or cur.samplerate) or 8000,
+					tonumber(opts.bitwidth or cur.bitwidth) or 16,
+					tonumber(opts.soundmode or cur.soundmode) or 1,
+					tonumber(opts.volume or cur.volume) or 80,
+					tonumber(opts.gain or cur.gain) or 28)
+			end
+			local stream = tonumber(opts.stream) or 0
+			if opts.width == nil or opts.height == nil or opts.bitrate == nil then
+				local q, qerr = queryHostEncodeInner({ camera = cam, stream = stream, timeout_ms = timeoutMs })
+				if q and q.video and q.video[1] then
+					cur = q.video[1]
 				elseif qerr then
-					okSet, msg = false, qerr
-					return
+					return false, qerr
 				end
 			end
 			cur = cur or {}
 			local en = opts.enable
 			if en == nil then en = cur.enable or 1 end
-			local cmd = string.format("AT+AUDIOSET=%d,%d,%d,%d,%d,%d,%d,%d",
-				cam, (en == true or en == 1) and 1 or 0,
-				tonumber(opts.encoder or cur.encoder) or 4,
-				tonumber(opts.samplerate or cur.samplerate) or 8000,
-				tonumber(opts.bitwidth or cur.bitwidth) or 16,
-				tonumber(opts.soundmode or cur.soundmode) or 1,
-				tonumber(opts.volume or cur.volume) or 80,
-				tonumber(opts.gain or cur.gain) or 28)
-			uart_bridge.sendString(cmd, true)
-			local got, m, rsp = await_encode_set(SYS_EVT.AUDIO_SET, timeoutMs)
-			okSet, msg, extra = got, m, rsp
-			return
-		end
-		local stream = tonumber(opts.stream) or 0
-		if opts.width == nil or opts.height == nil or opts.bitrate == nil then
-			local q, qerr = queryHostEncodeInner({ camera = cam, stream = stream, timeout_ms = timeoutMs })
-			if q and q.video and q.video[1] then
-				cur = q.video[1]
-			elseif qerr then
-				okSet, msg = false, qerr
-				return
-			end
-		end
-		cur = cur or {}
-		local en = opts.enable
-		if en == nil then en = cur.enable or 1 end
-		local cmd = string.format("AT+VENCSET=%d,%d,%d,%d,%d,%d,%d,%d,%d",
-			cam, stream, (en == true or en == 1) and 1 or 0,
-			tonumber(opts.width or cur.width) or 1920,
-			tonumber(opts.height or cur.height) or 1080,
-			tonumber(opts.bitrate or cur.bitrate) or 1200,
-			tonumber(opts.framerate or cur.framerate) or 25,
-			tonumber(opts.rcmode or cur.rcmode) or 2,
-			tonumber(opts.encoder or cur.encoder) or 4)
-		uart_bridge.sendString(cmd, true)
-		local got, m, rsp = await_encode_set(SYS_EVT.VENC_SET, timeoutMs)
-		okSet, msg, extra = got, m, rsp
-	end)
-	state.encode_set_busy = false
-	if not ok then
-		return false, tostring(e), nil
-	end
-	return okSet, msg, extra
+			return true, nil, string.format("AT+VENCSET=%d,%d,%d,%d,%d,%d,%d,%d,%d",
+				cam, stream, (en == true or en == 1) and 1 or 0,
+				tonumber(opts.width or cur.width) or 1920,
+				tonumber(opts.height or cur.height) or 1080,
+				tonumber(opts.bitrate or cur.bitrate) or 1200,
+				tonumber(opts.framerate or cur.framerate) or 25,
+				tonumber(opts.rcmode or cur.rcmode) or 2,
+				tonumber(opts.encoder or cur.encoder) or 4)
+		end,
+	})
 end
 function setHostVideoEncode(opts)
 	return setHostEncode("video", opts)

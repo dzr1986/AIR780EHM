@@ -85,6 +85,22 @@ end
 local function deviceIdMod()
 	return lazyMod("device_id")
 end
+local function isUsbInserted(opts)
+	opts = opts or {}
+	if _G.MODULE_FLAGS.charge then
+		local up = usbPolicyMod()
+		if up and up.isUsbInserted then
+			return up.isUsbInserted() == true
+		end
+		if type(usbCharge) == "table" and usbCharge.isUsbInserted then
+			return usbCharge.isUsbInserted() == true
+		end
+	end
+	if opts.boot_gpio then
+		return (gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1) or false
+	end
+	return (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status or 0) == 1
+end
 local function nowMs()
 	if mcu and mcu.ticks then
 		return mcu.ticks()
@@ -418,14 +434,8 @@ local function getImei()
 	if did and did.getDisplayId then
 		return did.getDisplayId()
 	end
-	if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then
-		return tostring(_G.aliyuncs_imei)
-	end
-	if mobile and mobile.imei then
-		local id = mobile.imei()
-		if id and id ~= "" then
-			return tostring(id)
-		end
+	if did and did.getImei then
+		return did.getImei() or "unknown"
 	end
 	return "unknown"
 end
@@ -808,6 +818,9 @@ local function buildSystemEventHandlers()
 			end
 		end },
 		{ E.MQTT_OFFLINE, onMqttOffline },
+		{ E.HOST_UART_FIRST_AT or "APP_HOST_UART_FIRST_AT", function()
+			notifyT3xUsbHostIdlePolicy((_G.APP_RUNTIME.power_status or 0) == 1)
+		end },
 	}
 end
 local function setupEventHandlers()
@@ -846,12 +859,7 @@ local function startBackgroundServices()
 	end
 end
 local function initPowerStatus()
-	local inserted
-	if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
-		inserted = usbCharge.isUsbInserted()
-	else
-		inserted = (gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1) or false
-	end
+	local inserted = isUsbInserted({ boot_gpio = true })
 	if not inserted and not isLowPowerFeatureEnabled() then
 		_G.APP_RUNTIME.power_status = 0
 		state.flag_usb = false
@@ -876,13 +884,7 @@ local function scheduleBootUsbPolicySync()
 		or tonumber((_G.TIME_SYNC_CFG or {}).host_boot_wait_ms)
 		or 1500
 	sys.timerStart(function()
-		local inserted = false
-		if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
-			inserted = usbCharge.isUsbInserted() == true
-		else
-			inserted = (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status or 0) == 1
-		end
-		notifyT3xUsbHostIdlePolicy(inserted)
+		notifyT3xUsbHostIdlePolicy(isUsbInserted())
 	end, delayMs)
 end
 local function startHeartbeat()
@@ -893,10 +895,7 @@ local function startHeartbeat()
 		state.heartbeat_count = state.heartbeat_count + 1
 		if (state.heartbeat_count % 1) == 0 then
 			local rt = _G.APP_RUNTIME or {}
-			local usbInserted = (rt.power_status == 1) and 1 or 0
-			if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
-				usbInserted = usbCharge.isUsbInserted() and 1 or 0
-			end
+			local usbInserted = isUsbInserted() and 1 or 0
 			local mqttConnected = tonumber(rt.online_status) == 1 and 1 or 0
 			if netModule and type(netModule.getState) == "function" then
 				local ok, ns = pcall(netModule.getState)
@@ -934,10 +933,7 @@ function start(gpio, net, t3x_ctrl)
 				requestT3xWake("battery_usb", nil, nil, { force_wake = true })
 			end,
 			is_usb_inserted = function()
-				if _G.MODULE_FLAGS.charge and type(usbCharge) == "table" and usbCharge.isUsbInserted then
-					return usbCharge.isUsbInserted()
-				end
-				return (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status) == 1
+				return isUsbInserted()
 			end,
 			is_burn_active = function()
 				return state.t3x_burn_active or _G.T3X_BURN_MODE_ACTIVE
@@ -946,12 +942,6 @@ function start(gpio, net, t3x_ctrl)
 	end
 	if _G.MODULE_FLAGS.watchdog then setupWatchdog() end
 	if _G.MODULE_FLAGS.uart_bridge then setupUartBridge() end
-	do
-		local evt = E.HOST_UART_FIRST_AT or "APP_HOST_UART_FIRST_AT"
-		sys.subscribe(evt, function()
-			notifyT3xUsbHostIdlePolicy((_G.APP_RUNTIME.power_status or 0) == 1)
-		end)
-	end
 	initPowerStatus()
 	scheduleBootUsbPolicySync()
 	if t3xModule then t3xModule.start() end
