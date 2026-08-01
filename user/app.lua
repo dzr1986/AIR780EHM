@@ -2,39 +2,20 @@ require "sys"
 require "sysplus"
 require "config"
 local utils = require "utils"
-local function optMod(flag, name, loader)
-	local flags = _G.MODULE_FLAGS
-	if flags and flags[flag] == false then
-		return nil
-	end
-	local ok, m
-	if loader then
-		ok, m = pcall(loader)
-	else
-		ok, m = pcall(require, name)
-	end
-	if not ok or type(m) ~= "table" then
-		return nil
-	end
-	return m
-end
+local loader = require "module_loader"
 local uart_bridge = require "uart_bridge"
 local pir_ctrl = require "pir_ctrl"
 local battery_guard = require "battery_guard"
 local host_uart = require "host_uart"
 local ipc_supervision = require "ipc_supervision"
-local batAdc = optMod("battery", "vbat", function()
-	return require "vbat"
-end)
-local usbCharge = optMod("charge", "usb_charge")
-local mobile_info = optMod("mobile_info", "mobile_info")
-local fota = optMod("fota", "fota_svc", function()
-	return require "fota_svc"
-end)
-local usbRndis = optMod("rndis", "usb_rndis")
-local sound_prompt = optMod("sound_prompt", "sound_prompt")
-local time_sync = optMod("time_sync", "time_sync")
-local watchdogMod = optMod("watchdog", "watchdog")
+local batAdc = loader.opt("battery", "vbat")
+local usbCharge = loader.opt("charge", "usb_charge")
+local mobile_info = loader.opt("mobile_info", "mobile_info")
+local fota = loader.opt("fota", "fota_svc")
+local usbRndis = loader.opt("rndis", "usb_rndis")
+local sound_prompt = loader.opt("sound_prompt", "sound_prompt")
+local time_sync = loader.opt("time_sync", "time_sync")
+local watchdogMod = loader.opt("watchdog", "watchdog")
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -64,7 +45,7 @@ local function usbPwrkeyGraceMs()
 	return tonumber((_G.HOST_USB_CFG or {}).pwrkey_grace_ms) or 5000
 end
 local function lazyMod(name)
-	return utils.lazyRequire(name)
+	return loader.load(name)
 end
 local function t3xPolicyMod()
 	return lazyMod("t3x_policy")
@@ -798,7 +779,7 @@ local function buildSystemEventHandlers()
 				end)
 			end
 		end },
-		{ "BATTERY_UPDATE", function(pct, mv)
+		{ E.BATTERY_UPDATE, function(pct, mv)
 			if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
 				battery_guard.onBatteryUpdate(pct, mv)
 			end
@@ -826,9 +807,7 @@ local function setupGpio()
 	})
 end
 local function startOptionalService(mod, fn)
-	if type(mod) == "table" and mod[fn] then
-		mod[fn]()
-	end
+	loader.start(mod, fn)
 end
 local function startBackgroundServices()
 	if _G.MODULE_FLAGS.battery then

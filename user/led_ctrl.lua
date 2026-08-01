@@ -1,6 +1,7 @@
 require "sys"
 require "config"
 local gpio_util = require "gpio_util"
+local cfgman = require "config_manager"
 local _M = { _VERSION = "1.2.0" }
 module(..., package.seeall)
 _G[_M] = _M
@@ -23,15 +24,13 @@ end
 local function applyConfigs()
 	local fromLed = ledCfg()
 	if type(fromLed.startup) == "table" then
-		for k, v in pairs(fromLed.startup) do LED_CONFIG.startup[k] = v end
+		cfgman.merge(LED_CONFIG.startup, fromLed.startup)
 	end
-	for _, k in ipairs({
+	cfgman.merge(LED_CONFIG, fromLed, {
 		"low_percent", "low_blink_ms", "low_blinks_per_round",
 		"offline_blink_ms", "ok_hold_ms", "check_network", "unknown_hold_ms",
 		"suppress_low_when_charging",
-	}) do
-		if fromLed[k] ~= nil then LED_CONFIG[k] = fromLed[k] end
-	end
+	})
 	if type(fromLed.network) == "table" and fromLed.network.enabled == false then
 		LED_CONFIG.check_network = false
 	end
@@ -136,7 +135,7 @@ local function setupEventRefresh()
 	local function bump(_) lastPattern = "" end
 	sys.subscribe(E.MQTT_CONNECTED, bump)
 	sys.subscribe(E.MQTT_OFFLINE, bump)
-	sys.subscribe("BATTERY_UPDATE", bump)
+	sys.subscribe(E.BATTERY_UPDATE or "BATTERY_UPDATE", bump)
 	if E.GPIO_USB_DET_CHANGED then sys.subscribe(E.GPIO_USB_DET_CHANGED, bump) end
 	if E.GPIO_CHG_STATE_CHANGED then sys.subscribe(E.GPIO_CHG_STATE_CHANGED, bump) end
 end

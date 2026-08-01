@@ -1,4 +1,5 @@
 local _modname = ...
+local loader = require "module_loader"
 module(_modname, package.seeall)
 _G[_modname] = _M
 
@@ -47,15 +48,9 @@ function createLogFunctions(tag)
 	return funcs
 end
 
-local lazyCache = {}
+-- 委托 module_loader，保持全项目单一 require 缓存
 function lazyRequire(name)
-	local mod = lazyCache[name]
-	if mod == nil then
-		local ok, loaded = pcall(require, name)
-		mod = (ok and type(loaded) == "table") and loaded or false
-		lazyCache[name] = mod
-	end
-	return mod ~= false and mod or nil
+	return loader.load(name)
 end
 
 local hostUartMod

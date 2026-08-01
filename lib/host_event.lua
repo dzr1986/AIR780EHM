@@ -2,7 +2,6 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "host_event"
 local TYPE_BIT = { wake = 1, pir = 2, record = 4, mqtt = 8 }
 local PIR_PENDING_LAST = {
 	detected = true,

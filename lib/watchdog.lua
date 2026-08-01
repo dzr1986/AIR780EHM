@@ -2,7 +2,6 @@ require "sys"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "air780_wdt"
 local started = false
 local feedTimerId = nil
 local config = {

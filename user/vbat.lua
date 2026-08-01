@@ -3,7 +3,6 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "battery_adc"
 local BUILD_TAG = "v4-filter"
 local taskStarted = false
 local voltageMv, percent, consumptionRate = 0, 0, 0
@@ -253,7 +252,7 @@ local function batteryTask()
 			percent = pct
 			consumptionRate = updateConsumptionRate(percent)
 			exportGlobals(percent, voltageMv, consumptionRate)
-			sys.publish("BATTERY_UPDATE", percent, voltageMv, consumptionRate)
+			sys.publish(APP_EVENTS.BATTERY_UPDATE, percent, voltageMv, consumptionRate)
 		end
 		sys.wait(sampleIntervalMs())
 	end

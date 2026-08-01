@@ -4,7 +4,6 @@ local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "usb_charge"
 local updateChg
 local started = false
 local usb_det_ready = false

@@ -428,7 +428,7 @@ local function setupBatteryStatusReport()
 		return
 	end
 	batteryStatusSubscribed = true
-	sys.subscribe("BATTERY_UPDATE", function()
+	sys.subscribe(APP_EVENTS.BATTERY_UPDATE, function()
 		if not isConnected then
 			return
 		end

@@ -529,6 +529,7 @@ _G.APP_EVENTS = {
 	T3X_IPC_ALERT = "t3x_ipc_alert",
 	T3X_PERSON_CNT = "t3x_person_cnt",
 	PIR_TIMER_EXPIRED = "pir_timer_expired",
+	BATTERY_UPDATE = "BATTERY_UPDATE",
 	UART_RX_RAW = "uart_rx_raw",
 	UART_RX_STRING = "uart_rx_string",
 	UART_RX_HEX = "uart_rx_hex",

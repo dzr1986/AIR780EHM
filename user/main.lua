@@ -61,6 +61,7 @@ do
 	end
 end
 require "config"
+local loader = require "module_loader"
 if _G.FEATURE_CFG then
 	pcall(require, "low_power_wakeup")
 end
@@ -78,8 +79,8 @@ if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
 	pm.power(pm.PWK_MODE, true)
 end
 if _G.MODULE_FLAGS and _G.MODULE_FLAGS.cellular ~= false then
-	local okCell, cellular = pcall(require, "cellular_bootstrap")
-	if okCell and type(cellular) == "table" and cellular.start then
+	local cellular = loader.load("cellular_bootstrap")
+	if cellular and cellular.start then
 		cellular.start()
 	end
 end
@@ -89,8 +90,8 @@ local function startNetworkBootstrap()
 	end
 end
 if _G.MODULE_FLAGS and _G.MODULE_FLAGS.rndis then
-	local okMod, usb_rndis = pcall(require, "usb_rndis")
-	if okMod and type(usb_rndis) == "table" and usb_rndis.open then
+	local usb_rndis = loader.load("usb_rndis")
+	if usb_rndis and usb_rndis.open then
 		sys.taskInit(function()
 			usb_rndis.open()
 			startNetworkBootstrap()

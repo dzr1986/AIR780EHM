@@ -3,7 +3,6 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "uart_bridge"
 local CRLF = "\r\n"
 local drv = {
 	started = false,
