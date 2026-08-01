@@ -752,13 +752,6 @@ local function wrapHostDownlink(dlType, handler, isQuery)
 		end)
 	end
 end
-local function handleDownlink2006(data)
-	handleHostDownlink(DT.DL_DEVICE_ID, data, function()
-		sys.taskInit(function()
-			refreshDeviceIdentity(data.messageId)
-		end)
-	end)
-end
 local function tfCardCfg()
 	return _G.HOST_TFCARD_CFG or {}
 end
@@ -785,13 +778,6 @@ local function refreshTfCardStatus(messageId)
 		return
 	end
 	publishTfCardStatus(snap, messageId)
-end
-local function handleDownlink2007(data)
-	handleHostDownlink(DT.DL_TF_CARD, data, function()
-		sys.taskInit(function()
-			refreshTfCardStatus(data.messageId)
-		end)
-	end)
 end
 local function collectVersionSnapshot(messageId)
 	local scriptVersion = tostring(_G.VERSION or "")
@@ -840,8 +826,57 @@ function publishVersion(opts)
 			mid)
 	})
 end
-local function handleDownlink2008(data)
-	publishVersion({ messageId = downlinkMessageId(data) })
+local function makeRefreshDownlinkHandler(spec)
+	return function(data)
+		local function exec()
+			if spec.async then
+				sys.taskInit(function()
+					spec.run(data)
+				end)
+			else
+				spec.run(data)
+			end
+		end
+		if spec.hostGate then
+			handleHostDownlink(spec.dl, data, exec)
+		else
+			exec()
+		end
+	end
+end
+local HOST_DOWNLINK_REFRESH_SPECS = {
+	{
+		dl = DT.DL_DEVICE_ID,
+		hostGate = true,
+		async = true,
+		run = function(data)
+			refreshDeviceIdentity(data.messageId)
+		end,
+	},
+	{
+		dl = DT.DL_TF_CARD,
+		hostGate = true,
+		async = true,
+		run = function(data)
+			refreshTfCardStatus(data.messageId)
+		end,
+	},
+	{
+		dl = DT.DL_VERSION_QUERY,
+		hostGate = false,
+		async = false,
+		run = function(data)
+			publishVersion({ messageId = downlinkMessageId(data) })
+		end,
+	},
+}
+local function registerRefreshDownlinkHandlers(map)
+	for i = 1, #HOST_DOWNLINK_REFRESH_SPECS do
+		local spec = HOST_DOWNLINK_REFRESH_SPECS[i]
+		if spec and spec.dl then
+			map[spec.dl] = makeRefreshDownlinkHandler(spec)
+		end
+	end
 end
 local function tfFormatCfg()
 	return _G.HOST_TFCARD_FORMAT_CFG or {}
@@ -1509,14 +1544,12 @@ DOWNLINK_HANDLERS = {
 	[DT.DL_STATUS] = handleDownlink2003,
 	[DT.DL_CONTROL] = handleDownlink2004,
 	[DT.DL_SIM] = handleDownlink2005,
-	[DT.DL_DEVICE_ID] = handleDownlink2006,
-	[DT.DL_TF_CARD] = handleDownlink2007,
 	[DT.DL_TF_FORMAT] = handleDownlink2009,
-	[DT.DL_VERSION_QUERY] = handleDownlink2008,
 	[DT.DL_PIR_CFG] = handleDownlink2010,
 	[DT.DL_PIR_STOP] = handleDownlink2011,
 	[DT.DL_PIR_START] = handleDownlink2012,
 }
+registerRefreshDownlinkHandlers(DOWNLINK_HANDLERS)
 registerHostQuerySetHandlers(DOWNLINK_HANDLERS)
 local function dispatchDownlink(topic, payload)
 	if not isDownlinkTopic(topic) then
