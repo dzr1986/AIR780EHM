@@ -59,6 +59,8 @@ loader.start(time_sync, "startSntp")
 | [user/main.lua](../user/main.lua) | `cellular_bootstrap`、`usb_rndis` 改 `loader.load` |
 | [user/utils.lua](../user/utils.lua) | `lazyRequire` 委托 `loader.load`（消除双缓存），旧调用方无需改动 |
 
+**打包注意**：Luatools 只打包从 main.lua 静态 `require` 可达的文件；仅经 `loader.load/opt` 动态加载的模块会被漏掉。main.lua 中的 `__LUATOOLS_SCAN_ANCHOR__` 死代码块列出全部动态模块作为扫描锚点（运行时永不执行）。**新增动态加载模块时必须同步加入该锚点块**。
+
 ---
 
 ## 3. lib/config_manager.lua — 配置访问框架

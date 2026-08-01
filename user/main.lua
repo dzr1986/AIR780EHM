@@ -62,6 +62,24 @@ do
 end
 require "config"
 local loader = require "module_loader"
+-- Luatools 静态扫描锚点：以下模块仅经 loader.load 动态加载，需静态 require 才会被打包；永不执行
+if _G.__LUATOOLS_SCAN_ANCHOR__ then
+	require "cellular_bootstrap"
+	require "device_id"
+	require "fota_svc"
+	require "host_event"
+	require "libfota2"
+	require "net_tcp"
+	require "runtime_power"
+	require "sound_prompt"
+	require "t3x_notify"
+	require "t3x_policy"
+	require "time_sync"
+	require "usb_charge"
+	require "usb_rndis"
+	require "vbat"
+	require "watchdog"
+end
 if _G.FEATURE_CFG then
 	pcall(require, "low_power_wakeup")
 end
