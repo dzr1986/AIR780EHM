@@ -155,7 +155,30 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 
 ---
 
-## 8. 后续渐进迁移建议
+## 8. 功能逻辑梳理（2026-08 第二轮）
+
+### 8.1 已实施的等价优化（user/app.lua）
+
+| 项 | 问题 | 处理 |
+|----|------|------|
+| USB 状态单一数据源 | `state.flag_usb`/`state.last_usb_state` 与 `_G.APP_RUNTIME.power_status` 三处维护同一状态，前两者只写不读 | 删除两个冗余字段；`getState().flag_usb` 改由 `power_status` 推导 |
+| 死状态字段 | `state.last_input` 从未写入；`state.last_uart_rx` 只写不读（还常驻引用最近一帧 UART 数据，浪费 RAM） | 删除 |
+| PMD 消息双发事件 | `handlePmdMessage` 先写 `power_status` + 发 `GPIO_VBUS_CHANGED`，再调 `applyUsbInsertState` 又做一遍（同一次插拔广播两次） | 插拔态（state 0/1）只走 `applyUsbInsertState` 单入口；其余状态仅同步充电位 |
+| `isUsbInserted` 回退链 | `usbCharge` 分支出现两次（boot 与非 boot 各一），且 runtime_power 层内部同样先查 usb_charge，链路绕圈 | 收敛为：boot+无charge→GPIO VBUS；usbCharge → runtime_power（兜底）→ `power_status` |
+| T3x 唤醒链重复门禁 | `MODULE_FLAGS.t3x_policy` 在 app `requestT3xWake`/`onMqttOffline` 与 `t3x_policy.policyDisabled()` 共 3 处判断 | app 侧删除重复判断；flag 关闭时 `policyDisabled()` 使 `mayPowerT3x` 放行、仍走 `t3x_notify.wakeHost`，行为等价 |
+| setupUartBridge 空分支 | `local uc = _G.UART_CFG if ... then else end` 空 if/else（日志剥离残留） | 删除 |
+
+### 8.2 核实后不成立 / 暂不处理的项
+
+| 项 | 结论 |
+|----|------|
+| battery_guard `onUsbInserted` 双调用 `on_exit_low_power` | **不成立**：`exitedRest` 已守卫单次调用，`wasPir` 走 `resumePir()` 不触发 hook |
+| 录像停止双路径竞态（`scheduleStopMqttFallback`） | **无实际竞态**：`markStopMqttPublished` 在 `publishPirRecordStop` 内同步置位（协程无抢占），fallback 侧 `canPublishStopMqtt` 双重防护有效 |
+| PIR 事件 `PIR_WAKE_T3X` 与 `GPIO_PIR_TRIGGERED` 合并 | **暂不做**：两者语义不同（唤醒 vs MQTT 上报）、发布时机与条件不同（retrigger 只发 GPIO 事件），合并属行为变更 |
+| net_mqtt `publishPir*` 构包去重 | **暂不做**：协议热路径字符串改写回归风险大于收益（~40 行） |
+| `enterRestIfNeededAfterUsbRemove` 两分支行为不对等 | **保留**：battery_guard 启用时按电量策略评估、禁用时无条件进 rest 是设计意图（见 [WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md)） |
+
+### 8.3 后续渐进迁移建议
 
 1. **裸 `pcall(require)` 收敛**：全项目仍有约 60 处，改动一处业务文件时顺带换成 `loader.load`（勿一次性全改，避免回归）。
 2. **配置 merge 收敛**：`watchdog.mergeConfig`、`pir_ctrl` 等模块的手工 merge 可逐步换 `cfgman.merge`。

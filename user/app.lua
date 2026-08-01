@@ -30,12 +30,8 @@ local gpioModule = nil
 local netModule = nil
 local t3xModule = nil
 local state = {
-	flag_usb = true,
 	mqtt_started = false,
-	last_input = nil,
-	last_uart_rx = nil,
 	last_wake_event = nil,
-	last_usb_state = nil,
 	heartbeat_count = 0,
 	t3x_burn_active = false,
 	heartbeat_paused = false,
@@ -64,15 +60,13 @@ local function isUsbInserted(opts)
 	if opts.boot_gpio and not (_G.MODULE_FLAGS and _G.MODULE_FLAGS.charge) then
 		return (gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1) or false
 	end
-	if opts.boot_gpio and type(usbCharge) == "table" and usbCharge.isUsbInserted then
+	if type(usbCharge) == "table" and usbCharge.isUsbInserted then
 		return usbCharge.isUsbInserted() == true
 	end
+	-- charge 模块关闭时经 runtime_power 兜底（内部直查 usb_charge/全局状态）
 	local rp = runtimePowerMod()
 	if rp and rp.isUsbInserted then
 		return rp.isUsbInserted()
-	end
-	if type(usbCharge) == "table" and usbCharge.isUsbInserted then
-		return usbCharge.isUsbInserted() == true
 	end
 	return (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status or 0) == 1
 end
@@ -114,9 +108,9 @@ local function requestT3xWake(reason, sid, evt, opts)
 	sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
 	evt = evt or 0
 	state.last_wake_event = evt
+	-- flag/enabled 门禁统一在 t3x_policy.policyDisabled 内判定（关闭时放行）
 	local policy = t3xPolicyMod()
-	if type(policy) == "table" and policy.requestT3xWake
-		and (_G.MODULE_FLAGS.t3x_policy ~= false) then
+	if type(policy) == "table" and policy.requestT3xWake then
 		return policy.requestT3xWake(reason, sid, evt, opts)
 	end
 	local tn = lazyMod("t3x_notify")
@@ -126,15 +120,11 @@ local function requestT3xWake(reason, sid, evt, opts)
 	return false
 end
 local function onMqttOffline()
-	local policy = t3xPolicyMod()
-	if type(policy) == "table" and policy.shouldWakeOnMqttOffline
-		and (_G.MODULE_FLAGS.t3x_policy ~= false) then
-		if not policy.shouldWakeOnMqttOffline() then
-			local why = policy.getDenyReason and policy.getDenyReason() or ""
-			return
-		end
-		if policy.requestT3xWake then
-			policy.requestT3xWake("mqtt_offline", 2, 0)
+	-- policy flag 关闭时跳过门禁直接唤醒（requestT3xWake 内 policyDisabled 放行）
+	if loader.enabled("t3x_policy") then
+		local policy = t3xPolicyMod()
+		if type(policy) == "table" and policy.shouldWakeOnMqttOffline
+			and not policy.shouldWakeOnMqttOffline() then
 			return
 		end
 	end
@@ -263,7 +253,6 @@ local function setupUartBridge()
 	end
 	local ok = uart_bridge.start({
 		onRaw = function(data)
-			state.last_uart_rx = data
 			if _G.MODULE_FLAGS.t3x_app ~= false then
 				host_uart.on_rx_raw(data)
 			end
@@ -271,10 +260,6 @@ local function setupUartBridge()
 	})
 	if ok then
 		_G.uart_bridge = uart_bridge
-		local uc = _G.UART_CFG
-		if type(uc) == "table" then
-		else
-		end
 		if _G.MODULE_FLAGS.t3x_app ~= false then
 			host_uart.start({
 				t3x = t3xModule,
@@ -343,16 +328,13 @@ local function exitRestIfNeededAfterUsbInsert(source)
 end
 local function applyUsbInsertState(inserted, source)
 	local v = inserted and 1 or 0
-	state.last_usb_state = v
 	appInfo("usb_state", v, tostring(source or ""))
 	_G.APP_RUNTIME.power_status = v
 	sys.publish(E.GPIO_VBUS_CHANGED, v)
 	if v == 0 then
-		state.flag_usb = false
 		notifyT3xUsbHostIdlePolicy(false)
 		enterRestIfNeededAfterUsbRemove(source)
 	else
-		state.flag_usb = true
 		state.usb_insert_tick = nowMs()
 		cancelPwrKeyLongPress()
 		exitRestIfNeededAfterUsbInsert(source)
@@ -363,13 +345,12 @@ local function handlePmdMessage(msg)
 	if not msg or _G.MODULE_FLAGS.charge then
 		return
 	end
-	state.last_usb_state = msg.state
-	_G.APP_RUNTIME.power_status = msg.charger and 1 or 0
-	sys.publish(E.GPIO_VBUS_CHANGED, _G.APP_RUNTIME.power_status)
-	if msg.state == 0 then
-		applyUsbInsertState(false, "PMD")
-	elseif msg.state == 1 then
-		applyUsbInsertState(true, "PMD")
+	if msg.state == 0 or msg.state == 1 then
+		applyUsbInsertState(msg.state == 1, "PMD")
+	else
+		-- 非插拔态仅同步充电位，避免与 applyUsbInsertState 重复广播
+		_G.APP_RUNTIME.power_status = msg.charger and 1 or 0
+		sys.publish(E.GPIO_VBUS_CHANGED, _G.APP_RUNTIME.power_status)
 	end
 end
 local function setupPmd()
@@ -827,7 +808,6 @@ local function initPowerStatus()
 	local inserted = isUsbInserted({ boot_gpio = true })
 	if not inserted and not isLowPowerFeatureEnabled() then
 		_G.APP_RUNTIME.power_status = 0
-		state.flag_usb = false
 		sys.publish(E.GPIO_VBUS_CHANGED, 0)
 		return
 	end
@@ -835,7 +815,6 @@ local function initPowerStatus()
 		applyUsbInsertState(inserted, "boot")
 	else
 		_G.APP_RUNTIME.power_status = inserted and 1 or 0
-		state.flag_usb = inserted
 		sys.publish(E.GPIO_VBUS_CHANGED, _G.APP_RUNTIME.power_status)
 	end
 end
@@ -936,7 +915,7 @@ end
 function getState()
 	return {
 		started = started,
-		flag_usb = state.flag_usb,
+		flag_usb = (_G.APP_RUNTIME.power_status or 0) == 1,
 		mqtt_started = state.mqtt_started,
 		low_power_mode = _G.APP_RUNTIME.low_power_mode,
 		last_wake_event = state.last_wake_event,
