@@ -78,7 +78,6 @@ if _G.__LUATOOLS_SCAN_ANCHOR__ then
 	require "usb_charge"
 	require "usb_rndis"
 	require "vbat"
-	require "watchdog"
 end
 if _G.FEATURE_CFG then
 	pcall(require, "low_power_wakeup")
