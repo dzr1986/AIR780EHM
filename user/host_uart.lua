@@ -119,17 +119,17 @@ end
 local function ok_tail()
 	return CRLF .. "OK" .. CRLF
 end
+local function rsp_only(tag, body)
+	return CRLF .. "+" .. tag .. ":" .. body .. CRLF
+end
 local function rsp_body(tag, body)
-	return CRLF .. "+" .. tag .. ":" .. body .. CRLF .. ok_tail()
+	return rsp_only(tag, body) .. ok_tail()
 end
 local function rsp_fmt(tag, fmt, ...)
 	return string.format(CRLF .. "+" .. tag .. ":" .. fmt .. CRLF, ...) .. ok_tail()
 end
 local function rsp_line(tag, ok)
-	if ok then
-		return CRLF .. "+" .. tag .. ":OK" .. CRLF
-	end
-	return CRLF .. "+" .. tag .. ":ERROR" .. CRLF
+	return rsp_only(tag, ok and "OK" or "ERROR")
 end
 local function encode_hex(data)
 	if not data or #data == 0 then
@@ -339,9 +339,9 @@ local function uart_time_query(_cmd)
 	local minTs = (_G.TIME_SYNC_CFG and _G.TIME_SYNC_CFG.min_valid_unix) or utils.MIN_VALID_UNIX
 	local t = os.time()
 	if t < minTs then
-		return CRLF .. "+TIME:0" .. CRLF .. ok_tail()
+		return rsp_body("TIME", "0")
 	end
-	return string.format(CRLF .. "+TIME:%d" .. CRLF, t) .. ok_tail()
+	return rsp_fmt("TIME", "%d", t)
 end
 function getDeviceImei()
 	local did = loader.load("device_id")
@@ -407,10 +407,10 @@ local function uart_p2pcfg(cmd)
 	state.p2p_product = product
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.HOST_NET_ID_P2P or "APP_HOST_NET_ID_P2P", uid, product)
-	return string.format(
-		CRLF .. "+P2PCFG:OK,uid=%s,product=%s" .. CRLF,
+	return rsp_fmt(
+		"P2PCFG", "OK,uid=%s,product=%s",
 		esc_ipc_field(uid), esc_ipc_field(product)
-	) .. ok_tail()
+	)
 end
 local function uart_gb28181cfg(cmd)
 	local body = cmd:match("^AT%+GB28181CFG=(.+)$")
@@ -433,10 +433,10 @@ local function uart_gb28181cfg(cmd)
 		E.HOST_NET_ID_GB28181 or "APP_HOST_NET_ID_GB28181",
 		device_id, password, state.gb28181_imei
 	)
-	return string.format(
-		CRLF .. "+GB28181CFG:OK,id=%s" .. CRLF,
+	return rsp_fmt(
+		"GB28181CFG", "OK,id=%s",
 		esc_ipc_field(device_id)
-	) .. ok_tail()
+	)
 end
 local function schedule_gb28181_refresh_if_needed()
 	if state.host_gb28181_id and state.host_gb28181_id ~= "" then
@@ -540,7 +540,7 @@ local function uart_servcreate(cmd)
 	elseif okLp and lpw and lpw.applyTcpChannel then
 		lpw.applyTcpChannel(ch)
 	end
-	return string.format(CRLF .. "+SERVCREATE:%d,OK" .. CRLF, ch.sid) .. ok_tail()
+	return rsp_fmt("SERVCREATE", "%d,OK", ch.sid)
 end
 local function uart_servclose(cmd)
 	local sid = tonumber(cmd:match("^AT%+SERVCLOSE=(%d+)$"))
@@ -558,15 +558,15 @@ local function uart_servclose(cmd)
 		lpw.closeTcpChannel(sid)
 	end
 	state.channel = nil
-	return string.format(CRLF .. "+SERVCLOSE:%d" .. CRLF, sid) .. ok_tail()
+	return rsp_fmt("SERVCLOSE", "%d", sid)
 end
 local function uart_getcfg(_cmd)
 	local s = get_config_snapshot()
-	return string.format(
-		CRLF .. "+GETCFG:version=%s,online=%d,power=%d,lowpower=%d,battery=%s,vbat=%s,interval=%d,devicemodel=%s,wled=%d%s" .. CRLF,
+	return rsp_fmt(
+		"GETCFG", "version=%s,online=%d,power=%d,lowpower=%d,battery=%s,vbat=%s,interval=%d,devicemodel=%s,wled=%d%s",
 		s.version, s.online, s.power, s.lowpower, s.battery, s.vbat, s.interval, s.devicemodel, s.wled or 0,
 		s.tcp_extra or ""
-	) .. ok_tail()
+	)
 end
 function buildPirstatBody()
 	return build_pir_wake_body(false)
@@ -577,21 +577,21 @@ end
 local function uart_hostidle(cmd)
 	local fc = _G.FEATURE_CFG
 	if fc and fc.host_evt == false then
-		return CRLF .. "+HOSTIDLE:NOT_SUPPORTED" .. CRLF
+		return rsp_only("HOSTIDLE", "NOT_SUPPORTED")
 	end
 	local heCfg = _G.HOST_EVT_CFG or {}
 	if heCfg.allow_host_idle_sleep == false then
-		return CRLF .. "+HOSTIDLE:DISABLED" .. CRLF
+		return rsp_only("HOSTIDLE", "DISABLED")
 	end
 	if (cmd == "AT+HOSTIDLE=1" or cmd == "AT+HOSTIDLE=0") and usb_blocks_host_idle() then
 		if cmd == "AT+HOSTIDLE=0" then
 			return rsp_body("HOSTIDLE", "OK")
 		end
-		return CRLF .. "+HOSTIDLE:USB" .. CRLF
+		return rsp_only("HOSTIDLE", "USB")
 	end
 	local hostBody = build_pir_wake_body(true)
 	if hostBody:match("has_event=1") then
-		return CRLF .. "+HOSTIDLE:BUSY" .. CRLF
+		return rsp_only("HOSTIDLE", "BUSY")
 	end
 	if cmd == "AT+HOSTIDLE?" then
 		local rt = _G.APP_RUNTIME or {}
@@ -601,8 +601,8 @@ local function uart_hostidle(cmd)
 		if usb_blocks_host_idle() then
 			allow = 0
 		end
-		return string.format(
-			CRLF .. "+HOSTIDLE:lowpower=%d,usb=%d,host_idle_allow=%d" .. CRLF,
+		return rsp_fmt(
+			"HOSTIDLE", "lowpower=%d,usb=%d,host_idle_allow=%d",
 			lp, usb, allow) .. ok_tail()
 	end
 	if cmd == "AT+HOSTIDLE=1" or cmd == "AT+HOSTIDLE=0" then
@@ -612,11 +612,11 @@ local function uart_hostidle(cmd)
 		local bg = loader.load("battery_guard")
 		if bg and bg.shouldAllowHostIdleSleep
 			and bg.shouldAllowHostIdleSleep() == false then
-			return CRLF .. "+HOSTIDLE:BUSY" .. CRLF
+			return rsp_only("HOSTIDLE", "BUSY")
 		end
 		if bg and bg.canAcceptHostIdleSleep
 			and bg.canAcceptHostIdleSleep() == false then
-			return CRLF .. "+HOSTIDLE:BUSY" .. CRLF
+			return rsp_only("HOSTIDLE", "BUSY")
 		end
 		local t3x = loader.load("t3x_ctrl")
 		if t3x and t3x.enterSleep then
@@ -655,7 +655,7 @@ local function uart_record_notify(cmd)
 		end
 		local E = _G.APP_EVENTS or {}
 		sys.publish(E.T3X_RECORD_ACTIVE or "APP_T3X_RECORD_ACTIVE")
-		return CRLF .. "+RECORD:1,active=1" .. CRLF .. ok_tail()
+		return rsp_body("RECORD", "1,active=1")
 	end
 	local reason = arg:match("^0,reason=(.+)$") or "unknown"
 	state.t3x_rec_active = 0
@@ -670,7 +670,7 @@ local function uart_record_notify(cmd)
 	end
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_RECORD_STOP or "APP_T3X_RECORD_STOP", reason, uploadMode, quality)
-	return string.format(CRLF .. "+RECORD:0,reason=%s" .. CRLF, reason) .. ok_tail()
+	return rsp_fmt("RECORD", "0,reason=%s", reason)
 end
 local function uart_person_cnt_notify(cmd)
 	local cnt = cmd:match("^AT%+PERSONCNT=(%d+)$")
@@ -680,7 +680,7 @@ local function uart_person_cnt_notify(cmd)
 	local n = tonumber(cnt) or 0
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_PERSON_CNT or "APP_T3X_PERSON_CNT", n)
-	return string.format(CRLF .. "+PERSONCNT:ok,count=%d" .. CRLF, n) .. ok_tail()
+	return rsp_fmt("PERSONCNT", "ok,count=%d", n)
 end
 local function uart_pir_media_notify(cmd)
 	local action = cmd:match("^AT%+PIRMEDIA=(.+)$")
@@ -691,7 +691,7 @@ local function uart_pir_media_notify(cmd)
 	if pir_ctrl and pir_ctrl.applyEffectiveMediaAction then
 		pir_ctrl.applyEffectiveMediaAction(action)
 	end
-	return string.format(CRLF .. "+PIRMEDIA:ok,action=%s" .. CRLF, action) .. ok_tail()
+	return rsp_fmt("PIRMEDIA", "ok,action=%s", action)
 end
 local function uart_ipc_alert_notify(cmd)
 	local code, detail = cmd:match("^AT%+IPCALERT=([^,]+),?(.*)$")
@@ -701,7 +701,7 @@ local function uart_ipc_alert_notify(cmd)
 	detail = detail or ""
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_IPC_ALERT or "APP_T3X_IPC_ALERT", code, detail)
-	return string.format(CRLF .. "+IPCALERT:OK,code=%s" .. CRLF, code) .. ok_tail()
+	return rsp_fmt("IPCALERT", "OK,code=%s", code)
 end
 local function ipc_ready_from_lifecycle(st)
 	return (st == "ready") and 1 or 0
@@ -717,7 +717,7 @@ function uart_ipcstatus_notify(cmd)
 		patchHostIpcCloudStat({ ipcReady = ipc_ready_from_lifecycle(st) })
 	end
 	sys.publish(SYS_EVT.IPCSTATUS_ACK, st)
-	return string.format(CRLF .. "+IPCSTATUS:OK,status=%s" .. CRLF, st) .. ok_tail()
+	return rsp_fmt("IPCSTATUS", "OK,status=%s", st)
 end
 function uart_ipcstat_notify(cmd)
 	note_host_inbound_push()
@@ -768,7 +768,7 @@ local function uart_snapshot_notify(cmd)
 	end
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_SNAPSHOT_DONE or "APP_T3X_SNAPSHOT_DONE", path)
-	return string.format(CRLF .. "+SNAPSHOT:ok,path=%s" .. CRLF, path) .. ok_tail()
+	return rsp_fmt("SNAPSHOT", "ok,path=%s", path)
 end
 local function uart_record_query(_cmd)
 	local rec = 0
@@ -776,8 +776,8 @@ local function uart_record_query(_cmd)
 	if pir_ctrl and pir_ctrl.isRecording and pir_ctrl.isRecording() then
 		rec = 1
 	end
-	return string.format(CRLF .. "+RECORD:%d,reason=%s,active=%d" .. CRLF,
-		rec, state.t3x_last_reason or "idle", state.t3x_rec_active or 0) .. ok_tail()
+	return rsp_fmt("RECORD", "%d,reason=%s,active=%d",
+		rec, state.t3x_last_reason or "idle", state.t3x_rec_active or 0)
 end
 local function uart_ati(_cmd)
 	return rsp_fmt("CGMR", "%s", get_config_snapshot().version)
@@ -809,30 +809,30 @@ end
 local function uart_lowpower(cmd)
 	local fc = _G.FEATURE_CFG
 	if fc and fc.low_power == false then
-		return CRLF .. "+LOWPOWER:NOT_SUPPORTED" .. CRLF
+		return rsp_only("LOWPOWER", "NOT_SUPPORTED")
 	end
 	local rt = _G.APP_RUNTIME or {}
 	if cmd == "AT+LOWPOWER=ENTER" then
 		local up = usb_charge_mod()
 		if up and up.blocks4gRest and up.blocks4gRest() then
-			return CRLF .. "+LOWPOWER:USB" .. CRLF
+			return rsp_only("LOWPOWER", "USB")
 		end
 		if (rt.power_status or 0) == 0 and (rt.low_power_mode or 0) == 0 then
 			if hooks.on_enter_low_power then
 				hooks.on_enter_low_power()
 			end
-			return CRLF .. "+LOWPOWER:ENTERING" .. CRLF
+			return rsp_only("LOWPOWER", "ENTERING")
 		end
-		return CRLF .. "+LOWPOWER:BUSY" .. CRLF
+		return rsp_only("LOWPOWER", "BUSY")
 	end
 	if cmd == "AT+LOWPOWER=EXIT" then
 		if (rt.low_power_mode or 0) == 1 then
 			if hooks.on_exit_low_power then
 				hooks.on_exit_low_power()
 			end
-			return CRLF .. "+LOWPOWER:WAKEUP" .. CRLF
+			return rsp_only("LOWPOWER", "WAKEUP")
 		end
-		return CRLF .. "+LOWPOWER:ALREADY_AWAKE" .. CRLF
+		return rsp_only("LOWPOWER", "ALREADY_AWAKE")
 	end
 	return nil
 end
@@ -973,7 +973,7 @@ function setWled(on, opts)
 end
 local function uart_wled(cmd)
 	if cmd == "AT+WLED?" or cmd == "AT+WLEDEN?" then
-		return string.format(CRLF .. "+WLED:%d" .. CRLF, wled_get()) .. ok_tail()
+		return rsp_fmt("WLED", "%d", wled_get())
 	end
 	local n = tonumber(cmd:match("^AT%+WLED=(%d+)$"))
 		or tonumber(cmd:match("^AT%+WLEDEN=(%d+)$"))
@@ -981,7 +981,7 @@ local function uart_wled(cmd)
 		return RSP_ERROR
 	end
 	wled_set(n)
-	return string.format(CRLF .. "+WLED:%d" .. CRLF, n) .. ok_tail()
+	return rsp_fmt("WLED", "%d", n)
 end
 local usb_recovery_guard = {
 	busy = false,
@@ -1091,7 +1091,7 @@ local function uart_usbreset(cmd)
 			usb_recovery_guard.busy and 1 or 0,
 			usb_recovery_guard.count or 0,
 			usb_recovery_guard.last_sec or 0
-		) .. ok_tail()
+		)
 	end
 	if cmd ~= "AT+USBRESET" then
 		return RSP_ERROR
@@ -1108,7 +1108,7 @@ local function uart_usbreset(cmd)
 			})
 			publish_usb_recovery_changed()
 		end
-		return CRLF .. "+USBRESET:" .. deny .. CRLF
+		return rsp_only("USBRESET", deny)
 	end
 	local usb_rndis = loader.load("usb_rndis")
 	if not usb_rndis then
@@ -1171,7 +1171,7 @@ local function uart_usbrecovery(cmd)
 		last_err = lastErr,
 	})
 	publish_usb_recovery_changed()
-	return CRLF .. "+USBRECOVERY:" .. state .. CRLF .. ok_tail()
+	return rsp_body("USBRECOVERY", state)
 end
 function resetUsbRecoveryFromCloud()
 	if _G.MODULE_FLAGS and (_G.MODULE_FLAGS.t3x_app == false or _G.MODULE_FLAGS.uart_bridge == false) then
@@ -1205,14 +1205,14 @@ local function uart_rndis(cmd)
 	end
 	if cmd == "AT+RNDIS?" or cmd == "AT+RNDIS" then
 		local st = usb_rndis.getStatus and usb_rndis.getStatus() or {}
-		return string.format(
-			CRLF .. "+RNDIS:enabled=%d,mode=%s,status=%s,ip=%s,flymode=%s" .. CRLF,
+		return rsp_fmt(
+			"RNDIS", "enabled=%d,mode=%s,status=%s,ip=%s,flymode=%s",
 			st.enabled and 1 or 0,
 			tostring(st.usb_ethernet_mode or "--"),
 			tostring(st.status or "--"),
 			tostring(st.ip or "--"),
 			st.flymode == nil and "--" or (st.flymode and "1" or "0")
-		) .. ok_tail()
+		)
 	end
 	local n = tonumber(cmd:match("^AT%+RNDIS=(%d+)$"))
 	if n == 1 then
@@ -1244,7 +1244,7 @@ local function uart_ota(_cmd)
 			sys.publish(E.DEVICE_OTA_REQUEST, {})
 		end
 	end
-	return CRLF .. "+OTA:STARTING" .. CRLF
+	return rsp_only("OTA", "STARTING")
 end
 local function uart_setcfg(cmd)
 	local key, val = cmd:match("^AT%+SETCFG=([^,]+),(.+)$")

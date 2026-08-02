@@ -494,9 +494,6 @@ local function handleDownlink2003(data)
 		})
 		return
 	end
-	if data.interval ~= nil then
-	else
-	end
 	local messageId = data.messageId or ""
 	local configRet = 0
 	local configMsg = "ok"
@@ -807,10 +804,7 @@ end
 function publishVersion(opts)
 	opts = type(opts) == "table" and opts or {}
 	local snap = collectVersionSnapshot(opts.messageId)
-	local mid = ""
-	if snap.messageId and snap.messageId ~= "" then
-		mid = string.format(',"messageId":"%s"', escJson(tostring(snap.messageId)))
-	end
+	local mid = msgIdPart(snap.messageId)
 	publishUplink({
 		suffix = "version",
 		dataType = DT.UL_VERSION_QUERY,
@@ -2082,7 +2076,6 @@ function publishPirRecordStop(reason, uploadMode, quality, opts)
 		return
 	end
 	if pir_ctrl.canPublishStopMqtt and not pir_ctrl.canPublishStopMqtt() then
-		opts = type(opts) == "table" and opts or {}
 		return
 	end
 	if pir_ctrl.markStopMqttPublished then
@@ -2094,10 +2087,7 @@ function publishPirRecordStop(reason, uploadMode, quality, opts)
 	if not mid and pir_ctrl.getCloudStopMessageId then
 		mid = pir_ctrl.getCloudStopMessageId()
 	end
-	local midField = ""
-	if mid and mid ~= "" then
-		midField = string.format(',"messageId":"%s"', escJson(tostring(mid)))
-	end
+	local midField = msgIdPart(mid)
 	publishUplink({
 		suffix = "event",
 		dataType = DT.UL_PIR_STOP,

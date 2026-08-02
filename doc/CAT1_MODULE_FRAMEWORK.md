@@ -205,6 +205,7 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 
 - 13 处硬编码 `CRLF.."+TAG:OK/ERROR"..CRLF` 改为 `rsp_line(tag, ok)`；`USBRESET:OK`（带 ok_tail）改为 `rsp_body("USBRESET","OK")`。
 - 删除 `RSP_SETCFG_OK/ERR` 顶部常量，SETCFG 6 处使用点统一 `rsp_line("SETCFG", ...)`。
+- 第五轮：新增 `rsp_only(tag, body)`（无 ok_tail 裸响应）；31 处 `string.format(CRLF.."+TAG:..."..CRLF,...)..ok_tail()` 与常量响应机械替换为 `rsp_fmt/rsp_only/rsp_body`；`rsp_body/rsp_line` 内部复用 `rsp_only`。net_mqtt：publishVersion/publishPirRecordStop 复用 `msgIdPart`，删除 2003 空分支与冗余 opts 赋值。
 - 输出字节完全一致，仅代码收敛。
 
 ### 9.3 核实后不处理的项
