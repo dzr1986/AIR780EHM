@@ -6,7 +6,6 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 local ACK_EVENT = "SOUND_PROMPT_ACK"
 local uart_bridge
-local t3xModule
 local coldBootPlayed = false
 local bootColdTaskStarted = false
 local function cfg()
@@ -168,9 +167,6 @@ function playShutdownThen(reason, callback)
 	end)
 end
 function start(opts)
-	if type(opts) == "table" and opts.t3x then
-		t3xModule = opts.t3x
-	end
 	return true
 end
 return _M

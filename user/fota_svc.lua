@@ -9,7 +9,6 @@ local busy = false
 local lastResult = nil
 local lastPayload = nil
 local requestCount = 0
-local lastRequestTime = 0
 local config = {
 	request_delay_ms = 500,
 	network_wait_ms = 120000,
@@ -57,16 +56,6 @@ local function localIotVersion()
 		return _G.VERSION
 	end
 	return nil
-end
-local function defaultFirmwareName()
-	local bsp = rtos.bsp()
-	if bsp:find("-") then bsp = bsp:sub(1, bsp:find("-") - 1) end
-	return (_G.PROJECT or "PANSHI_CAT1") .. "_LuatOS-SoC_" .. bsp
-end
-local function defaultDeviceQuery()
-	if mobile then return "imei=" .. mobile.imei() end
-	if wlan and wlan.getMac then return "mac=" .. wlan.getMac() end
-	return "uid=" .. mcu.unique_id():toHex()
 end
 local function buildIotOpts(data)
 	data = type(data) == "table" and data or {}
@@ -152,7 +141,6 @@ local function autoOta(data)
 		data = type(data) == "table" and data or {}
 		lastPayload = data
 		requestCount = requestCount + 1
-		lastRequestTime = os.time()
 	local logMsg = string.format("ota_start request_count=%d version=%s product_key=%s mqtt_pk=%s", requestCount, 
 		tostring(data.version or ""), 
 		tostring(data.product_key or _G.PRODUCT_KEY or ""),

@@ -1,11 +1,14 @@
 require "sys"
 require "config"
+
 local loader = require "module_loader"
 local gpio_util = require "gpio_util"
 local cfgman = require "config_manager"
 local _M = { _VERSION = "1.2.0" }
 module(..., package.seeall)
+
 _G[_M] = _M
+
 local LED_CONFIG = {
 	bluePin = 21,
 	startup = { enabled = true, blinks = 2, light_ms = 400, dark_ms = 400 },
@@ -16,12 +19,15 @@ local LED_CONFIG = {
 	check_network = true,
 	suppress_low_when_charging = true,
 }
+
 local bluePin, redPinRaw
 local started = false
 local lastPattern = ""
+
 local function ledCfg()
 	return _G.LED_CFG or {}
 end
+
 local function applyConfigs()
 	local fromLed = ledCfg()
 	if type(fromLed.startup) == "table" then
@@ -40,10 +46,13 @@ local function applyConfigs()
 		LED_CONFIG.low_percent = batLed.medium_threshold
 	end
 end
+
 applyConfigs()
+
 local function setBlue(on)
 	if bluePin then bluePin(on == 1 and 1 or 0) end
 end
+
 local function blinkBlue(light, dark)
 	setBlue(1)
 	sys.wait(light or 0)
@@ -63,6 +72,7 @@ local function readChargeFlags()
 	if not usb and rt.power_status == 1 then usb = true end
 	return usb, charging
 end
+
 local function runtimeSnapshot()
 	local rt = _G.APP_RUNTIME or {}
 	local usb, charging = readChargeFlags()
@@ -74,6 +84,7 @@ local function runtimeSnapshot()
 		charging = charging,
 	}
 end
+
 local function cycleCfg()
 	return {
 		low_percent = LED_CONFIG.low_percent or 20,
@@ -86,6 +97,7 @@ local function cycleCfg()
 		suppress_low_when_charging = LED_CONFIG.suppress_low_when_charging,
 	}
 end
+
 local function runOneCycle(st, cfg)
 	st = type(st) == "table" and st or {}
 	cfg = type(cfg) == "table" and cfg or {}
@@ -114,6 +126,7 @@ local function runOneCycle(st, cfg)
 	sys.wait(tonumber(cfg.ok_hold_ms) or 5000)
 	return chargingActive and "charging_ok" or "ok"
 end
+
 local function ledTask()
 	sys.taskInit(function()
 		local s = LED_CONFIG.startup or {}
@@ -130,6 +143,7 @@ local function ledTask()
 		end
 	end)
 end
+
 local function setupEventRefresh()
 	local E = _G.APP_EVENTS
 	if not E then return end
@@ -140,6 +154,7 @@ local function setupEventRefresh()
 	if E.GPIO_USB_DET_CHANGED then sys.subscribe(E.GPIO_USB_DET_CHANGED, bump) end
 	if E.GPIO_CHG_STATE_CHANGED then sys.subscribe(E.GPIO_CHG_STATE_CHANGED, bump) end
 end
+
 function _M.start(cfg)
 	if started then return false end
 	if cfg then for k, v in pairs(cfg) do LED_CONFIG[k] = v end end
@@ -170,12 +185,15 @@ function _M.start(cfg)
 	started = true
 	return true
 end
+
 function _M.setLed(_red, blue)
 	setBlue(blue)
 end
+
 function _M.turnOff()
 	setBlue(0)
 end
+
 function _M.blinkRed()
 	if not redPinRaw then return end
 	for _ = 1, 3 do
@@ -185,14 +203,18 @@ function _M.blinkRed()
 		sys.wait(500)
 	end
 end
+
 function _M.blinkBlue()
 	if not bluePin then return end
 	for _ = 1, 3 do blinkBlue(500, 500) end
 end
+
 function _M.getState()
 	return { started = started, mode = "1bl", last_pattern = lastPattern }
 end
+
 function _M.getConfig()
 	return LED_CONFIG
 end
+
 return _M

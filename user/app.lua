@@ -136,7 +136,7 @@ local function doEnterLowPowerBody(reason)
 	_G.APP_RUNTIME.last_rest_reason = reason
 	sys.publish(E.POWER_ENTERED_REST)
 	if t3xModule and t3xModule.enterSleep then
-		local modemHibernate = false
+		local modemHibernate
 		local lpw = lowPowerWakeupMod()
 		if lpw and lpw.getModemHibernate then
 			modemHibernate = lpw.getModemHibernate() == true
@@ -195,7 +195,6 @@ local function onExitLowPower(reason)
 				local st = netModule.getState and netModule.getState() or nil
 				if st and st.connected then
 					netModule.publishRest({ lowPowerMode = "exit", reason = reason })
-				else
 				end
 			end)
 		else
@@ -280,7 +279,8 @@ local function setupUartBridge()
 					end
 					if state.mqtt_started and netModule.restart then
 						netModule.restart()
-					elseif startMqtt() then
+					else
+						startMqtt()
 					end
 				end,
 				on_servcreate = function(ch)
@@ -364,8 +364,7 @@ local function setupWatchdog()
 	end
 	local wdtMod = watchdogMod or lazyMod("watchdog")
 	if wdtMod and wdtMod.start then
-		local ok = wdtMod.start(_G.WDT_CFG)
-	else
+		wdtMod.start(_G.WDT_CFG)
 	end
 end
 stopWatchdogBeforePowerOff = function()
@@ -494,7 +493,7 @@ local function checkT3xBurnPreconditions()
 	local maxAttempts = 1 + retryCount
 	local retryMs = tonumber(cfg.burn_check_retry_interval_ms) or 800
 	local lastFailReason = nil
-	local lastPassPct = nil
+	local lastPassPct
 	for attempt = 1, maxAttempts do
 		local ok, detail = checkT3xBurnPreconditionsOnce(attempt, maxAttempts)
 		if ok then

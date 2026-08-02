@@ -48,12 +48,6 @@ local function getEntries()
 	local gout = _G.GPIO_OUT or {}
 	return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
 end
-local function gpioLv(pin, lv)
-	if pin == nil then
-		return "?"
-	end
-	return tostring(pin) .. "=" .. tostring(lv or "?")
-end
 local function logGpio(action, entry_pwr, entry_boot, entry_ota, pwrLv, bootLv, otaLv)
 end
 local function getWakePulseMs()
@@ -206,7 +200,7 @@ function enterBootMode()
 end
 function pulseUsbDebugEn(opts)
 	opts = type(opts) == "table" and opts or {}
-	local entry_pwr, _, entry_boot, entry_ota = getEntries()
+	local _, _, _, entry_ota = getEntries()
 	ensurePins()
 	if not t3xOtaPin or not entry_ota or not entry_ota.pin then
 		return false, 0
@@ -232,7 +226,7 @@ function pulseUsbDebugEn(opts)
 	return true, high_ms
 end
 function exitBootMode()
-	local entry_pwr, _, entry_boot, entry_ota = ensurePins()
+	ensurePins()
 	if not t3xBootModePin or not t3xOtaPin then
 		t3xError("exit_bootmode_pin_missing")
 		return false

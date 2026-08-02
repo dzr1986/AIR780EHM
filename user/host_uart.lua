@@ -1118,10 +1118,9 @@ local function uart_usbreset(cmd)
 		local pulse_ms = 0
 		local t3x = loader.load("t3x_ctrl")
 		if t3x and t3x.pulseUsbDebugEn then
-			local pok, pret, pms = pcall(t3x.pulseUsbDebugEn, { high_ms = cfg.usb_debug_en_pulse_ms })
+			local pok, _, pms = pcall(t3x.pulseUsbDebugEn, { high_ms = cfg.usb_debug_en_pulse_ms })
 			if pok and pms then
 				pulse_ms = tonumber(pms) or 0
-			elseif not pok then
 			end
 		end
 		if pulse_ms > 0 then
@@ -2553,7 +2552,6 @@ function reconcileHostRecordSession(timeoutMs)
 		return false
 	end
 	if isHostUartQueryBusy() then
-		local reason = isHostInboundQuiet() and "push_quiet" or "uart_busy"
 		return false
 	end
 	if not isT31StartedForHostQuery() then
@@ -2700,7 +2698,7 @@ local function maybe_uart_recovery_after_miss(source)
 	state.uart_recovery_busy = true
 	state.uart_recovery_attempts = state.uart_recovery_attempts + 1
 	sys.taskInit(function()
-		local okRun, errRun = pcall(function()
+		pcall(function()
 			run_uart_power_cycle_recovery(state.uart_recovery_attempts)
 		end)
 		state.uart_recovery_busy = false
@@ -2752,7 +2750,7 @@ function hostIpcPowerOff(playSound, timeoutMs)
 	state.ipc_poweroff_busy = true
 	local success = false
 	local cfg = ipc_cfg()
-	local ok, err = pcall(function()
+	local ok = pcall(function()
 		timeoutMs = tonumber(timeoutMs) or tonumber(cfg.poweroff_timeout_ms) or 15000
 		if cfg.enabled == false then
 			return
@@ -2771,7 +2769,6 @@ function hostIpcPowerOff(playSound, timeoutMs)
 		if got then
 			success = true
 			state.host_ipc_status = "idle"
-		else
 		end
 	end)
 	state.ipc_poweroff_busy = false
@@ -3281,7 +3278,7 @@ local function queryHostEncodeInner(opts)
 		ack_event = ack_event,
 		on_response = function(got, val, tmo)
 			if got then
-				local body, err = finish_encode_query(val, isAudio)
+				local body = finish_encode_query(val, isAudio)
 				if body then
 					return body
 				end

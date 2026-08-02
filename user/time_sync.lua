@@ -10,7 +10,6 @@ local tsInfo = logFuncs.info
 local tsWarn = logFuncs.warn
 local ACK_EVENT = "TIME_SYNC_ACK"
 local uart_bridge
-local host_uart
 local lastPushedUnix = 0
 local function cfg()
 	return _G.TIME_SYNC_CFG or {}

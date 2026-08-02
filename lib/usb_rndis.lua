@@ -226,7 +226,7 @@ local function cycleRndis(pauseMs, extraWait)
 end
 local function finishBootOpen()
 	if refreshAllowed() then
-		local ready, ip = waitCellularReady()
+		local ready = waitCellularReady()
 		if ready and not ipReadyRefreshed then
 			if not refreshAfterCellularIp() then
 				publishBootStable()
@@ -260,14 +260,13 @@ function open()
 	hookIpReadyForRndis()
 	runtime.status = "enabled"
 	runtime.configured_at = os.time()
-	local ip = readCellularIp()
 	finishBootOpen()
 	return true
 end
 function enable(opts)
 	opts = type(opts) == "table" and opts or {}
 	if opts.wait_ip_ready then
-		local ready, cellIp = waitCellularReady()
+		local ready = waitCellularReady()
 		if not ready then
 			runtime.status = "failed"
 			runtime.last_error = "cellular IP not ready"

@@ -143,7 +143,6 @@ function _M.runLedPattern(pattern)
 		sys.taskInit(led_ctrl.blinkRed)
 	elseif pattern == "blink_blue" and led_ctrl.blinkBlue then
 		sys.taskInit(led_ctrl.blinkBlue)
-	else
 	end
 end
 return _M

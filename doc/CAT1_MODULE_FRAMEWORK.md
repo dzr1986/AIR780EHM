@@ -216,3 +216,13 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 | net_mqtt `netReadyPublished/bootstrapStarted` 为死标志 | **不成立**：分别在 bootstrap 流程中写入，用于去重 |
 | host_uart `pulseUsbDebugEn` 定时器泄漏 | **不成立**：调用幂等，无泄漏 |
 | watchdog `mergeConfig` 换 cfgman.merge | **暂不做**：含字段别名映射（timeout→timeout_ms），cfgman.merge 不支持，改造收益为负 |
+
+### 9.4 第六轮：luacheck 死代码清理（12 个文件，−66/+41 行）
+
+用 `luacheck`（W211/W231/W311/W542）全量扫描后逐项人工核实，清理三类死代码，全部为等价改动：
+
+1. **未使用的局部函数/变量**：`fota_svc.defaultFirmwareName/defaultDeviceQuery/lastRequestTime`、`net_mqtt.getSubTopic`、`t3x_ctrl.gpioLv`、`ipc_supervision` 的 `L` 常量、`sound_prompt.t3xModule`（写入后从未读取）、`time_sync` 的 `host_uart` 声明等。
+2. **空 if/else 分支**（多为日志剥离残留）：net_mqtt 7 处、host_uart 3 处、app 3 处、peripheral 1 处；有副作用的条件调用（如 `startMqtt()`、`recordCtrlStop`、`ensurePins()`）均保留调用只删弃值捕获。
+3. **弃值的多返回捕获**：`local ok, err = pcall(...)` 等收敛为 `pcall(...)` 或 `local ok = ...`；`usb_rndis` 删除纯 getter `readCellularIp()` 的无效调用。
+
+核实后保留：`libfota2.lua`（上游库，保持与官方一致）；`app.lua` 的 `modemHibernate` 仅去掉冗余初始化（if/else 全路径赋值）。清理后 luacheck 目标告警清零，32 个文件 `luac5.3 -p` 全通过。

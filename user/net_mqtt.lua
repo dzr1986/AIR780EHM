@@ -113,7 +113,6 @@ local function getDeviceId()
 	return "unknown_device"
 end
 local function getPubTopic() return "/panshi/app/" .. getDeviceId() .. "/" end
-local function getSubTopic() return "/panshi/device/" .. getDeviceId() .. "/" end
 local function mqttConnectedEvent()
 	return (_G.APP_EVENTS or {}).MQTT_CONNECTED or "mqtt_connected"
 end
@@ -214,9 +213,6 @@ function bootstrapNetwork()
 		else
 			ipOk = sys.waitUntil("IP_READY", 300000)
 			ip = (socket and socket.localIP and socket.localIP()) or nil
-		end
-		if ipOk and ip then
-		else
 		end
 		if not netReadyPublished then
 			netReadyPublished = true
@@ -372,7 +368,6 @@ local function loadIvCfg()
 	local sec = clampIv(d.status_interval_sec)
 	if sec then
 		syncIv(sec)
-	else
 	end
 end
 local function notifyStatusReportIntervalChanged()
@@ -477,7 +472,6 @@ local function handleDownlink2002(data)
 		sys.publish(APP_EVENTS.POWER_ENTER_REST)
 	elseif mode == "exit" then
 		sys.publish(APP_EVENTS.POWER_EXIT_REST)
-	else
 	end
 end
 local function handleDownlink2003(data)
@@ -498,8 +492,7 @@ local function handleDownlink2003(data)
 	local configRet = 0
 	local configMsg = "ok"
 	if data.interval ~= nil then
-		if setStatusIntervalSec(data.interval, true) then
-		else
+		if not setStatusIntervalSec(data.interval, true) then
 			configRet = -1
 			configMsg = "invalid_interval"
 		end
@@ -883,7 +876,7 @@ local function stopRecordingBeforeTfFormat()
 	end
 	local hu = getHostUart()
 	if hu and hu.recordCtrlStop and isT3xHostReady() then
-		local rok, rmsg = hu.recordCtrlStop({
+		hu.recordCtrlStop({
 			reason = "tfcard_format",
 			timeout_ms = tonumber(tfFormatCfg().record_stop_timeout_ms) or 15000,
 		})
@@ -1021,9 +1014,6 @@ local function handleDownlink2010(data)
 end
 local function handleDownlink2011(data)
 	local messageId = data.messageId or ""
-	if messageId ~= "" then
-	else
-	end
 	local ok, err = pir_ctrl.requestStopFromCloud({ messageId = messageId })
 	if ok then
 		publishControlReply("pir_stop", 0, "ok", { messageId = messageId })
@@ -1031,13 +1021,11 @@ local function handleDownlink2011(data)
 			local hu = getHostUart()
 			if hu and hu.recordCtrlStop then
 				sys.taskInit(function()
-					local rok, rmsg = hu.recordCtrlStop({ reason = "cloud", timeout_ms = 8000 })
+					hu.recordCtrlStop({ reason = "cloud", timeout_ms = 8000 })
 				end)
 			end
 		end
 	else
-		local st = pir_ctrl.getState()
-		local pol = st.recordPolicy or {}
 		err = err or "rejected"
 		publishControlReply("pir_stop", -1, err, { messageId = messageId })
 	end
@@ -1045,9 +1033,6 @@ end
 local function handleDownlink2012(data)
 	sys.taskInit(function()
 		local messageId = downlinkMessageId(data)
-		if data.messageId then
-		else
-		end
 		if not pir_ctrl.requestStartFromCloud then
 			publishControlReply("pir_start", -1, "no_fn", { messageId = messageId })
 			return
@@ -1623,7 +1608,7 @@ function restart()
 	return true
 end
 local function mqttTask()
-	local gotReady, deviceId = waitForNetworkReady()
+	local _, deviceId = waitForNetworkReady()
 	local mcfg = _G.MQTT_CFG or {}
 	if not mcfg.host or mcfg.host == "" then
 		mqttError("mqtt_no_host_config")
@@ -1692,7 +1677,7 @@ local function mqttTask()
 	end)
 	mqttClient:connect()
 	setupBatteryStatusReport()
-	local conOk = sys.waitUntil(mqttConnectedEvent(), 90000)
+	sys.waitUntil(mqttConnectedEvent(), 90000)
 	startStatusReportTimer()
 	while true do
 		local ret, topic, data, qos = sys.waitUntil("mqtt_pub", 300000)
@@ -1948,7 +1933,6 @@ function notifyPowerOff(reason, callback)
 			end
 			publishStatus({ skip_ipc_stat_refresh = true, warn = false })
 			sys.wait(graceMs)
-		else
 		end
 		if type(callback) == "function" then
 			callback()

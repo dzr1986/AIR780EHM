@@ -3,7 +3,6 @@ local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "ipc_sup"
 local _deps = {}
 local IPC_ALERT = {
 	tf_mount_fail         = { map1011 = false, reconcile = false },
@@ -172,7 +171,7 @@ local function scheduleRecordReconcile()
 	sys.taskInit(function()
 		sys.wait(800)
 		record_reconcile_pending = false
-		local ok, reason = canReconcileRecord()
+		local ok = canReconcileRecord()
 		if not ok then
 			return
 		end

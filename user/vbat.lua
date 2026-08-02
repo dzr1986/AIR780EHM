@@ -214,7 +214,6 @@ local function readPinMillivolts(ad, channel)
 	local count = tonumber(fc.sample_count) or 11
 	local spacing = tonumber(fc.sample_spacing_ms) or 20
 	local samples = {}
-	local i
 	for i = 1, count do
 		local mv = readPinOnce(ad, channel)
 		if mv ~= nil then
