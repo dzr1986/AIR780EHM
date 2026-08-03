@@ -37,6 +37,13 @@ local SYS_EVT = {
 local run_host_query
 local host_query
 local host_set
+-- 动态模块守卫：模块或函数缺失时返回 nil
+local function mod_call(name, fn, ...)
+	local m = loader.load(name)
+	if m and m[fn] then
+		return m[fn](...)
+	end
+end
 local function noop_idle()
 	return "idle"
 end
@@ -194,11 +201,7 @@ end
 local function get_config_snapshot()
 	local meta = _G.APP_META or {}
 	local rt = _G.APP_RUNTIME or {}
-	local tcp_extra = ""
-	local lpw = loader.load("low_power_wakeup")
-	if lpw and lpw.appendGetCfgFields then
-		tcp_extra = lpw.appendGetCfgFields()
-	end
+	local tcp_extra = mod_call("low_power_wakeup", "appendGetCfgFields") or ""
 	return {
 		version = (_G.PROJECT or "780EHM") .. "_" .. (_G.VERSION or "2034.001.000"),
 		online = rt.online_status or 0,
@@ -282,11 +285,7 @@ local function build_hostevt_media_suffix(pirBody)
 		pir_field_str(pirBody, "last", "none"))
 end
 local function build_pir_wake_context()
-	local pirBody = ""
-	local pir = loader.load("pir_ctrl")
-	if pir and pir.buildAtBody then
-		pirBody = pir.buildAtBody()
-	end
+	local pirBody = mod_call("pir_ctrl", "buildAtBody") or ""
 	local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
 	local sum
 	local he
@@ -329,10 +328,7 @@ local function uart_hostevt_query(_cmd)
 end
 local function uart_hostevt_clr(_cmd)
 	clear_pending_wake()
-	local pir = loader.load("pir_ctrl")
-	if pir and pir.clearConsumableMarkers then
-		pir.clearConsumableMarkers()
-	end
+	mod_call("pir_ctrl", "clearConsumableMarkers")
 	return rsp_body("HOSTEVTCLR", "OK")
 end
 local function uart_time_query(_cmd)
@@ -344,11 +340,7 @@ local function uart_time_query(_cmd)
 	return rsp_fmt("TIME", "%d", t)
 end
 function getDeviceImei()
-	local did = loader.load("device_id")
-	if did and did.getImei then
-		return did.getImei()
-	end
-	return nil
+	return mod_call("device_id", "getImei")
 end
 local function uart_imei(_cmd)
 	local imei = getDeviceImei()
@@ -606,13 +598,8 @@ local function uart_hostidle(cmd)
 		if cmd == "AT+HOSTIDLE=0" then
 			return rsp_body("HOSTIDLE", "OK")
 		end
-		local bg = loader.load("battery_guard")
-		if bg and bg.shouldAllowHostIdleSleep
-			and bg.shouldAllowHostIdleSleep() == false then
-			return rsp_only("HOSTIDLE", "BUSY")
-		end
-		if bg and bg.canAcceptHostIdleSleep
-			and bg.canAcceptHostIdleSleep() == false then
+		if mod_call("battery_guard", "shouldAllowHostIdleSleep") == false
+			or mod_call("battery_guard", "canAcceptHostIdleSleep") == false then
 			return rsp_only("HOSTIDLE", "BUSY")
 		end
 		local t3x = loader.load("t3x_ctrl")
@@ -660,11 +647,7 @@ local function uart_record_notify(cmd)
 	if patchHostIpcCloudStat then
 		patchHostIpcCloudStat({ recordingT3x = 0 })
 	end
-	local uploadMode, quality
-	local pir_ctrl = loader.load("pir_ctrl")
-	if pir_ctrl and pir_ctrl.syncStopFromT3x then
-		uploadMode, quality = pir_ctrl.syncStopFromT3x(reason)
-	end
+	local uploadMode, quality = mod_call("pir_ctrl", "syncStopFromT3x", reason)
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_RECORD_STOP or "APP_T3X_RECORD_STOP", reason, uploadMode, quality)
 	return rsp_fmt("RECORD", "0,reason=%s", reason)
@@ -684,10 +667,7 @@ local function uart_pir_media_notify(cmd)
 	if not action or action == "" then
 		return RSP_ERROR
 	end
-	local pir_ctrl = loader.load("pir_ctrl")
-	if pir_ctrl and pir_ctrl.applyEffectiveMediaAction then
-		pir_ctrl.applyEffectiveMediaAction(action)
-	end
+	mod_call("pir_ctrl", "applyEffectiveMediaAction", action)
 	return rsp_fmt("PIRMEDIA", "ok,action=%s", action)
 end
 local function uart_ipc_alert_notify(cmd)
@@ -769,8 +749,7 @@ local function uart_snapshot_notify(cmd)
 end
 local function uart_record_query(_cmd)
 	local rec = 0
-	local pir_ctrl = loader.load("pir_ctrl")
-	if pir_ctrl and pir_ctrl.isRecording and pir_ctrl.isRecording() then
+	if mod_call("pir_ctrl", "isRecording") then
 		rec = 1
 	end
 	return rsp_fmt("RECORD", "%d,reason=%s,active=%d",
@@ -994,11 +973,7 @@ local function t3x_rest_blocks_usb_reset()
 	if tonumber(rt.low_power_mode) ~= 1 then
 		return false
 	end
-	local t3x = loader.load("t3x_ctrl")
-	if not t3x or not t3x.getState then
-		return false
-	end
-	local st = t3x.getState()
+	local st = mod_call("t3x_ctrl", "getState")
 	return st ~= nil and st.powered_on == false
 end
 local function usb_recovery_allowed(cfg)
@@ -1396,10 +1371,7 @@ local function try_sound_ack_line(line)
 	if not name then
 		return false
 	end
-	local sp = loader.load("sound_prompt")
-	if sp and sp.onSoundAck then
-		sp.onSoundAck(name)
-	end
+	mod_call("sound_prompt", "onSoundAck", name)
 	return true
 end
 local function try_timeset_ack_line(line)
@@ -1407,10 +1379,7 @@ local function try_timeset_ack_line(line)
 		return false
 	end
 	if line:match("^%+TIMESET:OK$") then
-		local ts = loader.load("time_sync")
-		if ts and ts.onTimesetAck then
-			ts.onTimesetAck()
-		end
+		mod_call("time_sync", "onTimesetAck")
 		return true
 	end
 	return false
@@ -2330,12 +2299,9 @@ local function overlay_live_ipc_hints(snap)
 	if state.host_at_ready and (tonumber(snap.cat1Link) or 0) == 0 then
 		snap.cat1Link = 1
 	end
-	local t3x = loader.load("t3x_ctrl")
-	if t3x and t3x.getState then
-		local pst = t3x.getState()
-		if pst and pst.powered_on and (tonumber(snap.cat1Link) or 0) == 0 then
-			snap.cat1Link = 1
-		end
+	local pst = mod_call("t3x_ctrl", "getState")
+	if pst and pst.powered_on and (tonumber(snap.cat1Link) or 0) == 0 then
+		snap.cat1Link = 1
 	end
 	local life = state.host_ipc_status
 	if life == "ready" and (tonumber(snap.ipcReady) or 0) == 0 then
@@ -2389,12 +2355,8 @@ function isT31StartedForHostQuery()
 	if state.host_at_ready then
 		return true
 	end
-	local t3x = loader.load("t3x_ctrl")
-	if t3x and t3x.getState then
-		local st = t3x.getState()
-		return st ~= nil and st.powered_on == true
-	end
-	return false
+	local st = mod_call("t3x_ctrl", "getState")
+	return st ~= nil and st.powered_on == true
 end
 function shouldQueryIpcCloudStat()
 	return isT31StartedForHostQuery()
@@ -2450,11 +2412,7 @@ function isHostUartQueryBusy()
 		or isHostInboundQuiet()
 end
 function reconcileHostRecordSession(timeoutMs)
-	local pir_ctrl = loader.load("pir_ctrl")
-	if not pir_ctrl or not pir_ctrl.isRecording then
-		return false
-	end
-	if not pir_ctrl.isRecording() then
+	if not mod_call("pir_ctrl", "isRecording") then
 		return false
 	end
 	if not coroutine.running() then
@@ -2486,8 +2444,9 @@ function reconcileHostRecordSession(timeoutMs)
 	state.t3x_rec_active = 0
 	state.t3x_last_reason = reason
 	local uploadMode, quality = "auto", "high"
-	if pir_ctrl.syncStopFromT3x then
-		uploadMode, quality = pir_ctrl.syncStopFromT3x(reason)
+	local pc = loader.load("pir_ctrl")
+	if pc and pc.syncStopFromT3x then
+		uploadMode, quality = pc.syncStopFromT3x(reason)
 	end
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_RECORD_STOP or "APP_T3X_RECORD_STOP", reason, uploadMode, quality)
@@ -2547,12 +2506,8 @@ note_uart_link_ok = function()
 	reset_uart_recovery_miss()
 end
 local function is_t3x_powered_on()
-	local t3x = loader.load("t3x_ctrl")
-	if t3x and t3x.getState then
-		local st = t3x.getState()
-		return st ~= nil and st.powered_on == true
-	end
-	return false
+	local st = mod_call("t3x_ctrl", "getState")
+	return st ~= nil and st.powered_on == true
 end
 local function run_uart_power_cycle_recovery(attempt)
 	local rc = uart_recovery_cfg()
@@ -3223,9 +3178,7 @@ function notify_host(sid, evt)
 	local cfg = _G.HOST_WAKE_CFG or {}
 	sid = sid or cfg.default_sid or 1
 	evt = evt or _M.EVT.SERVER_DATA
-	local policy = loader.load("t3x_policy")
-	if policy and policy.mayPowerT3x
-		and not policy.mayPowerT3x("notify_host") then
+	if mod_call("t3x_policy", "mayPowerT3x", "notify_host") == false then
 		return false
 	end
 	set_pending_wake(sid, evt)
@@ -3235,10 +3188,7 @@ function notify_host(sid, evt)
 	if t3xModule.getState and not t3xModule.getState().powered_on and t3xModule.powerOn then
 		t3xModule.powerOn()
 	end
-	local bg = loader.load("battery_guard")
-	if bg and bg.markT3xWoken then
-		bg.markT3xWoken()
-	end
+	mod_call("battery_guard", "markT3xWoken")
 	if t3xModule.pulseMcuInt then
 		return t3xModule.pulseMcuInt()
 	end

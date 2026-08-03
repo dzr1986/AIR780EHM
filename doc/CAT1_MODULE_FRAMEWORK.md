@@ -259,3 +259,18 @@ luacheck 因 `module(package.seeall)` 无法识别模块导出函数是否被使
 - spec 表在模块加载期构造，其中引用的局部函数（如 `encode_cfg`）**必须在词法上先定义**——本轮已把 `encode_cfg` 定义前移至 `tf_card_cfg` 之后。
 - `setHostSoftPhoto` 的字段循环改为 `for i = 1, 8`，修复了原 `#fields` 遇 nil 空洞的潜在截断（严格更安全）。
 - 已通过宿主机沙箱等价性测试（/tmp/test_parsers.lua、/tmp/test_factories.lua：解析器逐字段断言 + 工厂字段映射/双签名断言全部通过），`luac5.3 -p` 全量通过、luacheck 无新增告警。AT 命令路径有改动，建议整机回归测试上述 query/set 与多行查询。
+
+### 9.7 第九轮：mod_call 动态模块守卫收敛（host_uart，−50 行）
+
+`user/host_uart.lua` 中 `local m = loader.load("x"); if m and m.fn then m.fn(...) end` 样板出现 30+ 次，新增局部助手统一：
+
+```lua
+local function mod_call(name, fn, ...)  -- 模块或函数缺失时返回 nil
+```
+
+收敛 17 处调用点（fire-and-forget 通知、单/多返回值读取、`== false` 显式布尔门、`getState()` 快照读取等）。转换前均逐点核对语义等价：
+- `not mod_call(...)` 仅用于"缺失视为否"语义等价的场合（如 `isRecording`）；显式拒绝门（`mayPowerT3x`、`shouldAllowHostIdleSleep`）已核实返回严格布尔后改用 `== false` 比较——函数缺失（nil ≠ false）时保持原"放行"行为。
+- `syncStopFromT3x` 在 `reconcileHostRecordSession` 中可能返回 nil 覆盖默认值 `"auto","high"`，该处保留原守卫写法不转换（首次转换曾引入 pir_ctrl 未定义引用，经 luacheck W113 差分对比发现并修复）。
+- net_mqtt 等其他文件的守卫多带默认值回退，收益低于引入助手成本，不转换。
+
+验证：luacheck 告警差分与重构前完全一致，test/ 等价性测试通过，`luac5.3 -p` 通过。
