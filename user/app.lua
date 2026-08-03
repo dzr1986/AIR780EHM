@@ -298,9 +298,6 @@ local function setupUartBridge()
 	end
 	return ok
 end
-function getUartBridge()
-	return _G.uart_bridge or uart_bridge
-end
 local function enterRestIfNeededAfterUsbRemove(source)
 	if not isLowPowerFeatureEnabled() then
 		return
@@ -916,17 +913,5 @@ function getState()
 		last_wake_event = state.last_wake_event,
 		heartbeat_count = state.heartbeat_count,
 	}
-end
-function setModuleFlag(name, enabled)
-	if _G.MODULE_FLAGS[name] ~= nil then
-		_G.MODULE_FLAGS[name] = enabled
-		return true
-	end
-	return false
-end
-function getModuleFlags()
-	local flags = {}
-	for k, v in pairs(_G.MODULE_FLAGS) do flags[k] = v end
-	return flags
 end
 return _M

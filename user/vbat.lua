@@ -264,14 +264,8 @@ function start()
 	sys.taskInit(batteryTask)
 	return true
 end
-function getVoltage()
-	return voltageMv
-end
 function getPercent()
 	return percent
-end
-function getConsumptionRate()
-	return consumptionRate
 end
 function getState()
 	return {

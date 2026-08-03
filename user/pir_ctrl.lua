@@ -324,9 +324,6 @@ end
 function clearEffectiveMediaAction()
 	effectiveMediaAction = nil
 end
-function getEffectiveMediaAction()
-	return effectiveMediaAction
-end
 function publishStopRecording(reason)
 	if not session.recording then
 		return false
@@ -433,9 +430,6 @@ function requestStopFromCloud(opts)
 	pirInfo("cloud_stop", tostring(opts.messageId or ""))
 	return true
 end
-function requestStopManual()
-	return publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
-end
 function isRecording()
 	return session.recording == true
 end
@@ -475,9 +469,6 @@ function setRecordPolicy(cfg)
 	savePersistedConfig()
 	return _G.pirRecordPolicy
 end
-function getRecordPolicyConfig()
-	return getRecordPolicy()
-end
 function start()
 	if handlerStarted then
 		return false
@@ -502,9 +493,6 @@ function resume()
 	suspended = false
 	pirInfo("resume")
 	return true
-end
-function isSuspended()
-	return suspended == true
 end
 local function isRestLowPower()
 	if _G.FEATURE_CFG and _G.FEATURE_CFG.low_power == false then

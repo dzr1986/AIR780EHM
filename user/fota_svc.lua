@@ -199,10 +199,6 @@ local function autoOta(data)
 		end
 	end)
 end
-function configure(newConfig)
-	mergeConfig(newConfig)
-	return config
-end
 function getConfig()
 	return config
 end

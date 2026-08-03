@@ -1596,9 +1596,6 @@ function setMqttConfig(cfg)
 	_G.MQTT_CFG = normalized
 	return true
 end
-function getMqttConfig()
-	return _G.MQTT_CFG
-end
 function restart()
 	sys.taskInit(function()
 		stop()
@@ -1857,14 +1854,6 @@ function publishTfCardStatus(snap, messageId)
 			',"tfPresent":%d,"totalMb":%d,"usedMb":%d,"freeMb":%d,"ret":%d%s',
 			present, totalMb, usedMb, freeMb, ret, msgIdPart(messageId))
 	})
-end
-function refreshAndPublishTfCardStatus(messageId)
-	if not tfCardEnabled() then
-		return
-	end
-	sys.taskInit(function()
-		refreshTfCardStatus(messageId)
-	end)
 end
 function publishTfFormatResult(retCode, message, messageId, extra)
 	extra = type(extra) == "table" and extra or {}

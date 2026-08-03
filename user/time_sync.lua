@@ -29,9 +29,6 @@ function isTimeValid(t)
 	local minTs = tonumber(cfg().min_valid_unix) or utils.MIN_VALID_UNIX
 	return t >= minTs
 end
-function getCat1Unix()
-	return os.time()
-end
 local function getUart()
 	if uart_bridge then
 		return uart_bridge
@@ -150,12 +147,6 @@ function onSntpSuccess(unix, server)
 	end
 	tsInfo("sntp_ok", tostring(server or ""), tostring(unix or ""))
 	pushToHostAsync(true)
-end
-function onT3xWake()
-	if not enabled() or cfg().sync_on_wake == false then
-		return
-	end
-	pushToHostAsync(false)
 end
 function pushBeforeNotify(sid, evt)
 	local policy = loader.load("t3x_policy")

@@ -151,18 +151,6 @@ end
 function hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
 	return summarize(pirBody, wakeValid, wakeSid, wakeEvt).has_event == 1
 end
-function isDispatchable(sum)
-	if type(sum) ~= "table" or sum.has_event ~= 1 then
-		return false
-	end
-	if sum.pending == "record" and not (sum.types or ""):match("wake") then
-		return false
-	end
-	if sum.pending == "mqtt" and not (sum.types or ""):match("wake") then
-		return false
-	end
-	return true
-end
 function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
 	if not isEnabled() or cfg().block_t3x_sleep_when_pending == false then
 		return false

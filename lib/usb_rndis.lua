@@ -30,20 +30,6 @@ end
 function isRefreshing()
 	return refreshing == true
 end
-function isBootStable()
-	return bootStable == true
-end
-function waitForNetStable(timeoutMs)
-	if bootStable then
-		return true
-	end
-	timeoutMs = tonumber(timeoutMs) or 120000
-	local ok = sys.waitUntil(EVT_NET_STABLE, timeoutMs)
-	if ok or bootStable then
-		return true
-	end
-	return false
-end
 local function mobileReady()
 	return mobile and mobile.flymode and mobile.config and mobile.CONF_USB_ETHERNET ~= nil
 end
@@ -203,27 +189,6 @@ local function markRndisEnabled()
 	ipReadyRefreshed = false
 	hookIpReadyForRndis()
 end
-local function cycleRndis(pauseMs, extraWait)
-	if not mobileReady() then
-		runtime.status = "unsupported"
-		runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
-		return false, runtime.last_error
-	end
-	sys.publish(EVT_REFRESH_BEGIN)
-	refreshing = true
-	rndisCloseCore(pauseMs)
-	rndisOpenCore()
-	markRndisEnabled()
-	if extraWait and extraWait > 0 then
-		sys.wait(extraWait)
-	end
-	ipReadyRefreshed = false
-	if not refreshAfterCellularIp() then
-		refreshing = false
-		sys.publish(EVT_REFRESH_END)
-	end
-	return true
-end
 local function finishBootOpen()
 	if refreshAllowed() then
 		local ready = waitCellularReady()
@@ -289,13 +254,6 @@ end
 function stop()
 	return disable()
 end
-function switch(opts)
-	opts = type(opts) == "table" and opts or {}
-	local off_ms = tonumber(opts.off_ms) or 800
-	local on_wait_ms = tonumber(opts.on_wait_ms) or 500
-	local ok, err = cycleRndis(off_ms, on_wait_ms)
-	return ok, err
-end
 function rebind(opts)
 	opts = type(opts) == "table" and opts or {}
 	local wait_ms = tonumber(opts.wait_ms) or 500
@@ -322,21 +280,6 @@ function rebind(opts)
 		log.error(LOG_TAG, "rebind_fail", runtime.last_error)
 		return false, runtime.last_error
 	end
-	return true
-end
-function enableAsync(opts)
-	sys.taskInit(function()
-		local ok, err
-		if type(opts) == "table" and opts.wait_ip_ready then
-			ok, err = enable(opts)
-		else
-			ok, err = open()
-		end
-		if not ok then
-			runtime.status = "failed"
-			runtime.last_error = err or "enable failed"
-		end
-	end)
 	return true
 end
 function start()

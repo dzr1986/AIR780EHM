@@ -5,7 +5,6 @@ local t3x_notify = require "t3x_notify"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local lastDenyReason = ""
 local lastMqttOfflineWakeSec = 0
 local function cfg()
 	return _G.T3X_POLICY_CFG or {}
@@ -13,9 +12,6 @@ end
 local function guardCfg()
 	local root = _G.BATTERY_CFG or {}
 	return root.guard or {}
-end
-function getDenyReason()
-	return lastDenyReason
 end
 function isUsbInserted()
 	return runtime_power.isUsbInserted()
@@ -87,7 +83,6 @@ local function passesLowPowerGate(reason, opts)
 	if allowsWakeInRest(reason) then
 		return true
 	end
-	lastDenyReason = "low_power_mode=rest"
 	return false
 end
 local function passesBatteryGate()
@@ -97,14 +92,12 @@ local function passesBatteryGate()
 		blockPct = tonumber(guardCfg().pir_suspend_percent) or 15
 	end
 	if pct ~= nil and pct <= blockPct then
-		lastDenyReason = string.format("battery<=%d%%", blockPct)
 		return false
 	end
 	return true
 end
 function mayPowerT3x(reason, opts)
 	opts = type(opts) == "table" and opts or {}
-	lastDenyReason = ""
 	if policyDisabled() or isBurnActive() or passesUsbGate(reason) or opts.force_wake then
 		return true
 	end
@@ -114,24 +107,20 @@ function mayPowerT3x(reason, opts)
 	return passesBatteryGate()
 end
 function shouldWakeOnMqttOffline()
-	lastDenyReason = ""
 	if cfg().block_mqtt_offline_wake == false then
 		return mayPowerT3x("mqtt_offline")
 	end
 	if isLowPowerMode() then
-		lastDenyReason = "mqtt_offline+rest"
 		return false
 	end
 	local cd = tonumber(cfg().mqtt_offline_wake_cooldown_sec)
 	if cd and cd > 0 and lastMqttOfflineWakeSec > 0 then
 		local elapsed = os.time() - lastMqttOfflineWakeSec
 		if elapsed < cd then
-			lastDenyReason = string.format("mqtt_offline_cooldown_%ds", cd - elapsed)
 			return false
 		end
 	end
 	if cfg().block_mqtt_offline_wake_when_usb ~= false and isUsbInserted() then
-		lastDenyReason = "mqtt_offline+usb"
 		return false
 	end
 	return mayPowerT3x("mqtt_offline")

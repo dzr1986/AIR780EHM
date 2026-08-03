@@ -144,13 +144,6 @@ function start()
 	last_chg = effectiveCharging()
 	return true
 end
-function getLevel()
-	local pin = chgPin()
-	if not pin or not gpio or not gpio.get then
-		return 0
-	end
-	return gpio.get(pin)
-end
 function isUsbInserted()
 	return readUsbInserted()
 end
@@ -174,9 +167,6 @@ function blocksHostIdle()
 end
 function blocks4gRest()
 	return usbGatedPolicy("block_4g_rest_when_usb")
-end
-function mayEnterRest()
-	return not blocks4gRest()
 end
 function getState()
 	return {

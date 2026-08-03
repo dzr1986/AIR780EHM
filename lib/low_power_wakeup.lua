@@ -20,17 +20,8 @@ end
 function isMqttMode()
 	return not tcpModeActive()
 end
-function isTcpMode()
-	return tcpModeActive()
-end
-function modeLabel()
-	return getMode()
-end
 function allowTcpChannel()
 	return tcpModeActive()
-end
-function keepMqttAliveInRest()
-	return isMqttMode()
 end
 function shouldCloseTcpOnEnterRest()
 	return isMqttMode()

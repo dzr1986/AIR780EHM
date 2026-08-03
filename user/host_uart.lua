@@ -568,9 +568,6 @@ local function uart_getcfg(_cmd)
 		s.tcp_extra or ""
 	)
 end
-function buildPirstatBody()
-	return build_pir_wake_body(false)
-end
 local function uart_pirstat_query(_cmd)
 	return rsp_body("PIRSTAT", build_pir_wake_body(false))
 end
@@ -2143,9 +2140,6 @@ end
 function isHostAtReady()
 	return state.host_at_ready == true
 end
-function getHostFirstAt()
-	return state.first_host_at
-end
 local function identity_cfg()
 	return _G.HOST_IDENTITY_CFG or {}
 end
@@ -2338,25 +2332,6 @@ end
 function getCachedHostGb28181Id()
 	return state.host_gb28181_id
 end
-function getCachedP2pCfg()
-	if not state.p2p_uid or state.p2p_uid == "" then
-		return nil
-	end
-	return {
-		uid = state.p2p_uid,
-		product = state.p2p_product or "",
-	}
-end
-function getCachedGb28181Cfg()
-	if not state.host_gb28181_id or state.host_gb28181_id == "" then
-		return nil
-	end
-	return {
-		device_id = state.host_gb28181_id,
-		password = state.gb28181_password or "",
-		imei = state.gb28181_imei,
-	}
-end
 function queryHostGb28181(timeoutMs)
 	return host_query(timeoutMs, {
 		busy_key = "gb28181_query_busy",
@@ -2375,9 +2350,6 @@ function queryHostGb28181(timeoutMs)
 			return state.host_gb28181_id
 		end,
 	})
-end
-function getCachedHostIpcStatus()
-	return state.host_ipc_status
 end
 local function t3x_recording_from_record_snap(rec)
 	if type(rec) ~= "table" then
@@ -2847,9 +2819,6 @@ function queryHostRecordTime(timeoutMs)
 		end,
 	})
 end
-function getCachedHostRecordTime()
-	return state.host_record_time
-end
 function setHostRecordTime(opts)
 	opts = opts or {}
 	return host_set({
@@ -3186,17 +3155,6 @@ function formatHostTfCard(opts)
 		return false, normalizeLuaErrorReason(errRun)
 	end
 	return false, outcome.reason
-end
-function isHostTfFormatBusy()
-	return state.tfcard_format_busy == true
-end
-function setPirActionDevinfo()
-	local pc = loader.load("pir_ctrl")
-	if pc and pc.setMediaConfig then
-		pc.setMediaConfig({ action = "devinfo" })
-		return true
-	end
-	return false
 end
 local function encode_cfg()
 	return _G.HOST_ENCODE_CFG or {}

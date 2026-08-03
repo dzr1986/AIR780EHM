@@ -244,13 +244,6 @@ local function startCellInfoRefresh()
 		end
 	end)
 end
-function detectServingOperator()
-	startCellInfoRefresh()
-	if servingOperatorCache.op then
-		return servingOperatorCache.op, servingOperatorCache.name
-	end
-	return nil, nil
-end
 local function readCurrentApn()
 	if not mobile or not mobile.apn then
 		return ""
@@ -423,11 +416,5 @@ function start()
 		end
 	end)
 	return true
-end
-function getLastState()
-	return lastState
-end
-function getOperatorName()
-	return lastState.operator_name, lastState.operator
 end
 return _M

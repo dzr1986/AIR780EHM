@@ -226,3 +226,13 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 3. **弃值的多返回捕获**：`local ok, err = pcall(...)` 等收敛为 `pcall(...)` 或 `local ok = ...`；`usb_rndis` 删除纯 getter `readCellularIp()` 的无效调用。
 
 核实后保留：`libfota2.lua`（上游库，保持与官方一致）；`app.lua` 的 `modemHibernate` 仅去掉冗余初始化（if/else 全路径赋值）。清理后 luacheck 目标告警清零，32 个文件 `luac5.3 -p` 全通过。
+
+### 9.5 第七轮：死导出函数清理（16 个文件，−239 行）
+
+luacheck 因 `module(package.seeall)` 无法识别模块导出函数是否被使用，故用脚本做全项目**全词匹配**引用扫描（覆盖 `mod.fn`、字符串动态派发、事件回调引用；已确认代码库无 `mod[var](...)` 动态索引调用），找出零引用的导出函数 47 个：
+
+- 删除 42 个死导出（约 210 行）：如 `usb_rndis.switch/enableAsync/waitForNetStable`、`host_uart.getCachedP2pCfg/getCachedGb28181Cfg/setPirActionDevinfo`、`t3x_ctrl.enterDeepSleep/pulseWakeup`、`app.setModuleFlag/getModuleFlags`、`pir_ctrl.requestStopManual/isSuspended` 等。
+- 迭代清理级联孤儿：`usb_rndis.cycleRndis`（仅被已删函数调用）、`t3x_policy.lastDenyReason`（只写不读，8 处）。
+- **保留** 5 个框架通用 API：`config_manager.num/bool`、`gpio_util.in_pin/out_pin/set_output`（文档承诺的公共接口）。
+
+复扫确认无新增死导出（收敛），32 文件语法全通过。注意：后续若新增代码需调用上述被删函数，从 git 历史（76ab6cb 之前）恢复即可。

@@ -132,9 +132,6 @@ local function on_uart_recv(id, len)
 		feed_line_buffer(data)
 	end
 end
-function setOnRaw(fn)
-	handlers.on_raw = fn
-end
 function setOnLine(fn)
 	handlers.on_line = fn
 end

@@ -123,9 +123,6 @@ function start()
 	end
 	return true
 end
-function isSleepInProgress()
-	return sleep_in_progress == true
-end
 function waitSleepIdle(timeoutMs)
 	if not sleep_in_progress then
 		return true
@@ -167,9 +164,6 @@ function pulseMcuInt()
 		lastAction = "pulseMcuInt"
 	end, ms)
 	return true
-end
-function pulseWakeup()
-	return pulseMcuInt()
 end
 function enterBootMode()
 	local entry_pwr, _, entry_boot, entry_ota = ensurePins()
@@ -304,15 +298,6 @@ function wake()
 		applyPowerLevel(true)
 	end
 	pulseMcuInt()
-end
-function enterDeepSleep()
-	state.power_state = "sleeping"
-	if _G.uart_bridge and _G.uart_bridge.stop then
-		_G.uart_bridge.stop()
-	elseif _G.UART_CFG and _G.UART_CFG.id then
-		uart.close(_G.UART_CFG.id)
-	end
-	pm.deepSleep()
 end
 function getState()
 	local entry_pwr, entry_int, entry_boot, entry_ota = getEntries()

@@ -185,9 +185,6 @@ function isBatteryDynamicRest()
 	end
 	return guard.rest_by_battery == true
 end
-function shouldAllowPirInRest()
-	return isBatteryDynamicRest()
-end
 function shouldAllowHostIdleSleep()
 	if cfg().block_host_idle_above_recover == false then
 		return true
@@ -436,13 +433,6 @@ function onUsbRemoved()
 		pct = tonumber(_G.APP_RUNTIME.battery_percent)
 	end
 	evaluate(pct, nil)
-end
-function onUsbChanged(inserted)
-	if inserted then
-		onUsbInserted()
-	else
-		onUsbRemoved()
-	end
 end
 function onBatteryUpdate(pct, mv)
 	local prev = guard.last_percent
