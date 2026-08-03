@@ -1642,6 +1642,96 @@ local function parse_audio_row(line)
 		gain = tonumber(gain) or 0,
 	}
 end
+-- 行解析 DSL：match_flag=固定应答、match_pub=字段捕获发布（!前缀转bool、$前缀保留字符串）、rows_*=多行收集
+local function pub_ack(ev, t)
+	sys.publish(ev, t)
+	return true
+end
+local function match_flag(pat, ev, tpl)
+	return function(line)
+		if not line:match(pat) then
+			return false
+		end
+		local t = {}
+		for k, v in pairs(tpl) do t[k] = v end
+		return pub_ack(ev, t)
+	end
+end
+local function match_pub(pat, ev, names, tpl)
+	return function(line)
+		local caps = { line:match(pat) }
+		if caps[1] == nil then
+			return false
+		end
+		local t = {}
+		if tpl then
+			for k, v in pairs(tpl) do t[k] = v end
+		end
+		for i = 1, #names do
+			local n = names[i]
+			local mark = n:sub(1, 1)
+			if mark == "!" then
+				t[n:sub(2)] = (tonumber(caps[i]) or 0) == 1
+			elseif mark == "$" then
+				t[n:sub(2)] = caps[i]
+			else
+				t[n] = tonumber(caps[i]) or 0
+			end
+		end
+		return pub_ack(ev, t)
+	end
+end
+local function rows_append(key, row)
+	if not row then
+		return false
+	end
+	state[key] = state[key] or {}
+	state[key][#state[key] + 1] = row
+	return true
+end
+local function rows_end_flush(endLine, key, ev)
+	return function(line)
+		if line ~= endLine then
+			return false
+		end
+		local rows = state[key] or {}
+		state[key] = nil
+		return pub_ack(ev, rows)
+	end
+end
+local function rows_collect(pat, key, names)
+	return function(line)
+		local caps = { line:match(pat) }
+		if caps[1] == nil then
+			return false
+		end
+		local row = {}
+		for i = 1, #names do
+			row[names[i]] = tonumber(caps[i]) or 0
+		end
+		return rows_append(key, row)
+	end
+end
+local function line_matchers(...)
+	local fns = { ... }
+	return function(line)
+		if not line then
+			return false
+		end
+		for i = 1, #fns do
+			if fns[i](line) then
+				return true
+			end
+		end
+		return false
+	end
+end
+local function norm_matchers(...)
+	local m = line_matchers(...)
+	return function(line)
+		return m(normalize_host_line(line))
+	end
+end
 local function try_encode_uart_error(line)
 	if line ~= "ERROR" then
 		return false
@@ -1682,255 +1772,73 @@ local function try_encode_ok_tail(line)
 	end
 	return false
 end
-local function try_venc_line(line)
-	line = normalize_host_line(line)
-	if line == "+VENC:END" then
-		local rows = state.encode_venc_rows or {}
-		state.encode_venc_rows = nil
-		sys.publish(SYS_EVT.VENC_QUERY, rows)
-		return true
-	end
-	local row = parse_venc_row(line)
-	if not row then
-		return false
-	end
-	state.encode_venc_rows = state.encode_venc_rows or {}
-	state.encode_venc_rows[#state.encode_venc_rows + 1] = row
-	return true
-end
-local function try_vencset_line(line)
-	if line and line:match("^%+VENCSET:ERROR") then
-		sys.publish(SYS_EVT.VENC_SET, { ok = false })
-		return true
-	end
-	local cam, stream, reboot, runtimeApply = line:match("^%+VENCSET:OK,cam=(%d+),stream=(%d+),needReboot=(%d+),runtimeApply=(%d+)$")
-	if cam then
-		sys.publish(SYS_EVT.VENC_SET, {
-			ok = true,
-			camera = tonumber(cam) or 0,
-			stream = tonumber(stream) or 0,
-			needReboot = (tonumber(reboot) or 0) == 1,
-			runtimeApply = tonumber(runtimeApply) or 0,
-		})
-		return true
-	end
-	cam, stream, reboot = line:match("^%+VENCSET:OK,cam=(%d+),stream=(%d+),needReboot=(%d+)$")
-	if not cam then
-		return false
-	end
-	sys.publish(SYS_EVT.VENC_SET, {
-		ok = true,
-		camera = tonumber(cam) or 0,
-		stream = tonumber(stream) or 0,
-		needReboot = (tonumber(reboot) or 0) == 1,
-	})
-	return true
-end
-local function try_audioset_line(line)
-	if line and line:match("^%+AUDIOSET:ERROR") then
-		sys.publish(SYS_EVT.AUDIO_SET, { ok = false })
-		return true
-	end
-	local cam, reboot = line:match("^%+AUDIOSET:OK,cam=(%d+),needReboot=(%d+)$")
-	if not cam then
-		return false
-	end
-	sys.publish(SYS_EVT.AUDIO_SET, {
-		ok = true,
-		camera = tonumber(cam) or 0,
-		needReboot = (tonumber(reboot) or 0) == 1,
-	})
-	return true
-end
-local function try_audio_line(line)
-	line = normalize_host_line(line)
-	if line == "+AUDIO:END" then
-		local rows = state.encode_audio_rows or {}
-		state.encode_audio_rows = nil
-		sys.publish(SYS_EVT.AUDIO_QUERY, rows)
-		return true
-	end
-	local row = parse_audio_row(line)
-	if not row then
-		return false
-	end
-	state.encode_audio_rows = state.encode_audio_rows or {}
-	state.encode_audio_rows[#state.encode_audio_rows + 1] = row
-	return true
-end
-local function try_micset_line(line)
-	if line and line:match("^%+MICSET:ERROR") then
-		sys.publish(SYS_EVT.MIC_SET, { ok = false })
-		return true
-	end
-	local cam, runtimeApply = line:match("^%+MICSET:OK,cam=(%d+),runtimeApply=(%d+)$")
-	if cam then
-		sys.publish(SYS_EVT.MIC_SET, {
-			ok = true,
-			camera = tonumber(cam) or 0,
-			runtimeApply = tonumber(runtimeApply) or 0,
-		})
-		return true
-	end
-	return false
-end
-local function try_mic_line(line)
-	line = normalize_host_line(line)
-	if line == "+MIC:END" then
-		local rows = state.mic_rows or {}
-		state.mic_rows = nil
-		sys.publish(SYS_EVT.MIC_QUERY, rows)
-		return true
-	end
-	local cam, vol, gain = line:match("^%+MIC:(%d+),(%d+),(%d+)$")
-	if cam then
-		state.mic_rows = state.mic_rows or {}
-		state.mic_rows[#state.mic_rows + 1] = {
-			camera = tonumber(cam) or 0,
-			volume = tonumber(vol) or 0,
-			gain = tonumber(gain) or 0,
-		}
-		return true
-	end
-	return false
-end
-local function try_softphotoset_line(line)
-	if line and line:match("^%+SOFTPHOTOSET:OK") then
-		sys.publish(SYS_EVT.SOFTPHOTO_SET, { ok = true })
-		return true
-	end
-	if line and line:match("^%+SOFTPHOTOSET:ERROR") then
-		sys.publish(SYS_EVT.SOFTPHOTO_SET, { ok = false })
-		return true
-	end
-	return false
-end
-local function try_softphoto_line(line)
-	line = normalize_host_line(line)
-	if not line or not line:match("^%+SOFTPHOTO:") then
-		return false
-	end
-	local en, night, day, dayAlt, gbGain, gbInit, checkTime, checkCount =
-		line:match("^%+SOFTPHOTO:(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)$")
-	if en then
-		sys.publish(SYS_EVT.SOFTPHOTO_QUERY, {
-			enable = tonumber(en) or 0,
-			nightModeThreshold = tonumber(night) or 0,
-			dayModeThreshold = tonumber(day) or 0,
-			dayModeAltThreshold = tonumber(dayAlt) or 0,
-			gbGainThreshold = tonumber(gbGain) or 0,
-			gbGainRecordInit = tonumber(gbInit) or 0,
-			checkTime = tonumber(checkTime) or 0,
-			checkCount = tonumber(checkCount) or 0,
-			parsed = true,
-		})
-		return true
-	end
-	if line:match("^%+SOFTPHOTO:ERROR") then
-		sys.publish(SYS_EVT.SOFTPHOTO_QUERY, { parsed = false, error = true })
-		return true
-	end
-	return false
-end
-local function try_framerate_line(line)
-	line = normalize_host_line(line)
-	if line == "+FRAMERATE:END" then
-		local rows = state.framerate_rows or {}
-		state.framerate_rows = nil
-		sys.publish(SYS_EVT.FRAMERATE_QUERY, rows)
-		return true
-	end
-	local cam, stream, fps = line:match("^%+FRAMERATE:(%d+),(%d+),(%d+)$")
-	if cam then
-		state.framerate_rows = state.framerate_rows or {}
-		state.framerate_rows[#state.framerate_rows + 1] = {
-			camera = tonumber(cam) or 0,
-			stream = tonumber(stream) or 0,
-			framerate = tonumber(fps) or 0,
-		}
-		return true
-	end
-	local okCam, okStream, okFps, runtimeApply = line:match("^%+FRAMERATE:OK,(%d+),(%d+),(%d+),runtimeApply=(%d+)$")
-	if okCam then
-		sys.publish(SYS_EVT.FRAMERATE_SET, {
-			ok = true,
-			camera = tonumber(okCam) or 0,
-			stream = tonumber(okStream) or 0,
-			framerate = tonumber(okFps) or 0,
-			runtimeApply = tonumber(runtimeApply) or 0,
-		})
-		return true
-	end
-	okCam, okStream, okFps = line:match("^%+FRAMERATE:OK,(%d+),(%d+),(%d+)$")
-	if okCam then
-		sys.publish(SYS_EVT.FRAMERATE_SET, {
-			ok = true,
-			camera = tonumber(okCam) or 0,
-			stream = tonumber(okStream) or 0,
-			framerate = tonumber(okFps) or 0,
-			runtimeApply = 1,
-		})
-		return true
-	end
-	if line:match("^%+FRAMERATE:ERROR") then
-		sys.publish(SYS_EVT.FRAMERATE_SET, { ok = false, error = true })
-		return true
-	end
-	return false
-end
-local function try_recordctrl_line(line)
-	line = normalize_host_line(line)
-	if not line or not line:match("^%+RECORDCTRL:") then
-		return false
-	end
-	local ok1, maxSec = line:match("^%+RECORDCTRL:OK,1,max_sec=(%d+)$")
-	if ok1 then
-		sys.publish(SYS_EVT.RECORDCTRL_SET, { ok = true, start = 1, max_sec = tonumber(maxSec) or 60 })
-		return true
-	end
-	local ok0, reason = line:match("^%+RECORDCTRL:OK,0,reason=(.+)$")
-	if ok0 then
-		sys.publish(SYS_EVT.RECORDCTRL_SET, { ok = true, start = 0, reason = reason or "cloud" })
-		return true
-	end
-	if line:match("^%+RECORDCTRL:ERROR") then
-		sys.publish(SYS_EVT.RECORDCTRL_SET, { ok = false, error = true })
-		return true
-	end
-	return false
-end
-local function try_persondet_line(line)
-	line = normalize_host_line(line)
-	if not line or not line:match("^%+PERSONDET:") then
-		return false
-	end
-	local enable, available = line:match("^%+PERSONDET:(%d+),available=(%d+)$")
-	if enable then
-		state.host_person_detect = {
-			enable = tonumber(enable) or 0,
-			available = tonumber(available) or 0,
-			parsed = true,
-		}
-		sys.publish(SYS_EVT.PERSONDET_ACK, state.host_person_detect)
-		return true
-	end
-	enable = line:match("^%+PERSONDET:(%d+)$")
-	if enable then
-		state.host_person_detect = { enable = tonumber(enable) or 0, parsed = true }
-		sys.publish(SYS_EVT.PERSONDET_ACK, state.host_person_detect)
-		return true
-	end
-	local okEn = line:match("^%+PERSONDET:OK,(%d+)$")
-	if okEn then
-		sys.publish(SYS_EVT.PERSONDET_SET, { ok = true, enable = tonumber(okEn) or 0 })
-		return true
-	end
-	if line:match("^%+PERSONDET:ERROR") then
-		sys.publish(SYS_EVT.PERSONDET_SET, { ok = false, error = true })
-		return true
-	end
-	return false
-end
+local try_venc_line = norm_matchers(
+	rows_end_flush("+VENC:END", "encode_venc_rows", SYS_EVT.VENC_QUERY),
+	function(line)
+		return rows_append("encode_venc_rows", parse_venc_row(line))
+	end)
+local try_vencset_line = line_matchers(
+	match_flag("^%+VENCSET:ERROR", SYS_EVT.VENC_SET, { ok = false }),
+	match_pub("^%+VENCSET:OK,cam=(%d+),stream=(%d+),needReboot=(%d+),runtimeApply=(%d+)$", SYS_EVT.VENC_SET,
+		{ "camera", "stream", "!needReboot", "runtimeApply" }, { ok = true }),
+	match_pub("^%+VENCSET:OK,cam=(%d+),stream=(%d+),needReboot=(%d+)$", SYS_EVT.VENC_SET,
+		{ "camera", "stream", "!needReboot" }, { ok = true }))
+local try_audioset_line = line_matchers(
+	match_flag("^%+AUDIOSET:ERROR", SYS_EVT.AUDIO_SET, { ok = false }),
+	match_pub("^%+AUDIOSET:OK,cam=(%d+),needReboot=(%d+)$", SYS_EVT.AUDIO_SET,
+		{ "camera", "!needReboot" }, { ok = true }))
+local try_audio_line = norm_matchers(
+	rows_end_flush("+AUDIO:END", "encode_audio_rows", SYS_EVT.AUDIO_QUERY),
+	function(line)
+		return rows_append("encode_audio_rows", parse_audio_row(line))
+	end)
+local try_micset_line = line_matchers(
+	match_flag("^%+MICSET:ERROR", SYS_EVT.MIC_SET, { ok = false }),
+	match_pub("^%+MICSET:OK,cam=(%d+),runtimeApply=(%d+)$", SYS_EVT.MIC_SET,
+		{ "camera", "runtimeApply" }, { ok = true }))
+local try_mic_line = norm_matchers(
+	rows_end_flush("+MIC:END", "mic_rows", SYS_EVT.MIC_QUERY),
+	rows_collect("^%+MIC:(%d+),(%d+),(%d+)$", "mic_rows", { "camera", "volume", "gain" }))
+local try_softphotoset_line = line_matchers(
+	match_flag("^%+SOFTPHOTOSET:OK", SYS_EVT.SOFTPHOTO_SET, { ok = true }),
+	match_flag("^%+SOFTPHOTOSET:ERROR", SYS_EVT.SOFTPHOTO_SET, { ok = false }))
+local try_softphoto_line = norm_matchers(
+	match_pub("^%+SOFTPHOTO:(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)$", SYS_EVT.SOFTPHOTO_QUERY,
+		{ "enable", "nightModeThreshold", "dayModeThreshold", "dayModeAltThreshold",
+			"gbGainThreshold", "gbGainRecordInit", "checkTime", "checkCount" }, { parsed = true }),
+	match_flag("^%+SOFTPHOTO:ERROR", SYS_EVT.SOFTPHOTO_QUERY, { parsed = false, error = true }))
+local try_framerate_line = norm_matchers(
+	rows_end_flush("+FRAMERATE:END", "framerate_rows", SYS_EVT.FRAMERATE_QUERY),
+	rows_collect("^%+FRAMERATE:(%d+),(%d+),(%d+)$", "framerate_rows", { "camera", "stream", "framerate" }),
+	match_pub("^%+FRAMERATE:OK,(%d+),(%d+),(%d+),runtimeApply=(%d+)$", SYS_EVT.FRAMERATE_SET,
+		{ "camera", "stream", "framerate", "runtimeApply" }, { ok = true }),
+	match_pub("^%+FRAMERATE:OK,(%d+),(%d+),(%d+)$", SYS_EVT.FRAMERATE_SET,
+		{ "camera", "stream", "framerate" }, { ok = true, runtimeApply = 1 }),
+	match_flag("^%+FRAMERATE:ERROR", SYS_EVT.FRAMERATE_SET, { ok = false, error = true }))
+local try_recordctrl_line = norm_matchers(
+	match_pub("^%+RECORDCTRL:OK,1,max_sec=(%d+)$", SYS_EVT.RECORDCTRL_SET, { "max_sec" }, { ok = true, start = 1 }),
+	match_pub("^%+RECORDCTRL:OK,0,reason=(.+)$", SYS_EVT.RECORDCTRL_SET, { "$reason" }, { ok = true, start = 0 }),
+	match_flag("^%+RECORDCTRL:ERROR", SYS_EVT.RECORDCTRL_SET, { ok = false, error = true }))
+local try_persondet_line = norm_matchers(
+	function(line)
+		local enable, available = line:match("^%+PERSONDET:(%d+),available=(%d+)$")
+		if enable then
+			state.host_person_detect = {
+				enable = tonumber(enable) or 0,
+				available = tonumber(available) or 0,
+				parsed = true,
+			}
+		else
+			enable = line:match("^%+PERSONDET:(%d+)$")
+			if not enable then
+				return false
+			end
+			state.host_person_detect = { enable = tonumber(enable) or 0, parsed = true }
+		end
+		return pub_ack(SYS_EVT.PERSONDET_ACK, state.host_person_detect)
+	end,
+	match_pub("^%+PERSONDET:OK,(%d+)$", SYS_EVT.PERSONDET_SET, { "enable" }, { ok = true }),
+	match_flag("^%+PERSONDET:ERROR", SYS_EVT.PERSONDET_SET, { ok = false, error = true }))
 normalize_ipc_cloud_stat = function(snap)
 	if type(snap) ~= "table" then
 		return snap
@@ -2146,6 +2054,9 @@ end
 local function tf_card_cfg()
 	return _G.HOST_TFCARD_CFG or {}
 end
+local function encode_cfg()
+	return _G.HOST_ENCODE_CFG or {}
+end
 local function ipc_cfg()
 	return _G.HOST_IPC_CFG or {}
 end
@@ -2329,28 +2240,57 @@ local function cached_host_query(timeoutMs, opts)
 	opts.require_parsed = nil
 	return host_query(timeoutMs, opts)
 end
+-- 查询/设置命令表驱动工厂：d.at 可为字符串或 function(opts)；生成函数兼容 (timeoutMs) 与 (opts) 两种签名
+local function defineQuery(d)
+	return function(arg)
+		local opts = type(arg) == "table" and arg or nil
+		return cached_host_query(opts and opts.timeout_ms or arg, {
+			busy_key = d.busy,
+			cache_key = d.cache,
+			require_parsed = d.parsed,
+			policy_tag = d.tag,
+			cfg = d.cfg(),
+			default_timeout = d.tmo,
+			at_cmd = type(d.at) == "function" and d.at(opts or {}) or d.at,
+			ack_event = d.ev,
+			when_disabled = d.dis,
+			before_send = d.pre,
+			on_response = d.rsp,
+		})
+	end
+end
+local function defineSet(d)
+	return function(opts)
+		opts = opts or {}
+		return host_set({
+			busy_key = d.busy,
+			policy_tag = d.tag,
+			cfg = d.cfg(),
+			boot_cfg = d.boot and d.boot() or nil,
+			default_timeout = d.tmo,
+			timeout_ms = opts.timeout_ms,
+			ack_event = d.ev,
+			prepare = function()
+				return d.prep(opts)
+			end,
+			parse_rsp = d.parse or parse_ok_rsp,
+		})
+	end
+end
 function getCachedHostGb28181Id()
 	return state.host_gb28181_id
 end
-function queryHostGb28181(timeoutMs)
-	return host_query(timeoutMs, {
-		busy_key = "gb28181_query_busy",
-		cache_key = "host_gb28181_id",
-		policy_tag = "host_identity",
-		cfg = identity_cfg(),
-		timeout_cfg_key = "query_timeout_ms",
-		default_timeout = 3000,
-		at_cmd = "AT+GB28181?",
-		ack_event = SYS_EVT.GB28181_ACK,
-		on_response = function(got, id, tmo)
-			if got and id ~= nil then
-				state.host_gb28181_id = id
-				return state.host_gb28181_id
-			end
-			return state.host_gb28181_id
-		end,
-	})
-end
+queryHostGb28181 = defineQuery{
+	busy = "gb28181_query_busy", cache = "host_gb28181_id",
+	tag = "host_identity", cfg = identity_cfg, tmo = 3000,
+	at = "AT+GB28181?", ev = SYS_EVT.GB28181_ACK,
+	rsp = function(got, id)
+		if got and id ~= nil then
+			state.host_gb28181_id = id
+		end
+		return state.host_gb28181_id
+	end,
+}
 local function t3x_recording_from_record_snap(rec)
 	if type(rec) ~= "table" then
 		return nil
@@ -2779,305 +2719,199 @@ end
 function getT3xRecActive()
 	return tonumber(state.t3x_rec_active) or 0
 end
-function queryHostRecord(timeoutMs)
-	return host_query(timeoutMs, {
-		busy_key = "record_query_busy",
-		cache_key = "host_record",
-		policy_tag = "host_record",
-		cfg = record_cfg(),
-		default_timeout = 3000,
-		at_cmd = "AT+RECORD?",
-		ack_event = SYS_EVT.RECORD_ACK,
-		when_disabled = function(cfg)
-			if cfg.enabled == false then
-				return state.host_record
-			end
-		end,
-		on_response = function(got, snap, tmo)
-			if got and type(snap) == "table" then
-				state.host_record = snap
-				return state.host_record
-			end
-			return nil
-		end,
-	})
-end
-function queryHostRecordTime(timeoutMs)
-	return cached_host_query(timeoutMs, {
-		busy_key = "recordtime_query_busy",
-		cache_key = "host_record_time",
-		require_parsed = true,
-		policy_tag = "host_recordtime",
-		cfg = record_cfg(),
-		default_timeout = 3000,
-		at_cmd = "AT+RECORDTIME?",
-		ack_event = SYS_EVT.RECORDTIME_ACK,
-		when_disabled = function(cfg)
-			if cfg.enabled == false then
-				return state.host_record_time
-			end
-		end,
-	})
-end
-function setHostRecordTime(opts)
-	opts = opts or {}
-	return host_set({
-		busy_key = "recordtime_set_busy",
-		policy_tag = "host_recordtime_set",
-		cfg = record_cfg(),
-		default_timeout = 3000,
-		timeout_ms = opts.timeout_ms,
-		ack_event = SYS_EVT.RECORDTIME_SET,
-		prepare = function()
-			local min = tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
-			if min == nil then
-				return false, "missing_min"
-			end
-			return true, nil, string.format("AT+RECORDTIME=%d", min)
-		end,
-		parse_rsp = function(rsp)
-			if rsp.ok then
-				state.host_record_time = rsp
-				return true, "ok", { minutes = rsp.minutes }
-			end
-			if rsp.invalid then
-				return false, "invalid_minute", nil
-			end
-			return false, "error", nil
-		end,
-	})
-end
-function queryHostFramerate(opts)
-	opts = opts or {}
-	local cam = tonumber(opts.camera)
-	local stream = tonumber(opts.stream)
-	local at_cmd = "AT+FRAMERATE?"
-	if cam ~= nil then
-		at_cmd = string.format("AT+FRAMERATE?=%d", cam)
-		if stream ~= nil then
-			at_cmd = string.format("AT+FRAMERATE?=%d,%d", cam, stream)
+queryHostRecord = defineQuery{
+	busy = "record_query_busy", cache = "host_record",
+	tag = "host_record", cfg = record_cfg, tmo = 3000,
+	at = "AT+RECORD?", ev = SYS_EVT.RECORD_ACK,
+	dis = function(cfg)
+		if cfg.enabled == false then
+			return state.host_record
 		end
-	end
-	return host_query(opts.timeout_ms, {
-		busy_key = "framerate_query_busy",
-		cache_key = "host_framerate",
-		policy_tag = "host_framerate",
-		cfg = encode_cfg(),
-		default_timeout = 5000,
-		at_cmd = at_cmd,
-		ack_event = SYS_EVT.FRAMERATE_QUERY,
-		before_send = function()
-			state.framerate_rows = {}
-		end,
-		on_response = function(got, rows, tmo)
-			if got and type(rows) == "table" then
-				state.host_framerate = rows
-				return rows
-			end
-			return state.host_framerate
-		end,
-	})
-end
-function setHostFramerate(opts)
-	opts = opts or {}
-	return host_set({
-		busy_key = "framerate_set_busy",
-		policy_tag = "host_framerate_set",
-		cfg = encode_cfg(),
-		default_timeout = 8000,
-		timeout_ms = opts.timeout_ms,
-		ack_event = SYS_EVT.FRAMERATE_SET,
-		prepare = function()
-			local cam = tonumber(opts.camera) or 0
-			local stream = tonumber(opts.stream) or 0
-			local fps = tonumber(opts.framerate or opts.fps)
-			if fps == nil then
-				return false, "missing_framerate"
-			end
-			return true, nil, string.format("AT+FRAMERATE=%d,%d,%d", cam, stream, fps)
-		end,
-		parse_rsp = parse_ok_rsp,
-	})
-end
-function recordCtrlStart(opts)
-	opts = opts or {}
-	local maxSec = tonumber(opts.max_sec or opts.videoMaxDurationSec) or 60
-	return host_set({
-		policy_tag = "host_recordctrl_start",
-		cfg = identity_cfg(),
-		boot_cfg = record_cfg(),
-		default_timeout = 8000,
-		timeout_ms = opts.timeout_ms,
-		ack_event = SYS_EVT.RECORDCTRL_SET,
-		prepare = function()
-			return true, nil, string.format("AT+RECORDCTRL=1,%d", maxSec)
-		end,
-		parse_rsp = function(rsp)
-			if rsp.ok and rsp.start == 1 then
-				return true, "ok", rsp
-			end
-			return false, "error", rsp
-		end,
-	})
-end
-function recordCtrlStop(opts)
-	opts = opts or {}
-	local reason = tostring(opts.reason or "cloud")
-	return host_set({
-		policy_tag = "host_recordctrl_stop",
-		cfg = identity_cfg(),
-		boot_cfg = record_cfg(),
-		default_timeout = 8000,
-		timeout_ms = opts.timeout_ms,
-		ack_event = SYS_EVT.RECORDCTRL_SET,
-		prepare = function()
-			return true, nil, string.format("AT+RECORDCTRL=0,%s", reason)
-		end,
-		parse_rsp = function(rsp)
-			if rsp.ok and rsp.start == 0 then
-				return true, "ok", rsp
-			end
-			return false, "error", rsp
-		end,
-	})
-end
-function queryHostPersonDetect(timeoutMs)
-	return cached_host_query(timeoutMs, {
-		busy_key = "persondet_query_busy",
-		cache_key = "host_person_detect",
-		require_parsed = true,
-		policy_tag = "host_persondet",
-		cfg = identity_cfg(),
-		default_timeout = 5000,
-		at_cmd = "AT+PERSONDET?",
-		ack_event = SYS_EVT.PERSONDET_ACK,
-	})
-end
-function setHostPersonDetect(opts)
-	opts = opts or {}
-	return host_set({
-		busy_key = "persondet_set_busy",
-		policy_tag = "host_persondet_set",
-		cfg = identity_cfg(),
-		default_timeout = 5000,
-		timeout_ms = opts.timeout_ms,
-		ack_event = SYS_EVT.PERSONDET_SET,
-		prepare = function()
-			local enable = tonumber(opts.enable)
-			if enable == nil or (enable ~= 0 and enable ~= 1) then
-				return false, "invalid_enable"
-			end
-			return true, nil, string.format("AT+PERSONDET=%d", enable)
-		end,
-		parse_rsp = parse_ok_rsp,
-	})
-end
-function queryHostMic(opts)
-	opts = opts or {}
-	local cam = tonumber(opts.camera)
-	local at_cmd = "AT+MIC?"
-	if cam ~= nil then
-		at_cmd = string.format("AT+MIC?=%d", cam)
-	end
-	return cached_host_query(opts.timeout_ms, {
-		busy_key = "mic_query_busy",
-		cache_key = "host_mic",
-		require_parsed = false,
-		policy_tag = "host_mic",
-		cfg = identity_cfg(),
-		default_timeout = 8000,
-		at_cmd = at_cmd,
-		ack_event = SYS_EVT.MIC_QUERY,
-		before_send = function()
-			state.mic_rows = {}
-		end,
-	})
-end
-function setHostMic(opts)
-	opts = opts or {}
-	return host_set({
-		busy_key = "mic_set_busy",
-		policy_tag = "host_mic_set",
-		cfg = identity_cfg(),
-		default_timeout = 8000,
-		timeout_ms = opts.timeout_ms,
-		ack_event = SYS_EVT.MIC_SET,
-		prepare = function()
-			local cam = tonumber(opts.camera) or 0
-			local volume = tonumber(opts.volume)
-			local gain = tonumber(opts.gain)
-			if volume == nil or gain == nil then
+	end,
+	rsp = function(got, snap)
+		if got and type(snap) == "table" then
+			state.host_record = snap
+			return snap
+		end
+		return nil
+	end,
+}
+queryHostRecordTime = defineQuery{
+	busy = "recordtime_query_busy", cache = "host_record_time", parsed = true,
+	tag = "host_recordtime", cfg = record_cfg, tmo = 3000,
+	at = "AT+RECORDTIME?", ev = SYS_EVT.RECORDTIME_ACK,
+	dis = function(cfg)
+		if cfg.enabled == false then
+			return state.host_record_time
+		end
+	end,
+}
+setHostRecordTime = defineSet{
+	busy = "recordtime_set_busy", tag = "host_recordtime_set",
+	cfg = record_cfg, tmo = 3000, ev = SYS_EVT.RECORDTIME_SET,
+	prep = function(o)
+		local min = tonumber(o.minutes or o.recTime or o.recordTimeMin)
+		if min == nil then
+			return false, "missing_min"
+		end
+		return true, nil, string.format("AT+RECORDTIME=%d", min)
+	end,
+	parse = function(rsp)
+		if rsp.ok then
+			state.host_record_time = rsp
+			return true, "ok", { minutes = rsp.minutes }
+		end
+		if rsp.invalid then
+			return false, "invalid_minute", nil
+		end
+		return false, "error", nil
+	end,
+}
+queryHostFramerate = defineQuery{
+	busy = "framerate_query_busy", cache = "host_framerate",
+	tag = "host_framerate", cfg = encode_cfg, tmo = 5000,
+	ev = SYS_EVT.FRAMERATE_QUERY,
+	at = function(o)
+		local cam, stream = tonumber(o.camera), tonumber(o.stream)
+		if cam and stream then
+			return string.format("AT+FRAMERATE?=%d,%d", cam, stream)
+		end
+		if cam then
+			return string.format("AT+FRAMERATE?=%d", cam)
+		end
+		return "AT+FRAMERATE?"
+	end,
+	pre = function()
+		state.framerate_rows = {}
+	end,
+	rsp = function(got, rows)
+		if got and type(rows) == "table" then
+			state.host_framerate = rows
+			return rows
+		end
+		return state.host_framerate
+	end,
+}
+setHostFramerate = defineSet{
+	busy = "framerate_set_busy", tag = "host_framerate_set",
+	cfg = encode_cfg, tmo = 8000, ev = SYS_EVT.FRAMERATE_SET,
+	prep = function(o)
+		local fps = tonumber(o.framerate or o.fps)
+		if fps == nil then
+			return false, "missing_framerate"
+		end
+		return true, nil, string.format("AT+FRAMERATE=%d,%d,%d",
+			tonumber(o.camera) or 0, tonumber(o.stream) or 0, fps)
+	end,
+}
+recordCtrlStart = defineSet{
+	tag = "host_recordctrl_start", cfg = identity_cfg, boot = record_cfg,
+	tmo = 8000, ev = SYS_EVT.RECORDCTRL_SET,
+	prep = function(o)
+		return true, nil, string.format("AT+RECORDCTRL=1,%d",
+			tonumber(o.max_sec or o.videoMaxDurationSec) or 60)
+	end,
+	parse = function(rsp)
+		if rsp.ok and rsp.start == 1 then
+			return true, "ok", rsp
+		end
+		return false, "error", rsp
+	end,
+}
+recordCtrlStop = defineSet{
+	tag = "host_recordctrl_stop", cfg = identity_cfg, boot = record_cfg,
+	tmo = 8000, ev = SYS_EVT.RECORDCTRL_SET,
+	prep = function(o)
+		return true, nil, string.format("AT+RECORDCTRL=0,%s", tostring(o.reason or "cloud"))
+	end,
+	parse = function(rsp)
+		if rsp.ok and rsp.start == 0 then
+			return true, "ok", rsp
+		end
+		return false, "error", rsp
+	end,
+}
+queryHostPersonDetect = defineQuery{
+	busy = "persondet_query_busy", cache = "host_person_detect", parsed = true,
+	tag = "host_persondet", cfg = identity_cfg, tmo = 5000,
+	at = "AT+PERSONDET?", ev = SYS_EVT.PERSONDET_ACK,
+}
+setHostPersonDetect = defineSet{
+	busy = "persondet_set_busy", tag = "host_persondet_set",
+	cfg = identity_cfg, tmo = 5000, ev = SYS_EVT.PERSONDET_SET,
+	prep = function(o)
+		local enable = tonumber(o.enable)
+		if enable == nil or (enable ~= 0 and enable ~= 1) then
+			return false, "invalid_enable"
+		end
+		return true, nil, string.format("AT+PERSONDET=%d", enable)
+	end,
+}
+queryHostMic = defineQuery{
+	busy = "mic_query_busy", cache = "host_mic", parsed = false,
+	tag = "host_mic", cfg = identity_cfg, tmo = 8000,
+	ev = SYS_EVT.MIC_QUERY,
+	at = function(o)
+		local cam = tonumber(o.camera)
+		return cam and string.format("AT+MIC?=%d", cam) or "AT+MIC?"
+	end,
+	pre = function()
+		state.mic_rows = {}
+	end,
+}
+setHostMic = defineSet{
+	busy = "mic_set_busy", tag = "host_mic_set",
+	cfg = identity_cfg, tmo = 8000, ev = SYS_EVT.MIC_SET,
+	prep = function(o)
+		local volume, gain = tonumber(o.volume), tonumber(o.gain)
+		if volume == nil or gain == nil then
+			return false, "missing_params"
+		end
+		return true, nil, string.format("AT+MICSET=%d,%d,%d", tonumber(o.camera) or 0, volume, gain)
+	end,
+}
+queryHostSoftPhoto = defineQuery{
+	busy = "softphoto_query_busy", cache = "host_softphoto", parsed = true,
+	tag = "host_softphoto", cfg = identity_cfg, tmo = 8000,
+	at = "AT+SOFTPHOTO?", ev = SYS_EVT.SOFTPHOTO_QUERY,
+}
+setHostSoftPhoto = defineSet{
+	busy = "softphoto_set_busy", tag = "host_softphoto_set",
+	cfg = identity_cfg, tmo = 8000, ev = SYS_EVT.SOFTPHOTO_SET,
+	prep = function(o)
+		local fields = {
+			tonumber(o.enable),
+			tonumber(o.nightModeThreshold or o.night_mode_threshold),
+			tonumber(o.dayModeThreshold or o.day_mode_threshold),
+			tonumber(o.dayModeAltThreshold or o.day_mode_alt_threshold),
+			tonumber(o.gbGainThreshold or o.gb_gain_threshold),
+			tonumber(o.gbGainRecordInit or o.gb_gain_record_init),
+			tonumber(o.checkTime or o.check_time),
+			tonumber(o.checkCount or o.check_count),
+		}
+		for i = 1, 8 do
+			if fields[i] == nil then
 				return false, "missing_params"
 			end
-			return true, nil, string.format("AT+MICSET=%d,%d,%d", cam, volume, gain)
-		end,
-		parse_rsp = parse_ok_rsp,
-	})
-end
-function queryHostSoftPhoto(timeoutMs)
-	return cached_host_query(timeoutMs, {
-		busy_key = "softphoto_query_busy",
-		cache_key = "host_softphoto",
-		require_parsed = true,
-		policy_tag = "host_softphoto",
-		cfg = identity_cfg(),
-		default_timeout = 8000,
-		at_cmd = "AT+SOFTPHOTO?",
-		ack_event = SYS_EVT.SOFTPHOTO_QUERY,
-	})
-end
-function setHostSoftPhoto(opts)
-	opts = opts or {}
-	return host_set({
-		busy_key = "softphoto_set_busy",
-		policy_tag = "host_softphoto_set",
-		cfg = identity_cfg(),
-		default_timeout = 8000,
-		timeout_ms = opts.timeout_ms,
-		ack_event = SYS_EVT.SOFTPHOTO_SET,
-		prepare = function()
-			local fields = {
-				tonumber(opts.enable),
-				tonumber(opts.nightModeThreshold or opts.night_mode_threshold),
-				tonumber(opts.dayModeThreshold or opts.day_mode_threshold),
-				tonumber(opts.dayModeAltThreshold or opts.day_mode_alt_threshold),
-				tonumber(opts.gbGainThreshold or opts.gb_gain_threshold),
-				tonumber(opts.gbGainRecordInit or opts.gb_gain_record_init),
-				tonumber(opts.checkTime or opts.check_time),
-				tonumber(opts.checkCount or opts.check_count),
-			}
-			for i = 1, #fields do
-				if fields[i] == nil then
-					return false, "missing_params"
-				end
-			end
-			return true, nil, string.format(
-				"AT+SOFTPHOTOSET=%d,%d,%d,%d,%d,%d,%d,%d",
-				fields[1], fields[2], fields[3], fields[4],
-				fields[5], fields[6], fields[7], fields[8])
-		end,
-		parse_rsp = parse_ok_rsp,
-	})
-end
-function queryHostTfCard(timeoutMs)
-	return cached_host_query(timeoutMs, {
-		busy_key = "tf_card_query_busy",
-		cache_key = "host_tf_card",
-		require_parsed = true,
-		policy_tag = "host_tfcard",
-		cfg = tf_card_cfg(),
-		default_timeout = 3000,
-		at_cmd = "AT+TFCARD?",
-		ack_event = SYS_EVT.TFCARD_ACK,
-		on_response = function(got, snap)
-			if got and type(snap) == "table" and snap.parsed then
-				state.host_tf_card = snap
-				return state.host_tf_card
-			end
-			return nil
-		end,
-	})
-end
+		end
+		return true, nil, string.format(
+			"AT+SOFTPHOTOSET=%d,%d,%d,%d,%d,%d,%d,%d",
+			fields[1], fields[2], fields[3], fields[4],
+			fields[5], fields[6], fields[7], fields[8])
+	end,
+}
+queryHostTfCard = defineQuery{
+	busy = "tf_card_query_busy", cache = "host_tf_card",
+	tag = "host_tfcard", cfg = tf_card_cfg, tmo = 3000,
+	at = "AT+TFCARD?", ev = SYS_EVT.TFCARD_ACK,
+	rsp = function(got, snap)
+		if got and type(snap) == "table" and snap.parsed then
+			state.host_tf_card = snap
+			return snap
+		end
+		return nil
+	end,
+}
 local function tfcard_format_cfg()
 	return _G.HOST_TFCARD_FORMAT_CFG or {}
 end
@@ -3155,9 +2989,6 @@ function formatHostTfCard(opts)
 		return false, normalizeLuaErrorReason(errRun)
 	end
 	return false, outcome.reason
-end
-local function encode_cfg()
-	return _G.HOST_ENCODE_CFG or {}
 end
 local function encode_timeout_ms(opts)
 	opts = opts or {}

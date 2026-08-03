@@ -236,3 +236,26 @@ luacheck 因 `module(package.seeall)` 无法识别模块导出函数是否被使
 - **保留** 5 个框架通用 API：`config_manager.num/bool`、`gpio_util.in_pin/out_pin/set_output`（文档承诺的公共接口）。
 
 复扫确认无新增死导出（收敛），32 文件语法全通过。注意：后续若新增代码需调用上述被删函数，从 git 历史（76ab6cb 之前）恢复即可。
+
+### 9.6 第八轮：host_uart 表驱动重构（解析器 DSL + query/set 工厂，−169 行）
+
+`user/host_uart.lua` 中大量 AT 响应解析器与 query/set 包装函数结构高度重复，本轮改为表驱动，行为等价：
+
+**行解析 DSL**（定义于 `try_encode_uart_error` 之前）：
+- `match_flag(pat, ev, tpl)`：行匹配即按模板发布事件（每次发布均拷贝模板为新表，与原实现"每次新建表"等价）。
+- `match_pub(pat, ev, names, tpl)`：按捕获名列表转换字段——名字前缀 `!` 转布尔（`==1`）、`$` 保留原始字符串、无前缀 `tonumber(cap) or 0`，合并模板后发布。
+- `rows_append / rows_end_flush / rows_collect`：多行查询（`+MIC:`、`+FRAMERATE:`、`+VENC:`、`+AUDIO:`）的行收集与 `END` 冲刷，nil 安全。
+- `line_matchers(...)` / `norm_matchers(...)`：把若干匹配器组成一个 `try_X_line`；后者先过 `normalize_host_line`。nil 行直接返回 false（比原实现更安全）。
+
+已用 DSL 重写 11 个解析器：`try_vencset/audioset/micset/mic/softphotoset/softphoto/framerate/recordctrl/persondet/venc/audio_line`。`RX_LINE_HANDLER_REGISTRY` 中的名字与顺序不变。
+
+**defineQuery / defineSet 工厂**（定义于 `cached_host_query` 之后）：
+- `defineQuery(d)` 返回兼容双签名的函数（实参为 timeoutMs 数字或 opts 表），短字段映射：`busy→busy_key、cache→cache_key、parsed→require_parsed、tag→policy_tag、cfg（函数引用，查询时调用）、tmo→default_timeout、at（字符串或 function(opts) 动态拼 AT）、ev→ack_event、dis/pre/rsp→when_disabled/before_send/on_response`，统一走 `cached_host_query`。
+- `defineSet(d)` 返回 `function(opts)`，映射同上外加 `boot→boot_cfg、prep(opts)→prepare、parse→parse_rsp`（缺省 `parse_ok_rsp`）。
+
+已转换 15 个函数：`queryHostGb28181/Record/RecordTime/Framerate/PersonDetect/Mic/SoftPhoto/TfCard`、`setHostRecordTime/Framerate/PersonDetect/Mic/SoftPhoto`、`recordCtrlStart/Stop`。**刻意保留手写**（选项集复杂）：`queryHostIpcCloudStat/IpcStatus/Wled/Encode`、`setHostEncode`、`formatHostTfCard` 及各简单单行解析器。
+
+注意事项：
+- spec 表在模块加载期构造，其中引用的局部函数（如 `encode_cfg`）**必须在词法上先定义**——本轮已把 `encode_cfg` 定义前移至 `tf_card_cfg` 之后。
+- `setHostSoftPhoto` 的字段循环改为 `for i = 1, 8`，修复了原 `#fields` 遇 nil 空洞的潜在截断（严格更安全）。
+- 已通过宿主机沙箱等价性测试（/tmp/test_parsers.lua、/tmp/test_factories.lua：解析器逐字段断言 + 工厂字段映射/双签名断言全部通过），`luac5.3 -p` 全量通过、luacheck 无新增告警。AT 命令路径有改动，建议整机回归测试上述 query/set 与多行查询。
