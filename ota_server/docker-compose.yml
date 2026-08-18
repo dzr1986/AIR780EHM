@@ -7,7 +7,8 @@ services:
       MYSQL_USER: luat
       MYSQL_PASSWORD: luat123
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
+    command: --innodb-buffer-pool-size=128M --performance-schema=OFF --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - mysql_data:/var/lib/mysql
       - ./deploy/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -24,17 +25,17 @@ services:
       mysql:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/luat_ota?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/luat_ota?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       SPRING_DATASOURCE_USERNAME: luat
       SPRING_DATASOURCE_PASSWORD: luat123
-      LUAT_OTA_ADMIN_TOKEN: "prod-change-this-token"
+      LUAT_OTA_ADMIN_TOKEN: "ota-7f3a9c2e4b18d6a0e5c1"
       LUAT_OTA_LATEST_VERSION: "2034.001.003"
       LUAT_MQTT_ENABLED: "true"
       LUAT_MQTT_HOST: "112.86.146.218"
       LUAT_MQTT_PORT: "2123"
       LUAT_MQTT_USERNAME: "fptop1"
       LUAT_MQTT_PASSWORD: "fptop1.com2025@#$&"
-      LUAT_MQTT_OTA_PUBLIC_BASE_URL: "https://ota.example.com"
+      LUAT_MQTT_OTA_PUBLIC_BASE_URL: "http://43.136.55.143"
     volumes:
       - ./firmware:/app/firmware
       - ./logs:/app/logs
@@ -46,12 +47,36 @@ services:
     image: nginx:1.25-alpine
     depends_on:
       - ota-server
+      - ipc-x86demo
     ports:
       - "80:80"
       - "443:443"
+      - "8008:8008"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./deploy/nginx/ota.conf:/etc/nginx/conf.d/default.conf:ro
       - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - ./ipc_upgrade/files:/var/www/fileserver:ro
+    restart: unless-stopped
+
+  ipc-x86demo:
+    build: ./ipc_upgrade/x86demo
+    environment:
+      DEVICE_ID: T31-X86-DEMO
+      FIRMWARE_NAME: T31_IPC
+      VERSION: "1.0.0"
+      PUBLIC_BASE: http://43.136.55.143
+      PUBLIC_DOWNLOAD_BASE: http://43.136.55.143:8008
+      INTERNAL_DOWNLOAD_BASE: http://nginx
+      INTERNAL_DOWNLOAD_8008: http://nginx:8008
+      FILE_DIR: /var/www/fileserver
+      SLOT_DIR: /app/slot
+    volumes:
+      - ./ipc_upgrade/files:/var/www/fileserver
+      - ./ipc_upgrade/slot:/app/slot
+    expose:
+      - "8010"
     restart: unless-stopped
 
 volumes:

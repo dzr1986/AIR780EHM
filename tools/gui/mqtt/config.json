@@ -1,0 +1,12 @@
+{
+  "broker": "112.86.146.218",
+  "port": 2123,
+  "ssl": false,
+  "username": "fptop1",
+  "password": "fptop1.com2025@#$&",
+  "client_id": "platform-test-001",
+  "keepalive": 60,
+  "device_imei": "862323084068124",
+  "qos": 1,
+  "reply_timeout_sec": 12
+}

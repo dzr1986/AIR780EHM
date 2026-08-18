@@ -75,7 +75,10 @@ sequenceDiagram
 链路 B  UART HOSTEVT/PIRSTAT    → IPC 读参（无文件类型）
 链路 C  GB28181 SIP 报警         → LiveGBS alarm/list（IPC 发）— 标「报警事件」
 链路 D  TF 卡 MP4               → 本地 / P2P / GB28181 回放（无 pir/allday 字段）
+链路 E  MQTT 2013 / HTTP 7003   → 按时间抽片上传（列表仍走链路 D 的 RecordInfo）
 ```
+
+**回放列表 vs 下载文件**：目录只走 **GB28181 RecordInfo**（= TF 时段）。MQTT 2013 只携带用户选中的 `beginTime`/`endTime`，设备抽片后 HTTP 落到 7003。不要用 7003 incoming 当主列表，也不要用 MQTT 拉目录。详见 [MQTT_2013_1013_UPLOAD_VIDEO.md §5](MQTT_2013_1013_UPLOAD_VIDEO.md#5-后台列表走-gb28181mqtt-只带下载时间)。
 
 | 链路 | 能否标「这段 MP4 是全天还是 PIR」 |
 |------|----------------------------------|

@@ -3,7 +3,7 @@
 > **代码真源**：[`user/fota_svc.lua`](../../user/fota_svc.lua) · [`user/main.lua`](../../user/main.lua)（`PRODUCT_KEY` / 版本）  
 > **配置**：`FOTA_CFG`（[`config.lua`](../../user/config.lua)）  
 > **触发**：MQTT 2004 `action=ota` · `DEVICE_OTA_REQUEST` · `REST_SEND_OTA`  
-> **详述**：[OTA_FLOW.md](../OTA_FLOW.md) · [OTA_SERVER.md](../OTA_SERVER.md)
+> **详述**：[OTA_FLOW.md](../../ota_server/docs/OTA_FLOW.md) · [OTA_SERVER.md](../../ota_server/docs/OTA_SERVER.md)
 
 ---
 

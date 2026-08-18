@@ -4,12 +4,19 @@ USE luat_ota;
 CREATE TABLE IF NOT EXISTS devices (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     imei            VARCHAR(20)  NOT NULL,
+    device_name     VARCHAR(64)  NULL,
     firmware_name   VARCHAR(128) NULL,
     current_version VARCHAR(32)  NULL,
+    core_version    VARCHAR(16)  NULL DEFAULT '0',
     target_version  VARCHAR(32)  NULL,
     project_key     VARCHAR(64)  NULL,
     ota_enabled     TINYINT(1)   NOT NULL DEFAULT 1,
+    debug_enabled   TINYINT(1)   NOT NULL DEFAULT 0,
     ota_status      VARCHAR(32)  NOT NULL DEFAULT 'IDLE',
+    ota_loop_count  INT          NOT NULL DEFAULT 0,
+    last_offered_version VARCHAR(32) NULL,
+    last_offered_from_version VARCHAR(32) NULL,
+    ota_ban_reason  VARCHAR(255) NULL,
     remark          VARCHAR(255) NULL,
     last_seen_at    DATETIME(3)  NULL,
     last_ota_check_at DATETIME(3) NULL,
@@ -41,7 +48,7 @@ CREATE TABLE IF NOT EXISTS ota_tasks (
     KEY idx_ota_tasks_status (status)
 ) ENGINE=InnoDB;
 
--- v2: 合宙 IoT 风格项目 + 固件（JPA ddl-auto=update 也会建表，此处供 Docker 初始化）
+-- v2: 项目 + 固件（JPA ddl-auto=update 也会建表，此处供 Docker 初始化）
 CREATE TABLE IF NOT EXISTS ota_projects (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -79,4 +86,4 @@ CREATE TABLE IF NOT EXISTS firmware_device_assignments (
 ) ENGINE=InnoDB;
 
 INSERT IGNORE INTO ota_projects (id, name, project_key, description)
-VALUES (1, '合宙标准模块', 'ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x', '780EHM_PJ PANSHI_CAT1');
+VALUES (1, '4G 标准模块', 'ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x', '780EHM_PJ CAT1 默认项目');

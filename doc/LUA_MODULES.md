@@ -75,7 +75,7 @@ main.lua
 |----|------|
 | **职责** | 写入 `_G.GPIO_IN/OUT`、`BATTERY_CFG`、`MQTT_CFG`、`LOW_POWER_*`、`HOST_*`、`T3X_POLICY_CFG` 等 |
 | **逻辑** | `LOW_POWER_ENTER_STRATEGY` 决定 `battery_guard` 的 `enabled` / `block_host_idle_above_recover` |
-| **电量三档**（`battery` 策略） | >20% 常电 · 5~20% HOSTIDLE · ≤5% rest+关机 |
+| **电量三档**（`battery` 策略） | >20% 常电 · 5~20% HOSTIDLE · **≤3.4V** rest+关机 |
 | **消费者** |  virtually 全部模块 |
 
 ---
@@ -386,6 +386,7 @@ evaluate ≤5% → suspendPir + onEnterLowPower(battery) + scheduleShutdown(3s)
 | [POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) | 电量/USB/T3x 决策 |
 | [LOW_POWER_ENTER_STRATEGY.md](LOW_POWER_ENTER_STRATEGY.md) | rest vs HOSTIDLE |
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | 上下行协议 |
+| [MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md) | 全指令流程与实机结果 |
 | [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) | AT 命令一览 |
 
 ---

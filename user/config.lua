@@ -2,7 +2,7 @@ module(..., package.seeall)
 _G[_modname or (...)] = _M
 local RNDIS_ENABLE = 1
 local LOW_POWER_ENABLE = 1
-local LOW_POWER_ENTER_STRATEGY = "battery"
+local LOW_POWER_ENTER_STRATEGY = "battery" -- 仅关机保护；工作模式见 doc/WORK_MODE_PERSON_DETECT_PIR.md
 local HOST_EVT_ENABLE = 1
 local USB_REENUM_ENABLE = 1 -- 1=允许 T3X 通过 USBRESET 触发 CAT1 重新枚举
 _G.FEATURE_CFG = {
@@ -63,6 +63,7 @@ _G.APP_RUNTIME = {
 	online_status = 0,
 	power_status = 0,
 	low_power_mode = 0,
+	work_mode = "person_detect",
 	low_power_interval_sec = 30,
 	battery_percent = "--",
 	battery_mv = "--",
@@ -306,8 +307,8 @@ _G.BATTERY_CFG = {
 		enabled = true,
 		ignore_when_usb_inserted = true,
 		battery_rest_dynamic_detect = true,
-		host_idle_below_percent = 20,   -- 电量 ≤20% 允许 T31 HOSTIDLE（4G 仍 normal，不进 rest）
-		host_idle_min_awake_sec = 30,   -- 中间档：PIR 唤醒后至少常电 30s，再允许 HOSTIDLE
+		host_idle_below_percent = 20,   -- 已废弃：不再用 20% 切 PIR；HOSTIDLE 只看 work_mode=pir_watch
+		host_idle_min_awake_sec = 30,   -- PIR 值守唤醒后至少常电 30s，再允许 HOSTIDLE
 		t3x_rest_percent = 10,          -- 仅 hybrid 策略：电量 ≤10% 进 4G rest
 		recover_rest_percent = 10,      -- 仅 hybrid 策略：电量 >10% 连续确认后退出 rest
 		min_rest_duration_sec = 600,
@@ -316,7 +317,10 @@ _G.BATTERY_CFG = {
 		exit_rest_confirm_count = 3,
 		pir_suspend_percent = 5,        -- 仅 hybrid 策略：≤5% 挂起 PIR
 		pir_resume_percent = 6,
-		shutdown_percent = 5,           -- 电量 ≤5%：4G rest + 挂起 PIR + 排程整机关机
+		shutdown_mv = 3400,             -- 电芯 ≤3.4V：4G rest + 挂起 PIR + 排程整机关机（优先于百分比）
+		shutdown_recover_mv = 3500,     -- >3.5V 才取消已排程关机，防 ADC 抖动
+		shutdown_mv_confirm_count = 2,  -- 连续 2 次采样（约 20s）低于 3.4V 才关机
+		shutdown_percent = 5,           -- 无有效 mV 时回退：≤5% 关机
 		shutdown_delay_ms = 3000,
 		shutdown_mqtt_wait_ms = 8000,   -- 关机前等待 MQTT 连接（毫秒）
 		shutdown_mqtt_grace_ms = 800,   -- 上报后留空给 broker 收包
@@ -333,7 +337,8 @@ _G.T3X_POLICY_CFG = {
 	block_mqtt_offline_wake = true,
 	block_mqtt_offline_wake_when_usb = true,
 	mqtt_offline_wake_cooldown_sec = 120,
-	block_wake_below_percent = 5,       -- ≤5% 拒 PIR/非 USB 唤醒；5~20% 中间档允许 PIR 唤醒 T31
+	block_wake_below_percent = 5,       -- 无有效 mV 时：≤5% 拒 PIR/非 USB 唤醒
+	block_wake_below_mv = 3400,         -- 电芯 ≤3.4V 拒 PIR/非 USB 唤醒
 }
 _G.BATTERY_GUARD_CFG = _G.BATTERY_CFG.guard
 do
@@ -393,7 +398,7 @@ _G.HOST_TFCARD_CFG = {
 _G.HOST_TFCARD_FORMAT_CFG = {
 	enabled = true,
 	format_timeout_ms = 120000,
-	record_stop_timeout_ms = 15000,
+	record_stop_timeout_ms = 22000,
 	pre_format_wait_ms = 500,
 	reboot_after = false,
 	publish_status_after = true,
@@ -403,6 +408,8 @@ _G.HOST_TFCARD_FORMAT_CFG = {
 _G.HOST_RECORD_CFG = {
 	enabled = true,
 	query_timeout_ms = 3000,
+	-- T31x record_stop 等泵线程 join 最长约 15s；8s 会误报 timeout
+	record_stop_timeout_ms = 22000,
 	host_boot_wait_ms = 1500,
 	t3x_power_wait_ms = 800,
 }
@@ -415,7 +422,8 @@ _G.HOST_IPC_CFG = {
 	enabled = _G.LOW_POWER_CFG.enabled and _G.LOW_POWER_CFG.graceful_ipc,
 	graceful_poweroff = _G.LOW_POWER_CFG.graceful_ipc,
 	poweroff_play_sound = true,
-	poweroff_timeout_ms = 15000,
+	poweroff_timeout_ms = 90000,
+	poweroff_settle_ms = 500,
 	status_query_timeout_ms = 2000,
 	status_cache_max_age_sec = 90,
 	ready_wait_timeout_ms = 120000,
@@ -462,7 +470,9 @@ _G.MQTT_CFG = {
 	debug_uplink = true,
 }
 _G.FOTA_CFG = {
-	server_mode = "iot",
+	-- self：拉本仓库 ota_server；其它值：走 libfota2 默认地址（不经过本服务器）
+	server_mode = "self",
+	self_url = "http://43.136.55.143/api/site/firmware_upgrade?",
 	request_delay_ms = 500,
 	network_wait_ms = 120000,
 	callback_timeout_ms = 320000,

@@ -1,5 +1,5 @@
 PROJECT = "PANSHI_CAT1"
-VERSION = "001.000.004"
+VERSION = "001.000.036"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function validateBuildVersion(ver)
@@ -8,39 +8,43 @@ local function validateBuildVersion(ver)
 	end
 	return ver
 end
+local function coreVersionNumber()
+	local coreVer = rtos and rtos.version and rtos.version()
+	if (not coreVer or coreVer == "") and rtos and rtos.get_version then
+		local full = rtos.get_version() or ""
+		coreVer = full:match("[Vv](%d+)")
+		if coreVer then
+			return coreVer
+		end
+	end
+	if not coreVer or coreVer == "" then
+		return nil
+	end
+	return coreVer:sub(1, 1) == "V" and coreVer:sub(2) or coreVer
+end
 local function buildIotOtaVersion(scriptVer)
 	local v = validateBuildVersion(scriptVer)
 	if not v then
 		return nil
 	end
-	local x, _, z = v:match("^(%d+)%.(%d+)%.(%d+)$")
-	local coreVer = rtos and rtos.version and rtos.version()
-	if not coreVer or coreVer == "" then
+	local core = coreVersionNumber()
+	if not core then
 		return nil
 	end
-	local core = coreVer:sub(1, 1) == "V" and coreVer:sub(2) or coreVer
+	local x, _, z = v:match("^(%d+)%.(%d+)%.(%d+)$")
+	if x == core then
+		return v
+	end
 	return core .. "." .. x .. "." .. z
 end
 local function resolveIotOtaVersion(ver)
 	if ver == nil or ver == "" then
 		ver = _G.VERSION
 	end
-	ver = tostring(ver)
-	if validateBuildVersion(ver) then
-		return buildIotOtaVersion(ver)
-	end
-	local coreInVer = ver:match("^(%d+)%.")
-	local core = rtos.version()
-	if core and core ~= "" then
-		core = core:sub(1, 1) == "V" and core:sub(2) or core
-	end
-	if coreInVer and core and coreInVer == core and ver:match("^%d+%.%d+%.%d+$") then
-		return ver
-	end
-	return nil
+	return buildIotOtaVersion(tostring(ver))
 end
 if not validateBuildVersion(VERSION) then
-	error("main: VERSION 须为 nnn.nnn.nnn 脚本版(如 2044.001.003), 当前=" .. tostring(VERSION))
+	error("main: VERSION 须为 nnn.nnn.nnn 脚本版(如 001.000.020), 当前=" .. tostring(VERSION))
 end
 _G.validateBuildVersion = validateBuildVersion
 _G.buildIotOtaVersion = buildIotOtaVersion
@@ -58,6 +62,10 @@ do
 	local iotVer = buildIotOtaVersion(VERSION)
 	if iotVer then
 		_G.IOT_VERSION = iotVer
+	end
+	if log and log.info then
+		log.info("main", string.format("project=%s version=%s firmwareVersion=%s",
+			tostring(PROJECT), tostring(VERSION), tostring(_G.IOT_VERSION or "-")))
 	end
 end
 require "config"
@@ -77,6 +85,7 @@ if _G.__LUATOOLS_SCAN_ANCHOR__ then
 	require "time_sync"
 	require "usb_charge"
 	require "usb_rndis"
+	require "usb_vuart"
 	require "vbat"
 end
 if _G.FEATURE_CFG then
@@ -89,11 +98,14 @@ local t3x_ctrl = require "t3x_ctrl"
 if not isEntry then
 	return app
 end
-if log and log.info then
-	log.info("main", "project=" .. tostring(PROJECT), "version=" .. tostring(VERSION))
-end
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
 	pm.power(pm.PWK_MODE, true)
+end
+do
+	local usb_vuart = loader.load("usb_vuart")
+	if usb_vuart and usb_vuart.start then
+		usb_vuart.start()
+	end
 end
 if _G.MODULE_FLAGS and _G.MODULE_FLAGS.cellular ~= false then
 	local cellular = loader.load("cellular_bootstrap")

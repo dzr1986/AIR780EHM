@@ -10,6 +10,9 @@ local logFuncs = utils.createLogFunctions("t3x_ctrl")
 local t3xInfo = logFuncs.info
 local t3xWarn = logFuncs.warn
 local t3xError = logFuncs.error
+local function ipcInTask()
+	return utils.inSysTask() == true
+end
 local isPoweredOn = false
 local currentPowerLevel = nil
 local isInBootMode = false
@@ -127,7 +130,7 @@ function waitSleepIdle(timeoutMs)
 	if not sleep_in_progress then
 		return true
 	end
-	if not coroutine.running() then
+	if not ipcInTask() then
 		return false
 	end
 	timeoutMs = tonumber(timeoutMs) or 20000
@@ -267,11 +270,11 @@ local function shutdownPoweredT3x(opts)
 	})
 end
 function enterSleep(opts)
-	if state.power_state == "sleeping" then
+	opts = type(opts) == "table" and opts or {}
+	if state.power_state == "sleeping" and not isPoweredOn then
 		t3xInfo("sleep_already")
 		return
 	end
-	opts = type(opts) == "table" and opts or {}
 	if shouldBlockSleep(opts) then
 		t3xWarn("sleep_blocked_pending_work")
 		return false
@@ -284,11 +287,13 @@ function enterSleep(opts)
 		return
 	end
 	sleep_in_progress = true
-	local ok, err = pcall(shutdownPoweredT3x, opts)
-	sleep_in_progress = false
-	if not ok then
-		t3xError("enter_sleep_fail", tostring(err or ""))
-	end
+	sys.taskInit(function()
+		local ok, err = pcall(shutdownPoweredT3x, opts)
+		sleep_in_progress = false
+		if not ok then
+			t3xError("enter_sleep_fail", tostring(err or ""))
+		end
+	end)
 end
 function wake()
 	waitBeforeWake()
@@ -329,9 +334,6 @@ end
 local function ipcHostUart()
 	return hostUartMod()
 end
-local function ipcInTask()
-	return coroutine.running() ~= nil
-end
 local function resolvePowerWaitMs(opts)
 	opts = type(opts) == "table" and opts or {}
 	local waitMs = tonumber(opts.power_wait_ms) or tonumber(opts.t3x_power_wait_ms)
@@ -371,19 +373,17 @@ end
 function gracefulPowerOff(opts)
 	opts = type(opts) == "table" and opts or {}
 	local hu = ipcHostUart()
-	if not ipcInTask() then
-		powerOff()
-		resetHostLink(hu)
-		return true
-	end
 	local playSound = opts.play_sound
 	if playSound == nil then
 		playSound = ipcCfg().poweroff_play_sound ~= false
 	end
-	if ipcEnabled() and hu and hu.queryHostIpcStatus then
-		local st = hu.queryHostIpcStatus(opts.status_timeout_ms)
-		if (st == "ready" or st == "shutting_down") and hu.hostIpcPowerOff then
-			hu.hostIpcPowerOff(playSound, opts.poweroff_timeout_ms)
+	if ipcEnabled() and hu and hu.hostIpcPowerOff then
+		t3xInfo("ipc_poweroff_begin")
+		local ack = hu.hostIpcPowerOff(playSound, opts.poweroff_timeout_ms)
+		t3xInfo("ipc_poweroff_done", ack and "ack" or "timeout")
+		local settle = tonumber(opts.settle_ms) or tonumber(ipcCfg().poweroff_settle_ms) or 500
+		if settle > 0 then
+			sys.wait(settle)
 		end
 	end
 	powerOff()

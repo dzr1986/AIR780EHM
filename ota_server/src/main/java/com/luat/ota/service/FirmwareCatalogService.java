@@ -81,7 +81,7 @@ public class FirmwareCatalogService {
                 .filter(FirmwareRelease::isEnabled)
                 .filter(r -> matchesFirmwareName(r, firmwareName))
                 .filter(r -> LuatVersionUtil.normalize(r.getSourceVersion()).equals(current))
-                .filter(r -> LuatVersionUtil.compare(r.getTargetVersion(), current) > 0)
+                .filter(r -> LuatVersionUtil.canUpgrade(current, r.getTargetVersion()))
                 .filter(r -> targetHint == null || LuatVersionUtil.compare(r.getTargetVersion(), targetHint) <= 0)
                 .filter(r -> fileExists(r.getFile()))
                 .sorted(Comparator.comparing(FirmwareRelease::getTargetVersion, LuatVersionUtil::compare).reversed())

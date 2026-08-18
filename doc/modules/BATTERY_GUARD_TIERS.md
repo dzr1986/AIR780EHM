@@ -21,11 +21,11 @@
 |------|------|-----|-----|-----|
 | `normal` | **> 20%** | normal | 常电，**拒 HOSTIDLE** | 正常 |
 | `host_idle` | **5% < pct ≤ 20%** | normal（不进 rest） | 允许 HOSTIDLE 断电 | 可唤醒；30s 内拒 HOSTIDLE |
-| `shutdown` | **≤ 5%** | rest + 关机定时器 | 断电 | `suspendPir` |
+| `shutdown` | **电芯 ≤3.4V**（无 mV 时 ≤5%） | rest + 关机定时器 | 断电 | `suspendPir` |
 
-暴露：`getBatteryTier(pct)` · `APP_RUNTIME.battery_tier`
+暴露：`getBatteryTier(pct, mv)` · `APP_RUNTIME.battery_tier`
 
-配置键：`host_idle_below_percent=20` · `shutdown_percent=5` · `host_idle_min_awake_sec=30`
+配置键：`shutdown_mv=3400` · `shutdown_recover_mv=3500` · `host_idle_below_percent=20` · `shutdown_percent=5`（仅无 mV 回退）
 
 ---
 

@@ -139,6 +139,12 @@ check("rc start fields", v.ok == true and v.start == 1 and v.max_sec == 90)
 check("rc stop", P.recordctrl("+RECORDCTRL:OK,0,reason=tfcard_format"))
 v = last().val
 check("rc stop reason string", v.start == 0 and v.reason == "tfcard_format")
+check("rc stop bare", P.recordctrl("+RECORDCTRL:OK,0"))
+v = last().val
+check("rc stop bare fields", v.ok == true and v.start == 0)
+check("rc stop empty reason", P.recordctrl("+RECORDCTRL:OK,0,reason="))
+v = last().val
+check("rc stop empty reason fields", v.ok == true and v.start == 0)
 check("rc err", P.recordctrl("+RECORDCTRL:ERROR") and last().val.ok == false)
 check("rc no match", P.recordctrl("+RECORDCTRL:OK,9") == false)
 

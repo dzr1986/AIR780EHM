@@ -25,6 +25,7 @@ local SYS_EVT = {
 	FRAMERATE_QUERY = "HOST_UART_FRAMERATE_QUERY_DONE",
 	FRAMERATE_SET = "HOST_UART_FRAMERATE_SET_DONE",
 	RECORDCTRL_SET = "HOST_UART_RECORDCTRL_SET_DONE",
+	UPLOADVIDEO_SET = "HOST_UART_UPLOADVIDEO_SET_DONE",
 	WLED_ACK = "HOST_UART_WLED_ACK",
 	TFFORMAT_ACK = "HOST_UART_TFFORMAT_ACK",
 	PERSONDET_ACK = "HOST_UART_PERSONDET_ACK",
@@ -99,14 +100,17 @@ local state = {
 	uart_recovery_attempts = 0,
 	uart_recovery_last_sec = 0,
 	host_push_quiet_until = 0,
+	uart_txn_busy = false,
 }
+local uart_txn_owner = nil
+local uart_txn_depth = 0
 local started = false
 local t3xModule = nil
 local normalize_ipc_cloud_stat
 local parse_ipcstat_line
 local parse_tfcard_line
 local note_uart_link_ok
-local HOST_PUSH_QUIET_MS = 1500
+local HOST_PUSH_QUIET_MS = 300
 local function host_now_ms()
 	if mcu and mcu.ticks then
 		return mcu.ticks()
@@ -122,6 +126,73 @@ local function isHostInboundQuiet()
 		return false
 	end
 	return host_now_ms() < until_ms
+end
+local function wait_host_inbound_quiet_clear(timeoutMs)
+	timeoutMs = tonumber(timeoutMs) or 2000
+	if timeoutMs < 0 then
+		timeoutMs = 0
+	end
+	local deadline = host_now_ms() + timeoutMs
+	while isHostInboundQuiet() do
+		local now = host_now_ms()
+		if now >= deadline then
+			return false
+		end
+		local remain = (tonumber(state.host_push_quiet_until) or 0) - now + 20
+		if remain < 20 then
+			remain = 20
+		end
+		if now + remain > deadline then
+			remain = deadline - now
+		end
+		if remain <= 0 then
+			return false
+		end
+		sys.wait(remain)
+	end
+	return true
+end
+local function uart_txn_acquire(timeoutMs)
+	timeoutMs = tonumber(timeoutMs) or 8000
+	local me = coroutine.running()
+	if not me then
+		return false
+	end
+	if uart_txn_owner == me then
+		uart_txn_depth = uart_txn_depth + 1
+		return true
+	end
+	local deadline = host_now_ms() + timeoutMs
+	while state.uart_txn_busy do
+		local now = host_now_ms()
+		if now >= deadline then
+			return false
+		end
+		local remain = deadline - now
+		if remain > 80 then
+			remain = 80
+		end
+		if remain < 20 then
+			remain = 20
+		end
+		sys.wait(remain)
+	end
+	state.uart_txn_busy = true
+	uart_txn_owner = me
+	uart_txn_depth = 1
+	return true
+end
+local function uart_txn_release()
+	local me = coroutine.running()
+	if uart_txn_owner ~= me then
+		return
+	end
+	uart_txn_depth = uart_txn_depth - 1
+	if uart_txn_depth <= 0 then
+		uart_txn_depth = 0
+		uart_txn_owner = nil
+		state.uart_txn_busy = false
+	end
 end
 local function ok_tail()
 	return CRLF .. "OK" .. CRLF
@@ -202,6 +273,7 @@ local function get_config_snapshot()
 	local meta = _G.APP_META or {}
 	local rt = _G.APP_RUNTIME or {}
 	local tcp_extra = mod_call("low_power_wakeup", "appendGetCfgFields") or ""
+	local workmode = mod_call("runtime_power", "getWorkMode") or "person_detect"
 	return {
 		version = (_G.PROJECT or "780EHM") .. "_" .. (_G.VERSION or "2034.001.000"),
 		online = rt.online_status or 0,
@@ -212,6 +284,7 @@ local function get_config_snapshot()
 		interval = rt.low_power_interval_sec or 0,
 		devicemodel = meta.device_model or "",
 		wled = rt.wled_on or 0,
+		workmode = workmode,
 		tcp_extra = tcp_extra,
 	}
 end
@@ -555,8 +628,9 @@ end
 local function uart_getcfg(_cmd)
 	local s = get_config_snapshot()
 	return rsp_fmt(
-		"GETCFG", "version=%s,online=%d,power=%d,lowpower=%d,battery=%s,vbat=%s,interval=%d,devicemodel=%s,wled=%d%s",
+		"GETCFG", "version=%s,online=%d,power=%d,lowpower=%d,battery=%s,vbat=%s,interval=%d,devicemodel=%s,wled=%d,workmode=%s%s",
 		s.version, s.online, s.power, s.lowpower, s.battery, s.vbat, s.interval, s.devicemodel, s.wled or 0,
+		s.workmode or "person_detect",
 		s.tcp_extra or ""
 	)
 end
@@ -586,9 +660,9 @@ local function uart_hostidle(cmd)
 		local rt = _G.APP_RUNTIME or {}
 		local lp = tonumber(rt.low_power_mode) or 0
 		local usb = is_usb_inserted() and 1 or 0
-		local allow = 1
-		if usb_blocks_host_idle() then
-			allow = 0
+		local allow = 0
+		if not usb_blocks_host_idle() and mod_call("battery_guard", "shouldAllowHostIdleSleep") == true then
+			allow = 1
 		end
 		return rsp_fmt(
 			"HOSTIDLE", "lowpower=%d,usb=%d,host_idle_allow=%d",
@@ -631,17 +705,28 @@ local function uart_record_notify(cmd)
 	if not arg or arg == "" then
 		return RSP_ERROR
 	end
-	if arg == "1" then
+	if arg == "1" or arg:match("^1,") then
+		local reason = arg:match("reason=([^,]+)") or "active"
 		state.t3x_rec_active = 1
-		state.t3x_last_reason = "active"
+		state.t3x_last_reason = reason
 		if patchHostIpcCloudStat then
 			patchHostIpcCloudStat({ recordingT3x = 1 })
+		end
+		-- 全天 overlay 不是开停录，不发 1012
+		if reason == "allday_person" then
+			return rsp_body("RECORD", "1,active=1")
 		end
 		local E = _G.APP_EVENTS or {}
 		sys.publish(E.T3X_RECORD_ACTIVE or "APP_T3X_RECORD_ACTIVE")
 		return rsp_body("RECORD", "1,active=1")
 	end
 	local reason = arg:match("^0,reason=(.+)$") or "unknown"
+	if reason == "allday_person_done" then
+		-- 全天写盘未停，忽略 overlay 结束
+		state.t3x_rec_active = 1
+		state.t3x_last_reason = reason
+		return rsp_fmt("RECORD", "0,reason=%s,ignored=1", reason)
+	end
 	state.t3x_rec_active = 0
 	state.t3x_last_reason = reason
 	if patchHostIpcCloudStat then
@@ -660,6 +745,7 @@ local function uart_person_cnt_notify(cmd)
 	local n = tonumber(cnt) or 0
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_PERSON_CNT or "APP_T3X_PERSON_CNT", n)
+	-- 人数不上 MQTT；app.lua 对 T3X_PERSON_CNT 不再 publishPirToMqtt
 	return rsp_fmt("PERSONCNT", "ok,count=%d", n)
 end
 local function uart_pir_media_notify(cmd)
@@ -679,6 +765,25 @@ local function uart_ipc_alert_notify(cmd)
 	local E = _G.APP_EVENTS or {}
 	sys.publish(E.T3X_IPC_ALERT or "APP_T3X_IPC_ALERT", code, detail)
 	return rsp_fmt("IPCALERT", "OK,code=%s", code)
+end
+local function uart_uploadneed_notify(cmd)
+	local arg = cmd:match("^AT%+UPLOADNEED=(.+)$")
+	if not arg or arg == "" then
+		return RSP_ERROR
+	end
+	local need = tonumber(arg:match("^(%d+)")) or 1
+	local reason = arg:match("reason=([^,]+)") or "record_done"
+	local path = arg:match("path=([^,]+)") or ""
+	local pirStatus = arg:match("pirStatus=([^,]+)") or "t3x_active"
+	mod_call("net_mqtt", "publishUploadVideoNeed", {
+		needUpload = need,
+		action = "upload_video",
+		reason = reason,
+		recordPath = path,
+		pirStatus = pirStatus,
+		source = "t3x",
+	})
+	return rsp_fmt("UPLOADNEED", "ok,need=%d", need)
 end
 local function ipc_ready_from_lifecycle(st)
 	return (st == "ready") and 1 or 0
@@ -789,11 +894,7 @@ local function uart_lowpower(cmd)
 	end
 	local rt = _G.APP_RUNTIME or {}
 	if cmd == "AT+LOWPOWER=ENTER" then
-		local up = usb_charge_mod()
-		if up and up.blocks4gRest and up.blocks4gRest() then
-			return rsp_only("LOWPOWER", "USB")
-		end
-		if (rt.power_status or 0) == 0 and (rt.low_power_mode or 0) == 0 then
+		if (rt.low_power_mode or 0) == 0 then
 			if hooks.on_enter_low_power then
 				hooks.on_enter_low_power()
 			end
@@ -875,6 +976,7 @@ local function forward_wled_to_host(on, timeoutMs)
 		default_timeout = 3000,
 		at_cmd = atCmd,
 		ack_event = SYS_EVT.WLED_ACK,
+		skip_quiet = true,
 		on_response = function(got, val)
 			return got and type(val) == "table" and val.ok == true
 		end,
@@ -899,6 +1001,7 @@ function queryHostWled(timeoutMs)
 		default_timeout = 3000,
 		at_cmd = "AT+WLED?",
 		ack_event = SYS_EVT.WLED_ACK,
+		skip_quiet = true,
 		on_response = function(got, rsp)
 			if got and type(rsp) == "table" and rsp.ok then
 				return rsp.on
@@ -1287,6 +1390,7 @@ local AT_CMD_TABLE = {
 	uart_cmd_entry(nil, "AT+PIRMEDIA=", uart_pir_media_notify),
 	uart_cmd_entry(nil, "AT+PERSONCNT=", uart_person_cnt_notify),
 	uart_cmd_entry(nil, "AT+IPCALERT=", uart_ipc_alert_notify),
+	uart_cmd_entry(nil, "AT+UPLOADNEED=", uart_uploadneed_notify),
 	uart_cmd_entry({ "AT+HOSTEVT", "AT+HOSTEVT?" }, nil, uart_hostevt_query),
 	uart_cmd_entry("AT+HOSTEVTCLR", nil, uart_hostevt_clr),
 	uart_cmd_entry("AT+TIME", nil, uart_time_query),
@@ -1415,6 +1519,9 @@ local function try_wled_line(line)
 	end
 	wled_state.on = n
 	wled_export_runtime(n)
+	if patchHostIpcCloudStat then
+		patchHostIpcCloudStat({ wledEnable = n })
+	end
 	sys.publish(SYS_EVT.WLED_ACK, { ok = true, on = n })
 	return true
 end
@@ -1563,9 +1670,9 @@ local function try_record_line(line)
 	end
 	local snap = parse_record_line(line)
 	state.host_record = snap
-	if snap.active == 1 then
+	if (tonumber(snap.active) or 0) == 1 or (tonumber(snap.running) or 0) == 1 then
 		state.t3x_rec_active = 1
-	elseif snap.running == 0 then
+	elseif (tonumber(snap.running) or 0) == 0 and (tonumber(snap.active) or 0) == 0 then
 		state.t3x_rec_active = 0
 	end
 	if snap.reason and snap.reason ~= "" then
@@ -1577,8 +1684,11 @@ end
 local function parse_venc_row(line)
 	line = normalize_host_line(line)
 	local cam, stream, en, w, h, br, fps, rc, enc = line:match(
-		"^%+VENC:(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)$")
+		"^%+VENC:(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)")
 	if not cam then
+		if line and line:match("^%+VENC:") and line ~= "+VENC:END" and log and log.info then
+			log.info("host_uart", "venc_unparsed", line)
+		end
 		return nil
 	end
 	return {
@@ -1663,7 +1773,13 @@ local function rows_end_flush(endLine, key, ev)
 		if line ~= endLine then
 			return false
 		end
-		local rows = state[key] or {}
+		if state[key] == nil then
+			return false
+		end
+		local rows = state[key]
+		if type(rows) ~= "table" or #rows == 0 then
+			return false
+		end
 		state[key] = nil
 		return pub_ack(ev, rows)
 	end
@@ -1705,12 +1821,12 @@ local function try_encode_uart_error(line)
 	if line ~= "ERROR" then
 		return false
 	end
-	if state.encode_venc_rows ~= nil then
+	if type(state.encode_venc_rows) == "table" and #state.encode_venc_rows > 0 then
 		state.encode_venc_rows = nil
 		sys.publish(SYS_EVT.VENC_QUERY, { __error = "uart_error" })
 		return true
 	end
-	if state.encode_audio_rows ~= nil then
+	if type(state.encode_audio_rows) == "table" and #state.encode_audio_rows > 0 then
 		state.encode_audio_rows = nil
 		sys.publish(SYS_EVT.AUDIO_QUERY, { __error = "uart_error" })
 		return true
@@ -1721,19 +1837,19 @@ local function try_encode_ok_tail(line)
 	if line ~= "OK" then
 		return false
 	end
-	if state.encode_venc_rows ~= nil then
+	if type(state.encode_venc_rows) == "table" and #state.encode_venc_rows > 0 then
 		local rows = state.encode_venc_rows
 		state.encode_venc_rows = nil
 		sys.publish(SYS_EVT.VENC_QUERY, rows)
 		return true
 	end
-	if state.encode_audio_rows ~= nil then
+	if type(state.encode_audio_rows) == "table" and #state.encode_audio_rows > 0 then
 		local rows = state.encode_audio_rows
 		state.encode_audio_rows = nil
 		sys.publish(SYS_EVT.AUDIO_QUERY, rows)
 		return true
 	end
-	if state.mic_rows ~= nil then
+	if type(state.mic_rows) == "table" and #state.mic_rows > 0 then
 		local rows = state.mic_rows
 		state.mic_rows = nil
 		sys.publish(SYS_EVT.MIC_QUERY, rows)
@@ -1786,8 +1902,19 @@ local try_framerate_line = norm_matchers(
 	match_flag("^%+FRAMERATE:ERROR", SYS_EVT.FRAMERATE_SET, { ok = false, error = true }))
 local try_recordctrl_line = norm_matchers(
 	match_pub("^%+RECORDCTRL:OK,1,max_sec=(%d+)$", SYS_EVT.RECORDCTRL_SET, { "max_sec" }, { ok = true, start = 1 }),
-	match_pub("^%+RECORDCTRL:OK,0,reason=(.+)$", SYS_EVT.RECORDCTRL_SET, { "$reason" }, { ok = true, start = 0 }),
+	match_pub("^%+RECORDCTRL:OK,0,reason=(.*)$", SYS_EVT.RECORDCTRL_SET, { "$reason" }, { ok = true, start = 0 }),
+	match_pub("^%+RECORDCTRL:OK,0$", SYS_EVT.RECORDCTRL_SET, {}, { ok = true, start = 0, reason = "ok" }),
 	match_flag("^%+RECORDCTRL:ERROR", SYS_EVT.RECORDCTRL_SET, { ok = false, error = true }))
+local try_uploadvideo_line = norm_matchers(
+	match_pub("^%+UPLOADVIDEO:OK,need=(%d+),type=(%d+),start=(%d+),end=(%d+),queued=(%d+)$",
+		SYS_EVT.UPLOADVIDEO_SET,
+		{ "needUpload", "videoType", "start_ts", "end_ts", "queued" },
+		{ ok = true }),
+	match_pub("^%+UPLOADVIDEO:OK,need=(%d+),type=(%d+),start=(%d+),end=(%d+)$",
+		SYS_EVT.UPLOADVIDEO_SET,
+		{ "needUpload", "videoType", "start_ts", "end_ts" },
+		{ ok = true, queued = 1 }),
+	match_flag("^%+UPLOADVIDEO:ERROR", SYS_EVT.UPLOADVIDEO_SET, { ok = false, error = true }))
 local try_persondet_line = norm_matchers(
 	function(line)
 		local enable, available = line:match("^%+PERSONDET:(%d+),available=(%d+)$")
@@ -1824,6 +1951,9 @@ function commitHostIpcCloudStat(snap)
 	snap = normalize_ipc_cloud_stat(snap)
 	state.host_ipc_cloud_stat = snap
 	state.ipc_cloud_stat_ts = os.time()
+	if snap.recordingT3x ~= nil then
+		state.t3x_rec_active = tonumber(snap.recordingT3x) or 0
+	end
 	if snap.ipcReady == 1 and not state.host_ipc_status then
 		state.host_ipc_status = "ready"
 	end
@@ -1877,8 +2007,30 @@ local function try_ipcstatus_line(line)
 	return true
 end
 local function try_ipcpoweroff_line(line)
+	if not line then
+		return false
+	end
 	if line == "+IPCPOWEROFF:OK" then
-		sys.publish(SYS_EVT.IPCPOWEROFF_ACK, true)
+		if log and log.info then
+			log.info("host_uart", "ipcpoweroff_rx", "OK")
+		end
+		sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = true })
+		return true
+	end
+	local stage = line:match("^%+IPCPOWEROFF:STAGE,([%w_]+)$")
+	if stage then
+		if log and log.info then
+			log.info("host_uart", "ipcpoweroff_rx", "STAGE", stage)
+		end
+		sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, stage = stage })
+		return true
+	end
+	if line:match("^%+IPCPOWEROFF:BUSY") or line:match("^%+IPCPOWEROFF:ERROR")
+		or line:match("^%+IPCPOWEROFF:NOT_SUPPORTED") then
+		if log and log.info then
+			log.info("host_uart", "ipcpoweroff_rx", "ERR", line)
+		end
+		sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, error = true, line = line })
 		return true
 	end
 	return false
@@ -1894,6 +2046,7 @@ local RX_LINE_HANDLER_REGISTRY = {
 	{ name = "recordtime", fn = try_recordtime_line },
 	{ name = "framerate", fn = try_framerate_line },
 	{ name = "recordctrl", fn = try_recordctrl_line },
+	{ name = "uploadvideo", fn = try_uploadvideo_line },
 	{ name = "persondet", fn = try_persondet_line },
 	{ name = "record", fn = try_record_line },
 	{ name = "venc", fn = try_venc_line },
@@ -1954,6 +2107,7 @@ local function host_process_line(line)
 		end
 	end
 	if line:sub(1, 2) == "AT" then
+		note_host_inbound_push()
 		notify_host_first_at(line)
 		return uart_at_cmd(line)
 	end
@@ -2056,15 +2210,6 @@ run_host_query = function(opts)
 		end
 		return opts.default_result
 	end
-	if isHostInboundQuiet() then
-		if opts.cache_key and state[opts.cache_key] ~= nil then
-			return state[opts.cache_key]
-		end
-		if opts.busy_return ~= nil then
-			return opts.busy_return
-		end
-		return opts.default_result
-	end
 	if state[opts.busy_key] then
 		if opts.busy_return ~= nil then
 			return opts.busy_return
@@ -2073,14 +2218,23 @@ run_host_query = function(opts)
 			return state[opts.cache_key]
 		end
 	end
-	state[opts.busy_key] = true
 	local cfg = opts.cfg or identity_cfg()
+	local timeoutMs = tonumber(opts.timeout_ms)
+		or tonumber(cfg[opts.timeout_cfg_key or "query_timeout_ms"])
+		or opts.default_timeout
+		or 3000
+	if not uart_txn_acquire(timeoutMs) then
+		if opts.cache_key and state[opts.cache_key] ~= nil then
+			return state[opts.cache_key]
+		end
+		if opts.busy_return ~= nil then
+			return opts.busy_return
+		end
+		return opts.default_result
+	end
+	state[opts.busy_key] = true
 	local result = opts.default_result
 	local ok, err = pcall(function()
-		local timeoutMs = tonumber(opts.timeout_ms)
-			or tonumber(cfg[opts.timeout_cfg_key or "query_timeout_ms"])
-			or opts.default_timeout
-			or 3000
 		if opts.when_disabled then
 			local early = opts.when_disabled(cfg)
 			if early ~= nil then
@@ -2103,14 +2257,29 @@ run_host_query = function(opts)
 			end
 			return
 		end
+		if opts.skip_quiet ~= true then
+			wait_host_inbound_quiet_clear(math.min(timeoutMs, 1500))
+		end
 		if opts.before_send then
 			opts.before_send()
 		end
 		uart_bridge.sendString(opts.at_cmd, true)
 		local got, val = sys.waitUntil(opts.ack_event, timeoutMs)
+		if not got then
+			sys.wait(200)
+			if opts.before_send then
+				opts.before_send()
+			end
+			uart_bridge.sendString(opts.at_cmd, true)
+			got, val = sys.waitUntil(opts.ack_event, math.min(timeoutMs, 4000))
+		end
 		result = opts.on_response(got, val, timeoutMs) or result
+		if not got then
+			sys.wait(300)
+		end
 	end)
 	state[opts.busy_key] = false
+	uart_txn_release()
 	if not ok then
 		if opts.on_error then
 			return opts.on_error(err)
@@ -2139,6 +2308,10 @@ host_set = function(spec)
 			or tonumber(cfg[spec.timeout_cfg_key or "query_timeout_ms"])
 			or spec.default_timeout
 			or 8000
+		if not uart_txn_acquire(timeoutMs) then
+			okSet, msg = false, "busy"
+			return
+		end
 		local prepOk, prepMsg, atCmd = true, nil, spec.at_cmd
 		if spec.prepare then
 			prepOk, prepMsg, atCmd = spec.prepare(spec)
@@ -2162,8 +2335,16 @@ host_set = function(spec)
 			okSet, msg = false, "no_uart"
 			return
 		end
+		if spec.skip_quiet ~= true then
+			wait_host_inbound_quiet_clear(math.min(timeoutMs, 1500))
+		end
 		uart_bridge.sendString(atCmd, true)
 		local got, rsp = sys.waitUntil(spec.ack_event, timeoutMs)
+		if (not got or type(rsp) ~= "table") then
+			sys.wait(200)
+			uart_bridge.sendString(atCmd, true)
+			got, rsp = sys.waitUntil(spec.ack_event, math.min(timeoutMs, 4000))
+		end
 		if not got or type(rsp) ~= "table" then
 			okSet, msg = false, "timeout"
 			return
@@ -2178,6 +2359,7 @@ host_set = function(spec)
 		end
 		okSet, msg = false, "error"
 	end)
+	uart_txn_release()
 	if busyKey then
 		state[busyKey] = false
 	end
@@ -2239,6 +2421,7 @@ local function defineSet(d)
 			default_timeout = d.tmo,
 			timeout_ms = opts.timeout_ms,
 			ack_event = d.ev,
+			skip_quiet = d.skip_quiet,
 			prepare = function()
 				return d.prep(opts)
 			end,
@@ -2310,6 +2493,7 @@ local function overlay_live_ipc_hints(snap)
 	if tonumber(state.t3x_rec_active) == 1 then
 		snap.recordingT3x = 1
 	end
+	snap.wledEnable = wled_get()
 	return snap
 end
 function isIpcCloudStatStale()
@@ -2348,6 +2532,7 @@ function getCachedHostIpcCloudStat()
 		personDetectAvailable = 0,
 		timeSynced = 0,
 		recordingT3x = (tonumber(state.t3x_rec_active) == 1) and 1 or 0,
+		wledEnable = wled_get(),
 		cat1Link = cat1Link,
 	})))
 end
@@ -2388,6 +2573,9 @@ function refreshIpcCloudStatFor1003(timeoutMs, force)
 	if not shouldQueryIpcCloudStat() then
 		return type(state.host_ipc_cloud_stat) == "table"
 	end
+	if isHostUartQueryBusy() then
+		return type(state.host_ipc_cloud_stat) == "table"
+	end
 	if not force and not isIpcCloudStatStale() then
 		return true
 	end
@@ -2401,7 +2589,10 @@ function refreshIpcCloudStatFor1003(timeoutMs, force)
 	return type(state.host_ipc_cloud_stat) == "table"
 end
 function isHostUartQueryBusy()
-	return state.record_query_busy == true
+	return state.uart_txn_busy == true
+		or state.encode_query_busy == true
+		or state.encode_set_busy == true
+		or state.record_query_busy == true
 		or state.recordtime_query_busy == true
 		or state.tf_card_query_busy == true
 		or state.ipc_status_query_busy == true
@@ -2611,34 +2802,96 @@ function queryHostIpcStatus(timeoutMs)
 	})
 end
 function hostIpcPowerOff(playSound, timeoutMs)
+	local cfg = ipc_cfg()
+	timeoutMs = tonumber(timeoutMs) or tonumber(cfg.poweroff_timeout_ms) or 30000
+	if timeoutMs < 5000 then
+		timeoutMs = 5000
+	end
 	if state.ipc_poweroff_busy then
+		local got, val = sys.waitUntil(SYS_EVT.IPCPOWEROFF_ACK, timeoutMs)
+		return got == true and type(val) == "table" and val.ok == true
+	end
+	if cfg.enabled == false or not uart_bridge.sendString then
 		return false
 	end
 	state.ipc_poweroff_busy = true
 	local success = false
-	local cfg = ipc_cfg()
 	local ok = pcall(function()
-		timeoutMs = tonumber(timeoutMs) or tonumber(cfg.poweroff_timeout_ms) or 15000
-		if cfg.enabled == false then
+		if not uart_txn_acquire(math.min(timeoutMs, 8000)) then
 			return
 		end
-		if not uart_bridge.sendString then
-			return
+		local waitBusyUntil = host_now_ms() + math.min(timeoutMs, 3000)
+		while host_now_ms() < waitBusyUntil do
+			if state.record_query_busy or state.ipc_status_query_busy
+				or state.ipc_cloud_stat_query_busy or state.uart_recovery_busy then
+				sys.wait(50)
+			else
+				break
+			end
 		end
-		local cmd
-		if playSound == false then
-			cmd = "AT+IPCPOWEROFF=0"
-		else
-			cmd = "AT+IPCPOWEROFF=1"
+		wait_host_inbound_quiet_clear(math.min(timeoutMs, 2000))
+		local cmd = (playSound == false) and "AT+IPCPOWEROFF=0" or "AT+IPCPOWEROFF=1"
+		local deadline = host_now_ms() + timeoutMs
+		local sends = 0
+		local saw_stage = false
+		local function tx_once()
+			sends = sends + 1
+			uart_bridge.sendString("", true)
+			sys.wait(40)
+			local sent = uart_bridge.sendString(cmd, true)
+			if log and log.info then
+				log.info("host_uart", "ipcpoweroff_tx", cmd, "n=" .. tostring(sends), sent and "sent" or "fail")
+			end
 		end
-		uart_bridge.sendString(cmd, true)
-		local got = sys.waitUntil(SYS_EVT.IPCPOWEROFF_ACK, timeoutMs)
-		if got then
-			success = true
-			state.host_ipc_status = "idle"
+		tx_once()
+		local nextRetry = host_now_ms() + 2000
+		while host_now_ms() < deadline do
+			local remain = deadline - host_now_ms()
+			if remain <= 0 then
+				break
+			end
+			local slice = remain
+			if (not saw_stage) and sends < 3 and (nextRetry - host_now_ms()) > 0 then
+				slice = math.min(slice, nextRetry - host_now_ms())
+			end
+			if slice < 20 then
+				slice = 20
+			end
+			local got, val = sys.waitUntil(SYS_EVT.IPCPOWEROFF_ACK, slice)
+			if got then
+				if val == true or (type(val) == "table" and val.ok == true) then
+					success = true
+					break
+				end
+				if type(val) == "table" and val.stage then
+					saw_stage = true
+				elseif type(val) == "table" and val.error == true then
+					if saw_stage then
+						if log and log.info then
+							log.info("host_uart", "ipcpoweroff_rx", "ignore_err_after_stage", val.line or "error")
+						end
+					else
+						if log and log.info then
+							log.info("host_uart", "ipcpoweroff_rx", "abort", val.line or "error")
+						end
+						break
+					end
+				end
+			elseif (not saw_stage) and sends < 3 and host_now_ms() >= nextRetry then
+				tx_once()
+				nextRetry = host_now_ms() + 2000
+			end
 		end
 	end)
+	uart_txn_release()
 	state.ipc_poweroff_busy = false
+	if success then
+		state.host_ipc_status = "idle"
+		state.t3x_rec_active = 0
+		if patchHostIpcCloudStat then
+			patchHostIpcCloudStat({ recordingT3x = 0, ipcReady = 0 })
+		end
+	end
 	if not ok then
 		return false
 	end
@@ -2672,7 +2925,14 @@ local function record_cfg()
 	return _G.HOST_RECORD_CFG or {}
 end
 function getT3xRecActive()
-	return tonumber(state.t3x_rec_active) or 0
+	if tonumber(state.t3x_rec_active) == 1 then
+		return 1
+	end
+	local cloud = state.host_ipc_cloud_stat
+	if type(cloud) == "table" and tonumber(cloud.recordingT3x) == 1 then
+		return 1
+	end
+	return 0
 end
 queryHostRecord = defineQuery{
 	busy = "record_query_busy", cache = "host_record",
@@ -2761,7 +3021,7 @@ setHostFramerate = defineSet{
 }
 recordCtrlStart = defineSet{
 	tag = "host_recordctrl_start", cfg = identity_cfg, boot = record_cfg,
-	tmo = 8000, ev = SYS_EVT.RECORDCTRL_SET,
+	tmo = 8000, ev = SYS_EVT.RECORDCTRL_SET, skip_quiet = true,
 	prep = function(o)
 		return true, nil, string.format("AT+RECORDCTRL=1,%d",
 			tonumber(o.max_sec or o.videoMaxDurationSec) or 60)
@@ -2775,12 +3035,42 @@ recordCtrlStart = defineSet{
 }
 recordCtrlStop = defineSet{
 	tag = "host_recordctrl_stop", cfg = identity_cfg, boot = record_cfg,
-	tmo = 8000, ev = SYS_EVT.RECORDCTRL_SET,
+	tmo = 22000, ev = SYS_EVT.RECORDCTRL_SET, skip_quiet = true,
 	prep = function(o)
 		return true, nil, string.format("AT+RECORDCTRL=0,%s", tostring(o.reason or "cloud"))
 	end,
 	parse = function(rsp)
 		if rsp.ok and rsp.start == 0 then
+			return true, "ok", rsp
+		end
+		return false, "error", rsp
+	end,
+}
+requestUploadVideo = defineSet{
+	tag = "host_uploadvideo", cfg = identity_cfg, boot = record_cfg,
+	tmo = 12000, ev = SYS_EVT.UPLOADVIDEO_SET, skip_quiet = true,
+	prep = function(o)
+		local need = tonumber(o.needUpload or o.need)
+		if need == nil then
+			need = 1
+		end
+		need = (need == 0) and 0 or 1
+		local vtype = tonumber(o.videoType or o.vtype) or 2
+		if vtype ~= 1 then
+			vtype = 2
+		end
+		local startTs = tonumber(o.start_ts or o.beginTs) or 0
+		local endTs = tonumber(o.end_ts or o.endTs) or 0
+		local maxSec = tonumber(o.max_sec or o.videoMaxDurationSec) or 0
+		local mid = tostring(o.messageId or o.msgid or ""):gsub("[^%w%-_]", "")
+		if #mid > 40 then
+			mid = mid:sub(1, 40)
+		end
+		return true, nil, string.format("AT+UPLOADVIDEO=%d,%d,%d,%d,%d,%s",
+			need, vtype, startTs, endTs, maxSec, mid)
+	end,
+	parse = function(rsp)
+		if rsp and rsp.ok then
 			return true, "ok", rsp
 		end
 		return false, "error", rsp
@@ -2908,11 +3198,16 @@ function formatHostTfCard(opts)
 		if not uart_bridge.sendString then
 			error("no_uart")
 		end
+		wait_host_inbound_quiet_clear(2000)
 		local atCmd = string.format("AT+TFFORMAT=1,reboot=%d", reboot)
 		uart_bridge.sendString(atCmd, true)
 		local deadline = (os.time() * 1000) + timeoutMs
+		local startedDeadline = (os.time() * 1000) + 8000
 		local started = false
 		while (os.time() * 1000) < deadline do
+			if not started and (os.time() * 1000) >= startedDeadline then
+				error("no_started")
+			end
 			local remain = deadline - (os.time() * 1000)
 			if remain <= 0 then
 				break
@@ -2958,17 +3253,8 @@ local function encode_rows_valid(rows, isAudio)
 		return false
 	end
 	for _, row in ipairs(rows) do
-		if isAudio then
-			if (row.enable or 0) ~= 0 or (row.samplerate or 0) > 0 or (row.encoder or 0) > 0 then
-				return true
-			end
-		else
-			if (row.enable or 0) ~= 0
-				or (row.width or 0) > 0
-				or (row.height or 0) > 0
-				or (row.bitrate or 0) > 0 then
-				return true
-			end
+		if type(row) == "table" then
+			return true
 		end
 	end
 	return false
@@ -3007,10 +3293,13 @@ local function queryHostEncodeInner(opts)
 	local cfg = encode_cfg()
 	local at_cmd = build_encode_query_cmd(opts)
 	local ack_event = isAudio and SYS_EVT.AUDIO_QUERY or SYS_EVT.VENC_QUERY
-	if isAudio then
-		state.encode_audio_rows = {}
-	else
-		state.encode_venc_rows = {}
+	local last_err = "timeout"
+	local function reset_rows()
+		if isAudio then
+			state.encode_audio_rows = {}
+		else
+			state.encode_venc_rows = {}
+		end
 	end
 	local result = host_query(opts.timeout_ms, {
 		busy_key = "encode_query_busy",
@@ -3020,21 +3309,24 @@ local function queryHostEncodeInner(opts)
 		default_timeout = 8000,
 		at_cmd = at_cmd,
 		ack_event = ack_event,
-		on_response = function(got, val, tmo)
-			if got then
-				local body = finish_encode_query(val, isAudio)
-				if body then
-					return body
-				end
+		before_send = reset_rows,
+		on_response = function(got, val)
+			if not got then
+				last_err = "timeout"
 				return nil
 			end
+			local body, err = finish_encode_query(val, isAudio)
+			if body then
+				return body
+			end
+			last_err = err or "empty_encode"
 			return nil
 		end,
 	})
 	if result then
 		return result, nil
 	end
-	return nil, "timeout"
+	return nil, last_err
 end
 function queryHostEncode(opts)
 	local result, err = queryHostEncodeInner(opts)

@@ -16,6 +16,18 @@ function parseBoolLike(v)
 	return false
 end
 
+-- Lua 5.3 主调度里 coroutine.running() 也非 nil，不能用来判断能否 sys.wait。
+function inSysTask()
+	if coroutine.isyieldable then
+		return coroutine.isyieldable() == true
+	end
+	local co, isMain = coroutine.running()
+	if co == nil or isMain == true then
+		return false
+	end
+	return true
+end
+
 function parseBoolDefault(v, default)
 	if v == nil then
 		return default

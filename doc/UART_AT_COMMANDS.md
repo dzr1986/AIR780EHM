@@ -210,6 +210,8 @@ T3x → Cat.1: +RECORD:running=1,active=0,ch=0,reason=idle OK
 | `AT+FRAMERATE=<cam>,<stream>,<fps>` | `+FRAMERATE:OK,<cam>,<stream>,<fps>,runtimeApply=0\|1` 或 `+FRAMERATE:ERROR` | 设置帧率；MQTT **1025** 携带 `runtimeApply` |
 | `AT+RECORDCTRL=1,<max_sec>` | `+RECORDCTRL:OK,1,max_sec=<n>` `OK` | T3x 在线时平台开录；MQTT **2012** 成功后 4G 主动发 |
 | `AT+RECORDCTRL=0,<reason>` | `+RECORDCTRL:OK,0,reason=<text>` `OK` | T3x 在线时平台停录；MQTT **2011** 成功后 4G 主动发；reason 默认 `cloud` |
+| `AT+UPLOADVIDEO=<need>,<type>,<start>,<end>[,<max_sec>][,<msgid>]` | `+UPLOADVIDEO:OK,need=,type=,start=,end=,queued=` `OK` | MQTT **2013** 抽片上传；type `1` 侦测 / `2` 回放 |
+| `AT+UPLOADNEED=1,reason=…`（T3x→4G） | `+UPLOADNEED:ok,need=1` | 人形抽片排队后通知 4G 发 **1013** |
 | `AT+IPCSTAT?` | `+IPCSTAT:ipcReady=,gb28181Online=,tfPresent=,personDetectEnabled=,personDetectAvailable=,timeSynced=,recordingT3x=,cat1Link=` `OK` | §6.2 扩展状态；MQTT **1003** 周期携带 |
 | `AT+IPCALERT=<code>[,<detail>]`（T3x→4G URC） | `+IPCALERT:OK` | §6.3 事件；4G 转 **1004** `action=ipc_alert` |
 | `AT+PERSONDET?` | `+PERSONDET:<enable>,available=0\|1` `OK` | 人形开关 + IVS 运行时可用；MQTT **1026** `personDetectAvailable` |
@@ -222,7 +224,7 @@ T3x → Cat.1: +RECORD:running=1,active=0,ch=0,reason=idle OK
 | `AT+MICSET=<cam>,<vol>,<gain>` | `+MICSET:OK,cam=,runtimeApply=0\|1` 或 `+MICSET:ERROR` | 写 `cameraN:audio_in_volume/gain`；AI 已开则热更新 |
 | `AT+SOFTPHOTO?` | `+SOFTPHOTO:<8字段CSV>` `OK` | MQTT **2030** → **1030** |
 | `AT+SOFTPHOTOSET=<8字段CSV>` | `+SOFTPHOTOSET:OK` 或 `+SOFTPHOTOSET:ERROR` | MQTT **2031** → **1031**；写 `[soft_photosensitive]` |
-| `AT+IPCPOWEROFF` / `=1` / `=0` | `+IPCPOWEROFF:OK`（单行 URC，无尾缀 `OK`） | 优雅关机：播音/停流/退出 GB28181/sync |
+| `AT+IPCPOWEROFF` / `=1` / `=0` | 过程 `+IPCPOWEROFF:STAGE,<name>`，完成 `+IPCPOWEROFF:OK` | 分级停 IPC：录像 → 人形会话 → GB28181 → 网卡 → VBUS → sync。Cat.1 **等 OK 后再断 GPIO22** |
 | `AT+PLAYSOUND=<name>` | 先 `OK`，播完后 `+SOUNDACK:<name>` `OK` | 开关机提示音；冷启动 `boot` 见 §3.3 |
 | `AT+PLAYSOUND?` | `+PLAYSOUND:<状态>` `OK` | 查询播放模块状态 |
 | `AT` | `OK` | 探测；**首条** `AT*` 会触发 4G 开机音流程 |
@@ -266,7 +268,10 @@ Host AT 由 T3x 实现（产品：`gb28181_dev_exit()`、`sync()` 等；桩：`c
 Cat.1 → T3x: AT+IPCSTATUS?
 T3x → Cat.1: \r\n+IPCSTATUS:ready\r\nOK\r\n
 Cat.1 → T3x: AT+IPCPOWEROFF=1
-T3x → Cat.1: \r\n+IPCPOWEROFF:OK\r\n    （T3x：播 power_off → 停 MP4 → GB28181 退出 → sync）
+T3x → Cat.1: +IPCPOWEROFF:STAGE,record / persondet / gb28181 / net / vbus / sync
+T3x → Cat.1: \r\n+IPCPOWEROFF:OK\r\n
+Cat.1 等 OK 后再 GPIO22 断电
+（时序详见 [MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md)）
 Cat.1: GPIO22 断 T3x 电
 ```
 
@@ -282,7 +287,7 @@ Cat.1 → T3x: AT+PLAYSOUND=boot （可选，sound_prompt 冷启动）
 | 命令 | T3x 行为 |
 |------|----------|
 | `AT+IPCSTATUS?` | 返回 `+IPCSTATUS:ready` / `idle` / `shutting_down` + `OK` |
-| `AT+IPCPOWEROFF=1` | 播 `power_off` → 停 MP4 → `gb28181_dev_exit()` → `sync()` → `+IPCPOWEROFF:OK` |
+| `AT+IPCPOWEROFF=1` | 播 `power_off` → STAGE record/persondet/gb28181/net/vbus/sync → `+IPCPOWEROFF:OK`。Cat.1 等 OK 后再拉 GPIO22 |
 | `AT+IPCPOWEROFF=0` | 同上，但不播音 |
 | `AT+IPCPOWEROFF` | 同 `=1` |
 
@@ -303,6 +308,7 @@ Cat.1 → T3x: AT+PLAYSOUND=boot （可选，sound_prompt 冷启动）
 | 白光灯 | `AT+WLED=` | `2004 action=wled` |
 | PIR 配置 | — | `2010` |
 | 平台开录 / 停录 | `AT+RECORDCTRL=1/0`（T3x 在线） | **2012** / **2011** |
+| 请求上传视频 | `AT+UPLOADVIDEO=`（T3x 在线） | **2013** → **1013** |
 | IPC 扩展状态 | `AT+IPCSTAT?` | **1003** 字段 ipcReady/gb28181Online/… |
 | IPC 异常事件 | T3x 发 `AT+IPCALERT=` | **1004** `action=ipc_alert` |
 | 帧率查询/设置 | `AT+FRAMERATE?` / `AT+FRAMERATE=cam,stream,fps` | **2024/2025** → **1024/1025** |

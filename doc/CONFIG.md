@@ -126,7 +126,9 @@
 | | `ignore_when_usb_inserted` | true | **GPIO27 插入**时跳过阈值评估；插入时恢复 PIR / 取消关机 |
 | | `host_idle_below_percent` | 20 | 电量 ≤20% 允许 T31 `HOSTIDLE`（4G 仍 normal） |
 | | `host_idle_min_awake_sec` | 30 | 中间档：PIR 唤醒后至少常电 30s 再允许 HOSTIDLE |
-| | `shutdown_percent` | 5 | ≤5%：4G rest + 挂起 PIR + 延时关机 |
+| | `shutdown_mv` | 3400 | **电芯 ≤3.4V** 关机（优先于百分比；连续 2 次采样） |
+| | `shutdown_recover_mv` | 3500 | >3.5V 才取消已排程关机 |
+| | `shutdown_percent` | 5 | 无有效 mV 时回退：≤5% 关机 |
 | | `shutdown_delay_ms` | 3000 | 关机前等待；插 USB 可取消 |
 | | `t3x_rest_percent` | 10 | **仅 hybrid 策略**：≤10% 进 4G rest |
 | | `recover_rest_percent` | 10 | **仅 hybrid 策略**：退出 rest 阈值 |
@@ -143,7 +145,7 @@
 flowchart LR
     A[>20%] --> B[常电 拒 HOSTIDLE]
     C[5~20%] --> D[HOSTIDLE 断 T31 PIR可唤醒]
-    E[≤5%] --> F[rest + 延时关机]
+    E[≤3.4V] --> F[rest + 延时关机]
 ```
 
 `hybrid` 策略另含 ≤`t3x_rest_percent` 进 4G rest，见 `LOW_POWER_ENTER_STRATEGY`。
@@ -230,7 +232,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `enabled` | true | 总开关；false 时回退首条 AT / 直接 GPIO 断电 |
 | `graceful_poweroff` | true | `t3x_ctrl.enterSleep` 前先 `AT+IPCPOWEROFF` |
 | `poweroff_play_sound` | true | true→`=1` 播音，false→`=0` |
-| `poweroff_timeout_ms` | 15000 | 等待 `+IPCPOWEROFF:OK` |
+| `poweroff_timeout_ms` | 30000 | 等待 `+IPCPOWEROFF:OK`（封盘可 >15s） |
 | `status_query_timeout_ms` | 2000 | 单次 `AT+IPCSTATUS?` 超时（无应答视为 idle） |
 | `ready_wait_timeout_ms` | 120000 | 上电后轮询 ready 总超时 |
 | `ready_poll_ms` | 1000 | ready 轮询间隔 |
@@ -289,7 +291,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 - `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末  
   - **`MQTT_CFG.debug_uplink`**：`false` 量产（默认）；`true` 联调时打印 `mqtt_dl` / `mqtt_ul` 上下行明细，见 [MQTT_862323084068314.md](MQTT_862323084068314.md) §1.1、§6.2  
   - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`user/fota_svc.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段  
-  - **自建 OTA 服务器**：固件 **无需改 lua**；MQTT 2004 带 `url` 即走自建 HTTP（见 [OTA_SERVER.md](OTA_SERVER.md)、[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §6.6）；服务端见 [`ota_server/README.md`](../ota_server/README.md)
+  - **自建 OTA 服务器**：固件 **无需改 lua**；MQTT 2004 带 `url` 即走自建 HTTP（见 [OTA_SERVER.md](../ota_server/docs/OTA_SERVER.md)、[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §6.6）；服务端见 [`ota_server/README.md`](../ota_server/README.md)
 - **`config.mk` 与 `config.lua` 宏对照**（`config.mk` 仅覆盖部分；其余仅在 `config.lua` 顶部 `local *_ENABLE`）：
 
 | 宏 | `config.mk` | `config.lua` | 说明 |

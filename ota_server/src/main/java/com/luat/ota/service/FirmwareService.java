@@ -71,6 +71,8 @@ public class FirmwareService {
         UPGRADE,
         NO_UPDATE,
         FORBIDDEN,
+        INVALID_PROJECT,
+        INVALID_FIRMWARE,
         NOT_FOUND
     }
 
@@ -85,7 +87,39 @@ public class FirmwareService {
 
     public OtaResult evaluate(OtaRequest req) {
         if (!isDeviceAllowed(req)) {
-            OtaResult result = new OtaResult(OtaDecision.FORBIDDEN, null, "imei not in whitelist", null, null);
+            OtaResult result = new OtaResult(OtaDecision.FORBIDDEN, null, "25 无权限", null, null);
+            audit(req, result);
+            return result;
+        }
+
+        if (StringUtils.hasText(req.projectKey()) && !registry.projectKeyExists(req.projectKey())) {
+            OtaResult result = new OtaResult(OtaDecision.INVALID_PROJECT, null, "26 无效的项目", null, null);
+            audit(req, result);
+            return result;
+        }
+
+        if (StringUtils.hasText(req.imei()) && StringUtils.hasText(req.projectKey())
+                && !deviceService.bindProjectIfAbsent(req.imei(), req.projectKey())) {
+            OtaResult result = new OtaResult(OtaDecision.FORBIDDEN, null, "25 无权限", null, null);
+            audit(req, result);
+            return result;
+        }
+
+        if (StringUtils.hasText(req.imei())) {
+            boolean disabled = deviceService.findByImei(req.imei())
+                    .map(d -> Boolean.FALSE.equals(d.getOtaEnabled()))
+                    .orElse(false);
+            if (disabled) {
+                OtaResult result = new OtaResult(OtaDecision.NO_UPDATE, null, "设备已禁止升级", null, null);
+                audit(req, result);
+                return result;
+            }
+        }
+
+        if (StringUtils.hasText(req.firmwareName())
+                && registry.countPackages() > 0
+                && !registry.hasFirmwareName(req.firmwareName())) {
+            OtaResult result = new OtaResult(OtaDecision.INVALID_FIRMWARE, null, "27 无效的固件", null, null);
             audit(req, result);
             return result;
         }
@@ -102,6 +136,14 @@ public class FirmwareService {
         if (fromRegistry.isPresent()) {
             FirmwarePackage pkg = fromRegistry.get().pkg();
             Path file = catalog.resolveFirmwareFile(pkg.getFileName());
+            OtaResult empty = rejectEmptyPackage(req, file, pkg.getVersion(), "pkg-" + pkg.getId());
+            if (empty != null) {
+                return empty;
+            }
+            OtaResult blocked = applyLoopGuard(req, pkg.getVersion());
+            if (blocked != null) {
+                return blocked;
+            }
             OtaResult result = new OtaResult(
                     OtaDecision.UPGRADE,
                     new FileSystemResource(file),
@@ -110,6 +152,9 @@ public class FirmwareService {
                     "pkg-" + pkg.getId()
             );
             audit(req, result);
+            if (StringUtils.hasText(req.imei())) {
+                deviceService.markOtaInProgress(req.imei(), pkg.getVersion());
+            }
             return result;
         }
 
@@ -123,6 +168,14 @@ public class FirmwareService {
         if (fromManifest.isPresent()) {
             FirmwareRelease release = fromManifest.get();
             Path file = catalog.resolveFirmwareFile(release.getFile());
+            OtaResult empty = rejectEmptyPackage(req, file, release.getTargetVersion(), release.getId());
+            if (empty != null) {
+                return empty;
+            }
+            OtaResult blocked = applyLoopGuard(req, release.getTargetVersion());
+            if (blocked != null) {
+                return blocked;
+            }
             OtaResult result = new OtaResult(
                     OtaDecision.UPGRADE,
                     new FileSystemResource(file),
@@ -131,6 +184,9 @@ public class FirmwareService {
                     release.getId()
             );
             audit(req, result);
+            if (StringUtils.hasText(req.imei())) {
+                deviceService.markOtaInProgress(req.imei(), release.getTargetVersion());
+            }
             return result;
         }
 
@@ -152,7 +208,7 @@ public class FirmwareService {
         }
 
         Path firmwarePath = resolveLegacyFirmwarePath(req.firmwareName(), latest);
-        if (!Files.isRegularFile(firmwarePath)) {
+        if (!Files.isRegularFile(firmwarePath) || isEmptyFile(firmwarePath)) {
             log.error("firmware not found: {} (no manifest match for source={})", firmwarePath.toAbsolutePath(), current);
             return new OtaResult(OtaDecision.NOT_FOUND, null, "no dfota for source version " + current, latest, null);
         }
@@ -210,6 +266,35 @@ public class FirmwareService {
             }
         }
         return catalog.resolveFirmwareFile("update.bin");
+    }
+
+    private OtaResult rejectEmptyPackage(OtaRequest req, Path file, String target, String releaseId) {
+        if (!Files.isRegularFile(file) || isEmptyFile(file)) {
+            OtaResult result = new OtaResult(OtaDecision.NOT_FOUND, null, "升级包为空或不存在，拒绝返回 200", target, releaseId);
+            audit(req, result);
+            return result;
+        }
+        return null;
+    }
+
+    private OtaResult applyLoopGuard(OtaRequest req, String targetVersion) {
+        if (!StringUtils.hasText(req.imei())) {
+            return null;
+        }
+        if (deviceService.noteUpgradeOffered(req.imei(), req.version(), targetVersion)) {
+            return null;
+        }
+        OtaResult result = new OtaResult(OtaDecision.NO_UPDATE, null, "循环升级保护，已禁止该设备", targetVersion, null);
+        audit(req, result);
+        return result;
+    }
+
+    private static boolean isEmptyFile(Path file) {
+        try {
+            return Files.size(file) <= 0;
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     private void audit(OtaRequest req, OtaResult result) {

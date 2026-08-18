@@ -1,9 +1,11 @@
 # MQTT 下行命令手册（平台 → 设备）
 
 > **端到端联调**：[MQTT_CLIENT_E2E_TEST.md](MQTT_CLIENT_E2E_TEST.md)（MQTTX 配置、冒烟步骤、mosquitto 命令）  
-> **本机示例 IMEI**：`862323084068124`  
+> **全指令流程与实机**：[MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md)  
+> **现网对本机 IMEI**：**`862323084068124`**（2026-08-17 实机 2008；ClientId / deviceNo 同源）  
 > **MQTTX 抄录**：[MQTT_DOWNLINK_862323084068124.txt](./MQTT_DOWNLINK_862323084068124.txt)  
-> **完整协议**：[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) · **平台对接**：[§1.2](./MQTT_PROTOCOL.md#12-平台对接须知) · **远程控制流程**：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · **代码**：`user/net_mqtt.lua`
+> **GUI 自动测试日志（JSON 展开）**：[MQTT_AUTOTEST_LOG_862323084068124_20260818.md](./MQTT_AUTOTEST_LOG_862323084068124_20260818.md)  
+> **完整协议**：[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md) · **平台对接**：[§1.2](./MQTT_PROTOCOL.md#12-平台对接须知) · **远程控制流程**：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · **2002 停 IPC 再断电**：[MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md) · **代码**：`user/net_mqtt.lua`
 
 ---
 
@@ -29,7 +31,7 @@
 
 | 你要做的事 | App 在 MQTT.fx 的操作 | Topic |
 |------------|------------------------|-------|
-| 下发控制（2004 重启/OTA、2002 休眠、2011 停录…） | **Publish** | `/panshi/device/862323084068124/` |
+| 下发控制（2004 重启/OTA、2002 断 T31/上电、2011 停录…） | **Publish** | `/panshi/device/862323084068124/` |
 | 下发状态查询（2003） | **Publish**（同上 Topic） | `/panshi/device/862323084068124/` |
 | 看设备状态应答（1003） | **Subscribe** | `/panshi/app/862323084068124/status` 或 `#` |
 
@@ -50,9 +52,11 @@
 | 1001 唤醒 | `/panshi/app/862323084068124/wakeup` |
 | 1002 休眠 | `/panshi/app/862323084068124/rest` |
 | 1003 状态 | `/panshi/app/862323084068124/status` |
-| 1004 / 1011 | `/panshi/app/862323084068124/event` |
+| 1004 / 1011 / 1012 / 1013 | `/panshi/app/862323084068124/event` |
 | 1005 SIM | `/panshi/app/862323084068124/sim` |
+| 1006 设备标识 | `/panshi/app/862323084068124/identity` |
 | 1007 TF 卡状态 | `/panshi/app/862323084068124/tfcard` |
+| 1008 版本 | `/panshi/app/862323084068124/version` |
 | 1009 TF 卡格式化 | `/panshi/app/862323084068124/tfcard_format` |
 | 1010 PIR | `/panshi/app/862323084068124/pir` |
 | 1021 / 1020 编码 | `/panshi/app/862323084068124/encode` |
@@ -72,17 +76,19 @@
 
 | 下行 | 含义 | 上行 | 上行主题 |
 |------|------|------|----------|
-| **2001** | 唤醒查询 | **1001** | `wakeup` |
-| **2002** | 低功耗 enter/exit | **1002** | `rest`（enter/exit 状态切换成功后） |
+| **2001** | MQTT 探活（**不上电、不改变功耗**） | **1001** | `wakeup` |
+| **2002** | **断 T31 / 上电 T31**（`enter` / `exit`） | **1004** + **1002** | `event` / `rest` |
 | **2003** | 状态查询 / 配置 interval | **1003** | `status` |
 | **2004** | 重启 / 关机 / OTA / **白光灯** | **1004** | `event` |
 | **2005** | SIM 查询 | **1005** | `sim` |
 | **2006** | IMEI + GB28181 查询 | **1006** | `identity` |
 | **2007** | TF/SD 卡状态查询 | **1007** | `tfcard` |
+| **2008** | 固件/脚本版本查询（秒回，不依赖 T3x） | **1008** | `version` |
 | **2009** | TF/SD 卡格式化 | **1009** | `tfcard_format` |
 | **2010** | PIR 策略 / 查询 | **1010** | `pir` |
 | **2011** | 设备停录 | **1011** | `event` |
 | **2012** | 平台开 TF 卡录 | **1012** + **1010** | `event` / `pir` |
+| **2013** | 请求上传视频（信令，不传文件） | **1013** | `event` |
 | **2021** | 设置视频/音频编码 | **1021** | `encode` |
 | **2020** | 查询视频/音频编码 | **1020** | `encode` |
 | **2022** | 查询录像时长档位 | **1022** | `record` |
@@ -94,16 +100,30 @@
 
 **1004 区分**：`"reply":1` → 应答 **2004**；含 `"stage"` → OTA 进度（无 `reply`）。
 
+**功耗与上电对照**（勿把 2001 当唤醒）：
+
+| 你要做的事 | 用哪条 | 不要用 |
+|------------|--------|--------|
+| 测 MQTT 是否通 | **2001**（回 1001）或 **2003** | — |
+| **断 T31、进 PIR 值守** | **2002** `lowPowerMode=enter` | 2001、2004 off |
+| **给 T31 上电、退出值守** | **2002** `lowPowerMode=exit` | 2001 |
+| 整机关机 | **2004** `action=off` | 2002；关机后无法远程再上电 |
+
+时序：[MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md)。
+
 **编码参数**：完整字段见 [REMOTE_ENCODE_CONFIG.md](./REMOTE_ENCODE_CONFIG.md)。
 
 ---
 
-## 3. `2001` — 唤醒查询 → `1001`
+## 3. `2001` — MQTT 探活（不上电）→ `1001`
 
 **发布**：`/panshi/device/862323084068124/`
 
+> **不是唤醒命令。** 只让设备回一条 1001，证明 MQTT 在线。rest 下也会答。  
+> 要 **给 T31 上电** 请发 **2002 `exit`**；要 **断 T31 进低功耗** 请发 **2002 `enter`**。
+
 ```json
-{"dataType":"2001"}
+{"dataType":"2001","messageId":"m-1786999120"}
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -121,32 +141,32 @@
 }
 ```
 
-**1001 触发对照**（conack 自动 ≠ 2001 查询）：
+**1001 触发对照**（conack 自动 ≠ 2001 探活）：
 
 | 场景 | 1001 |
 |------|------|
 | conack 常电 | ✅ 主动发 |
 | conack rest | ❌ 发 1002+1003 |
-| **2001 查询**（含 rest） | ✅ 仍应答；**不代表已出 rest** |
+| **2001 探活**（含 rest） | ✅ 仍应答；**不代表已出 rest、不上电** |
 | PIR auto（非 rest） | ✅ |
 
 当前态以 **1003.lowPowerMode** 为准。
 
 ---
 
-## 4. `2002` — 低功耗 → `1002`
+## 4. `2002` — 断 T31 / 上电 T31 → `1004` + `1002`
 
 **发布**：`/panshi/device/862323084068124/`
 
 ### 4.1 下行（平台 → 设备）
 
-进入 rest：
+断 T31、进 PIR 值守：
 
 ```json
 {"dataType":"2002","lowPowerMode":"enter"}
 ```
 
-退出 rest：
+给 T31 上电、退出值守：
 
 ```json
 {"dataType":"2002","lowPowerMode":"exit"}
@@ -158,11 +178,13 @@
 
 | 操作 | 设备行为 | 上行 |
 |------|----------|------|
-| enter | T3x 断电、进 rest；**4G 保持 MQTT** | **1002**（当场 `source=enter`） |
-| enter + USB 已插 | 默认**拒绝**进 rest（无 1002） | — |
-| exit | 唤醒 T3x、出 rest | **1002**（`lowPowerMode=exit`） |
+| enter | 先 `AT+IPCPOWEROFF` 让 T31 **一级级停 IPC**（录像/人形/GB28181/网卡/sync），收到 `+IPCPOWEROFF:OK` 后再断 GPIO22；切 `workMode=pir_watch`；**4G 保持 MQTT** | **1004** `rest_enter`（立即）+ **1002** + **1003**（`workMode=pir_watch`） |
+| enter + USB 已插 | **仍断 T31** 进 PIR 值守（USB 只拦 **2004 关机**，不拦 2002） | 同上 |
+| exit | **给 T31 上电**、出 rest，回到人形常电 | **1004** `rest_exit` + **1002** |
 
 串口等价：`AT+LOWPOWER=ENTER` / `EXIT`（1002 的 `reason=at`）。
+
+**完整时序（先停 IPC 再断电）**：[MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md)。
 
 ### 4.2 上行 `1002`（设备 → 平台）
 
@@ -252,6 +274,11 @@
   "remainPower": "85",
   "batteryMv": "4079",
   "lowPowerMode": "normal",
+  "csq": "25",
+  "rssi": "-75",
+  "rsrp": "-95",
+  "rsrq": "-10",
+  "snr": "10",
   "time": "2026-05-19 12:02:00"
 }
 ```
@@ -263,6 +290,8 @@
 | `remainPower` | 电量百分比或 `"--"` |
 | `batteryMv` | 电芯电压 mV 或 `"--"` |
 | `lowPowerMode` | `"normal"` / `"rest"` |
+| `csq` / `rssi` / `rsrp` / `rsrq` / `snr` | 射频信号，与 **1005** 同源；状态周期一并上报，不必再查 2005 |
+| `wledEnable` | 白光灯当前 0 关 / 1 开（**与录像无关**；亦可 `2004 action=wled_query`） |
 
 ---
 
@@ -352,12 +381,14 @@
 
 关机后设备离线。串口：`AT+POWEROFF`
 
-### 6.3 OTA（合宙 IoT）
+### 6.3 OTA（合宙 IoT，`channel=iot`）
+
+不带 `url`。设备走 **libfota2 默认** `https://iot.openluat.com/api/site/firmware_upgrade?`。须先在合宙 IoT 后台上传固件并配置升级全部或指定 IMEI。
 
 **下行**：
 
 ```json
-{"dataType":"2004","action":"ota","version":"2034.001.002","product_key":"ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x","messageId":"ota-001"}
+{"dataType":"2004","action":"ota","channel":"iot","version":"2044.001.018","product_key":"ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x","messageId":"ota-001"}
 ```
 
 **上行 ① 受理**：
@@ -384,8 +415,8 @@
   "stage": "starting",
   "ret": 0,
   "message": "check_upgrade",
-  "currentVersion": "2034.001.001",
-  "targetVersion": "2034.001.002",
+  "currentVersion": "2044.001.004",
+  "targetVersion": "2044.001.005",
   "time": "2026-05-19 12:04:01"
 }
 ```
@@ -397,8 +428,8 @@
   "stage": "success",
   "ret": 0,
   "message": "download_ok",
-  "currentVersion": "2034.001.001",
-  "targetVersion": "2034.001.002",
+  "currentVersion": "2044.001.004",
+  "targetVersion": "2044.001.005",
   "time": "2026-05-19 12:05:00"
 }
 ```
@@ -422,10 +453,13 @@
 
 ### 6.5 白光灯（WLED）
 
+与录像、PIR **无联动**：只提供 MQTT 下发开关/查询，以及状态上报。
+
 | 项 | 值 |
 |----|-----|
 | 下行主题 | `/panshi/device/862323084068124/` |
 | 上行主题 | `/panshi/app/862323084068124/event` |
+| 串口等价 | `AT+WLED=0/1`、`AT+WLED?`（别名 `AT+WLEDEN*`） |
 
 **开灯**：
 
@@ -433,11 +467,15 @@
 {"dataType":"2004","action":"wled","enable":1,"messageId":"wled-001"}
 ```
 
+同义：`{"dataType":"2004","action":"wled_on"}`
+
 **关灯**：
 
 ```json
 {"dataType":"2004","action":"wled","enable":0,"messageId":"wled-002"}
 ```
+
+同义：`{"dataType":"2004","action":"wled_off"}`
 
 **查询状态**：
 
@@ -447,10 +485,10 @@
 
 | 字段 | 说明 |
 |------|------|
-| `action` | `wled`（须带 `enable`）/ `wled_query` |
+| `action` | `wled`（须带 `enable`）/ `wled_on` / `wled_off` / `wled_query` |
 | `enable` | `0` 关 / `1` 开（仅 `action=wled` 时必填） |
 
-**上行**（开/关/查询均含 **`enable`** 当前态 0/1）：
+**上行**（开/关/查询均含 **`enable`** 当前态 0/1）。开/关：**先回 1004**，再异步转发 `AT+WLED=n`（对齐 2011「先 ack 再干活」，避免录像中 UART 吵导致等不到 ACK）。
 
 ```json
 {
@@ -466,7 +504,7 @@
 }
 ```
 
-4G 维护 `APP_RUNTIME.wled_on`，经 UART 转发 `AT+WLED=n` 至 T3x 驱动 `WLED_EN` GPIO。串口：`AT+WLED=0/1`、`AT+WLED?`（别名 `AT+WLEDEN*`）。
+周期 **1003** 另带 `wledEnable` 0/1，平台不必每次 2004 查询。4G 维护 `APP_RUNTIME.wled_on`，转发至 T3x `WLED_EN` GPIO（`syscfg.ini [gpio] wled_enable=1`，引脚 PB30）。
 
 ### 6.6 HOSTEVT 空闲轮询间隔（HOSTEVTPOLL）
 
@@ -513,19 +551,38 @@
 
 ### 6.7 OTA（自建 url）
 
+带 `url` 时设备访问 **本仓库 ota_server**，与模组默认云无关。
+
 **下行**：
 
 ```json
-{"dataType":"2004","action":"ota","url":"http://192.168.1.5:8000/firmware.bin","version":"2034.001.002","timeout":300000,"full_url":0,"messageId":"ota-002"}
+{"dataType":"2004","action":"ota","url":"http://43.136.55.143/api/site/firmware_upgrade?","version":"2044.001.018","timeout":300000,"full_url":0,"messageId":"ota-002"}
 ```
 
 | OTA 字段 | 说明 |
 |----------|------|
-| `version` | 目标版本 **`内核号.XXX.ZZZ`**（如 `2034.001.002`，与合宙 IoT / LuatTools / `main.lua` `VERSION` 一致） |
-| `product_key` | 合宙项目 key（默认见 `main.lua` `PRODUCT_KEY` → `_G.PRODUCT_KEY`；MQTT 2004 可省略） |
-| `url` | 固件地址 |
+| `url` | 本服务拉包基址，以 `?` 结尾；模组自动拼 `imei` / `firmware_name` / `version` / `project_key` |
+| `version` | 目标版本 **`内核号.XXX.ZZZ`**（任务台账）。HTTP 查询用的是设备**当前**版本 |
 | `timeout` | 超时 ms |
-| `full_url` | `1` 时 url 前加 `###` |
+| `full_url` | `1` 时不再拼查询参数（直链文件） |
+
+无 `url` 时：若固件 `FOTA_CFG.server_mode=self`，设备会填入 `self_url`（与网页下发同一拉包地址）；其它模式不打本服务。
+
+**上位机闭环**（`tools/mqtt_tools_gui.bat` →「OTA闭环」，或 `mqtt_tools_gui.bat --tab ota`）与管理台发**同一条** 2004。判定顺序：
+
+1. `2008` → `1008` 记录当前 `firmwareVersion`
+2. 下发上面的 2004（`full_url=0`）
+3. `1004` `reply=1` `message=ota_accepted`
+4. `1004` `stage=starting` / `success` / `failed`（`success` 常因立刻重启丢失，属预期）
+5. 设备重启后主动 `1008`（`messageId=boot`），或上位机再发 `2008`；**以 `firmwareVersion` 等于目标版本为闭环通过**
+
+请先在管理台上传差分包，且包的 **sourceVersion = 设备当前 `firmwareVersion`**。
+
+**上行 ② 进度 / 结果**（`1004`，无 `reply`）：
+
+```json
+{"deviceNo":"862323084068124","dataType":"1004","action":"ota","stage":"starting","ret":0,"message":"check_upgrade","currentVersion":"2044.001.024","targetVersion":"2044.001.025","messageId":"ota-002"}
+```
 
 ### 6.8 `action` 取值
 
@@ -579,7 +636,44 @@
 }
 ```
 
-> `imsi`/`iccid`/`ip` 等以实机为准。
+> `imsi`/`iccid`/`ip` 等以实机为准。`imei` 与 `deviceNo` 同源，现网为 **`862323084068124`**。
+
+---
+
+## 7.1 `2008` — 版本查询 → `1008`
+
+只读 Cat.1 本地版本，**不依赖 T3x**，应秒回。用于核对本机 IMEI、OTA `version`、`productKey`。
+
+**发布**：`/panshi/device/862323084068124/`
+
+```json
+{"dataType":"2008","messageId":"ver-001"}
+```
+
+**应答主题**：`/panshi/app/862323084068124/version`
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1008",
+  "scriptVersion": "001.000.004",
+  "firmwareVersion": "2044.001.004",
+  "coreVersion": "2044",
+  "project": "PANSHI_CAT1",
+  "buildTag": "v20260730",
+  "productKey": "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x",
+  "messageId": "ver-001",
+  "time": "2026-08-17 00:00:00"
+}
+```
+
+| 字段 | 现网值 | 说明 |
+|------|--------|------|
+| `deviceNo` | `862323084068124` | = IMEI = MQTT ClientId |
+| `scriptVersion` | `001.000.004` | `main.lua` `VERSION`，**不可**作 OTA `version` |
+| `firmwareVersion` | `2044.001.004` | 2004 OTA 的 `version` 须与此相同 |
+
+完整字段说明见 [MQTT_PROTOCOL.md §4.7b](./MQTT_PROTOCOL.md)。
 
 ---
 
@@ -887,6 +981,37 @@
 
 ---
 
+## 10b. `2013` — 请求上传视频 → `1013`
+
+专题：[MQTT_2013_1013_UPLOAD_VIDEO.md](MQTT_2013_1013_UPLOAD_VIDEO.md)
+
+**发布**：`/panshi/device/862323084068124/`
+
+```json
+{
+  "dataType": "2013",
+  "messageId": "up-req-001",
+  "action": "upload_video",
+  "needUpload": 1,
+  "reason": "cloud",
+  "videoType": 2,
+  "beginTime": "2026-08-17 19:00:00",
+  "endTime": "2026-08-17 19:05:00"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `action` | `"upload_video"` |
+| `needUpload` | `1` 请求上传；`0` 取消 |
+| `videoType` | `1` 侦测 / `2` 回放（默认） |
+| `beginTime` / `endTime` | 抽片窗口；省略则最近 60s（可用 `videoMaxDurationSec`） |
+| `recordPath` | 可选；当前以时间窗为准 |
+
+**应答**：`/panshi/app/862323084068124/event`，`dataType=1013`，`reply=1`。无 1004。T3x 在线时 `AT+UPLOADVIDEO=…`。与 **2012 开录 / 2011 停录** 独立；`2010.uploadMode` 不能替代。
+
+---
+
 ## 11. `2020` — 查询编码参数 → `1020`
 
 **发布**：`/panshi/device/862323084068124/`
@@ -1077,7 +1202,7 @@
 
 1. 连接 Broker，订阅 `/panshi/app/862323084068124/#`
 2. 确认设备 `mqtt=已连接`，收到 **1001**
-3. `2001` → **1001**（rest 下亦应答；与 conack 自动上行不同）
+3. `2001` → **1001**（探活，不上电；rest 下亦应答；与 conack 自动上行不同）
 4. `2003` → **1003**
 5. `2005` → **1005**
 6. `2006` → **1006**（identity）
@@ -1085,9 +1210,10 @@
 8. `2010` 配置 → PIR 触发 → **1010**（常电且 `uploadMode=auto` 时可能 **1001**；rest 仅忽略 PIR/不发 1001）
 9. `2010` + `action=query` → **1010**（**rest 下仍可用**）
 10. `2004` + `reboot` → **1004** `reply=1`（设备重启）
-11. `2002` enter → **1002**（`lowPowerMode=enter`，含 `reason`/`source`）；`2002` exit → **1002**（`lowPowerMode=exit`）
+11. `2002` enter 断 T31 → **1004** `rest_enter` + **1002**；`2002` exit 上电 T31 → **1004** `rest_exit` + **1002**（不要用 2001）
 12. `2011`（录像中）→ **1011**（T3x 在线时另发 `AT+RECORDCTRL=0,cloud`）
 12a. `2012` → **1004** + **1012** + **1010**（T3x 在线时 `AT+RECORDCTRL=1,<sec>`）
+12b. `2013` → **1013** `reply=1`（T3x 在线时 `AT+UPLOADVIDEO`；不发 1004）
 13. `2020` → **1020**（encode 主题）
 14. `2021` 改码率 → **1021** `needReboot=0`；改分辨率 → `needReboot=1`
 15. `2024` → **1024**（framerate 主题）
@@ -1113,6 +1239,7 @@
 | 2010 | `handleDownlink2010` | `publishPirDetect` |
 | 2011 | `handleDownlink2011` | `publishPirRecordStop` |
 | 2012 | `handleDownlink2012` | `publishPirRecordStart` + `recordCtrlStart` |
+| 2013 | `handleDownlink2013` | `publishUploadVideoReply` + `requestUploadVideo` |
 | 2021 | `handleDownlink2021` | `publishEncodeReply` → 1021 |
 | 2020 | `handleDownlink2020` | `publishEncodeReply` → 1020 |
 | 2022 | `handleDownlink2022` | `publishRecordTimeReply` → 1022 |

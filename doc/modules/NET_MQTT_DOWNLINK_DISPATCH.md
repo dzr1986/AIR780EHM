@@ -23,8 +23,8 @@ MQTT subscribe /panshi/device/{imei}/
 
 | dataType | Handler | 上行 | 需 T3x 在线 |
 |----------|---------|------|-------------|
-| 2001 | `handleDownlink2001` | 1001 wakeup | 否 |
-| 2002 | `handleDownlink2002` | 1002 rest（app 事件） | 否 |
+| 2001 | `handleDownlink2001` | 1001 探活应答（主题 wakeup） | 否 |
+| 2002 | `handleDownlink2002` | 1004 rest_enter/exit + 1002 | 否 |
 | 2003 | `handleDownlink2003` | 1003 status | 否 |
 | 2004 | `handleDownlink2004` | 1004 event | 部分（wled） |
 | 2005 | `handleDownlink2005` | 1005 sim | 否 |

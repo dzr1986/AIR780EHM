@@ -1,0 +1,4 @@
+pyserial>=3.5
+ectool>=1.2.1
+py7zr>=0.20
+# ectool 1.2.1 依赖 readall()；1.x 已删除该 API，本工具会自行兼容

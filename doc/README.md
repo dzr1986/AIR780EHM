@@ -36,7 +36,9 @@
 |------|------|
 | [CHARGE_BATTERY.md](CHARGE_BATTERY.md) | 充电、ADC（`vbat`）、MQTT 1003 |
 | [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) | **低电量/USB/rest/T3x**（场景流程图 + 附录） |
-| [WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) | **工作模式 ①② + 电量 20% 切换 + §9 USB 拔插（仅 ≤20% 进 rest）** |
+| [WORK_MODE_PERSON_DETECT_PIR.md](WORK_MODE_PERSON_DETECT_PIR.md) | **现行两种模式**：开机人形常电；仅 2002 才断 T31 用 PIR（已去掉低电自动进 PIR） |
+| [PERSON_CNT_UART_MQTT_FLOW.md](PERSON_CNT_UART_MQTT_FLOW.md) | **有人看哪里、PERSONCNT 30s、skipped 不是过密、检测软件读数** |
+| [WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) | **历史**：电量 20% 切动态侦测（已被上一篇取代） |
 | [LOW_POWER_ENTER_STRATEGY.md](LOW_POWER_ENTER_STRATEGY.md) | **电量 rest vs HOSTIDLE 30s 轮询**：是否矛盾、策略切换 |
 | [BATTERY_REST_SWITCH_CONDITIONS.md](BATTERY_REST_SWITCH_CONDITIONS.md) | rest 切换：连续确认、最短常电、最短 rest |
 | [T3X_LOW_POWER.md](T3X_LOW_POWER.md) | **低功耗可配置**：rest 主流程、**conack 与 1001/1002/1003** |
@@ -53,6 +55,7 @@
 | 文档 | 说明 |
 |------|------|
 | [PIR_PROTOCOL.md](PIR_PROTOCOL.md) | PIR / 2010 / 2011 |
+| [MQTT_2011_T31X_STOP_EXPLAINED.md](MQTT_2011_T31X_STOP_EXPLAINED.md) | **2011 停录怎么读**：两层录像、复位掉电、1004/1011、`.part` 封口 |
 | [PIR_TRIGGER_INTERVAL.md](PIR_TRIGGER_INTERVAL.md) | PIR 冷却间隔 |
 | [PIR_COOLDOWN_AND_COUNT.md](PIR_COOLDOWN_AND_COUNT.md) | 冷却 vs 计数 |
 | [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md) | **AT+RECORD + MQTT 1010/1011** |
@@ -62,7 +65,8 @@
 
 | 文档 | 说明 |
 |------|------|
-| [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行（含 2006/2007、2021/2020、2024–2027、2012） |
+| [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行（含 2006/2007、2021/2020、2024–2027、2012、**2013**） |
+| [MQTT_2013_1013_UPLOAD_VIDEO.md](MQTT_2013_1013_UPLOAD_VIDEO.md) | **2013↔1013**：国标 RecordInfo 列表 + MQTT 时间窗抽片（MQTT 不传文件） |
 | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) | **远程控制**：帧率/录像/人形（MQTT + AT + 时序） |
 | [T3X_IPC_CLOUD_EXCEPTION_REPORT.md](T3X_IPC_CLOUD_EXCEPTION_REPORT.md) | **T3x IPC 联网异常上报分析**（已上报 vs 缺口） |
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | **本机 IMEI 862323084068314** MQTT 联调手册 |
@@ -70,11 +74,16 @@
 | [mqtt_tfcard_format_flow.md](mqtt_tfcard_format_flow.md) | **统一入口：TF 卡格式化 2009/1009**（协议、时序、错误码、联调日志） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
 | [MQTT_CLIENT_E2E_TEST.md](MQTT_CLIENT_E2E_TEST.md) | **MQTT 客户端 E2E 联调**（MQTTX / mosquitto / 冒烟清单） |
-| [OTA_SERVER.md](OTA_SERVER.md) | **自建 OTA**（固件对接 + 部署清单，不改 lua） |
-| [OTA_PROTOCOL.md](OTA_PROTOCOL.md) | **OTA 协议与升级流程分析**（HTTP + MQTT） |
-| [OTA_FLOW.md](OTA_FLOW.md) | **完整流程 + 代码完整性清单** |
+| [MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md) | **全指令流程与实机结果**（`--run-all`、Cat.1 / T31x 对照） |
+| [../ota_server/docs/OTA_SERVER.md](../ota_server/docs/OTA_SERVER.md) | **自建 OTA**（固件对接 + 部署清单，不改 lua） |
+| [OTA_CONSOLE_UPGRADE.md](OTA_CONSOLE_UPGRADE.md) | **后台怎么点升级**（上传包 → 下发 OTA） |
+| [../ota_server/docs/OTA_LUAT_IOT_ADMIN_FLOW.md](../ota_server/docs/OTA_LUAT_IOT_ADMIN_FLOW.md) | **合宙 IoT 项目列表 ↔ 管理台操作流程** |
+| [../ota_server/docs/OTA_PROTOCOL.md](../ota_server/docs/OTA_PROTOCOL.md) | **OTA 协议与升级流程分析**（HTTP + MQTT） |
+| [../ota_server/docs/OTA_FLOW.md](../ota_server/docs/OTA_FLOW.md) | **完整流程 + 代码完整性清单** |
 | [../ota_server/README.md](../ota_server/README.md) | OTA 服务端部署手册 |
+| [../video_upload_server/README.md](../video_upload_server/README.md) | **报警视频 uploadVideo**（7003，兼容南京后台） |
 | [REMOTE_ENCODE_CONFIG.md](REMOTE_ENCODE_CONFIG.md) | 远程视频/音频编码 2021/2020 / 1021/1020 |
+| [T31X_MQTT_PARAM_HOT_APPLY.md](T31X_MQTT_PARAM_HOT_APPLY.md) | **MQTT 设参动态生效**：2020–2031（不含 2013）不重启 `t31x_ipc` 进程 |
 | [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T3x `AT+MQTTCFG` 下发 4G MQTT |
 | [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX |
@@ -96,6 +105,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [CAT1_FLASH_TOOL.md](CAT1_FLASH_TOOL.md) | **Cat.1 USB 烧录**：图形界面 / 命令行，对齐 Luatools 下载脚本、下载底层和脚本 |
 | [RELEASE_v1.2.md](RELEASE_v1.2.md) | v1.2 发布/备份说明 |
 | [T3X_NAMING.md](T3X_NAMING.md) | T3x 命名约定 |
 | [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md) | 旧 T31 文档重定向表 |

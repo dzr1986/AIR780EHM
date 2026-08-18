@@ -26,6 +26,13 @@ function getBatteryPercent()
 	end
 	return nil
 end
+function getBatteryMv()
+	local rt = _G.APP_RUNTIME
+	if rt then
+		return tonumber(rt.battery_mv)
+	end
+	return nil
+end
 function isLowPowerMode()
 	return runtime_power.isLowPowerMode()
 end
@@ -86,6 +93,14 @@ local function passesLowPowerGate(reason, opts)
 	return false
 end
 local function passesBatteryGate()
+	local mv = getBatteryMv()
+	local blockMv = tonumber(cfg().block_wake_below_mv)
+	if blockMv == nil then
+		blockMv = tonumber(guardCfg().shutdown_mv)
+	end
+	if blockMv and mv and mv <= blockMv then
+		return false
+	end
 	local pct = getBatteryPercent()
 	local blockPct = tonumber(cfg().block_wake_below_percent)
 	if blockPct == nil then

@@ -41,6 +41,16 @@ local session = {
 local function loadMod(name)
 	return utils.lazyRequire(name)
 end
+local function t31IsPoweredOn()
+	local t3x = loadMod("t3x_ctrl")
+	if t3x and t3x.getState then
+		local st = t3x.getState()
+		if st and st.powered_on then
+			return true
+		end
+	end
+	return false
+end
 local function netMqttMod()
 	return loadMod("net_mqtt")
 end
@@ -52,7 +62,9 @@ local cooldownUntil = 0
 local stats = {
 	cnt_hw_irq = 0, cnt_hw_ignore_level = 0, cnt_hw_ignore_cooldown = 0,
 	cnt_hw_ignore_burn = 0, cnt_hw_accept = 0,
-	cnt_biz_ignore_suspend = 0, cnt_biz_ignore_rest = 0, cnt_biz_detected = 0,
+	cnt_biz_ignore_suspend = 0, cnt_biz_ignore_rest = 0,
+	cnt_biz_ignore_person_detect = 0, cnt_biz_ignore_t31_on = 0,
+	cnt_biz_detected = 0,
 	cnt_biz_retrigger = 0, cnt_biz_photo = 0, cnt_biz_video = 0,
 	cnt_stop_timer = 0, cnt_stop_retrigger = 0, cnt_stop_cloud = 0, cnt_stop_manual = 0,
 	cnt_start_cloud = 0,
@@ -70,6 +82,12 @@ local function onHwInterrupt(level)
 	if _G.T3X_BURN_MODE_ACTIVE then
 		statBump("cnt_hw_ignore_burn")
 		statLast("ignore_burn")
+		return
+	end
+	if t31IsPoweredOn() then
+		statBump("cnt_biz_ignore_t31_on")
+		statLast("ignore_t31_on")
+		pirInfo("hw_ignored", "t31_on")
 		return
 	end
 	local active = hwCfg and hwCfg.active_level
@@ -145,7 +163,8 @@ function buildAtBody()
 	}
 	for _, k in ipairs({
 		"cnt_hw_irq", "cnt_hw_ignore_level", "cnt_hw_ignore_cooldown", "cnt_hw_ignore_burn",
-		"cnt_hw_accept", "cnt_biz_ignore_suspend", "cnt_biz_ignore_rest", "cnt_biz_detected",
+		"cnt_hw_accept", "cnt_biz_ignore_suspend", "cnt_biz_ignore_rest",
+		"cnt_biz_ignore_person_detect", "cnt_biz_ignore_t31_on", "cnt_biz_detected",
 		"cnt_biz_retrigger", "cnt_biz_photo", "cnt_biz_video", "cnt_stop_timer",
 		"cnt_stop_retrigger", "cnt_stop_cloud", "cnt_stop_manual", "cnt_start_cloud",
 	}) do
@@ -213,7 +232,9 @@ local PIR_CFG_PATH = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.pir_mqtt)
 	or "/pir_mqtt_cfg.json"
 local PIR_CFG_SCHEMA_VER = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.pir_mqtt_schema) or 2
 local pirCfgSchemaVersion = PIR_CFG_SCHEMA_VER
-local function savePersistedConfig()
+local saveBusy = false
+local saveWanted = false
+local function savePersistedConfigNow()
 	local payload = json.encode({
 		schemaVersion = pirCfgSchemaVersion,
 		mediaConfig = normalizePirMediaConfig(_G.pirMediaConfig),
@@ -228,6 +249,21 @@ local function savePersistedConfig()
 	end
 	f:write(payload)
 	f:close()
+end
+-- 写盘放到 task，避免在 MQTT 回调里卡住 1010/1004
+local function savePersistedConfig()
+	saveWanted = true
+	if saveBusy then
+		return
+	end
+	saveBusy = true
+	sys.taskInit(function()
+		while saveWanted do
+			saveWanted = false
+			savePersistedConfigNow()
+		end
+		saveBusy = false
+	end)
 end
 local function migratePersistedConfig(data)
 	pirCfgSchemaVersion = tonumber(data.schemaVersion) or 1
@@ -494,41 +530,16 @@ function resume()
 	pirInfo("resume")
 	return true
 end
-local function isRestLowPower()
-	if _G.FEATURE_CFG and _G.FEATURE_CFG.low_power == false then
-		return false
-	end
-	local rp = loadMod("runtime_power")
-	return rp and rp.isLowPowerMode and rp.isLowPowerMode()
-end
-local function isBatteryDynamicRest()
-	local rp = loadMod("runtime_power")
-	return rp and rp.isBatteryDynamicRest and rp.isBatteryDynamicRest()
-end
-local function isPirHighPriority()
-	local cfg = _G.PIR_CFG or {}
-	return cfg.high_priority ~= false
-end
-local function requestExitRestForPir()
-	local E = _G.APP_EVENTS or {}
-	local evt = E.POWER_EXIT_REST or "power_exit_rest"
-	if evt and evt ~= "" then
-		sys.publish(evt, "pir")
-	end
-end
 local function shouldIgnorePirTrigger()
 	if suspended then
 		return "suspend"
 	end
-	if isRestLowPower() then
-		if isBatteryDynamicRest() then
-			return nil
-		end
-		if isPirHighPriority() then
-			requestExitRestForPir()
-			return nil
-		end
-		return "rest"
+	if t31IsPoweredOn() then
+		return "t31_on"
+	end
+	local rp = loadMod("runtime_power")
+	if not (rp and rp.isPirWatch and rp.isPirWatch()) then
+		return "person_detect"
 	end
 	return nil
 end
@@ -552,6 +563,8 @@ end
 local PIR_IGNORE_STATS = {
 	suspend = { cnt = "cnt_biz_ignore_suspend", last = "ignore_suspend" },
 	rest = { cnt = "cnt_biz_ignore_rest", last = "ignore_rest" },
+	person_detect = { cnt = "cnt_biz_ignore_person_detect", last = "ignore_person_detect" },
+	t31_on = { cnt = "cnt_biz_ignore_t31_on", last = "ignore_t31_on" },
 }
 function onPirTriggered()
 	clearEffectiveMediaAction()

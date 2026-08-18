@@ -22,7 +22,7 @@ public class MqttProperties {
     private List<String> subscribeTopics = new ArrayList<>(List.of("/panshi/app/+/event"));
     /** 下行模板，{imei} 占位 */
     private String downlinkTopicTemplate = "/panshi/device/{imei}/";
-    /** 设备访问 OTA 的公网 HTTPS 基址，如 https://ota.example.com */
+    /** 设备访问 OTA 的公网基址，如 http://43.136.55.143 */
     private String otaPublicBaseUrl = "http://127.0.0.1:8080";
     /** libfota2 拼参路径 */
     private String otaPath = "/api/site/firmware_upgrade?";

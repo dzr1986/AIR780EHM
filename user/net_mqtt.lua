@@ -31,6 +31,7 @@ local DT = {
 	UL_PIR_DETECT = "1010",
 	UL_PIR_STOP = "1011",
 	UL_PIR_START = "1012",
+	UL_UPLOAD_VIDEO = "1013",
 	UL_ENCODE_SET = "1021",
 	UL_ENCODE_QUERY = "1020",
 	UL_RECORD_TIME_QUERY = "1022",
@@ -55,6 +56,7 @@ local DT = {
 	DL_PIR_CFG = "2010",
 	DL_PIR_STOP = "2011",
 	DL_PIR_START = "2012",   -- → UL 1012 event
+	DL_UPLOAD_VIDEO = "2013", -- → UL 1013 event（上传视频信令，非传文件）
 	DL_ENCODE_SET = "2021",  -- → UL 1021 encode（AT+VENCSET/AUDIOSET）
 	DL_ENCODE_QUERY = "2020", -- → UL 1020 encode（AT+VENC?/AUDIO?）
 	DL_RECORD_TIME_QUERY = "2022", -- → UL 1022 recordTime（AT+RECORDTIME?）
@@ -103,6 +105,7 @@ local HOST_DL_NEEDS_T3X = {
 	[DT.DL_MIC_SET] = true,
 	[DT.DL_SOFTPHOTO_QUERY] = true,
 	[DT.DL_SOFTPHOTO_SET] = true,
+	[DT.DL_UPLOAD_VIDEO] = true,
 }
 local DOWNLINK_HANDLERS
 local function getDeviceId()
@@ -280,6 +283,31 @@ local function collectSimSnapshot()
 		snap.apn = rt.cellular_apn
 	end
 	return snap
+end
+local function collectRadioSnapshot()
+	return {
+		csq = mobile.csq and mobile.csq() or "",
+		rssi = mobile.rssi and mobile.rssi() or "",
+		rsrq = mobile.rsrq and mobile.rsrq() or "",
+		rsrp = mobile.rsrp and mobile.rsrp() or "",
+		snr = mobile.snr and mobile.snr() or "",
+	}
+end
+local function radioUplinkFields()
+	local snap = collectRadioSnapshot()
+	local function s(v)
+		if v == nil then
+			return ""
+		end
+		return tostring(v)
+	end
+	return string.format(
+		',"csq":"%s","rssi":"%s","rsrp":"%s","rsrq":"%s","snr":"%s"',
+		escJson(s(snap.csq)),
+		escJson(s(snap.rssi)),
+		escJson(s(snap.rsrp)),
+		escJson(s(snap.rsrq)),
+		escJson(s(snap.snr)))
 end
 local function collectBatterySnapshot()
 	local rt = _G.APP_RUNTIME or {}
@@ -465,13 +493,15 @@ local function usbBlocks4gRest()
 end
 local function handleDownlink2002(data)
 	local mode = resolve2002Mode(data)
+	local messageId = data.messageId or data.msgId or ""
 	if mode == "enter" then
-		if usbBlocks4gRest() then
-			return
-		end
+		publishControlReply("rest_enter", 0, "ok", { messageId = messageId })
 		sys.publish(APP_EVENTS.POWER_ENTER_REST)
 	elseif mode == "exit" then
+		publishControlReply("rest_exit", 0, "ok", { messageId = messageId })
 		sys.publish(APP_EVENTS.POWER_EXIT_REST)
+	else
+		publishControlReply("rest", -1, "invalid_mode", { messageId = messageId })
 	end
 end
 local function handleDownlink2003(data)
@@ -526,23 +556,25 @@ local function makeDownlink2004Reply(data)
 end
 local function runWledQuery2004(reply)
 	sys.taskInit(function()
-		local on = fetchWledFromHost()
+		local on = getWledState()
+		local hu = getHostUart()
+		if hu and hu.queryHostWled and hu.isHostAtReady and hu.isHostAtReady() then
+			on = hu.queryHostWled(2000) or on
+		end
 		reply(0, "ok", "wled", { enable = on })
 	end)
 end
 local function runWledSet2004(reply, on)
+	local hu = getHostUart()
+	if hu and hu.setWled then
+		hu.setWled(on, { forward = false })
+	elseif _G.APP_RUNTIME then
+		_G.APP_RUNTIME.wled_on = on
+	end
+	reply(0, "ok", "wled", { enable = on })
 	sys.taskInit(function()
-		local hu = getHostUart()
-		local ok = true
 		if hu and hu.setWled then
-			ok = hu.setWled(on, { sync = true }) == true
-		elseif _G.APP_RUNTIME then
-			_G.APP_RUNTIME.wled_on = on
-		end
-		if ok then
-			reply(0, "ok", "wled", { enable = on })
-		else
-			reply(-1, "wled_forward_fail", "wled", { enable = getWledState() })
+			hu.setWled(on)
 		end
 	end)
 end
@@ -584,14 +616,30 @@ end
 local DL2004_ACTIONS = {
 	reboot = function(_data, reply)
 		reply(0, "ok", "reboot")
-		sys.publish(APP_EVENTS.DEVICE_REBOOT_REQUEST)
+		sys.timerStart(function()
+			sys.publish(APP_EVENTS.DEVICE_REBOOT_REQUEST)
+		end, 800)
 	end,
-	off = function(_data, reply)
+	off = function(data, reply)
+		if usbBlocks4gRest() then
+			reply(-1, "usb_block", "off")
+			return
+		end
 		reply(0, "ok", "off")
-		sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
+		sys.timerStart(function()
+			sys.publish(APP_EVENTS.DEVICE_POWER_OFF_REQUEST)
+		end, 800)
 	end,
 	ota = function(data, reply)
-		mqttInfo("downlink_2004_ota", "action=ota version=" .. tostring(data.version or "") .. " product_key=" .. tostring(data.product_key or "") .. " messageId=" .. tostring(data.messageId or ""))
+		local url = data.url or data.otaUrl or data.firmwareUrl
+		if (not url or url == "") then
+			local cfg = type(_G.FOTA_CFG) == "table" and _G.FOTA_CFG or {}
+			local mode = string.lower(tostring(cfg.server_mode or "self"))
+			if mode == "self" or mode == "custom" then
+				data.url = cfg.self_url or cfg.custom_url or "http://43.136.55.143/api/site/firmware_upgrade?"
+			end
+		end
+		mqttInfo("downlink_2004_ota", "action=ota version=" .. tostring(data.version or "") .. " url=" .. tostring(data.url or "") .. " product_key=" .. tostring(data.product_key or "") .. " messageId=" .. tostring(data.messageId or ""))
 		if _G.validateBuildVersion then
 			local v = data.version
 			if v and v ~= "" then
@@ -667,6 +715,50 @@ local function isT3xHostReady()
 		return st and st.powered_on == true
 	end
 	return false
+end
+local function t3xRecSnapActive(snap)
+	if type(snap) ~= "table" then
+		return false
+	end
+	return (tonumber(snap.running) or 0) == 1
+		or (tonumber(snap.active) or 0) == 1
+		or (tonumber(snap.recording) or 0) == 1
+		or (tonumber(snap.recordingT3x) or 0) == 1
+end
+local function refreshT3xRecordingFlag()
+	local hu = getHostUart()
+	if not hu or not isT3xHostReady() then
+		return false
+	end
+	if ipc_sup.refreshIpcCloudStatBefore1003 then
+		pcall(ipc_sup.refreshIpcCloudStatBefore1003, 2500, true)
+	end
+	if hu.queryHostRecord then
+		local snap = hu.queryHostRecord(3500)
+		if t3xRecSnapActive(snap) then
+			return true
+		end
+	end
+	if hu.getT3xRecActive and hu.getT3xRecActive() == 1 then
+		return true
+	end
+	if hu.getCachedHostIpcCloudStat then
+		return t3xRecSnapActive(hu.getCachedHostIpcCloudStat())
+	end
+	return false
+end
+local function currentRecordingT3x()
+	local hu = getHostUart()
+	if hu and hu.getT3xRecActive and hu.getT3xRecActive() == 1 then
+		return 1
+	end
+	if hu and hu.getCachedHostIpcCloudStat then
+		local st = hu.getCachedHostIpcCloudStat() or {}
+		if tonumber(st.recordingT3x) == 1 then
+			return 1
+		end
+	end
+	return 0
 end
 local function enqueuePendingHostWork(dtype, data)
 	pendingHostQueue[#pendingHostQueue + 1] = {
@@ -759,6 +851,10 @@ local function refreshTfCardStatus(messageId)
 	local snap
 	if hu and hu.queryHostTfCard then
 		snap = hu.queryHostTfCard(tfCardCfg().query_timeout_ms)
+		if snap == nil then
+			sys.wait(400)
+			snap = hu.queryHostTfCard(tfCardCfg().query_timeout_ms)
+		end
 	elseif hu and hu.getCachedHostTfCard then
 		snap = hu.getCachedHostTfCard()
 	end
@@ -871,6 +967,9 @@ local function tfFormatEnabled()
 	return tfFormatCfg().enabled ~= false
 end
 local function stopRecordingBeforeTfFormat()
+	if pir_ctrl.requestStopFromCloud then
+		pcall(pir_ctrl.requestStopFromCloud, { messageId = "tf-fmt" })
+	end
 	if pir_ctrl.suspend then
 		pir_ctrl.suspend()
 	end
@@ -894,6 +993,10 @@ local function runTfCardFormat(messageId, reboot)
 		return
 	end
 	stopRecordingBeforeTfFormat()
+	local huReady = getHostUart()
+	if huReady and huReady.waitHostIpcReady then
+		pcall(huReady.waitHostIpcReady, 20000, 500)
+	end
 	local ok, detail = hu.formatHostTfCard({
 		reboot = reboot,
 		timeout_ms = tfFormatCfg().format_timeout_ms,
@@ -921,13 +1024,11 @@ local function handleDownlink2009(data)
 		reboot = tfFormatCfg().reboot_after == true or tfFormatCfg().reboot_after == 1
 	end
 	reboot = utils.parseBoolLike(reboot) and 1 or 0
-	handleHostDownlink(DT.DL_TF_FORMAT, data, function()
-		sys.taskInit(function()
-			runTfCardFormat(data.messageId, reboot)
-			if pir_ctrl.resume and (reboot or 0) == 0 then
-				pir_ctrl.resume()
-			end
-		end)
+	sys.taskInit(function()
+		runTfCardFormat(data.messageId, reboot)
+		if pir_ctrl.resume and (reboot or 0) == 0 then
+			pir_ctrl.resume()
+		end
 	end)
 end
 local function maybeAutoPublishIdentity()
@@ -979,8 +1080,23 @@ local function is2010Query(data)
 	return act == "query" or act == "status"
 end
 local function handleDownlink2010(data)
+	local messageId = downlinkMessageId(data)
 	if is2010Query(data) then
-		publishPirDetect(buildPirDetectExtra("query", nil, nil, nil, nil))
+		sys.taskInit(function()
+			local extra = buildPirDetectExtra("query", nil, nil, nil, nil)
+			extra.messageId = messageId
+			local t3xRec = 0
+			if refreshT3xRecordingFlag() then
+				t3xRec = 1
+			else
+				t3xRec = currentRecordingT3x()
+			end
+			extra.recordingT3x = t3xRec
+			if t3xRec == 1 and (extra.recording == 0 or extra.recording == false) then
+				extra.recording = 1
+			end
+			publishPirDetect(extra)
+		end)
 		return
 	end
 	local hasCfg = data.action or data.uploadMode or data.quality
@@ -993,42 +1109,102 @@ local function handleDownlink2010(data)
 			uploadMode = data.uploadMode,
 			quality = data.quality,
 		})
-		pir_ctrl.setRecordPolicy({
-			maxDurationSec = data.videoMaxDurationSec,
-			stopOnSecondPir = data.stopOnSecondPir,
-			stopOnCloud = data.stopOnCloud,
-			startOnCloud = data.startOnCloud,
-		})
+		publishControlReply("pir_cfg", 0, "ok", { messageId = messageId })
 		local pirState = pir_ctrl.getState()
 		local media = pirState.mediaConfig or {}
 		publishPirFromState({
 			pirStatus = "config_ok",
 			action = media.action or "video",
+			messageId = messageId,
 		})
+		pcall(function()
+			pir_ctrl.setRecordPolicy({
+				maxDurationSec = data.videoMaxDurationSec,
+				stopOnSecondPir = data.stopOnSecondPir,
+				stopOnCloud = data.stopOnCloud,
+				startOnCloud = data.startOnCloud,
+			})
+		end)
 	else
 		publishPirFromState({
 			pirStatus = "config_rejected",
 			status = "config_rejected",
+			messageId = messageId,
 		})
 	end
 end
+local function recordStopTimeoutMs()
+	local rec = _G.HOST_RECORD_CFG or {}
+	local fmt = _G.HOST_TFCARD_FORMAT_CFG or {}
+	return tonumber(rec.record_stop_timeout_ms)
+		or tonumber(fmt.record_stop_timeout_ms)
+		or 22000
+end
+local function t3xRecordSnapIdle(snap)
+	if type(snap) ~= "table" then
+		return false
+	end
+	local running = tonumber(snap.running) or tonumber(snap.recording) or 0
+	local active = tonumber(snap.active) or 0
+	return running == 0 and active == 0
+end
+-- 停 T31x 写盘：等 RECORDCTRL（泵 join 可达 15s）；超时后再查一次，已空闲也算成功
+local function stopT3xRecordForCloud(hu, messageId)
+	local ok, detail = hu.recordCtrlStop({
+		reason = "cloud",
+		timeout_ms = recordStopTimeoutMs(),
+	})
+	if not ok and hu.queryHostRecord then
+		if t3xRecordSnapIdle(hu.queryHostRecord(3000)) then
+			ok, detail = true, "already_idle"
+		end
+	end
+	if ok then
+		if hu.patchHostIpcCloudStat then
+			hu.patchHostIpcCloudStat({ recordingT3x = 0 })
+		end
+		local st = pir_ctrl.getState and pir_ctrl.getState() or {}
+		publishPirRecordStop(
+			"device",
+			st.uploadMode or "auto",
+			st.quality or "high",
+			{ source = "4g", messageId = messageId, force = true }
+		)
+	end
+	return ok, detail
+end
 local function handleDownlink2011(data)
 	local messageId = data.messageId or ""
-	local ok, err = pir_ctrl.requestStopFromCloud({ messageId = messageId })
-	if ok then
-		publishControlReply("pir_stop", 0, "ok", { messageId = messageId })
-		if isT3xHostReady() then
-			local hu = getHostUart()
-			if hu and hu.recordCtrlStop then
-				sys.taskInit(function()
-					hu.recordCtrlStop({ reason = "cloud", timeout_ms = 8000 })
-				end)
+	sys.taskInit(function()
+		local pirRec = pir_ctrl.isRecording and pir_ctrl.isRecording()
+		if pirRec then
+			local ok, err = pir_ctrl.requestStopFromCloud({ messageId = messageId })
+			if ok then
+				publishControlReply("pir_stop", 0, "ok", { messageId = messageId })
+				local hu = getHostUart()
+				if hu and hu.recordCtrlStop and isT3xHostReady() then
+					hu.recordCtrlStop({
+						reason = "cloud",
+						timeout_ms = recordStopTimeoutMs(),
+					})
+				end
+			else
+				publishControlReply("pir_stop", -1, err or "rejected", { messageId = messageId })
 			end
+			return
 		end
-	else
-		err = err or "rejected"
-		publishControlReply("pir_stop", -1, err, { messageId = messageId })
-	end
+		local hu = getHostUart()
+		if not hu or not hu.recordCtrlStop or not isT3xHostReady() then
+			publishControlReply("pir_stop", -1, "not_recording", { messageId = messageId })
+			return
+		end
+		-- 先回 1004，避免 T31x 封盘/join（可达 15s+）拖死平台等 1004
+		publishControlReply("pir_stop", 0, "t3x_stop", { messageId = messageId })
+		local ok, detail = stopT3xRecordForCloud(hu, messageId)
+		if not ok then
+			publishIpcAlert("recordctrl_fail", tostring(detail or "timeout"))
+		end
+	end)
 end
 local function handleDownlink2012(data)
 	sys.taskInit(function()
@@ -1074,6 +1250,122 @@ local function handleDownlink2012(data)
 		end
 	end)
 end
+local function parseUnixOrDatetime(v)
+	if v == nil or v == "" then
+		return nil
+	end
+	if type(v) == "number" then
+		local n = math.floor(v)
+		if n > 1000000000 then
+			return n
+		end
+		return nil
+	end
+	local s = tostring(v)
+	local n = tonumber(s)
+	if n and n > 1000000000 then
+		return math.floor(n)
+	end
+	local y, m, d, H, M, S = s:match("^(%d+)%-(%d+)%-(%d+)[ T](%d+):(%d+):(%d+)$")
+	if not y then
+		y, m, d, H, M = s:match("^(%d+)%-(%d+)%-(%d+)[ T](%d+):(%d+)$")
+		S = 0
+	end
+	if not y then
+		return nil
+	end
+	return os.time({
+		year = tonumber(y), month = tonumber(m), day = tonumber(d),
+		hour = tonumber(H) or 0, min = tonumber(M) or 0, sec = tonumber(S) or 0,
+	})
+end
+local function resolveUploadWindow(data)
+	local startTs = parseUnixOrDatetime(data.beginTime or data.startTime or data.beginTs or data.startTs)
+	local endTs = parseUnixOrDatetime(data.endTime or data.stopTime or data.endTs or data.stopTs)
+	local maxSec = tonumber(data.videoMaxDurationSec) or 0
+	if maxSec < 0 then
+		maxSec = 0
+	end
+	if maxSec > 600 then
+		maxSec = 600
+	end
+	if startTs and endTs then
+		if endTs <= startTs then
+			endTs = startTs + (maxSec > 0 and maxSec or 60)
+		end
+		if (endTs - startTs) > 600 then
+			endTs = startTs + 600
+		end
+		return startTs, endTs, maxSec
+	end
+	endTs = os.time()
+	startTs = endTs - (maxSec > 0 and maxSec or 60)
+	return startTs, endTs, maxSec
+end
+local function handleDownlink2013(data)
+	sys.taskInit(function()
+		local messageId = downlinkMessageId(data)
+		local action = tostring(data.action or "upload_video")
+		if action ~= "upload_video" and action ~= "notify_upload" then
+			action = "upload_video"
+		end
+		local need = tonumber(data.needUpload)
+		if need == nil then
+			need = 1
+		end
+		need = (need == 0) and 0 or 1
+		local reason = tostring(data.reason or "cloud")
+		local recordPath = tostring(data.recordPath or data.path or "")
+		local vtype = tonumber(data.videoType) or 2
+		if vtype ~= 1 then
+			vtype = 2
+		end
+		local startTs, endTs, maxSec = resolveUploadWindow(data)
+		local extra = {
+			needUpload = need,
+			action = action,
+			reason = reason,
+			recordPath = recordPath,
+			videoType = vtype,
+			beginTs = startTs,
+			endTs = endTs,
+			beginTime = os.date("%Y-%m-%d %H:%M:%S", startTs),
+			endTime = os.date("%Y-%m-%d %H:%M:%S", endTs),
+		}
+		if need == 0 then
+			publishUploadVideoReply(0, "cancelled", messageId, extra)
+			return
+		end
+		local hu = getHostUart()
+		if not hu or not hu.requestUploadVideo then
+			publishUploadVideoReply(-1, "no_host_uart", messageId, extra)
+			return
+		end
+		if not isT3xHostReady() then
+			publishUploadVideoReply(-1, "t3x_not_ready", messageId, extra)
+			return
+		end
+		local ok, msg, rsp = hu.requestUploadVideo({
+			needUpload = need,
+			videoType = vtype,
+			start_ts = startTs,
+			end_ts = endTs,
+			max_sec = maxSec,
+			messageId = messageId,
+			timeout_ms = 12000,
+		})
+		if ok then
+			if type(rsp) == "table" then
+				if rsp.start_ts then extra.beginTs = tonumber(rsp.start_ts) or extra.beginTs end
+				if rsp.end_ts then extra.endTs = tonumber(rsp.end_ts) or extra.endTs end
+				if rsp.videoType then extra.videoType = tonumber(rsp.videoType) or extra.videoType end
+			end
+			publishUploadVideoReply(0, msg or "ok", messageId, extra)
+		else
+			publishUploadVideoReply(-1, msg or "fail", messageId, extra)
+		end
+	end)
+end
 local RECORD_TIME_ALLOWED = "5|10|15|20|30|45|60"
 local RECORD_TIME_ALLOWED_JSON = "[5,10,15,20,30,45,60]"
 local function makeQuerySetReplyPublisher(spec)
@@ -1110,6 +1402,10 @@ local function makeHostQuerySetHandler(spec)
 					return
 				end
 				local body, err, failBody = qfn(hu, data, timeoutMs)
+				if not body and err ~= "timeout" then
+					sys.wait(600)
+					body, err, failBody = qfn(hu, data, timeoutMs)
+				end
 				if body then
 					publishReply(dlType, 0, "ok", body, messageId)
 				else
@@ -1123,6 +1419,10 @@ local function makeHostQuerySetHandler(spec)
 				return
 			end
 			local ok, msg, extra, failBody = sfn(hu, data, timeoutMs)
+			if not ok and msg == "timeout" then
+				sys.wait(1500)
+				ok, msg, extra, failBody = sfn(hu, data, timeoutMs)
+			end
 			if ok then
 				publishReply(dlType, 0, "ok", extra, messageId)
 				if spec.onSetSuccess then
@@ -1177,6 +1477,8 @@ local HOST_UART_QUERY_SET_SPECS = {
 			return nil, err or "query_fail"
 		end,
 		setFn = function(hu, data, timeoutMs)
+			data = data or {}
+			data.timeout_ms = timeoutMs
 			local ok, msg, extra
 			if data.scope == "audio" and hu.setHostAudioEncode then
 				ok, msg, extra = hu.setHostAudioEncode(data)
@@ -1526,6 +1828,9 @@ DOWNLINK_HANDLERS = {
 	[DT.DL_PIR_CFG] = handleDownlink2010,
 	[DT.DL_PIR_STOP] = handleDownlink2011,
 	[DT.DL_PIR_START] = handleDownlink2012,
+	[DT.DL_UPLOAD_VIDEO] = wrapHostDownlink(DT.DL_UPLOAD_VIDEO, function(data)
+		handleDownlink2013(data)
+	end),
 }
 registerRefreshDownlinkHandlers(DOWNLINK_HANDLERS)
 registerHostQuerySetHandlers(DOWNLINK_HANDLERS)
@@ -1649,6 +1954,9 @@ local function mqttTask()
 			end)
 			publishConnectUplink()
 			maybeAutoPublishIdentity()
+			pcall(function()
+				publishVersion({ messageId = "boot" })
+			end)
 		elseif event == "recv" then
 			handleServerMessage(data, payload)
 		elseif event == "disconnect" then
@@ -1760,23 +2068,30 @@ function publishStatus(opts)
 			ipc_sup.mergeHostIpcCloudCache()
 		end
 	end
+	local workMode = "person_detect"
+	local rp = loader.load("runtime_power")
+	if rp and rp.getWorkMode then
+		workMode = rp.getWorkMode() or workMode
+	end
 	publishUplink({
 		suffix = "status",
 		dataType = DT.UL_STATUS,
 		warn = false,
 		fields = string.format(
-			',"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","interval":%d,"usbLogical":%d,"usbNetdev":%d,"usbRecovery":"%s","usbRecoveryCount":%d,"usbRecoveryLastErr":"%s"%s%s',
+			',"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","workMode":"%s","interval":%d,"usbLogical":%d,"usbNetdev":%d,"usbRecovery":"%s","usbRecoveryCount":%d,"usbRecoveryLastErr":"%s"%s%s%s',
 			snap.usb_inserted,
 			snap.charging,
 			escJson(tostring(snap.battery_percent)),
 			escJson(tostring(snap.battery_mv)),
 			escJson(snap.low_power_mode),
+			escJson(workMode),
 			intervalSec,
 			usbLogical,
 			usbNetdev,
 			escJson(usbRecovery),
 			usbRecoveryCount,
 			escJson(usbRecoveryLastErr),
+			radioUplinkFields(),
 			extra,
 			ipc_sup.ipcCloudStatFields()),
 		on_published = function()
@@ -1945,12 +2260,13 @@ function publishOtaStatus(stage, retCode, message, extra)
 		dataType = DT.UL_CONTROL,
 		no_conn = NC,
 		fields = string.format(
-			',"stage":"%s","ret":%s,"message":"%s","currentVersion":"%s","targetVersion":"%s"',
+			',"action":"ota","stage":"%s","ret":%s,"message":"%s","currentVersion":"%s","targetVersion":"%s"%s',
 			escJson(stage),
 			tostring(retCode ~= nil and retCode or -1),
 			escJson(message),
-			escJson(mqttBuildVersion(VERSION or _G.version or "")),
-			escJson(mqttBuildVersion(extra.version or extra.targetVersion or ""))),
+			escJson(mqttBuildVersion(extra.currentVersion or _G.IOT_VERSION or VERSION or _G.version or "")),
+			escJson(mqttBuildVersion(extra.targetVersion or extra.version or "")),
+			msgIdPart(extra.messageId or extra.msgId)),
 		app_event_fn = function()
 			publishAppEvent("MQTT_OTA_STATUS", stage, retCode, message, extra)
 		end
@@ -1973,6 +2289,7 @@ local function publishPirFromState(overrides)
 		quality = overrides.quality or st.quality or media.quality or "high",
 		snapshotPath = overrides.snapshotPath,
 		personCount = overrides.personCount,
+		messageId = overrides.messageId,
 	})
 end
 function publishPirEvent(overrides)
@@ -1994,12 +2311,17 @@ function publishPirDetect(extra)
 	if extra.personCount ~= nil then
 		personJson = string.format(',"personCount":%d', tonumber(extra.personCount) or 0)
 	end
+	local recT3xJson = ""
+	if extra.recordingT3x ~= nil then
+		recT3xJson = string.format(',"recordingT3x":%d',
+			(extra.recordingT3x == 1 or extra.recordingT3x == true) and 1 or 0)
+	end
 	publishUplink({
 		suffix = "pir",
 		dataType = DT.UL_PIR_DETECT,
 		no_conn = NC,
 		fields = string.format(
-			',"status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s%s',
+			',"status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s%s%s%s',
 			escJson(extra.status or "detected"),
 			escJson(extra.pirStatus or extra.status or "detected"),
 			tostring(rec),
@@ -2008,7 +2330,9 @@ function publishPirDetect(extra)
 			escJson(extra.quality),
 			activeJson,
 			pathJson,
-			personJson)
+			personJson,
+			recT3xJson,
+			msgIdPart(extra.messageId))
 	})
 end
 function publishPirSnapshotDone(path)
@@ -2024,6 +2348,80 @@ function publishPirRecordActive()
 		recording = 1,
 		active = 1,
 		action = "video",
+	})
+end
+function publishUploadVideoReply(retCode, message, messageId, extra)
+	extra = type(extra) == "table" and extra or {}
+	local need = tonumber(extra.needUpload)
+	if need == nil then
+		need = 1
+	end
+	need = (need == 0) and 0 or 1
+	local pathField = ""
+	if extra.recordPath and extra.recordPath ~= "" then
+		pathField = string.format(',"recordPath":"%s"', escJson(extra.recordPath))
+	end
+	local reasonField = ""
+	if extra.reason and extra.reason ~= "" then
+		reasonField = string.format(',"reason":"%s"', escJson(extra.reason))
+	end
+	local winField = ""
+	if extra.beginTime and extra.endTime then
+		winField = string.format(
+			',"beginTime":"%s","endTime":"%s","beginTs":%d,"endTs":%d,"videoType":%d',
+			escJson(extra.beginTime), escJson(extra.endTime),
+			tonumber(extra.beginTs) or 0, tonumber(extra.endTs) or 0,
+			tonumber(extra.videoType) or 2)
+	end
+	publishUplink({
+		suffix = "event",
+		dataType = DT.UL_UPLOAD_VIDEO,
+		no_conn = NC,
+		fields = string.format(
+			',"reply":1,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"%s"%s%s%s',
+			escJson(messageId or ""),
+			tostring(retCode ~= nil and retCode or -1),
+			escJson(message or ""),
+			need,
+			escJson(extra.action or "upload_video"),
+			reasonField, pathField, winField)
+	})
+end
+function publishUploadVideoNeed(opts)
+	opts = type(opts) == "table" and opts or {}
+	local need = tonumber(opts.needUpload)
+	if need == nil then
+		need = 1
+	end
+	need = (need == 0) and 0 or 1
+	if need == 1 then
+		local now = os.time()
+		local last = tonumber(_M._lastUploadNeedPub) or 0
+		if last > 0 and (now - last) < 30 then
+			mqttInfo("uploadneed_debounce", tostring(now - last) .. "s")
+			return
+		end
+		_M._lastUploadNeedPub = now
+	end
+	local pathField = ""
+	if opts.recordPath and opts.recordPath ~= "" then
+		pathField = string.format(',"recordPath":"%s"', escJson(opts.recordPath))
+	end
+	local pirField = ""
+	if opts.pirStatus and opts.pirStatus ~= "" then
+		pirField = string.format(',"pirStatus":"%s"', escJson(opts.pirStatus))
+	end
+	publishUplink({
+		suffix = "event",
+		dataType = DT.UL_UPLOAD_VIDEO,
+		no_conn = NC,
+		fields = string.format(
+			',"needUpload":%d,"action":"%s","reason":"%s","source":"%s"%s%s',
+			need,
+			escJson(opts.action or "upload_video"),
+			escJson(opts.reason or "record_done"),
+			escJson(opts.source or "4g"),
+			pirField, pathField)
 	})
 end
 function publishPirRecordStart(action, uploadMode, quality, opts)
@@ -2048,13 +2446,15 @@ function publishPirRecordStop(reason, uploadMode, quality, opts)
 	if not isConnected then
 		return
 	end
-	if pir_ctrl.canPublishStopMqtt and not pir_ctrl.canPublishStopMqtt() then
-		return
+	opts = type(opts) == "table" and opts or {}
+	if not opts.force then
+		if pir_ctrl.canPublishStopMqtt and not pir_ctrl.canPublishStopMqtt() then
+			return
+		end
 	end
 	if pir_ctrl.markStopMqttPublished then
 		pir_ctrl.markStopMqttPublished()
 	end
-	opts = type(opts) == "table" and opts or {}
 	local source = opts.source or "4g"
 	local mid = opts.messageId
 	if not mid and pir_ctrl.getCloudStopMessageId then

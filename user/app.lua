@@ -35,6 +35,7 @@ local state = {
 	t3x_burn_active = false,
 	heartbeat_paused = false,
 	usb_insert_tick = 0,
+	pir_watch_sleep_timer = nil,
 }
 local function usbPwrkeyGraceMs()
 	return tonumber((_G.HOST_USB_CFG or {}).pwrkey_grace_ms) or 5000
@@ -131,11 +132,24 @@ local function onMqttOffline()
 end
 local function doEnterLowPowerBody(reason)
 	reason = reason or "unknown"
-	if not setLowPowerMode(true) then return end
+	local userCut = (reason == "mqtt_2002" or reason == "at")
+	if userCut then
+		local rp = runtimePowerMod()
+		if rp and rp.setWorkMode then
+			rp.setWorkMode("pir_watch")
+		end
+	end
+	local modeChanged = setLowPowerMode(true)
+	if not userCut and not modeChanged then
+		return
+	end
 	appInfo("enter_low_power", reason)
 	_G.APP_RUNTIME.last_rest_reason = reason
 	sys.publish(E.POWER_ENTERED_REST)
-	if t3xModule and t3xModule.enterSleep then
+	local function cutT3x()
+		if not (t3xModule and t3xModule.enterSleep) then
+			return
+		end
 		local modemHibernate
 		local lpw = lowPowerWakeupMod()
 		if lpw and lpw.getModemHibernate then
@@ -144,9 +158,21 @@ local function doEnterLowPowerBody(reason)
 			local lp = _G.LOW_POWER_CFG or {}
 			modemHibernate = lp.modem_hibernate == true
 		end
-		t3xModule.enterSleep({ modemHibernate = modemHibernate })
+		-- 用户 2002/AT 必须断 T31：全天写盘不得否决。4G 保持 MQTT。
+		t3xModule.enterSleep({
+			modemHibernate = modemHibernate,
+			skip_pending_work_check = userCut,
+			reason = reason,
+		})
+		if t3xModule.waitSleepIdle then
+			t3xModule.waitSleepIdle(35000)
+		end
+		if state.mqtt_started and netModule and netModule.publishStatus then
+			netModule.publishStatus()
+		end
 	end
-	if state.mqtt_started and netModule and netModule.publishRest then
+	sys.taskInit(cutT3x)
+	if modeChanged and state.mqtt_started and netModule and netModule.publishRest then
 		netModule.publishRest({ reason = reason, source = "enter" })
 	end
 	local lpw = lowPowerWakeupMod()
@@ -165,8 +191,11 @@ local function onEnterLowPower(reason)
 	if not isLowPowerFeatureEnabled() then
 		return
 	end
-	if type(usbCharge) == "table" and usbCharge.blocks4gRest and usbCharge.blocks4gRest() then
-		return
+	-- 平台 2002 / AT 明确要进 PIR 值守：不断因 USB 拒绝（USB 仍拦 2004 关机）。
+	if reason ~= "mqtt_2002" and reason ~= "at" then
+		if type(usbCharge) == "table" and usbCharge.blocks4gRest and usbCharge.blocks4gRest() then
+			return
+		end
 	end
 	if type(sound_prompt) == "table" and sound_prompt.shouldPlay
 		and sound_prompt.shouldPlay("shutdown_low_power") then
@@ -182,6 +211,10 @@ local function onEnterLowPower(reason)
 end
 local function onExitLowPower(reason)
 	reason = reason or "unknown"
+	local rp = runtimePowerMod()
+	if rp and rp.setWorkMode then
+		rp.setWorkMode("person_detect")
+	end
 	if not setLowPowerMode(false) then return end
 	appInfo("exit_low_power", reason)
 	_G.APP_RUNTIME.last_rest_reason = nil
@@ -618,6 +651,30 @@ local function t3xRecActive()
 	end
 	return false
 end
+local function schedulePirWatchT3xSleep(delayMs)
+	local rp = runtimePowerMod()
+	if not rp or not rp.isPirWatch or not rp.isPirWatch() then
+		return
+	end
+	if state.pir_watch_sleep_timer and sys.timerStop then
+		sys.timerStop(state.pir_watch_sleep_timer)
+		state.pir_watch_sleep_timer = nil
+	end
+	state.pir_watch_sleep_timer = sys.timerStart(function()
+		state.pir_watch_sleep_timer = nil
+		local rp2 = runtimePowerMod()
+		if not rp2 or not rp2.isPirWatch or not rp2.isPirWatch() then
+			return
+		end
+		if t3xRecActive() then
+			return
+		end
+		if t3xModule and t3xModule.enterSleep then
+			appInfo("pir_watch_idle_sleep")
+			t3xModule.enterSleep({ skip_pending_work_check = true, reason = "pir_watch_idle" })
+		end
+	end, tonumber(delayMs) or 5000)
+end
 local function stopMqttFallbackMs()
 	local cfg = _G.PIR_RECORD_CFG or {}
 	return tonumber(cfg.stop_mqtt_fallback_ms) or 15000
@@ -647,6 +704,7 @@ local function onPirStopRecording(reason, uploadMode, quality)
 		scheduleStopMqttFallback(reason, uploadMode, quality)
 	end
 	wakeT3xForPir("pir_stop")
+	schedulePirWatchT3xSleep(5000)
 end
 local function buildPirMqttHandlers()
 	local stopTimer = (_G.APP_PIR_CONFIG and _G.APP_PIR_CONFIG.STOP_REASON
@@ -674,13 +732,15 @@ local function buildPirMqttHandlers()
 				netModule.publishPirRecordActive()
 			end
 		end },
-		{ E.T3X_PERSON_CNT, function(count)
-			publishPirToMqtt({ pirStatus = "person_update", personCount = tonumber(count) or 0 })
+		{ E.T3X_PERSON_CNT, function(_)
+			-- 有人才走 AT+PERSONCNT；IVS 抖动由 T31 30s 限流。
+			-- 人数不上 MQTT 1010，避免后台刷屏。抽片在 T31 本地完成。
 		end },
 		{ E.T3X_RECORD_STOP, function(reason, uploadMode, quality)
 			if netModule and netModule.publishT3xRecordStop then
 				netModule.publishT3xRecordStop(reason, uploadMode, quality)
 			end
+			schedulePirWatchT3xSleep(3000)
 		end },
 		{ E.T3X_IPC_ALERT, function(alertCode, alertDetail)
 			ipc_supervision.onAlert(alertCode, alertDetail)
@@ -702,9 +762,6 @@ local function buildSystemEventHandlers()
 	return {
 		{ E.POWER_ENTER_REST, function()
 			if not isLowPowerFeatureEnabled() then
-				return
-			end
-			if type(usbCharge) == "table" and usbCharge.blocks4gRest and usbCharge.blocks4gRest() then
 				return
 			end
 			onEnterLowPower("mqtt_2002")

@@ -1,0 +1,11 @@
+{
+  "port": "COM7",
+  "baud": 115200,
+  "ssh_host": "192.168.1.8",
+  "ssh_user": "powersys",
+  "remote_bin": "/home/powersys/work/T31/hu_du/hu_ipcapp/server_src/ipc_device_ini/bin/t31x_ipc",
+  "remote_src": "/home/powersys/work/T31/hu_du/hu_ipcapp/server_src/ipc_device_ini",
+  "device_dir": "/system/nfs",
+  "device_name": "ipc",
+  "lrz_cmd": "/system/bin/lrz -y"
+}

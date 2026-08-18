@@ -52,7 +52,7 @@
 | `T3X_SNAPSHOT_DONE` | `host_uart` | `publishPirSnapshotDone` |
 | `T3X_RECORD_ACTIVE` | `host_uart` | `publishPirRecordActive` |
 | `T3X_RECORD_STOP` | `host_uart` | `publishT3xRecordStop` |
-| `T3X_PERSON_CNT` | `host_uart` | `publishPirToMqtt`（person_update） |
+| `T3X_PERSON_CNT` | `host_uart` | **不**转 MQTT（人数不上 1010） |
 | `T3X_IPC_ALERT` | `host_uart` | `ipc_supervision.onAlert` |
 
 ---

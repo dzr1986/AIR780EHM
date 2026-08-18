@@ -1,8 +1,9 @@
 # MQTT 远程控制：帧率 / 录像 / 人形检测（Cat.1 → UART → T3x）
 
 > **工程**：780EHM_PJ（Air780EHM + T3x）  
+> **现网对本机 IMEI**：**`862323084068124`**（另一台样机 `…8314` 见 [MQTT_862323084068314.md](MQTT_862323084068314.md)，勿混用主题）  
 > **代码真源**：`user/net_mqtt.lua` · `user/host_uart.lua` · T3x `uart_host_cmd.c` / `cloud_remote_ctrl.c`  
-> **关联**：[MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) · [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) · [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md) · [REMOTE_ENCODE_CONFIG.md](REMOTE_ENCODE_CONFIG.md)
+> **关联**：[MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) · [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) · [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md) · [MQTT_2011_T31X_STOP_EXPLAINED.md](MQTT_2011_T31X_STOP_EXPLAINED.md) · [REMOTE_ENCODE_CONFIG.md](REMOTE_ENCODE_CONFIG.md) · **全指令实机**：[MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md)
 
 ---
 
@@ -137,6 +138,8 @@ T3x **不直连 MQTT**；平台只与 Cat.1 通信。
 
 ### 4.2 停录 2011
 
+白话逐步说明（两层录像、复位掉电、1004 vs 1011）：[MQTT_2011_T31X_STOP_EXPLAINED.md](MQTT_2011_T31X_STOP_EXPLAINED.md)
+
 **下行**：
 
 ```json
@@ -166,6 +169,45 @@ T3x **不直连 MQTT**；平台只与 Cat.1 通信。
 OK
 
 +RECORDCTRL:OK,0,reason=cloud
+OK
+```
+
+### 4.4 请求上传 2013
+
+专题：[MQTT_2013_1013_UPLOAD_VIDEO.md](MQTT_2013_1013_UPLOAD_VIDEO.md)
+
+**下行**：
+
+```json
+{
+  "dataType": "2013",
+  "messageId": "up-req-001",
+  "action": "upload_video",
+  "needUpload": 1,
+  "reason": "cloud",
+  "videoType": 2,
+  "beginTime": "2026-08-17 19:00:00",
+  "endTime": "2026-08-17 19:05:00"
+}
+```
+
+```text
+1. 平台用 GB28181 RecordInfo 列出时段（不是 MQTT，也不是 7003）
+2. 把选中段 StartTime/EndTime 填进 2013 beginTime/endTime（最长 600s）
+3. Cat.1 解析 2013；T3x 在线: AT+UPLOADVIDEO=1,2,<start>,<end>,<max_sec>,<messageId>
+4. T3x clip_upload_request → HTTP type=2 回放（或 type=1 侦测）
+5. MQTT 1013 reply=1（不发 1004）；文件随后出现在 7003 playback/
+```
+
+| 命令 | 方向 | 说明 |
+|------|------|------|
+| `AT+UPLOADVIDEO=<need>,<type>,<start>,<end>[,<max_sec>][,<msgid>]` | 4G→T3x | 按时间窗排队抽片上传 |
+| `AT+UPLOADNEED=1,reason=…` | T3x→4G | 本端认为需要上传；4G 转 1013（无 reply） |
+
+**成功应答**：
+
+```text
++UPLOADVIDEO:OK,need=1,type=2,start=1755432000,end=1755432300,queued=1
 OK
 ```
 
@@ -256,14 +298,14 @@ sequenceDiagram
 
 **net_mqtt 处理器**：`handleDownlink2024/2025/2026/2027`；2011/2012 内嵌 `recordCtrlStop/Start`。
 
-**host_uart API**：`queryHostFramerate` · `setHostFramerate` · `recordCtrlStart` · `recordCtrlStop` · `queryHostPersonDetect` · `setHostPersonDetect`。
+**host_uart API**：`queryHostFramerate` · `setHostFramerate` · `recordCtrlStart` · `recordCtrlStop` · `requestUploadVideo` · `queryHostPersonDetect` · `setHostPersonDetect`。
 
 ---
 
 ## 8. 联调（mosquitto）
 
 ```bash
-IMEI=862323084068314
+IMEI=862323084068124
 B=/panshi/device/${IMEI}/
 SUB=/panshi/app/${IMEI}/#
 

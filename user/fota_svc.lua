@@ -57,35 +57,62 @@ local function localIotVersion()
 	end
 	return nil
 end
-local function buildIotOpts(data)
+local DEFAULT_SELF_URL = "http://43.136.55.143/api/site/firmware_upgrade?"
+local function fotaCfg()
+	return type(_G.FOTA_CFG) == "table" and _G.FOTA_CFG or {}
+end
+local function selfUrl()
+	local u = fotaCfg().self_url or fotaCfg().custom_url
+	if u and u ~= "" then return u end
+	return DEFAULT_SELF_URL
+end
+local function useSelfServer(data)
 	data = type(data) == "table" and data or {}
 	local url = data.url or data.otaUrl or data.firmwareUrl
 	if url and url ~= "" then
-		if data.url_no_query or data.full_url == true or data.full_url == 1 then
-			url = "###" .. url
-		end
+		return true
+	end
+	local mode = string.lower(tostring(fotaCfg().server_mode or "self"))
+	return mode == "self" or mode == "custom"
+end
+local function buildRequestOpts(data)
+	data = type(data) == "table" and data or {}
+	local timeout = tonumber(data.timeout) or config.timeout_ms
+	local currentVer = localIotVersion()
+	local targetVer = data.version or data.targetVersion or data.firmwareVersion
+	if targetVer and targetVer ~= "" and _G.resolveIotOtaVersion then
+		targetVer = _G.resolveIotOtaVersion(targetVer) or targetVer
+	end
+	data.currentVersion = currentVer
+	data.targetVersion = targetVer
+	local fw = data.firmware_name or data.firmwareName
+	local imei = data.imei or data.deviceId or data.device_id
+	local projectKey = data.product_key or data.project_key or data.projectKey or _G.PRODUCT_KEY
+	if useSelfServer(data) then
+		local url = data.url or data.otaUrl or data.firmwareUrl or selfUrl()
+		local full = data.url_no_query or data.full_url == true or data.full_url == 1
 		return {
 			url = url,
-			timeout = config.timeout_ms,
-			custom = true,
+			full_url = full and true or nil,
+			timeout = timeout,
+			project_key = projectKey,
+			version = currentVer,
+			firmware_name = (fw and fw ~= "") and fw or nil,
+			imei = (imei and imei ~= "") and imei or nil,
 		}
 	end
-	local opts = {
-		project_key = (data.product_key or data.project_key or data.projectKey) or _G.PRODUCT_KEY,
-		version = data.version or data.targetVersion or data.firmwareVersion
-			or _G.IOT_VERSION or _G.VERSION,
-		timeout = config.timeout_ms,
+	return {
+		timeout = timeout,
+		project_key = projectKey,
+		version = currentVer,
+		firmware_name = (fw and fw ~= "") and fw or nil,
+		imei = (imei and imei ~= "") and imei or nil,
 	}
-	opts.requested_version = opts.version
-	local fw = data.firmware_name or data.firmwareName
-	if fw and fw ~= "" then opts.firmware_name = fw end
-	local imei = data.imei or data.deviceId or data.device_id
-	if imei and imei ~= "" then opts.imei = imei end
-	opts.fota = true
-	return opts
 end
 local function validateIotConfig(opts)
-	if opts.url then return true end
+	if opts.url and opts.url ~= "" then
+		return true
+	end
 	if not opts.project_key or opts.project_key == "" then return false, "missing_product_key" end
 	if not opts.version or opts.version == "" then return false, "missing_version" end
 	if not _G.PROJECT or _G.PROJECT == "" then return false, "missing_project" end
@@ -105,16 +132,20 @@ local function fota_cb(ret)
 	local row = FOTA_RET[ret] or { "failed", "unknown_ret_" .. tostring(ret) }
 	reportStatus(row[1], ret, row[2], lastPayload)
 	if ret == 0 and row[3] and config.auto_reboot_on_success ~= false then
-		rtos.reboot()
+		if log and log.info then log.info(L, "ota_reboot_scheduled", "delay_ms=2000") end
+		sys.taskInit(function()
+			sys.wait(2000)
+			rtos.reboot()
+		end)
 	end
 end
 local function requestLibFota(opts, cbFnc)
 	opts = opts or {}
 	cbFnc = cbFnc or function() end
-	if opts.custom then
-		local url = opts.url
-		if url:sub(1, 3) == "###" then
-			url = url:sub(4)
+	if opts.full_url then
+		local url = opts.url or ""
+		if url:sub(1, 3) ~= "###" then
+			url = "###" .. url
 		end
 		libfota2.request(cbFnc, {
 			url = url,
@@ -122,12 +153,14 @@ local function requestLibFota(opts, cbFnc)
 		})
 		return
 	end
-	-- 对齐 fota_test.lua：IOT 场景优先使用轻参数，让 libfota2 使用默认 imei/firmware_name 规则
 	local req = {
 		project_key = opts.project_key,
 		version = opts.version,
 		timeout = opts.timeout,
 	}
+	if opts.url and opts.url ~= "" then
+		req.url = opts.url
+	end
 	if opts.imei and opts.imei ~= "" then req.imei = opts.imei end
 	if opts.firmware_name and opts.firmware_name ~= "" then req.firmware_name = opts.firmware_name end
 	libfota2.request(cbFnc, req)
@@ -141,10 +174,14 @@ local function autoOta(data)
 		data = type(data) == "table" and data or {}
 		lastPayload = data
 		requestCount = requestCount + 1
-	local logMsg = string.format("ota_start request_count=%d version=%s product_key=%s mqtt_pk=%s", requestCount, 
-		tostring(data.version or ""), 
-		tostring(data.product_key or _G.PRODUCT_KEY or ""),
-		tostring(data.product_key or ""))
+	local opts = buildRequestOpts(data)
+	local logMsg = string.format(
+		"ota_start request_count=%d current=%s target=%s url=%s product_key=%s",
+		requestCount,
+		tostring(opts.version or ""),
+		tostring(data.targetVersion or data.version or ""),
+		tostring(opts.url or ""),
+		tostring(opts.project_key or ""))
 	if log and log.info then log.info(L, logMsg) end
 		local netOk, ip = waitNetworkReady(config.network_wait_ms)
 		if not netOk then
@@ -153,7 +190,6 @@ local function autoOta(data)
 			return
 		end
 		if log and log.info then log.info(L, "ota_network_ok", "ip=" .. tostring(ip or "")) end
-		local opts = buildIotOpts(data)
 		local valid, err = validateIotConfig(opts)
 		if not valid then
 			if log and log.warn then log.warn(L, "ota_config_invalid", tostring(err or "")) end
@@ -161,20 +197,24 @@ local function autoOta(data)
 			return
 		end
 		busy = true
-		if log and log.info then log.info(L, "ota_checking", "url=" .. tostring(opts.url or "") .. " custom=" .. tostring(opts.custom == true)) end
+		if log and log.info then
+			log.info(L, "ota_checking",
+				"url=" .. tostring(opts.url or "") ..
+				" full_url=" .. tostring(opts.full_url == true))
+		end
 		reportStatus("starting", 0, "check_upgrade", data)
 		sys.wait(config.request_delay_ms or 500)
 		local done = false
 		local fallbackTried = false
 		local function wrapped_cb(ret)
 			if done then return end
-			if ret ~= 0 and not opts.custom and not fallbackTried then
+			if ret ~= 0 and not opts.url and not fallbackTried then
 				local fallbackVer = localIotVersion()
 				if fallbackVer and fallbackVer ~= "" and tostring(fallbackVer) ~= tostring(opts.version or "") then
 					fallbackTried = true
 					if log and log.warn then
 						log.warn(L, "ota_retry_with_local_version",
-							"requested=" .. tostring(opts.requested_version or "") ..
+							"requested=" .. tostring(opts.version or "") ..
 							" current=" .. tostring(fallbackVer))
 					end
 					opts.version = fallbackVer
@@ -225,6 +265,8 @@ function getState()
 		last_result = lastResult,
 		product_key = _G.PRODUCT_KEY,
 		iot_version = _G.IOT_VERSION,
+		server_mode = fotaCfg().server_mode or "self",
+		self_url = selfUrl(),
 	}
 end
 return _M

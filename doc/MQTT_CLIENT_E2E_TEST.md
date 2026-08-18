@@ -1,10 +1,14 @@
 # MQTT 客户端端到端联调指南
 
 > **用途**：用 MQTTX / MQTT.fx / `mosquitto_pub` 从**平台侧**向 Broker 下发 JSON，验证 **Broker → Cat.1 →（可选 T3x）→ 上行应答** 全链路。  
+> **图形客户端（推荐）**：双击 [`../tools/gui/03_MQTT测试.bat`](../tools/gui/03_MQTT测试.bat) 或 `python tools/gui/mqtt/mqtt_tools_gui.py`。  
+> **工具链总报告**：[CAT1_TOOLCHAIN_TEST_REPORT.md](CAT1_TOOLCHAIN_TEST_REPORT.md)（烧 Lua → 客户端收发 → 自动测试）  
+> **全指令流程与实机结果**：[MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md)（`--run-all`、Cat.1 / T31x 对照）  
+> **命令行**：`python tools/gui/mqtt/mqtt_tools_client.py`  
 > **下行字段全集**：[MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) · **抄录单行 JSON**：[MQTT_DOWNLINK_862323084068124.txt](MQTT_DOWNLINK_862323084068124.txt)  
 > **代码分发**：[modules/NET_MQTT_DOWNLINK_DISPATCH.md](modules/NET_MQTT_DOWNLINK_DISPATCH.md) · **实机勾选表**：[modules/PR_MERGE_REGRESSION.md](modules/PR_MERGE_REGRESSION.md) §4.3
 
-将下文 `{IMEI}` 替换为设备 IMEI（`mobile.imei()` / 1003 `deviceNo`），示例：`862323084068124`。
+将下文 `{IMEI}` 替换为设备 IMEI（`mobile.imei()` / 1003 `deviceNo`）。**现网对本机**：**`862323084068124`**（2026-08-17 实机 2008；勿与样机 `862323084068314` 混用主题）。
 
 ---
 
@@ -40,6 +44,40 @@ sequenceDiagram
 | **平台测试客户端** | `platform-test-001` 等（**勿与 IMEI 相同**） | `/panshi/device/{IMEI}/` | `/panshi/app/{IMEI}/#` |
 
 > 两个连接使用**相同 ClientId** 会互踢；测试端必须用不同 ClientId。
+
+---
+
+## 1.1 图形协议客户端
+
+```bat
+pip install -r tools/requirements-mqtt.txt
+python tools/gui/mqtt/mqtt_tools_gui.py
+```
+
+或双击 `tools/mqtt_tools_gui.bat`。  
+**独立 exe**：`tools/build_mqtt_gui_exe.bat` 生成 `dist/PanshiMqttClient.exe`（无 Python 环境也可双击）。首次运行会在 exe 旁写出 `config.json` 和 `doc/MQTT_PROTOCOL.md`。
+
+| 页签 | 作用 |
+|------|------|
+| **订阅** | 连接后自动订 `/panshi/app/{IMEI}/#`；选中消息按协议识别 `dataType` / 主题后缀 / 字段 |
+| **发布** | 手工 JSON 发到 `/panshi/device/{IMEI}/` |
+| **协议文档** | 打开其它 `.md` 重新解析 200x↔100x 对照与 JSON 示例 |
+| **手动测试** | 从协议+`commands.json` 选命令，改字段后发送；危险命令需确认 |
+| **OTA闭环** | 与管理台相同的 `2004 action=ota`（带 `url`）；查 `2008/1008` → 下发 → 等 `1004 ota_accepted/stage` → 重启后再核 `firmwareVersion` |
+| **自动测试** | 默认跑安全查询集（2001/2003/2005–2008 等）；超时不一定是失败（T3x 未上电）。**不会**自动发 OTA |
+
+平台 **Client ID 不要填设备 IMEI**。
+
+### 1.2 OTA 闭环（上位机下发，与网页同协议）
+
+双击 `tools/mqtt_tools_gui.bat`，或 `mqtt_tools_gui.bat --tab ota`。
+
+1. 连接现网 Broker，IMEI 填设备 15 位，点「套用主题」（订阅 `/panshi/app/{IMEI}/#`）
+2. 管理台先上传差分包，**sourceVersion = 设备当前 `firmwareVersion`**（用本页「查询当前版本 2008」看）
+3. 填目标版本（如 `2044.001.025`），拉包 URL 保持 `http://43.136.55.143/api/site/firmware_upgrade?`
+4. 点「开始闭环」：上位机发与管理台相同的 2004 → 设备 `1004 ota_accepted` → 从 ota_server 拉包 → 重启后 `1008.firmwareVersion` 等于目标即通过
+
+不要把平台 ClientId 设成 IMEI。自动测试默认**不会**发 OTA。
 
 ---
 
@@ -118,13 +156,13 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 |------|--------------|----------|------|
 | **S0** | （仅上电） | conack 后 `1001` 或 rest 下 `1002`+`1003` | 无需下发 |
 | **S1** | `{"dataType":"2003"}` | `1003` @ `.../status` | 确认在线、`remainPower`、`lowPowerMode` |
-| **S2** | `{"dataType":"2001"}` | `1001` @ `.../wakeup` | rest 下也会答 1001，**不代表已出 rest** |
+| **S2** | `{"dataType":"2001"}` | `1001` @ `.../wakeup` | **探活，不上电。** rest 下也会答 1001，**不代表已出 rest** |
 | **S3** | `{"dataType":"2005"}` | `1005` @ `.../sim` | IMEI/ICCID/CSQ |
 | **S3a** | `{"dataType":"2008"}` | `1008` @ `.../version` | 固件版本，秒回 |
 | **S4** | `{"dataType":"2004","action":"wled_query"}` | `1004` @ `.../event`，`reply:1` | 需 T3x 或缓存 |
 | **S5** | `{"dataType":"2010","action":"query"}` | `1010` @ `.../pir` | 4G 侧 PIR 状态 |
 | **S6** | `{"dataType":"2020"}` | `1020` @ `.../encode` | **需 T3x 在线** |
-| **S7** | `{"dataType":"2002","lowPowerMode":"exit"}` | 随后 `1003` 中 `lowPowerMode`→常电；或 `1002` exit | USB 插入时 enter 无效 |
+| **S7** | `{"dataType":"2002","lowPowerMode":"exit"}` | 1004 `rest_exit` + 1002 exit；`1003.lowPowerMode`→常电 | **真正给 T31 上电。** 不要用 2001 |
 
 ### 4.1 读 `1003` 关键字段
 
@@ -149,7 +187,9 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | `remainPower` / `batteryMv` | ADC 滤波后电量 |
 | `usbInserted` / `charging` | GPIO27 / 充电态 |
 | `interval` | 周期上报间隔（秒），2003 可改 |
+| `csq` / `rssi` / `rsrp` / `rsrq` / `snr` | 射频信号（与 1005 同源） |
 | `ipcReady` / `recordingT3x` 等 | IPC 扩展（见 IPC 专题） |
+| `wledEnable` | 白光灯 0/1（与录像无关；亦可 2004 `wled_query`） |
 
 设备还会按 `interval`（默认 30s）**主动** Publish `1003`，不必每次手动 2003。
 
@@ -182,7 +222,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 ```
 
 ```json
-{"dataType":"2004","action":"ota","version":"001.000.004","messageId":"ctl-006"}
+{"dataType":"2004","action":"ota","url":"http://43.136.55.143/api/site/firmware_upgrade?","version":"2044.001.025","timeout":300000,"full_url":0,"messageId":"ctl-006"}
 ```
 
 | action | 上行 | 副作用 |
@@ -190,11 +230,13 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | `reboot` | `1004` `reply:1` `ret:0` | 设备重启 |
 | `off` | `1004` ok | 关机 |
 | `wled_query` / `wled_on` / `wled_off` | `1004` 含 `wled` 字段 | 可能唤醒 T3x |
-| `ota` | `1004` `ota_accepted`；后续 `stage` | FOTA 下载，成功重启 |
+| `ota` | `1004` `ota_accepted`；后续 `stage` | FOTA 下载，成功重启。闭环请用 GUI「OTA闭环」，成功以重启后 `1008.firmwareVersion` 为准 |
 
 `version` 须 `xxx.yyy.zzz` 格式（见 `main.lua` `validateBuildVersion`）。
 
-### 5.2 低功耗 rest（2002）
+### 5.2 断 T31 / 上电 T31（2002）
+
+> **2001 不是这条。** 2001 只探活 MQTT。上电用 `exit`，断 T31 用 `enter`。
 
 ```json
 {"dataType":"2002","lowPowerMode":"enter","messageId":"lp-001"}
@@ -204,12 +246,13 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 {"dataType":"2002","lowPowerMode":"exit","messageId":"lp-002"}
 ```
 
-| 条件 | enter 行为 |
-|------|------------|
-| **USB 已插入** | **静默忽略**（无 1002），见 `usb_policy.blocks4gRest` |
-| 常电 + 允许低功耗 | `POWER_ENTER_REST` → T3x sleep → 上行 `1002` + `1003` |
+| 条件 | 行为 | 上行 |
+|------|------|------|
+| enter | 先停 IPC 再断 T31，进 PIR 值守 | 1004 `rest_enter` + 1002 + 1003 |
+| enter + **USB 已插入** | **仍断 T31**（USB 只拦 2004 关机） | 同上 |
+| exit | **给 T31 上电**、退出值守 | 1004 `rest_exit` + 1002 |
 
-退出 rest 后看 `1003.lowPowerMode` 是否回到 `normal`；T3x 应被唤醒一次（USB 场景有去重逻辑，见电量专题）。
+退出 rest 后看 `1003.lowPowerMode` 是否回到 `normal`。
 
 ### 5.3 状态与周期（2003）
 
@@ -324,7 +367,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 
 | dataType | 主题 suffix | 典型触发 |
 |----------|-------------|----------|
-| 1001 | `wakeup` | 2001、conack 常电 |
+| 1001 | `wakeup` | 2001 探活、conack 常电（rest 下 2001 仍答，不上电） |
 | 1002 | `rest` | 2002 enter/exit 成功后 |
 | 1003 | `status` | 2003、周期、插 USB |
 | 1004 | `event` | 2004 应答、OTA stage、ipc_alert |
@@ -362,10 +405,10 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | 设备频繁掉线 | 测试 ClientId = IMEI | 改掉测试端 ClientId |
 | JSON 无响应 | 缺 `dataType` 或非法 JSON | 查设备日志 `json_decode_error` / `no_data_type` |
 | `unknown_data_type` | 未实现的 200x | 查 [NET_MQTT_DOWNLINK_DISPATCH](modules/NET_MQTT_DOWNLINK_DISPATCH.md) 表 |
-| 2002 enter 无反应 | USB 插入 | 看 `1003.usbInserted` |
-| 202x 很久才回 | T3x 休眠 | 等唤醒 drain；或先 `2002 exit` / PIR 唤醒 |
+| 2002 enter 无 1004 | UART/IPC 停机超时 | 看 Cat.1 日志 `IPCPOWEROFF`；USB **不拦** 2002 |
+| 202x 很久才回 | T3x 休眠 | 等唤醒 drain；或先 `2002 exit` 上电（不要用 2001） |
 | 202x 无响应 | T3x 未上电 / UART 忙 | 查 T3x 供电、host_uart 日志 |
-| 有 1001 但仍 rest | 2001 仅查询唤醒应答 | 以 `1003.lowPowerMode` 为准 |
+| 有 1001 但仍 rest | 2001 只是探活，不上电 | 以 `1003.lowPowerMode` 为准；上电发 **2002 exit** |
 | 收不到周期 1003 | 未 conack / interval 过大 | 等 30s 或改 `2003 interval` |
 
 设备侧日志 TAG：`net_mqtt`（`mqtt_rx`、`downlink_200x`、`publish_1003_status`）。
@@ -381,7 +424,7 @@ IMEI：{IMEI}
 Broker：112.86.146.218:2123
 
 [ ] S1 2003 → 1003
-[ ] S2 2001 → 1001
+[ ] S2 2001 探活 → 1001（不上电）
 [ ] S4 2004 wled_query → 1004
 [ ] S6 2020 → 1020（T3x 在线）
 [ ] 2002 enter/exit + 1003.lowPowerMode
@@ -401,6 +444,7 @@ Broker：112.86.146.218:2123
 |------|------|
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 每条 200x 字段说明与示例 |
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | 协议总规范 |
+| [MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md) | 全指令流程、AT、实机结果、`--run-all` |
 | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) | 远程控制时序 |
 | [modules/NET_MQTT_DOWNLINK_DISPATCH.md](modules/NET_MQTT_DOWNLINK_DISPATCH.md) | 代码分发表 |
 | [modules/APP_EVENT_BUS.md](modules/APP_EVENT_BUS.md) | 2002 触发的 app 事件 |

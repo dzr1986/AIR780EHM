@@ -86,7 +86,7 @@ function ipcCloudStatFields()
 	end
 	local s = hu.getCachedHostIpcCloudStat() or {}
 	return string.format(
-		',"ipcReady":%d,"gb28181Online":%d,"tfPresent":%d,"personDetectEnabled":%d,"personDetectAvailable":%d,"timeSynced":%d,"recordingT3x":%d,"cat1Link":%d',
+		',"ipcReady":%d,"gb28181Online":%d,"tfPresent":%d,"personDetectEnabled":%d,"personDetectAvailable":%d,"timeSynced":%d,"recordingT3x":%d,"wledEnable":%d,"cat1Link":%d',
 		tonumber(s.ipcReady) or 0,
 		tonumber(s.gb28181Online) or 0,
 		tonumber(s.tfPresent) or 0,
@@ -94,6 +94,7 @@ function ipcCloudStatFields()
 		tonumber(s.personDetectAvailable) or 0,
 		tonumber(s.timeSynced) or 0,
 		tonumber(s.recordingT3x) or 0,
+		tonumber(s.wledEnable) or 0,
 		tonumber(s.cat1Link) or 0)
 end
 function mergeHostIpcCloudCache()
@@ -141,6 +142,10 @@ local function scheduleIpcCloudStatRefresh(force)
 		local doForce = ipc_stat_refresh_force
 		ipc_stat_refresh_force = false
 		if not doForce and isT3xIdleForIpcRefresh() then
+			return
+		end
+		local hu = hostUartMod()
+		if hu and hu.isHostUartQueryBusy and hu.isHostUartQueryBusy() then
 			return
 		end
 		refreshIpcCloudStatBefore1003(2500, doForce)
