@@ -15,12 +15,10 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
 import tkinter as tk
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 TOOLS = Path(__file__).resolve().parent
 GUI = TOOLS.parent
@@ -58,13 +56,7 @@ T31_APP_GREP = (
     "Failed to connect|Connection refused|upload ok|skip PIR"
 )
 UART_TS_RE = re.compile(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]")
-CLOUD_VIDEO_BASE = "http://43.136.55.143:7003"
-CLOUD_VIDEO_ALT = "http://43.136.55.143"
-PLAYBACK_DIR = TOOLS / "_logs" / "playback"
-GB28181_DEV_ID = "34020000001310989442"
-TF_MEDIA_ROOT = "/mnt/sdcard/media/vi0"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-TF_SEG_RE = re.compile(r"(ch0_(\d{14})_(\d{14})\.(ts|mp4))$", re.I)
 
 # 3GPP 风格：命令名 → (类别, 中文, 规范说明)
 AT_DICT = {
@@ -126,7 +118,7 @@ CHECKS = [
     ("mqtt_ok", "g_link", "MQTT 在线", "本机订到设备上行，或 heartbeat mqtt=1"),
     ("t31_shell", "g_link", "T31 COM7", "要有 # 提示符；卡住 lrz 时自动 Ctrl+C/D 恢复"),
     ("t31_ipc", "g_link", "ipc 进程", "pidof ipc 有值"),
-    ("sig_1003", "g_link", "★ 信号强度 ← 看顶栏黄条", "1003 的 csq/rsrp；黄条同步显示"),
+    ("sig_1003", "g_link", "★ 1003 状态 ← 看顶栏黄条", "完整 1003：射频 / 电源 / IPC"),
     ("g_boot", None, "二、开机 UART 握手（Host AT = UART1，不是 COM7）", ""),
     ("uart_imei", "g_boot", "AT+IMEI", "回当前模组 IMEI"),
     ("uart_ipc", "g_boot", "IPCSTATUS ready", "Cat.1 查到 ready，或 T31 报 ipcReady=1"),
@@ -156,6 +148,38 @@ def _now() -> str:
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 
+def _pretty_json(obj) -> str:
+    """界面 / mqtt.log 用：UTF-8、2 空格缩进，不改线上紧凑载荷。"""
+    if isinstance(obj, str):
+        text = obj.strip()
+        if not text:
+            return obj
+        try:
+            obj = json.loads(text)
+        except json.JSONDecodeError:
+            return obj
+    if isinstance(obj, (dict, list)):
+        return json.dumps(obj, ensure_ascii=False, indent=2)
+    return str(obj)
+
+
+def _mqtt_pretty_block(direction: str, topic: str, data, raw: str = "") -> str:
+    """一条 MQTT 记录：报文头 + 缩进 JSON，字段顺序与设备上报一致。"""
+    if isinstance(data, dict) and list(data.keys()) == ["_raw"]:
+        body = _pretty_json(data.get("_raw") or raw)
+        dt = "?"
+    elif isinstance(data, dict):
+        body = _pretty_json(data)
+        dt = str(data.get("dataType") or "?")
+    else:
+        body = _pretty_json(raw or data)
+        dt = "?"
+    name = MQTT_DICT.get(dt, "")
+    name_bit = f"  {name}" if name else ""
+    indented = "\n".join(("    " + line) if line else line for line in body.splitlines())
+    return f"{_now()}  {direction}  {dt}{name_bit}  {topic}\n{indented}\n\n"
+
+
 def _line_epoch(line: str) -> float:
     m = UART_TS_RE.search(line or "")
     if m:
@@ -167,8 +191,14 @@ def _line_epoch(line: str) -> float:
 
 
 def _load_mqtt_cfg() -> dict:
-    p = TOOLS / "mqtt_client" / "config.json"
-    return json.loads(p.read_text(encoding="utf-8"))
+    for p in (
+        GUI / "mqtt" / "config.json",
+        ROOT / "tools" / "gui" / "mqtt" / "config.json",
+        TOOLS / "mqtt_client" / "config.json",
+    ):
+        if p.is_file():
+            return json.loads(p.read_text(encoding="utf-8"))
+    raise FileNotFoundError("找不到 mqtt config.json")
 
 
 def _at_meta(cmd: str) -> tuple[str, str, str]:
@@ -312,6 +342,24 @@ def radio_from_1003(data: dict) -> tuple[str, str]:
     return "warn", got or "字段空"
 
 
+def _1003_got(data: dict) -> str:
+    """判定表「实测」一行：1003 协议字段全列，不截断。"""
+    return (
+        f"csq={data.get('csq')} rssi={data.get('rssi')} rsrp={data.get('rsrp')} "
+        f"rsrq={data.get('rsrq')} snr={data.get('snr')}  "
+        f"usb={data.get('usbInserted')} charge={data.get('charging')} "
+        f"bat={data.get('remainPower')}% {data.get('batteryMv')}mV  "
+        f"{data.get('lowPowerMode')}/{data.get('workMode')} interval={data.get('interval')}  "
+        f"usbNet={data.get('usbLogical')}/{data.get('usbNetdev')} "
+        f"{data.get('usbRecovery')}/{data.get('usbRecoveryCount')}/{data.get('usbRecoveryLastErr')}  "
+        f"ipc={data.get('ipcReady')} gb={data.get('gb28181Online')} tf={data.get('tfPresent')} "
+        f"pd={data.get('personDetectEnabled')}/{data.get('personDetectAvailable')} "
+        f"sync={data.get('timeSynced')} rec={data.get('recordingT3x')} "
+        f"wled={data.get('wledEnable')} cat1={data.get('cat1Link')}  "
+        f"{data.get('time') or ''}"
+    ).strip()
+
+
 class FlowApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -340,6 +388,14 @@ class FlowApp(tk.Tk):
         self._mqtt_stats: dict[str, dict] = {}
         self._last_comm = None
         self._last_mqtt = None
+        self._mqtt_payloads: dict[str, tuple] = {}
+        self._sig_seen = False
+        self._1003_recv: list[float] = []
+        self._1003_data: dict | None = None
+        self._1003_topic = ""
+        self._1003_gap: float | None = None
+        self._1003_reason = ""
+        self._1003_tick = None
         self._pending_req = None
         self._event_iids: dict[str, str] = {}
         self._keep_raw = tk.BooleanVar(value=True)
@@ -347,7 +403,6 @@ class FlowApp(tk.Tk):
         self._log_dir: Path | None = None
         self._log_files: dict[str, object] = {}
         self._t31_jobs: queue.Queue = queue.Queue()
-        self._play_source = tk.StringVar(value="国标时段")
         self._build()
         self.after(200, self._drain)
         self.after(400, self.refresh_ports)
@@ -391,61 +446,47 @@ class FlowApp(tk.Tk):
         sigbar = tk.Frame(self, bg="#fff3bf", highlightbackground=ORANGE, highlightthickness=2)
         sigbar.pack(fill=tk.X, padx=8, pady=4)
         tk.Label(
-            sigbar, text="★ 信号强度（1003）",
+            sigbar, text="★ 1003 状态",
             bg="#fff3bf", fg=ORANGE, font=("Microsoft YaHei UI", 12, "bold"),
         ).pack(side=tk.LEFT, padx=10, pady=6)
+        sigtxt = tk.Frame(sigbar, bg="#fff3bf")
+        sigtxt.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8, pady=4)
         self.sig_lbl = tk.Label(
-            sigbar,
+            sigtxt,
             text="等待设备上报 … 连上 MQTT 后会自动查 2003，或点「查询 2003/2008」",
             bg="#fff3bf", fg="#222", font=("Microsoft YaHei UI", 13, "bold"),
+            anchor="w", justify="left", wraplength=1180,
         )
-        self.sig_lbl.pack(side=tk.LEFT, padx=8)
-
-        play = tk.Frame(self, bg=BG)
-        play.pack(fill=tk.X, padx=8, pady=2)
-        tk.Label(play, text="回放下载", bg=BG, font=("Microsoft YaHei UI", 9, "bold")).pack(side=tk.LEFT)
-        now = datetime.now()
-        self.begin_var = tk.StringVar(value=(now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S"))
-        self.end_var = tk.StringVar(value=now.strftime("%Y-%m-%d %H:%M:%S"))
-        tk.Label(play, text="开始", bg=BG).pack(side=tk.LEFT, padx=(8, 2))
-        ttk.Entry(play, textvariable=self.begin_var, width=20).pack(side=tk.LEFT)
-        tk.Label(play, text="结束", bg=BG).pack(side=tk.LEFT, padx=(8, 2))
-        ttk.Entry(play, textvariable=self.end_var, width=20).pack(side=tk.LEFT)
-        ttk.Button(play, text="最近5分钟", command=self._playback_last5).pack(side=tk.LEFT, padx=4)
-        ttk.Button(play, text="请求上传 2013", command=self.request_upload_2013).pack(side=tk.LEFT, padx=4)
-        ttk.Combobox(
-            play, textvariable=self._play_source, width=12, state="readonly",
-            values=("国标时段", "已上传文件"),
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Button(play, text="列出云端回放", command=self.list_playback).pack(side=tk.LEFT, padx=4)
-        ttk.Button(play, text="下载所选", command=self.download_selected_playback).pack(side=tk.LEFT, padx=4)
-        ttk.Button(play, text="下载时间范围内", command=self.download_range_playback).pack(side=tk.LEFT, padx=4)
-        self.play_lbl = tk.Label(
-            play,
-            text="列表：国标时段→填时间→2013；已上传=7003 文件",
-            bg=BG, fg=GRAY, font=("Microsoft YaHei UI", 8),
+        self.sig_lbl.pack(anchor="w")
+        self.sig_detail = tk.Label(
+            sigtxt,
+            text="",
+            bg="#fff3bf", fg="#333", font=("Consolas", 10),
+            anchor="w", justify="left", wraplength=1180,
         )
-        self.play_lbl.pack(side=tk.LEFT, padx=8)
+        self.sig_detail.pack(anchor="w")
 
         mid = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg=BG, sashwidth=6)
         mid.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
         left = tk.Frame(mid, bg=BG)
-        mid.add(left, minsize=380, width=460)
-        tk.Label(left, text="判定（绿=符合 / 橙=警告 / 红=失败）", bg=BG,
+        mid.add(left, minsize=420, width=540)
+        tk.Label(left, text="判定（绿=符合 / 橙=警告 / 红=失败）  「实测」可左右拖看完整 1003", bg=BG,
                  font=("Microsoft YaHei UI", 9, "bold")).pack(anchor="w")
         cols = ("st", "name", "expect", "got")
-        self.tree = ttk.Treeview(left, columns=cols, show="tree headings", selectmode="browse")
+        wrap = tk.Frame(left, bg=BG)
+        wrap.pack(fill=tk.BOTH, expand=True)
+        self.tree = ttk.Treeview(wrap, columns=cols, show="tree headings", selectmode="browse")
         self.tree.heading("#0", text="")
         self.tree.column("#0", width=16, stretch=False)
         self.tree.heading("st", text="状态")
         self.tree.column("st", width=52, stretch=False)
         self.tree.heading("name", text="环节")
-        self.tree.column("name", width=150)
+        self.tree.column("name", width=140, stretch=False)
         self.tree.heading("expect", text="期望")
-        self.tree.column("expect", width=120)
+        self.tree.column("expect", width=110, stretch=False)
         self.tree.heading("got", text="实测")
-        self.tree.column("got", width=120)
+        self.tree.column("got", width=280, stretch=True)
         self.tree.tag_configure("idle", foreground=GRAY)
         self.tree.tag_configure("wait", foreground=BLUE)
         self.tree.tag_configure("pass", foreground="#1a7f37")
@@ -453,10 +494,14 @@ class FlowApp(tk.Tk):
         self.tree.tag_configure("fail", foreground=RED)
         self.tree.tag_configure("group", font=("Microsoft YaHei UI", 9, "bold"))
         self.tree.tag_configure("sigmark", background="#fff3bf")
-        ys = ttk.Scrollbar(left, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=ys.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        ys.pack(side=tk.RIGHT, fill=tk.Y)
+        ys = ttk.Scrollbar(wrap, orient=tk.VERTICAL, command=self.tree.yview)
+        xs = ttk.Scrollbar(wrap, orient=tk.HORIZONTAL, command=self.tree.xview)
+        self.tree.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
+        wrap.grid_rowconfigure(0, weight=1)
+        wrap.grid_columnconfigure(0, weight=1)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        ys.grid(row=0, column=1, sticky="ns")
+        xs.grid(row=1, column=0, sticky="ew")
         self.tree.bind("<<TreeviewSelect>>", self._on_pick)
         self._bind_tree_menu(self.tree, allow_clear=False)
         self._fill_tree()
@@ -490,15 +535,7 @@ class FlowApp(tk.Tk):
             ("时间", "级别", "来源", "事件", "重复"),
             (96, 56, 56, 520, 56),
         )
-        self.playv = self._comm_table(
-            self.nb, "云端回放",
-            ("src", "begin", "end", "name", "size", "path"),
-            ("来源", "开始", "结束", "名称", "大小", "路径"),
-            (90, 160, 160, 240, 72, 320),
-        )
-        self.playv.bind("<<TreeviewSelect>>", self._on_play_select)
-        self.playv.bind("<Double-1>", self._on_play_select)
-        self.txt_ev = self._tab(self.nb, "环节证据")
+        self._build_ev_tab(self.nb)
         raw = ttk.Notebook(self.nb)
         self.nb.add(raw, text="原始日志")
         self.txt_cat1 = self._tab(raw, "Cat.1 USB")
@@ -518,10 +555,20 @@ class FlowApp(tk.Tk):
         self.log_lbl.bind("<Button-1>", lambda _e: self._open_log_dir())
         tk.Label(
             bot,
-            text="检测开始后：界面实时打印，同时写入 tools/_logs/<时间>/（uart.csv / cat1.log / mqtt.log / events.log）。Host AT 在设备 /tmp/ipc/cat1_uart.log，本工具会同步拷到本地。",
+            text="检测开始后：界面实时打印，同时写入 tools/_logs/<时间>/。回放下载（2013 任意时间匹配）请用 tools/mqtt_tools_gui.bat --tab playback。",
             bg=BG, fg=GRAY, font=("Microsoft YaHei UI", 8),
         ).pack(anchor="w")
         self.trace("ready", "点「开始检测」。本页只记判定变化和协议节点；UART/MQTT 刷屏在对应页。")
+        self.bind("<Configure>", self._fit_sig_wrap)
+
+    def _fit_sig_wrap(self, _evt=None):
+        w = max(480, int(self.winfo_width()) - 160)
+        if hasattr(self, "sig_lbl"):
+            self.sig_lbl.config(wraplength=w)
+        if hasattr(self, "sig_detail"):
+            self.sig_detail.config(wraplength=w)
+        if hasattr(self, "ev_hdr"):
+            self.ev_hdr.config(wraplength=max(480, int(self.winfo_width()) - 40))
 
     def _comm_table(self, nb, title, cols, heads, widths) -> ttk.Treeview:
         fr = tk.Frame(nb, bg="white")
@@ -546,12 +593,12 @@ class FlowApp(tk.Tk):
         self._bind_tree_menu(tv, allow_clear=True)
         return tv
 
-    def _tab(self, nb, title: str) -> tk.Text:
-        fr = tk.Frame(nb, bg="white")
-        nb.add(fr, text=title)
-        tx = tk.Text(fr, wrap=tk.NONE, font=("Consolas", 9), bg="#fcfcfc", undo=False)
-        y = ttk.Scrollbar(fr, orient=tk.VERTICAL, command=tx.yview)
-        x = ttk.Scrollbar(fr, orient=tk.HORIZONTAL, command=tx.xview)
+    def _scrolled_text(self, parent) -> tk.Text:
+        box = tk.Frame(parent, bg="white")
+        box.pack(fill=tk.BOTH, expand=True)
+        tx = tk.Text(box, wrap=tk.NONE, font=("Consolas", 9), bg="#fcfcfc", undo=False)
+        y = ttk.Scrollbar(box, orient=tk.VERTICAL, command=tx.yview)
+        x = ttk.Scrollbar(box, orient=tk.HORIZONTAL, command=tx.xview)
         tx.configure(yscrollcommand=y.set, xscrollcommand=x.set)
         tx.tag_configure("ok", foreground="#1a7f37")
         tx.tag_configure("bad", foreground=RED)
@@ -560,10 +607,45 @@ class FlowApp(tk.Tk):
         tx.grid(row=0, column=0, sticky="nsew")
         y.grid(row=0, column=1, sticky="ns")
         x.grid(row=1, column=0, sticky="ew")
-        fr.grid_rowconfigure(0, weight=1)
-        fr.grid_columnconfigure(0, weight=1)
+        box.grid_rowconfigure(0, weight=1)
+        box.grid_columnconfigure(0, weight=1)
         self._bind_text_menu(tx)
         return tx
+
+    def _tab(self, nb, title: str) -> tk.Text:
+        fr = tk.Frame(nb, bg="white")
+        nb.add(fr, text=title)
+        return self._scrolled_text(fr)
+
+    def _build_ev_tab(self, nb):
+        fr = tk.Frame(nb, bg="white")
+        nb.add(fr, text="环节证据")
+        self.ev_tab = fr
+        self.ev_hdr = tk.Label(
+            fr,
+            text="等待 1003 状态 … 开始检测后这里实时刷设备 status，并显示距上一条多少秒",
+            bg="#fff8e1", fg="#222", font=("Microsoft YaHei UI", 11, "bold"),
+            anchor="w", justify="left", wraplength=900,
+        )
+        self.ev_hdr.pack(fill=tk.X, padx=6, pady=6)
+        pan = tk.PanedWindow(fr, orient=tk.VERTICAL, sashwidth=5, bg="white")
+        pan.pack(fill=tk.BOTH, expand=True)
+        top = tk.Frame(pan, bg="white")
+        tk.Label(
+            top, text="设备 status（1003 实时，完整 JSON）",
+            bg="white", fg=BLUE, font=("Microsoft YaHei UI", 9, "bold"),
+            anchor="w",
+        ).pack(fill=tk.X, padx=6)
+        self.txt_ev = self._scrolled_text(top)
+        pan.add(top, minsize=200, height=440)
+        bot = tk.Frame(pan, bg="white")
+        tk.Label(
+            bot, text="当前选中环节 / 报文",
+            bg="white", fg=GRAY, font=("Microsoft YaHei UI", 9, "bold"),
+            anchor="w",
+        ).pack(fill=tk.X, padx=6)
+        self.txt_ev_item = self._scrolled_text(bot)
+        pan.add(bot, minsize=80, height=140)
 
     def _clip(self, text: str):
         text = text or ""
@@ -637,6 +719,10 @@ class FlowApp(tk.Tk):
         vals = [str(x) for x in tv.item(iid, "values")]
         if "tree" in show.split():
             return "\t".join([str(tv.item(iid, "text") or "")] + vals)
+        rec = self._mqtt_payloads.get(iid) if tv is getattr(self, "mqttv", None) else None
+        if rec:
+            _topic, data, _direction = rec
+            return "\t".join(vals) + "\n" + _pretty_json(data)
         return "\t".join(vals)
 
     def _tree_headers(self, tv: ttk.Treeview) -> str:
@@ -670,6 +756,7 @@ class FlowApp(tk.Tk):
         elif getattr(self, "mqttv", None) is tv:
             self._last_mqtt = None
             self._mqtt_stats.clear()
+            self._mqtt_payloads.clear()
         elif getattr(self, "eventv", None) is tv:
             self._event_iids.clear()
 
@@ -720,7 +807,7 @@ class FlowApp(tk.Tk):
         if cid not in {"t31_shell", "t31_ipc", "sig_1003"}:
             if cur["st"] == "fail" and st != "fail":
                 if got:
-                    cur["got"] = got[:80]
+                    cur["got"] = got
                 return
             if rank.get(st, 0) < rank.get(cur["st"], 0) and not (cur["st"] == "wait" and st in {"pass", "warn", "fail"}):
                 return
@@ -728,14 +815,14 @@ class FlowApp(tk.Tk):
         changed = old != st
         cur["st"] = st
         if got:
-            cur["got"] = got[:80]
+            cur["got"] = got
         if ev:
-            cur["ev"] = ev[:400]
+            cur["ev"] = ev
         if self.tree.exists(cid):
             vals = list(self.tree.item(cid, "values"))
             vals[0] = self._st_cn(st)
             if got:
-                vals[3] = got[:80]
+                vals[3] = got
             tags = ["group"] if cid.startswith("g_") else [st]
             if cid == "sig_1003":
                 tags.append("sigmark")
@@ -760,26 +847,48 @@ class FlowApp(tk.Tk):
         cid = sel[0]
         row = next((c for c in CHECKS if c[0] == cid), None)
         st = self._status.get(cid) or {}
-        self.txt_ev.delete("1.0", tk.END)
+        self.txt_ev_item.delete("1.0", tk.END)
         if not row:
             return
         _, _, name, expect = row
-        self.txt_ev.insert(
-            tk.END,
-            f"{name}\n期望: {expect}\n状态: {self._st_cn(st.get('st', 'idle'))}\n"
-            f"实测: {st.get('got', '')}\n\n证据:\n{st.get('ev', '')}\n",
-        )
-        self.nb.select(self.txt_ev.master)
+        if cid == "sig_1003":
+            self.txt_ev_item.insert(
+                tk.END,
+                f"{name}\n期望: {expect}\n状态: {self._st_cn(st.get('st', 'idle'))}\n"
+                f"完整 1003 在上方实时刷新，看顶栏「刷新间隔」。\n",
+            )
+            self._render_live_1003(refresh_json=False)
+        else:
+            self.txt_ev_item.insert(
+                tk.END,
+                f"{name}\n期望: {expect}\n状态: {self._st_cn(st.get('st', 'idle'))}\n"
+                f"实测: {st.get('got', '')}\n\n证据:\n{st.get('ev', '')}\n",
+            )
+        try:
+            self.nb.select(self.ev_tab)
+        except tk.TclError:
+            pass
 
     def _show_comm_ev(self, tv: ttk.Treeview):
         sel = tv.selection()
         if not sel:
             return
-        vals = tv.item(sel[0], "values")
-        self.txt_ev.delete("1.0", tk.END)
+        iid = sel[0]
+        rec = self._mqtt_payloads.get(iid) if tv is getattr(self, "mqttv", None) else None
+        self.txt_ev_item.delete("1.0", tk.END)
+        if rec:
+            topic, data, direction = rec
+            dt = str(data.get("dataType") or "?") if isinstance(data, dict) else "?"
+            name = MQTT_DICT.get(dt, "")
+            self.txt_ev_item.insert(
+                tk.END,
+                f"{direction}  {dt} {name}\n主题: {topic}\n\n{_pretty_json(data)}\n",
+            )
+            return
+        vals = tv.item(iid, "values")
         heads = [tv.heading(c)["text"] for c in tv["columns"]]
         lines = [f"{h}: {v}" for h, v in zip(heads, vals)]
-        self.txt_ev.insert(tk.END, "\n".join(lines) + "\n")
+        self.txt_ev_item.insert(tk.END, "\n".join(lines) + "\n")
 
     def _cnt_text(self) -> str:
         c = self._counts
@@ -837,10 +946,12 @@ class FlowApp(tk.Tk):
         tv.see(iid)
         self._trim_tree(tv)
 
-    def _append(self, tx: tk.Text, line: str, tag: str | None = None):
+    def _append(self, tx: tk.Text, line: str, tag: str | None = None, max_lines: int | None = None):
         tx.insert(tk.END, line if line.endswith("\n") else line + "\n", tag or ())
-        if int(tx.index("end-1c").split(".")[0]) > MAX_LINES:
-            tx.delete("1.0", "120.0")
+        limit = MAX_LINES if max_lines is None else max_lines
+        n = int(tx.index("end-1c").split(".")[0])
+        if n > limit:
+            tx.delete("1.0", f"{max(1, limit // 6)}.0")
         tx.see(tk.END)
 
     def _open_session_logs(self) -> None:
@@ -928,7 +1039,7 @@ class FlowApp(tk.Tk):
         return t
 
     def _clear_comm(self):
-        tvs = [self.comm, self.stat, self.mqttv, self.playv]
+        tvs = [self.comm, self.stat, self.mqttv]
         if getattr(self, "eventv", None) is not None:
             tvs.append(self.eventv)
         for tv in tvs:
@@ -936,11 +1047,23 @@ class FlowApp(tk.Tk):
         self._cmd_stats.clear()
         self._stats_dirty.clear()
         self._mqtt_stats.clear()
+        self._mqtt_payloads.clear()
         self._event_iids.clear()
         self._last_comm = None
         self._last_mqtt = None
         self._pending_req = None
+        self._1003_recv.clear()
+        self._1003_data = None
+        self._1003_topic = ""
+        self._1003_gap = None
+        self._1003_reason = ""
         self._counts["uart_shown"] = 0
+        if hasattr(self, "txt_ev"):
+            self.txt_ev.delete("1.0", tk.END)
+        if hasattr(self, "txt_ev_item"):
+            self.txt_ev_item.delete("1.0", tk.END)
+        if hasattr(self, "ev_hdr"):
+            self.ev_hdr.config(text="等待 1003 状态 … 开始检测后这里实时刷设备 status，并显示距上一条多少秒")
 
     def start(self):
         if self.running:
@@ -954,6 +1077,7 @@ class FlowApp(tk.Tk):
             except queue.Empty:
                 break
         self._clear_comm()
+        self._sig_seen = False
         for k in self._counts:
             self._counts[k] = 0
         for cid, parent, *_ in CHECKS:
@@ -976,6 +1100,12 @@ class FlowApp(tk.Tk):
     def stop(self):
         self.running = False
         self._stop.set()
+        if getattr(self, "_1003_tick", None):
+            try:
+                self.after_cancel(self._1003_tick)
+            except tk.TclError:
+                pass
+            self._1003_tick = None
         self.btn_start.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
         self.mqtt_lbl.config(text="MQTT: 已停", fg=GRAY)
@@ -1008,9 +1138,21 @@ class FlowApp(tk.Tk):
         rssi = data.get("rssi")
         rsrq = data.get("rsrq")
         snr = data.get("snr")
-        text = (
+        radio = (
             f"CSQ {csq} 格     RSRP {rsrp} dBm     "
             f"RSSI {rssi}     RSRQ {rsrq}     SNR {snr}"
+        )
+        detail = (
+            f"USB插入={data.get('usbInserted')}  充电={data.get('charging')}  "
+            f"电量={data.get('remainPower')}%  {data.get('batteryMv')}mV  "
+            f"{data.get('lowPowerMode')}/{data.get('workMode')}  interval={data.get('interval')}s    "
+            f"usbNet={data.get('usbLogical')}/{data.get('usbNetdev')}  "
+            f"{data.get('usbRecovery')}×{data.get('usbRecoveryCount')} {data.get('usbRecoveryLastErr')}    "
+            f"ipcReady={data.get('ipcReady')}  国标={data.get('gb28181Online')}  "
+            f"TF={data.get('tfPresent')}  人形={data.get('personDetectEnabled')}/"
+            f"{data.get('personDetectAvailable')}  对时={data.get('timeSynced')}  "
+            f"录像={data.get('recordingT3x')}  白光={data.get('wledEnable')}  "
+            f"cat1={data.get('cat1Link')}    {data.get('time') or ''}"
         )
         fg = "#1a7f37"
         try:
@@ -1019,15 +1161,98 @@ class FlowApp(tk.Tk):
         except (TypeError, ValueError):
             pass
         if hasattr(self, "sig_lbl"):
-            self.sig_lbl.config(text=text, fg=fg)
-        if self.tree.exists("sig_1003"):
+            self.sig_lbl.config(text=radio, fg=fg)
+        if hasattr(self, "sig_detail"):
+            self.sig_detail.config(text=detail)
+        if self.tree.exists("sig_1003") and not getattr(self, "_sig_seen", False):
             self.tree.see("sig_1003")
-            self.tree.selection_set("sig_1003")
-        if getattr(self, "mqttv", None) is not None:
+
+    def _on_1003_live(self, topic: str, data: dict):
+        now = time.time()
+        gap = None
+        if self._1003_recv:
+            gap = now - self._1003_recv[-1]
+        self._1003_recv.append(now)
+        self._1003_data = data
+        self._1003_topic = topic
+        self._1003_gap = gap
+        mid = data.get("messageId")
+        try:
+            iv_n = float(data.get("interval")) if data.get("interval") is not None else 30.0
+        except (TypeError, ValueError):
+            iv_n = 30.0
+        if mid:
+            self._1003_reason = f"2003 应答  messageId={mid}"
+        elif gap is not None and gap < max(8.0, iv_n * 0.5):
+            self._1003_reason = "提前上报（USB/充电/电量或重投）"
+        else:
+            self._1003_reason = "周期上报"
+        self._render_live_1003(refresh_json=True)
+        if not self._sig_seen:
+            self._sig_seen = True
             try:
-                self.nb.select(self.mqttv.master)
+                self.nb.select(self.ev_tab)
             except tk.TclError:
                 pass
+        self._schedule_1003_tick()
+
+    def _render_live_1003(self, refresh_json=False):
+        data = self._1003_data
+        hdr = getattr(self, "ev_hdr", None)
+        if hdr is None:
+            return
+        if not data or not self._1003_recv:
+            hdr.config(text="等待 1003 状态 … 开始检测后这里实时刷设备 status，并显示距上一条多少秒")
+            return
+        last = self._1003_recv[-1]
+        age = max(0.0, time.time() - last)
+        gap = self._1003_gap
+        iv = data.get("interval")
+        try:
+            iv_n = float(iv) if iv is not None else None
+        except (TypeError, ValueError):
+            iv_n = None
+        gap_s = f"{gap:.1f} 秒" if gap is not None else "（首条）"
+        remain = ""
+        if iv_n and iv_n > 0:
+            remain = f"    距下次周期约 {max(0.0, iv_n - age):.0f} 秒"
+        med = ""
+        if len(self._1003_recv) >= 2:
+            gaps = [self._1003_recv[i] - self._1003_recv[i - 1] for i in range(1, len(self._1003_recv))]
+            gaps.sort()
+            n = len(gaps)
+            midv = gaps[n // 2] if n % 2 else (gaps[n // 2 - 1] + gaps[n // 2]) / 2
+            med = f"    中位 {midv:.1f} 秒"
+        hdr.config(
+            text=(
+                f"刷新间隔  {gap_s}（上一条→本条）    设备 interval={iv if iv is not None else '—'} 秒"
+                f"    已过 {age:.0f} 秒{remain}\n"
+                f"累计 {len(self._1003_recv)} 条{med}    触发：{self._1003_reason}    {self._1003_topic}"
+            )
+        )
+        if refresh_json and hasattr(self, "txt_ev"):
+            yview = self.txt_ev.yview()
+            self.txt_ev.delete("1.0", tk.END)
+            self.txt_ev.insert("1.0", _pretty_json(data) + "\n")
+            try:
+                self.txt_ev.yview_moveto(yview[0])
+            except tk.TclError:
+                pass
+
+    def _schedule_1003_tick(self):
+        if getattr(self, "_1003_tick", None):
+            try:
+                self.after_cancel(self._1003_tick)
+            except tk.TclError:
+                pass
+            self._1003_tick = None
+        if self.running and self._1003_data:
+            self._1003_tick = self.after(1000, self._on_1003_tick)
+
+    def _on_1003_tick(self):
+        self._1003_tick = None
+        self._render_live_1003(refresh_json=False)
+        self._schedule_1003_tick()
 
     def query_status(self):
         cli = self._mqtt
@@ -1045,351 +1270,6 @@ class FlowApp(tk.Tk):
 
     def _after_mqtt_up(self):
         self.after(2500, self.query_status)
-
-    def _playback_last5(self):
-        now = datetime.now()
-        self.begin_var.set((now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S"))
-        self.end_var.set(now.strftime("%Y-%m-%d %H:%M:%S"))
-
-    def _parse_play_window(self, max_sec=None):
-        begin = datetime.strptime(self.begin_var.get().strip(), "%Y-%m-%d %H:%M:%S")
-        end = datetime.strptime(self.end_var.get().strip(), "%Y-%m-%d %H:%M:%S")
-        if end <= begin:
-            raise ValueError("结束时间必须晚于开始时间")
-        if max_sec is not None and (end - begin).total_seconds() > max_sec:
-            raise ValueError(f"单次窗口最长 {max_sec} 秒（{max_sec // 60} 分钟）")
-        return begin, end
-
-    def _fill_play_window(self, begin: datetime, end: datetime) -> str:
-        note = ""
-        if (end - begin).total_seconds() > 600:
-            end = begin + timedelta(seconds=600)
-            note = "（超过 10 分钟，2013 只取前 600 秒）"
-        self.begin_var.set(begin.strftime("%Y-%m-%d %H:%M:%S"))
-        self.end_var.set(end.strftime("%Y-%m-%d %H:%M:%S"))
-        return note
-
-    def _on_play_select(self, _evt=None):
-        self._show_comm_ev(self.playv)
-        sel = self.playv.selection()
-        if not sel:
-            return
-        src, begin_s, end_s, name, _size, path = self.playv.item(sel[0], "values")
-        if not begin_s or not end_s:
-            return
-        try:
-            begin = datetime.strptime(str(begin_s).strip(), "%Y-%m-%d %H:%M:%S")
-            end = datetime.strptime(str(end_s).strip(), "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            return
-        note = self._fill_play_window(begin, end)
-        self.play_lbl.config(text=f"已填入 {begin_s} ~ {self.end_var.get()}  {name}{note}")
-
-    def request_upload_2013(self):
-        cli = self._mqtt
-        if not cli:
-            messagebox.showinfo("回放", "请先点「开始检测」连上 MQTT")
-            return
-        try:
-            begin, end = self._parse_play_window(max_sec=600)
-        except ValueError as e:
-            messagebox.showinfo("回放", str(e))
-            return
-        imei = str(self.cfg.get("device_imei") or "")
-        topic = f"/panshi/device/{imei}/"
-        body = {
-            "dataType": "2013",
-            "messageId": f"play-{int(time.time())}-{uuid.uuid4().hex[:4]}",
-            "action": "upload_video",
-            "needUpload": 1,
-            "reason": "cloud",
-            "videoType": 2,
-            "beginTime": begin.strftime("%Y-%m-%d %H:%M:%S"),
-            "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        line = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
-        cli.publish(topic, line, qos=int(self.cfg.get("qos") or 1))
-        self._feed_mqtt("下行", topic, body, line)
-        self.set_check("up_2013", "wait", "已发 2013", line)
-        self.play_lbl.config(text="已发 2013，等 1013；有网后再切「已上传文件」列出 7003")
-        self.trace(
-            "info",
-            f"下行 2013  {body['beginTime']} ~ {body['endTime']}",
-            "mqtt",
-            key="mqtt:2013",
-        )
-        self.nb.select(self.playv.master)
-
-    def _cloud_get_json(self, path, query=None):
-        qs = ("?" + urlencode(query, safe=":- ")) if query else ""
-        last_err = None
-        for base in (CLOUD_VIDEO_BASE, CLOUD_VIDEO_ALT):
-            url = base.rstrip("/") + path + qs
-            try:
-                req = Request(url, headers={"User-Agent": "flow-monitor/1.0"})
-                with urlopen(req, timeout=12) as resp:
-                    raw = resp.read().decode("utf-8", errors="replace")
-                return json.loads(raw)
-            except Exception as e:
-                last_err = e
-        raise RuntimeError(str(last_err or "cloud unreachable"))
-
-    def _cloud_items(self):
-        try:
-            begin, end = self._parse_play_window()
-        except ValueError:
-            begin = end = None
-        obj = self._cloud_get_json("/admin/api/v1/videos", {"limit": "200", "type": "2"})
-        items = obj.get("data") if isinstance(obj, dict) else None
-        if not isinstance(items, list):
-            items = []
-        out = []
-        for it in items:
-            if not isinstance(it, dict):
-                continue
-            mtime = str(it.get("mtime") or "")
-            path = str(it.get("path") or "")
-            kind = "playback" if "/playback/" in path or str(it.get("type")) == "2" else (
-                "dynamic" if "/dynamic/" in path else "other"
-            )
-            mt = None
-            if mtime:
-                try:
-                    mt = datetime.fromisoformat(mtime.replace("Z", "+00:00"))
-                    if mt.tzinfo:
-                        mt = mt.replace(tzinfo=None)
-                except ValueError:
-                    mt = None
-            if begin and end and mt:
-                if mt < begin - timedelta(minutes=2) or mt > end + timedelta(minutes=30):
-                    continue
-            begin_s = mt.strftime("%Y-%m-%d %H:%M:%S") if mt else mtime
-            out.append({
-                "src": "已上传",
-                "begin": begin_s,
-                "end": "",
-                "name": it.get("name") or Path(path).name,
-                "size": it.get("size") or "",
-                "path": path,
-                "kind": kind,
-            })
-        return out
-
-    def _play_days(self):
-        try:
-            begin, end = self._parse_play_window()
-        except ValueError:
-            now = datetime.now()
-            begin = now - timedelta(hours=2)
-            end = now
-        days = []
-        d = begin.date()
-        while d <= end.date():
-            days.append(d.strftime("%Y%m%d"))
-            d += timedelta(days=1)
-        if not days:
-            days.append(datetime.now().strftime("%Y%m%d"))
-        return days, begin, end
-
-    def _t31_exec(self, cmd: str, timeout=12.0) -> str:
-        if self._stop.is_set() or not self.running:
-            raise RuntimeError("请先点「开始检测」并勾选监视 T31 COM7")
-        if not self.watch_t31.get():
-            raise RuntimeError("请勾选「监视 T31 COM7」后再列国标时段")
-        rq: queue.Queue = queue.Queue()
-        self._t31_jobs.put((cmd, timeout, rq))
-        try:
-            st, out = rq.get(timeout=timeout + 8)
-        except queue.Empty as e:
-            raise RuntimeError("T31 命令超时（COM7 忙或未登录）") from e
-        if st != "ok":
-            raise RuntimeError(out)
-        return out
-
-    def _parse_tf_ls(self, text: str, win_begin: datetime, win_end: datetime):
-        out = []
-        for raw in (text or "").splitlines():
-            line = ANSI_RE.sub("", raw).strip()
-            if not line or line.startswith("total") or "/mnt/" in line and line.endswith(":"):
-                continue
-            if ".part" in line.lower():
-                continue
-            m = TF_SEG_RE.search(line)
-            if not m:
-                continue
-            name, a, b, _ext = m.group(1), m.group(2), m.group(3), m.group(4)
-            try:
-                seg_b = datetime.strptime(a, "%Y%m%d%H%M%S")
-                seg_e = datetime.strptime(b, "%Y%m%d%H%M%S")
-            except ValueError:
-                continue
-            if seg_e <= win_begin or seg_b >= win_end:
-                continue
-            size = ""
-            parts = line.split()
-            if len(parts) >= 5 and parts[4].isdigit():
-                size = parts[4]
-            day = a[:8]
-            out.append({
-                "src": "国标/TF",
-                "begin": seg_b.strftime("%Y-%m-%d %H:%M:%S"),
-                "end": seg_e.strftime("%Y-%m-%d %H:%M:%S"),
-                "name": name,
-                "size": size,
-                "path": f"{TF_MEDIA_ROOT}/{day}/{name}",
-            })
-        out.sort(key=lambda x: x["begin"], reverse=True)
-        return out
-
-    def _gb28181_items(self):
-        days, win_begin, win_end = self._play_days()
-        paths = " ".join(f"{TF_MEDIA_ROOT}/{d}" for d in days)
-        cmd = f"ls -l {paths} 2>/dev/null"
-        text = self._t31_exec(cmd, timeout=10.0)
-        items = self._parse_tf_ls(text, win_begin, win_end)
-        return items, text
-
-    def _fill_play_table(self, items, hint: str):
-        self.playv.delete(*self.playv.get_children())
-        for it in items:
-            self.playv.insert("", "end", values=(
-                it.get("src") or "",
-                it.get("begin") or "",
-                it.get("end") or "",
-                it.get("name") or "",
-                it.get("size") or "",
-                it.get("path") or "",
-            ))
-        self.play_lbl.config(text=hint)
-        self.nb.select(self.playv.master)
-
-    def list_playback(self):
-        src = (self._play_source.get() or "").strip()
-        if src.startswith("已上传"):
-            self.list_cloud_playback()
-            return
-
-        def work():
-            try:
-                items, raw = self._gb28181_items()
-            except Exception as e:
-                self.ui(self.trace, "warn", f"列出国标时段失败: {e}")
-                return
-            hint = (
-                f"国标/TF {len(items)} 段（{GB28181_DEV_ID}，与 RecordInfo 同源，点选填入 2013 时间）"
-                if items else
-                "时间窗内没有已封口的 TF 段（.part 跳过）。可放宽开始/结束后再列"
-            )
-            if not items:
-                self.ui(self.trace, "warn", hint + "  " + ANSI_RE.sub("", raw or "")[:180])
-
-            def apply():
-                self._fill_play_table(items, hint)
-            self.ui(apply)
-        threading.Thread(target=work, daemon=True).start()
-
-    def list_cloud_playback(self):
-        def work():
-            try:
-                items = self._cloud_items()
-            except Exception as e:
-                self.ui(self.trace, "warn", f"列出已上传失败: {e}")
-                return
-
-            def apply():
-                self._fill_play_table(
-                    items,
-                    f"已上传 {len(items)} 条（2013 成功后的 7003 文件，不是国标目录）",
-                )
-            self.ui(apply)
-        threading.Thread(target=work, daemon=True).start()
-
-    def _download_one(self, rel_path, dest_dir: Path) -> Path:
-        rel = rel_path if str(rel_path).startswith("/") else "/" + str(rel_path)
-        last_err = None
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / Path(rel).name
-        for base in (CLOUD_VIDEO_BASE, CLOUD_VIDEO_ALT):
-            url = base.rstrip("/") + rel
-            try:
-                req = Request(url, headers={"User-Agent": "flow-monitor/1.0"})
-                with urlopen(req, timeout=60) as resp:
-                    data = resp.read()
-                dest.write_bytes(data)
-                return dest
-            except Exception as e:
-                last_err = e
-        raise RuntimeError(str(last_err or "download fail"))
-
-    def _playback_dest(self) -> Path:
-        if self._log_dir:
-            return self._log_dir / "playback"
-        return PLAYBACK_DIR
-
-    def download_selected_playback(self):
-        sel = self.playv.selection()
-        if not sel:
-            messagebox.showinfo("回放", "请先列出回放，再点选一行")
-            return
-        vals = self.playv.item(sel[0], "values")
-        src = str(vals[0] or "")
-        path = vals[5] if len(vals) > 5 else vals[-1]
-        if src.startswith("国标"):
-            messagebox.showinfo(
-                "回放",
-                "国标/TF 列表只提供时段，不是可下载文件。\n"
-                "点选一行会填入开始/结束，再点「请求上传 2013」。\n"
-                "等 1013 后切到「已上传文件」再下载 7003 上的片。",
-            )
-            return
-        if not path or not str(path).startswith("/"):
-            messagebox.showinfo("回放", "这一行没有 7003 路径，无法下载")
-            return
-        dest_dir = self._playback_dest()
-
-        def work():
-            try:
-                dest = self._download_one(path, dest_dir)
-            except Exception as e:
-                self.ui(self.trace, "bad", f"下载失败: {e}")
-                return
-
-            def apply():
-                self.trace("ok", f"已下载 {dest}", "ui", key="dl:one")
-                self.play_lbl.config(text=f"已下载 {dest}")
-                if sys.platform == "win32":
-                    os.startfile(dest_dir)
-            self.ui(apply)
-        threading.Thread(target=work, daemon=True).start()
-
-    def download_range_playback(self):
-        dest_dir = self._playback_dest()
-
-        def work():
-            try:
-                items = self._cloud_items()
-            except Exception as e:
-                self.ui(self.trace, "warn", f"列出云端失败: {e}")
-                return
-            if not items:
-                self.ui(self.trace, "warn", "时间范围内没有已上传文件。先列国标时段→2013，等 HTTP 完成后再列「已上传文件」")
-                return
-            ok_n = 0
-            err = ""
-            for it in items:
-                try:
-                    self._download_one(it["path"], dest_dir)
-                    ok_n += 1
-                except Exception as e:
-                    err = str(e)
-
-            def apply():
-                self.trace("ok" if ok_n else "warn", f"下载 {ok_n}/{len(items)} 到 {dest_dir} {err}", "ui", key="dl:range")
-                self.play_lbl.config(text=f"下载 {ok_n}/{len(items)} → {dest_dir}")
-                if sys.platform == "win32" and ok_n:
-                    os.startfile(dest_dir)
-            self.ui(apply)
-        threading.Thread(target=work, daemon=True).start()
 
     def _drain(self):
         try:
@@ -1413,7 +1293,11 @@ class FlowApp(tk.Tk):
         kids = tv.get_children()
         extra = len(kids) - MAX_COMM_ROWS
         if extra > 0:
-            tv.delete(*kids[:extra])
+            gone = kids[:extra]
+            tv.delete(*gone)
+            if tv is getattr(self, "mqttv", None):
+                for iid in gone:
+                    self._mqtt_payloads.pop(iid, None)
 
     def _feed_uart(self, frame: dict):
         self._counts["uart_frames"] += 1
@@ -1545,7 +1429,8 @@ class FlowApp(tk.Tk):
 
     def _feed_mqtt(self, direction: str, topic: str, data: dict, raw: str):
         dt = str(data.get("dataType") or "?")
-        self._save("mqtt", f"{_now()}  {direction}  {dt}  {topic}  {raw}")
+        block = _mqtt_pretty_block(direction, topic, data, raw)
+        self._save("mqtt", block)
         name = MQTT_DICT.get(dt, "")
         key = mqtt_summary(dt, data)
         now = time.time()
@@ -1557,11 +1442,13 @@ class FlowApp(tk.Tk):
         elif dt == "1010" and pir == "t3x_active":
             tag = "ok"
         last = self._last_mqtt
+        iid = None
         if last and last["key"] == mkey and now - last["t"] <= 5.0:
             last["n"] += 1
             last["t"] = now
-            if self.mqttv.exists(last["iid"]):
-                self.mqttv.item(last["iid"], values=(
+            iid = last["iid"]
+            if self.mqttv.exists(iid):
+                self.mqttv.item(iid, values=(
                     _now(), direction, dt, name, key, f"×{last['n']}",
                     f"{now - last['t0']:.1f}s",
                 ), tags=(tag,))
@@ -1572,8 +1459,10 @@ class FlowApp(tk.Tk):
             self.mqttv.see(iid)
             self._last_mqtt = {"key": mkey, "t": now, "t0": now, "n": 1, "iid": iid}
             self._trim_tree(self.mqttv)
+        if iid:
+            self._mqtt_payloads[iid] = (topic, data, direction)
         if self._keep_raw.get():
-            self._append(self.txt_mqtt, f"{_now()}  {direction} {dt}  {raw[:400]}\n", tag)
+            self._append(self.txt_mqtt, block, tag, max_lines=8000)
 
     # ----- Cat.1 USB -----
     def _run_cat1(self):
@@ -1686,49 +1575,51 @@ class FlowApp(tk.Tk):
     def _on_mqtt(self, topic: str, data: dict, raw: str):
         dt = str(data.get("dataType") or "?")
         pir = str(data.get("pirStatus") or "")
+        ev = _pretty_json(data)
         self._counts["mqtt_up"] += 1
-        self.set_check("mqtt_ok", "pass", f"收到 {dt}", raw[:200])
+        self.set_check("mqtt_ok", "pass", f"收到 {dt}", ev)
         self._feed_mqtt("上行", topic, data, raw)
 
         if dt == "1008":
             ver = str(data.get("scriptVersion") or "")
             st = "pass" if ver == EXPECT_VER else "warn"
-            self.set_check("cat1_ver", st, ver, raw[:300])
+            self.set_check("cat1_ver", st, ver, ev)
         if dt == "1003":
             wm = str(data.get("workMode") or "")
             if wm == "person_detect":
-                self.set_check("mode_pd", "pass", wm, raw[:300])
+                self.set_check("mode_pd", "pass", wm, ev)
             elif wm:
-                self.set_check("mode_pd", "fail", wm, raw[:300])
+                self.set_check("mode_pd", "fail", wm, ev)
             if str(data.get("ipcReady")) in ("1", "1.0", "true", "True"):
-                self.set_check("mode_ready", "pass", "ipcReady=1", raw[:200])
-                self.set_check("uart_ipc", "pass", "ipcReady=1", raw[:200])
+                self.set_check("mode_ready", "pass", "ipcReady=1", ev)
+                self.set_check("uart_ipc", "pass", "ipcReady=1", ev)
             if str(data.get("usbInserted")) in ("1", "1.0"):
-                self.set_check("uart_idle", "pass", "usbInserted=1", raw[:200])
-            st, got = radio_from_1003(data)
-            self.set_check("sig_1003", st, got, raw[:400])
+                self.set_check("uart_idle", "pass", "usbInserted=1", ev)
+            st, _radio = radio_from_1003(data)
+            self.set_check("sig_1003", st, _1003_got(data), ev)
             self._show_signal(data)
+            self._on_1003_live(topic, data)
         if dt == "1013":
             ret = data.get("ret")
             reply = data.get("reply")
             if reply == 1 and (ret == 0 or ret == "0"):
-                self.set_check("up_2013", "pass", "1013 ok", raw[:300])
+                self.set_check("up_2013", "pass", "1013 ok", ev)
             elif reply == 1:
-                self.set_check("up_2013", "warn", f"1013 ret={ret}", raw[:300])
+                self.set_check("up_2013", "warn", f"1013 ret={ret}", ev)
             else:
-                self.set_check("up_2013", "pass", "1013 needUpload", raw[:300])
+                self.set_check("up_2013", "pass", "1013 needUpload", ev)
         if dt in {"1011", "1012"}:
             self.trace("info", f"{dt} {mqtt_summary(dt, data)}", "mqtt", key=f"mqtt:{dt}")
         if dt == "1010":
             if pir == "person_update":
                 self._counts["person_update"] += 1
-                self.set_check("no_upd", "fail", f"{self._counts['person_update']} 次", raw[:300])
+                self.set_check("no_upd", "fail", f"{self._counts['person_update']} 次", ev)
             elif pir == "detected":
                 self._counts["pir_detect_mqtt"] += 1
-                self.set_check("pir_no_det", "fail", f"detected ×{self._counts['pir_detect_mqtt']}", raw[:300])
+                self.set_check("pir_no_det", "fail", f"detected ×{self._counts['pir_detect_mqtt']}", ev)
             elif pir == "t3x_active":
                 self._counts["t3x_active"] += 1
-                self.set_check("t3x_act", "pass", f"{self._counts['t3x_active']} 次", raw[:300])
+                self.set_check("t3x_act", "pass", f"{self._counts['t3x_active']} 次", ev)
             if self._counts["person_update"] == 0:
                 self.set_check("no_upd", "pass", "无 person_update")
             if self._counts["pir_detect_mqtt"] == 0:

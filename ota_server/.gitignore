@@ -16,3 +16,8 @@ ipc_upgrade/slot/*
 ipc_upgrade/_pack_out/
 tools/ipc/*
 !tools/ipc/.gitkeep
+tools/build/
+tools/dist/
+tools/__pycache__/
+tools/.pyi_tmp/
+tools/*.spec

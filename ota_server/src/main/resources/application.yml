@@ -32,6 +32,9 @@ luat:
     allowed-imeis: []
     firmware-map:
       PANSHI_CAT1_LuatOS-SoC_Air780EHM: dfota_final.bin
+    ipc-file-dir: ./ipc_upgrade/files
+    ipc-demo-base: http://127.0.0.1:8010
+    ipc-public-download-base: http://43.136.55.143:8008
   mqtt:
     enabled: false
     host: "112.86.146.218"

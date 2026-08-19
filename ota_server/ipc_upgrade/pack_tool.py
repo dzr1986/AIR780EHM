@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import tarfile
+import sys
 from pathlib import Path
 
 DEFAULT_URL_BASE = "http://43.136.55.143:8008"
@@ -14,6 +15,8 @@ SKIP_NAMES = {".gitkeep", "ipc.tar", "ipc.json"}
 
 
 def default_out_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "ipc"
     return Path(__file__).resolve().parents[1] / "tools" / "ipc"
 
 

@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""磐石 Cat.1 MQTT 协议客户端（tools/gui/mqtt）。加载协议 MD、识别 1003 信号、自动/手动测试、OTA 闭环。
+"""磐石 Cat.1 MQTT 协议客户端（tools/gui/mqtt）。加载协议 MD、识别 1003 信号、自动/手动测试、OTA 闭环、回放 2013。
 
   python tools/gui/mqtt/mqtt_tools_gui.py
   python tools/gui/mqtt/mqtt_tools_gui.py --tab ota
+  python tools/gui/mqtt/mqtt_tools_gui.py --tab playback
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import threading
 import time
 import traceback
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
@@ -36,6 +38,16 @@ if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mqtt_tools_client import _make_client  # noqa: E402
+from playback import (  # noqa: E402
+    MAX_UPLOAD_SEC,
+    cloud_playback_items,
+    download_cloud_file,
+    fmt_dt,
+    match_segments,
+    parse_dt,
+    parse_record_list_text,
+    plan_uploads,
+)
 from protocol_md import (  # noqa: E402
     ProtocolCatalog,
     merge_commands,
@@ -91,6 +103,7 @@ def _payload_preview(data: dict) -> str:
 
 DEFAULT_OTA_URL = "http://43.136.55.143/api/site/firmware_upgrade?"
 DEFAULT_OTA_TIMEOUT_MS = 300000
+PLAYBACK_DIR = ROOT / "tools" / "_logs" / "playback"
 
 
 def _parse_gui_args(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
@@ -438,6 +451,7 @@ class MqttGui(tk.Tk):
         self._build_protocol()
         self._build_manual()
         self._build_ota()
+        self._build_playback()
         self._build_auto()
         self._build_log()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -472,6 +486,7 @@ class MqttGui(tk.Tk):
         ttk.Button(right, text="套用主题", command=self._sync_topics).pack(side=tk.LEFT)
         ttk.Button(right, text="查状态 2003", command=self._quick_2003).pack(side=tk.LEFT, padx=8)
         ttk.Button(right, text="OTA闭环", command=lambda: self._select_tab("ota")).pack(side=tk.LEFT, padx=4)
+        ttk.Button(right, text="回放下载", command=lambda: self._select_tab("playback")).pack(side=tk.LEFT, padx=4)
 
     def _build_signal_bar(self):
         bar = tk.Frame(self, bg="#fff3bf", highlightbackground=ORANGE, highlightthickness=2)
@@ -657,6 +672,10 @@ class MqttGui(tk.Tk):
             "ota": "ota闭环",
             "ota闭环": "ota闭环",
             "loop": "ota闭环",
+            "playback": "回放下载",
+            "play": "回放下载",
+            "回放": "回放下载",
+            "回放下载": "回放下载",
         }
         want = aliases.get(key, key)
         try:
@@ -727,6 +746,350 @@ class MqttGui(tk.Tk):
         self.ota_log.insert("1.0", "连接 Broker 并确认 IMEI 后，填目标版本，点「开始闭环」。\n")
         self.ota_log.configure(state=tk.DISABLED)
         self._bind_text_menu(self.ota_log, readonly=True)
+
+    def _build_playback(self):
+        page = ttk.Frame(self.nb)
+        self.nb.add(page, text="回放下载")
+        now = datetime.now()
+        self.play_begin_var = tk.StringVar(value=fmt_dt(now - timedelta(minutes=5)))
+        self.play_end_var = tk.StringVar(value=fmt_dt(now))
+        self._play_segments: list[dict] = []
+        self._play_gb_segments: list[dict] = []
+        self._play_plan: dict = {}
+        self._play_http_mark = ""
+
+        hint = tk.Label(
+            page,
+            text=(
+                "用户时间任意填。匹配规则：录像段开始 < 用户结束 且 录像段结束 > 用户开始，"
+                "即与 5/10 分钟 TS 求交，不必文件名等于所选时间。再按单段最长 600 秒拆成多条 MQTT 2013。"
+                "设备 clip_extract_window 按同一时间窗扫 TF。IPC 因 USB/无 eth0 传不上去时，1013 仍算信令成功，标 NETWORK。"
+            ),
+            bg=BG, fg="#333", wraplength=1180, justify=tk.LEFT, font=("Microsoft YaHei UI", 9),
+        )
+        hint.pack(fill=tk.X, padx=10, pady=(8, 4))
+
+        bar = tk.Frame(page, bg=BG)
+        bar.pack(fill=tk.X, padx=10, pady=4)
+        tk.Label(bar, text="开始", bg=BG).pack(side=tk.LEFT)
+        ttk.Entry(bar, textvariable=self.play_begin_var, width=20).pack(side=tk.LEFT, padx=4)
+        tk.Label(bar, text="结束", bg=BG).pack(side=tk.LEFT)
+        ttk.Entry(bar, textvariable=self.play_end_var, width=20).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="最近5分钟", command=self._play_last5).pack(side=tk.LEFT, padx=4)
+        self._play_source = tk.StringVar(value="国标时段")
+        ttk.Combobox(
+            bar, textvariable=self._play_source, width=12, state="readonly",
+            values=("国标时段", "已上传文件"),
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="粘贴国标列表", command=self._play_paste_gb).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="列出", command=self._play_list).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="匹配录像段", command=self._play_match).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="请求上传 2013", command=self._play_send_2013).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="下载所选", command=self._play_download_sel).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="下载时间范围内", command=self._play_download_range).pack(side=tk.LEFT, padx=4)
+
+        self.play_lbl = tk.Label(
+            page,
+            text="LiveGBS 复制时段粘贴 → 填任意时间 → 匹配 → 2013 → 等 1013 → 切已上传文件再下",
+            bg=BG, fg="#555", anchor="w", justify=tk.LEFT, wraplength=1180,
+        )
+        self.play_lbl.pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        split = tk.PanedWindow(page, orient=tk.VERTICAL, sashwidth=6, bg="#c8c8c8")
+        split.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        topf = tk.Frame(split, bg=BG)
+        tk.Label(topf, text="录像段 / 已上传文件（点选填入时间）", bg=BG).pack(anchor="w")
+        cols = ("src", "begin", "end", "ovb", "ove", "name", "size", "path")
+        self.play_tree = ttk.Treeview(topf, columns=cols, show="headings", height=8)
+        heads = {
+            "src": "来源", "begin": "段开始", "end": "段结束",
+            "ovb": "重叠开始", "ove": "重叠结束",
+            "name": "名称", "size": "大小", "path": "路径",
+        }
+        widths = {"src": 70, "begin": 150, "end": 150, "ovb": 150, "ove": 150, "name": 220, "size": 70, "path": 260}
+        for c in cols:
+            self.play_tree.heading(c, text=heads[c])
+            self.play_tree.column(c, width=widths[c], stretch=c in {"name", "path"})
+        ysb = ttk.Scrollbar(topf, orient=tk.VERTICAL, command=self.play_tree.yview)
+        self.play_tree.configure(yscrollcommand=ysb.set)
+        self.play_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        ysb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.play_tree.bind("<<TreeviewSelect>>", self._on_play_select)
+        split.add(topf, minsize=180)
+
+        botf = tk.Frame(split, bg=BG)
+        tk.Label(botf, text="2013 计划 / 1013 结果", bg=BG).pack(anchor="w")
+        self.play_plan_txt = tk.Text(botf, font=("Consolas", 10), wrap=tk.WORD, height=10)
+        self.play_plan_txt.pack(fill=tk.BOTH, expand=True)
+        self.play_plan_txt.tag_configure("ok", foreground="#1a7f37")
+        self.play_plan_txt.tag_configure("err", foreground=RED)
+        self.play_plan_txt.tag_configure("warn", foreground=ORANGE)
+        self._bind_text_menu(self.play_plan_txt)
+        split.add(botf, minsize=140)
+
+    def _play_log(self, msg: str, tag: str = "info"):
+        line = f"{_now()}  {msg}\n"
+        self.play_plan_txt.insert(tk.END, line, tag)
+        self.play_plan_txt.see(tk.END)
+        self.play_lbl.configure(text=msg)
+
+    def _play_window(self) -> tuple[datetime, datetime]:
+        begin = parse_dt(self.play_begin_var.get())
+        end = parse_dt(self.play_end_var.get())
+        if end <= begin:
+            raise ValueError("结束时间必须晚于开始时间")
+        return begin, end
+
+    def _play_last5(self):
+        now = datetime.now()
+        self.play_begin_var.set(fmt_dt(now - timedelta(minutes=5)))
+        self.play_end_var.set(fmt_dt(now))
+
+    def _fill_play_tree(self, items: list[dict], hint: str):
+        self.play_tree.delete(*self.play_tree.get_children())
+        for it in items:
+            self.play_tree.insert("", "end", values=(
+                it.get("src") or "",
+                it.get("begin") or "",
+                it.get("end") or "",
+                it.get("overlap_begin") or "",
+                it.get("overlap_end") or "",
+                it.get("name") or "",
+                it.get("size") or "",
+                it.get("path") or "",
+            ))
+        self.play_lbl.configure(text=hint)
+
+    def _on_play_select(self, _evt=None):
+        sel = self.play_tree.selection()
+        if not sel:
+            return
+        vals = self.play_tree.item(sel[0], "values")
+        begin_s = str(vals[3] or vals[1] or "").strip()
+        end_s = str(vals[4] or vals[2] or "").strip()
+        if not begin_s or not end_s:
+            return
+        try:
+            parse_dt(begin_s)
+            parse_dt(end_s)
+        except ValueError:
+            return
+        self.play_begin_var.set(begin_s)
+        self.play_end_var.set(end_s)
+        self.play_lbl.configure(text=f"已填入 {begin_s} ~ {end_s}  {vals[5]}")
+
+    def _play_paste_gb(self):
+        win = tk.Toplevel(self)
+        win.title("粘贴国标 / TF 时段")
+        win.geometry("760x420")
+        tk.Label(
+            win,
+            text="从 LiveGBS 录像列表复制（含开始/结束时间或 ch0_开始_结束.ts），粘贴后确定。",
+            bg=BG, wraplength=720, justify=tk.LEFT,
+        ).pack(anchor="w", padx=8, pady=6)
+        txt = tk.Text(win, font=("Consolas", 10), wrap=tk.NONE)
+        txt.pack(fill=tk.BOTH, expand=True, padx=8)
+        self._bind_text_menu(txt)
+
+        def apply():
+            items = parse_record_list_text(txt.get("1.0", tk.END))
+            if not items:
+                messagebox.showinfo("回放", "没有解析到时段。需要一行两个时间，或 ch0_YYYYMMDDHHMMSS_YYYYMMDDHHMMSS.ts")
+                return
+            self._play_gb_segments = items
+            self._play_segments = items
+            self._play_source.set("国标时段")
+            self._fill_play_tree(items, f"已导入 {len(items)} 段国标/TF，再填用户时间点「匹配录像段」")
+            self._play_log(f"已导入 {len(items)} 段国标/TF")
+            win.destroy()
+
+        ttk.Button(win, text="解析并导入", command=apply).pack(pady=8)
+
+    def _play_list(self):
+        src = (self._play_source.get() or "").strip()
+        if src.startswith("已上传"):
+            self._play_list_cloud()
+            return
+        items = list(self._play_gb_segments)
+        if not items:
+            messagebox.showinfo("回放", "本页不连 T31 COM7。请先从 LiveGBS 复制时段，点「粘贴国标列表」。")
+            return
+        try:
+            begin, end = self._play_window()
+            items = match_segments(begin, end, items)
+        except ValueError:
+            pass
+        self._play_segments = items
+        self._fill_play_tree(items, f"国标/TF {len(items)} 段（与用户时间重叠）")
+        self._play_log(f"国标/TF {len(items)} 段")
+
+    def _play_list_cloud(self):
+        def work():
+            try:
+                begin, end = self._play_window()
+            except ValueError:
+                begin = end = None
+            try:
+                items = cloud_playback_items(begin, end)
+            except Exception as e:
+                self.ui(self._play_log, f"NETWORK 列出已上传失败：{e}", "warn")
+                self.ui(lambda: setattr(self, "_play_http_mark", "NETWORK"))
+                return
+            self._play_segments = items
+            hint = f"已上传 {len(items)} 条（2013 成功后的 7003 文件，不是国标目录）"
+            self.ui(self._fill_play_tree, items, hint)
+            self.ui(self._play_log, hint)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _play_match(self):
+        try:
+            begin, end = self._play_window()
+        except ValueError as e:
+            messagebox.showinfo("回放", str(e))
+            return
+        segs = [x for x in (self._play_gb_segments or self._play_segments) if x.get("end")]
+        plan = plan_uploads(begin, end, segs or None)
+        self._play_plan = plan
+        if plan["hits"]:
+            self._fill_play_tree(plan["hits"], plan["note"])
+        self.play_plan_txt.delete("1.0", tk.END)
+        self._play_log(plan["note"])
+        for i, w in enumerate(plan["windows"], 1):
+            self._play_log(f"  2013[{i}] {w['begin']} ~ {w['end']}")
+        if plan["source"] == "user":
+            self._play_log(
+                "提示：本页不连 T31 COM7。国标目录请在 LiveGBS RecordInfo 看 5/10 分钟段，"
+                "点选或手填时间即可。设备按时间窗扫 TF，不必文件名完全一致。",
+                "warn",
+            )
+
+    def _play_send_2013(self):
+        if not self.client or not self.connected:
+            messagebox.showinfo("回放", "请先连接 Broker")
+            return
+        try:
+            begin, end = self._play_window()
+        except ValueError as e:
+            messagebox.showinfo("回放", str(e))
+            return
+        segs = [x for x in (self._play_gb_segments or self._play_segments) if x.get("end")]
+        plan = plan_uploads(begin, end, segs or None)
+        self._play_plan = plan
+        self._play_match()
+        threading.Thread(target=self._play_send_loop, args=(plan,), daemon=True).start()
+
+    def _play_send_loop(self, plan: dict):
+        windows = plan.get("windows") or []
+        ok_n = 0
+        for i, w in enumerate(windows, 1):
+            begin_ts = int(parse_dt(w["begin"]).timestamp())
+            end_ts = int(parse_dt(w["end"]).timestamp())
+            body = {
+                "dataType": "2013",
+                "messageId": f"play-{int(time.time())}-{uuid.uuid4().hex[:4]}",
+                "action": "upload_video",
+                "needUpload": 1,
+                "reason": "cloud",
+                "videoType": 2,
+                "beginTime": begin_ts,
+                "endTime": end_ts,
+                "beginTs": begin_ts,
+                "endTs": end_ts,
+            }
+            with self._lock:
+                n = len(self._inbox)
+            try:
+                sent = self._publish_now(body)
+            except RuntimeError as e:
+                self.ui(self._play_log, f"2013[{i}] 发送失败：{e}", "err")
+                return
+            got = self._wait_reply("1013", n, 20, sent.get("messageId"))
+            if got:
+                ret = got.get("ret")
+                msg = got.get("message") or ""
+                if ret in (0, "0", None) and (not msg or msg in {"ok", "cancelled"}):
+                    ok_n += 1
+                    self.ui(self._play_log, f"2013[{i}] → 1013 ok  {w['begin']}~{w['end']}  {msg}", "ok")
+                else:
+                    self.ui(self._play_log, f"2013[{i}] → 1013 ret={ret} {msg}", "warn")
+            else:
+                self.ui(self._play_log, f"2013[{i}] 未收到 1013（T3x 未就绪属预期）", "warn")
+        self.ui(self._play_log, f"信令闭环 {ok_n}/{len(windows)}。再点「列出已上传」看 7003；失败标 NETWORK")
+        self.after(2500, self._play_probe_http)
+
+    def _play_probe_http(self):
+        def work():
+            try:
+                items = cloud_playback_items()
+            except Exception as e:
+                self._play_http_mark = "NETWORK"
+                self.ui(self._play_log, f"NETWORK HTTP 列 7003 失败（USB 占网/无 eth0 时预期）：{e}", "warn")
+                return
+            self._play_http_mark = ""
+            self.ui(self._play_log, f"7003 当前 playback {len(items)} 条")
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _play_download_sel(self):
+        sel = self.play_tree.selection()
+        if not sel:
+            messagebox.showinfo("回放", "请先列出已上传，再点选一行")
+            return
+        vals = self.play_tree.item(sel[0], "values")
+        src = str(vals[0] or "")
+        path = vals[7] if len(vals) > 7 else ""
+        if src.startswith("国标"):
+            messagebox.showinfo(
+                "回放",
+                "国标/TF 时段不能直接下文件。点选填时间后发 2013，等 1013 再列已上传。",
+            )
+            return
+        if not path or not str(path).startswith("/"):
+            messagebox.showinfo("回放", "这一行没有 7003 路径")
+            return
+
+        def work():
+            try:
+                dest = download_cloud_file(str(path), PLAYBACK_DIR)
+            except Exception as e:
+                self.ui(lambda: setattr(self, "_play_http_mark", "NETWORK"))
+                self.ui(self._play_log, f"NETWORK 下载失败：{e}", "warn")
+                return
+            self.ui(self._play_log, f"已下载 {dest}", "ok")
+            if sys.platform == "win32":
+                os.startfile(PLAYBACK_DIR)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _play_download_range(self):
+        def work():
+            try:
+                begin, end = self._play_window()
+                items = cloud_playback_items(begin, end)
+            except Exception as e:
+                self.ui(lambda: setattr(self, "_play_http_mark", "NETWORK"))
+                self.ui(self._play_log, f"NETWORK 列出失败：{e}", "warn")
+                return
+            if not items:
+                self.ui(self._play_log, "时间范围内没有已上传文件。先 2013，等 HTTP 完成后再列。", "warn")
+                return
+            ok_n = 0
+            err = ""
+            for it in items:
+                try:
+                    download_cloud_file(it["path"], PLAYBACK_DIR)
+                    ok_n += 1
+                except Exception as e:
+                    err = str(e)
+            if err and ok_n == 0:
+                self.ui(lambda: setattr(self, "_play_http_mark", "NETWORK"))
+            self.ui(self._play_log, f"下载 {ok_n}/{len(items)} → {PLAYBACK_DIR} {err}", "ok" if ok_n else "warn")
+            if sys.platform == "win32" and ok_n:
+                os.startfile(PLAYBACK_DIR)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _build_auto(self):
         page = ttk.Frame(self.nb)
@@ -1399,6 +1762,11 @@ class MqttGui(tk.Tk):
             fw = data.get("firmwareVersion")
             if fw and hasattr(self, "ota_cur_var"):
                 self.ota_cur_var.set(str(fw))
+        elif dt == "1013" and hasattr(self, "play_lbl"):
+            self.play_lbl.configure(
+                text=f"1013 reply={data.get('reply')} ret={data.get('ret')} {data.get('message') or ''} "
+                f"{data.get('beginTime') or ''}~{data.get('endTime') or ''}"
+            )
 
     def _on_msg_select(self, _evt=None):
         sel = self.msg_tree.selection()

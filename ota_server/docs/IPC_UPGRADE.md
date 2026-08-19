@@ -85,6 +85,22 @@ T31 进程重、交叉编译麻烦时，用云主机 **x86demo** 代替嵌入式
 文件目录（宿主机）：`/home/ubuntu/ota_server/ipc_upgrade/files`  
 设备槽位：`/home/ubuntu/ota_server/ipc_upgrade/slot/current.tar`（解包在 `slot/extract/`）
 
+### 网页管理台（推荐）
+
+登录：http://43.136.55.143/ipc.html  
+Token 与管理台相同：`ota-7f3a9c2e4b18d6a0e5c1`（`X-Admin-Token`）  
+4G OTA 顶栏也可点 **IPC 升级**。
+
+登录后：选 IPC 文件 → 上传并打包（Java 写成 `ipc.tar` + `ipc.json`）→ 下发 `ipc_upgrade` → 一键闭环 → 拉取到本地。
+
+| 接口 | 说明 |
+|------|------|
+| `GET /admin/api/ipc/status` | 登录校验 + 设备状态 |
+| `POST /admin/api/ipc/upload` | multipart `file` + `version` |
+| `POST /admin/api/ipc/upgrade` | 下发 x86demo |
+| `GET /admin/api/ipc/tasks/{id}` | 任务进度 |
+| `GET /admin/api/ipc/file/ipc.tar` | 登录后下载到本机 |
+
 ---
 
 ## 4. Windows 测试工具

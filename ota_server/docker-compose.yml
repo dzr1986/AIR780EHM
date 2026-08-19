@@ -36,9 +36,13 @@ services:
       LUAT_MQTT_USERNAME: "fptop1"
       LUAT_MQTT_PASSWORD: "fptop1.com2025@#$&"
       LUAT_MQTT_OTA_PUBLIC_BASE_URL: "http://43.136.55.143"
+      LUAT_OTA_IPC_FILE_DIR: /var/www/fileserver
+      LUAT_OTA_IPC_DEMO_BASE: http://ipc-x86demo:8010
+      LUAT_OTA_IPC_PUBLIC_DOWNLOAD_BASE: http://43.136.55.143:8008
     volumes:
       - ./firmware:/app/firmware
       - ./logs:/app/logs
+      - ./ipc_upgrade/files:/var/www/fileserver
     expose:
       - "8080"
     restart: unless-stopped

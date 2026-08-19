@@ -1,11 +1,12 @@
 # MQTT 2013 ↔ 1013：需要上传视频（信令，不传文件）
 
-> **代码**：Cat.1 `user/net_mqtt.lua` `handleDownlink2013` · `user/host_uart.lua` `requestUploadVideo`  
-> **T3x**：`AT+UPLOADVIDEO` → `clip_upload_request`（HTTP type=2 回放 / type=1 侦测）  
+> **代码**：Cat.1 `user/net_mqtt.lua` `handleDownlink2013` / `resolveUploadWindow` · `user/host_uart.lua` `requestUploadVideo`  
+> **T31**：`AT+UPLOADVIDEO` → `clip_extract_window` → `clip_upload_request`（HTTP type=2 回放 / type=1 侦测）  
 > **主题**：下行 `/panshi/device/{IMEI}/` · 上行 `/panshi/app/{IMEI}/event`  
-> **现网 IMEI**：`862323084068124` · 脚本 **`001.000.015`**
+> **现网 IMEI**：`862323084068124` · 脚本 **`001.000.037`**（固件 `2044.001.037`）  
+> **上位机**：`tools/mqtt_tools_gui.bat --tab playback`
 
-MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31x HTTP 发到 `uploadVideo`（7003）。
+MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `uploadVideo`（7003）。Cat.1 带宽不够走 GB28181 拉流下载。
 
 ---
 
@@ -16,14 +17,40 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31x HTTP 发到 `
 | **2010** | 下行 | PIR/录像 **策略**（含 `uploadMode`） | ❌ 只改配置。`uploadMode=auto` 只决定 PIR 时是否另发 **1001**，**不能**替代 2013 |
 | **2012** | 下行 | **开本地 TF 录** | ✅ 写盘；上行 **1012** + **1010** |
 | **2011** | 下行 | **停本地 TF 录** | ✅ 封盘；上行 **1011** |
-| **2013** | 下行 | 平台声明/请求 **需要上传视频** | ❌ MQTT 不传文件；T31x 按时间窗抽片后 HTTP 上传 |
+| **2013** | 下行 | 平台声明/请求 **需要上传视频** | ❌ MQTT 不传文件；T31 按时间窗抽片后 HTTP 上传 |
 | **1013** | 上行 | 受理应答（`reply=1`）或设备主动「需要上传」 | 同上 |
 
 停录后平台若要片：发 **2013**（带时间窗），不要指望 2010 `uploadMode` 自动等价于上传。
 
 ---
 
-## 2. 下行 2013（平台 → 设备）
+## 2. 端到端流程（任意时间回放下载）
+
+录像在 TF 上按约 **5 / 10 分钟** 一段落盘，文件名 `ch0_开始_结束.ts`（墙钟 CST）。用户可选任意起止时间，不必对齐文件边界。
+
+```text
+1. 国标 RecordInfo / TF 文件名  →  得到已有录像段列表
+2. 用户填任意 [begin, end]
+3. 上位机求交：file_start < user_end 且 file_end > user_start
+   → 显示会覆盖哪些 TS；超过 600 秒拆成多条 2013
+4. MQTT 下行 2013（同时带墙钟 beginTime/endTime + 本机 Unix beginTs/endTs）
+5. Cat.1 优先用 beginTs/endTs → AT+UPLOADVIDEO=<need>,<vtype>,<unix>,<unix>,...
+6. T31 clip_extract_window 扫 /mnt/sdcard/media/vi0/YYYYMMDD/ 抽 I 帧
+   → 中间片落 /mnt/sdcard/media/vi0/upload_clip/
+7. 上行 1013 reply=1 ret=0（只表示已排队抽片，不是 HTTP 已到云）
+8. T31 HTTP POST 到 43.136.55.143:7003（type=2）
+9. 上位机再打 7003 列表/下载已上传 TS
+```
+
+**时间匹配**：用户窗与录像段重叠即可，T31 用 I 帧裁切，不必文件名等于用户时间。可跨天。单条 MQTT 最长 **600 秒**；更长由上位机 `split_window` 拆多条（Cat.1 `resolveUploadWindow` 只会截前 600 秒）。
+
+**时区**：T31 `date` 常显示 UTC，文件名是 CST 墙钟。2013 必须带 **本机 Unix** `beginTs`/`endTs`，避免模组把墙钟字符串当 UTC 导致窗口偏 8 小时。
+
+**USB / 4G**：USB 接到电脑时 1003 常见 `usbInserted=1, usbNetdev=0`，T31 出网走 USB 失败，HTTP 报 `Couldn't connect to server`。抽片仍会成功落在 `upload_clip/`。拔 USB、走 4G（或模组 USB 网卡）后才会上到 7003。信令 1013 与 HTTP 是两步，不要把 NETWORK 当成 2013 失败。
+
+---
+
+## 3. 下行 2013（平台 → 设备）
 
 ```json
 {
@@ -34,8 +61,10 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31x HTTP 发到 `
   "reason": "cloud",
   "recordPath": "",
   "videoType": 2,
-  "beginTime": "2026-08-17 19:00:00",
-  "endTime": "2026-08-17 19:05:00",
+  "beginTime": "2026-08-19 09:13:18",
+  "endTime": "2026-08-19 09:18:18",
+  "beginTs": 1755565998,
+  "endTs": 1755566298,
   "videoMaxDurationSec": 0
 }
 ```
@@ -47,20 +76,21 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31x HTTP 发到 `
 | `action` | 否 | `"upload_video"`（也接受 `"notify_upload"`） |
 | `needUpload` | 否 | `1`=请求上传（默认）；`0`=取消，不排队抽片 |
 | `reason` | 否 | `cloud` / `pir` / `manual` / `timer` / … |
-| `recordPath` | 否 | TF 相对或绝对路径；空=按时间窗抽最近一段。当前固件以时间窗为准，路径仅回显 |
+| `recordPath` | 否 | TF 相对或绝对路径；空=按时间窗抽。当前固件以时间窗为准，路径仅回显 |
 | `videoType` | 否 | `1`=动态侦测 · **`2`=回放（默认）**，与 HTTP `type` 明文一致 |
-| `beginTime` / `endTime` | 回放建议 | `"YYYY-MM-DD HH:MM:SS"` 或 Unix 秒（也可用 `beginTs`/`endTs`） |
+| `beginTime` / `endTime` | 回放建议 | `"YYYY-MM-DD HH:MM:SS"` 或 Unix 秒 |
+| `beginTs` / `endTs` | **回放建议必带** | 本机本地 Unix 秒。Cat.1 **优先**于墙钟字符串 |
 | `videoMaxDurationSec` | 否 | 无起止时：从现在往前截这么多秒（默认 60）。有起止时仅作上限参考。单段最长 **600 秒** |
 
 无时间窗：设备用「现在 − `videoMaxDurationSec`（或 60s）」到「现在」。
 
 ---
 
-## 3. 上行 1013
+## 4. 上行 1013
 
 主题：`/panshi/app/862323084068124/event`
 
-### 3.1 应答（有下行 2013）
+### 4.1 应答（有下行 2013）
 
 ```json
 {
@@ -74,25 +104,25 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31x HTTP 发到 `
   "action": "upload_video",
   "reason": "cloud",
   "videoType": 2,
-  "beginTime": "2026-08-17 19:00:00",
-  "endTime": "2026-08-17 19:05:00",
-  "beginTs": 1755432000,
-  "endTs": 1755432300,
-  "time": "2026-08-17 19:05:01"
+  "beginTime": "2026-08-19 09:13:18",
+  "endTime": "2026-08-19 09:18:18",
+  "beginTs": 1755565998,
+  "endTs": 1755566298,
+  "time": "2026-08-19 09:18:20"
 }
 ```
 
 | `ret` | `message` | 含义 |
 |------|-----------|------|
-| 0 | `ok` | T31x 已排队抽片/上传 |
+| 0 | `ok` | T31 已排队抽片/上传 |
 | 0 | `cancelled` | `needUpload=0` |
 | -1 | `t3x_not_ready` / `no_host_uart` / `fail` | 未排队 |
 
-**不另发 1004**。平台等 **1013 `reply=1`** 即可。
+**不另发 1004**。平台等 **1013 `reply=1`** 即可确认信令闭环。HTTP 是否到 7003 要另查列表。
 
-### 3.2 主动上报（无下行）
+### 4.2 主动上报（无下行）
 
-人形抽片排队成功后，T31x 发 `AT+UPLOADNEED`，4G 转 1013（无 `reply`）：
+人形抽片排队成功后，T31 发 `AT+UPLOADNEED`，4G 转 1013（无 `reply`）：
 
 ```json
 {
@@ -109,15 +139,16 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31x HTTP 发到 `
 
 ---
 
-## 4. UART
+## 5. UART
 
 ```text
 平台 2013
   → Cat.1  AT+UPLOADVIDEO=<need>,<vtype>,<start_unix>,<end_unix>,<max_sec>,<messageId>
-  ← T31x  +UPLOADVIDEO:OK,need=1,type=2,start=…,end=…,queued=1
-  → T31x  clip_upload_request() 抽 [start,end] HTTP type=1/2
+  ← T31    +UPLOADVIDEO:OK,need=1,type=2,start=…,end=…,queued=1
+  → T31    clip_extract_window() 抽 [start,end]
+  → T31    clip_upload_request() HTTP type=1/2
 
-T31x 人形自动抽片后（可选）
+T31 人形自动抽片后（可选）
   → Cat.1  AT+UPLOADNEED=1,reason=record_done,pirStatus=t3x_active
   → 平台   1013（无 reply）
 ```
@@ -125,58 +156,102 @@ T31x 人形自动抽片后（可选）
 成功应答：
 
 ```text
-+UPLOADVIDEO:OK,need=1,type=2,start=1755432000,end=1755432300,queued=1
++UPLOADVIDEO:OK,need=1,type=2,start=1755565998,end=1755566298,queued=1
 OK
+```
+
+抽片落盘（T31）：
+
+```text
+/mnt/sdcard/media/vi0/YYYYMMDD/ch0_开始_结束.ts     # 源录像
+/mnt/sdcard/media/vi0/upload_clip/                   # 待 HTTP 的抽片段
 ```
 
 ---
 
-## 5. 后台列表走 GB28181，MQTT 只带下载时间
+## 6. 后台列表走 GB28181，MQTT 只带下载时间
 
 产品后台的回放**目录**来自国标 **RecordInfo**（设备 ID `34020000001310989442`，与 TF 卡 `ch0_开始_结束.ts` 同源）。MQTT **没有**列表命令。上位机在 2013 里填的是**要抽哪一段**，不是文件名。
 
 | 动作 | 通道 | 带什么 | 不是什么 |
 |------|------|--------|----------|
 | 列出有哪些时段 | **GB28181 RecordInfo** | `StartTime` / `EndTime` / 文件大小 | 不是 MP4 下载，也不是 7003 目录 |
-| 点选后要一份文件 | **MQTT 2013** | `beginTime`/`endTime` = 国标 Start/End；`videoType=2` | 不是列表；MQTT 不传文件 |
-| 设备抽片落盘 | T31x HTTP `uploadVideo` type=2 | 抽 `[begin,end]`，单段最长 **600s** | 国标 Playback Invite 是看流，不是下文件 |
+| 点选后要一份文件 | **MQTT 2013** | `beginTime`/`endTime` + `beginTs`/`endTs`；`videoType=2` | 不是列表；MQTT 不传文件 |
+| 设备抽片落盘 | T31 HTTP `uploadVideo` type=2 | 抽 `[begin,end]`，单段最长 **600s** | 国标 Playback Invite 是看流，不是下文件 |
 | 已上传文件 | `http://…:7003/apps/video/playback/` | 2013 **成功之后**才有 | **不能**当主列表 |
-
-```text
-平台 RecordInfo 列出时段
-  → 用户点选一段（StartTime / EndTime）
-  → 复制到 2013 beginTime / endTime（超过 10 分钟则拆段或只取前 600s）
-  → 设备 AT+UPLOADVIDEO → HTTP 抽片
-  → 1013 reply=1
-  → 再从 7003 取 TS
-```
 
 字段对照：
 
 | GB28181 RecordInfo | MQTT 2013 | 设备 |
 |--------------------|-----------|------|
-| `StartTime` | `beginTime` | `AT+UPLOADVIDEO` start |
-| `EndTime` | `endTime` | end |
+| `StartTime` | `beginTime` + `beginTs` | `AT+UPLOADVIDEO` start |
+| `EndTime` | `endTime` + `endTs` | end |
 | （无文件 URL） | 无 | 按时间窗从 TF 抽，不按路径 |
 
-检测 GUI：「列出云端回放」默认 **国标时段**（COM7 读 TF，与 RecordInfo 同源）→ 点选填时间 →「请求上传 2013」。切到 **已上传文件** 才打 7003。
+---
+
+## 7. 上位机操作
+
+入口：**`tools/mqtt_tools_gui.bat --tab playback`**（MQTT 工具「回放下载」页）。流程检测 GUI **不再**下发回放。
+
+1. 从 LiveGBS 粘贴国标时段，或粘贴 `ch0_*.ts` 文件名
+2. 填任意开始 / 结束时间
+3. 「匹配录像段」：看覆盖哪些 TS、是否需拆成多条 600s
+4. 「请求上传 2013」：下发信令并等 1013
+5. 切到 **已上传文件** 再打 7003（不要把 7003 当录像目录）
+
+匹配 / 拆段实现：`tools/gui/mqtt/playback.py`（单测 `tools/gui/mqtt/test_playback.py`）。  
+闭环脚本：`python tools/debug/_loop_2013_playback.py`（2013→1013→7003；HTTP 失败标 `NETWORK`）。
+
+MQTT `client_id` 不要用固定的 `platform-test-001`，会把 GUI 踢下线。
+
+烧录脚本版本（运行态免 BOOT）：
+
+```text
+python tools/cat1_flash.py flash-script --wait 90
+```
+
+用 2008→1008 确认 `scriptVersion=001.000.037`。
 
 ---
 
-## 6. 联调
+## 8. 实测 2026-08-19（IMEI 862323084068124）
+
+| 项 | 结果 |
+|----|------|
+| 烧录 | `flash-script` COM10，运行态完成，脚本 **001.000.037** |
+| 2008→1008 | `scriptVersion=001.000.037`，`firmwareVersion=2044.001.037` |
+| 2013 窗 | 本机 **09:13:18–09:18:18**（同时带 Unix `beginTs`/`endTs`） |
+| 1013 | `ret=0`，回显时间与下发一致 |
+| UART | `AT+UPLOADVIDEO=1,2,<unix>,...` → `+UPLOADVIDEO:OK queued=1` |
+| T31 抽片 | 成功。覆盖 `ch0_20260819090944_20260819091628.ts` 与 `ch0_20260819091717.ts.part` |
+| HTTP 7003 | **NETWORK**（`Couldn't connect to server`，含 `112.86.146.218:7003`） |
+| 1003 | `usbInserted=1`，`usbNetdev=0`（USB 占电脑，T31 出不了网） |
+| 抽片文件 | 已在 `/mnt/sdcard/media/vi0/upload_clip/`，拔 USB 走 4G 后再上 7003 |
+
+结论：信令 2013→UART→T31 抽片→1013 **已闭环**。HTTP 到 7003 受出网方式限制，失败标 NETWORK，不是时间窗匹配错误。
+
+---
+
+## 9. 联调检查单
 
 1. 订阅 `/panshi/app/862323084068124/#`
-2. 从国标/TF 列表取 `StartTime`/`EndTime`，发 2013（`videoType=2`）
-3. 等 **1013** `ret=0`
-4. 有 eth0 时到 `http://43.136.55.143:7003/admin/api/v1/videos` 看 `playback/`
-5. USB 占电脑、无 eth0 时 HTTP 失败是预期；信令仍应有 1013
+2. 确认脚本 `001.000.037`（1008）
+3. 从国标/TF 取时段，或直接填任意墙钟 + Unix
+4. 发 2013（`videoType=2`，带 `beginTs`/`endTs`）
+5. 等 **1013** `ret=0`
+6. UART 应有 `+UPLOADVIDEO:OK queued=1`
+7. T31 `upload_clip/` 应有抽片段
+8. 有 4G / eth0 时到 `http://43.136.55.143:7003/admin/api/v1/videos` 看 `playback/`
+9. USB 占电脑、无 4G 时 HTTP 失败是预期；信令仍应有 1013
 
 ---
 
-## 7. 相关文档
+## 10. 相关文档
 
 - [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) §4.9b
 - [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §10b
 - [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) §4.4
 - [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md)
+- [MQTT_1003_STATUS_PATTERN.md](MQTT_1003_STATUS_PATTERN.md)
 - [../video_upload_server/README.md](../video_upload_server/README.md)

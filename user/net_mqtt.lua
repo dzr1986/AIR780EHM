@@ -1280,8 +1280,8 @@ local function parseUnixOrDatetime(v)
 	})
 end
 local function resolveUploadWindow(data)
-	local startTs = parseUnixOrDatetime(data.beginTime or data.startTime or data.beginTs or data.startTs)
-	local endTs = parseUnixOrDatetime(data.endTime or data.stopTime or data.endTs or data.stopTs)
+	local startTs = parseUnixOrDatetime(data.beginTs or data.startTs or data.beginTime or data.startTime)
+	local endTs = parseUnixOrDatetime(data.endTs or data.stopTs or data.endTime or data.stopTime)
 	local maxSec = tonumber(data.videoMaxDurationSec) or 0
 	if maxSec < 0 then
 		maxSec = 0

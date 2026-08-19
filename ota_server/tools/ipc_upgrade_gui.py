@@ -19,9 +19,12 @@ from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
 from urllib.parse import urlparse
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT / "ipc_upgrade") not in sys.path:
-    sys.path.insert(0, str(ROOT / "ipc_upgrade"))
+if getattr(sys, "frozen", False):
+    ROOT = Path(sys.executable).resolve().parent
+else:
+    ROOT = Path(__file__).resolve().parents[1]
+    if str(ROOT / "ipc_upgrade") not in sys.path:
+        sys.path.insert(0, str(ROOT / "ipc_upgrade"))
 
 from pack_tool import DEFAULT_URL_BASE, default_out_root, pack, product_dir, write_ipc_json
 
