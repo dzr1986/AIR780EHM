@@ -101,7 +101,7 @@ def _payload_preview(data: dict) -> str:
     return preview[:140] + ("…" if len(preview) > 140 else "")
 
 
-DEFAULT_OTA_URL = "http://43.136.55.143/api/site/firmware_upgrade?"
+DEFAULT_OTA_URL = "http://112.86.146.219:18080/api/site/firmware_upgrade?"
 DEFAULT_OTA_TIMEOUT_MS = 300000
 PLAYBACK_DIR = ROOT / "tools" / "_logs" / "playback"
 

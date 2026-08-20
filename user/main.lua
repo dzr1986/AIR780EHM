@@ -1,5 +1,5 @@
 PROJECT = "PANSHI_CAT1"
-VERSION = "001.000.040"
+VERSION = "001.000.01"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function validateBuildVersion(ver)

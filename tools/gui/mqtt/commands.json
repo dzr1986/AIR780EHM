@@ -37,6 +37,6 @@
     {"id": "2004off", "name": "关机", "expect": "1004", "allow_nonzero_ret": true, "payload": {"dataType": "2004", "action": "off"}, "skip_auto": true, "destructive": true, "note": "USB 插入时 1004 usb_block 不关机"},
     {"id": "2009fmt", "name": "TF 格式化 reboot=0", "expect": "1009", "timeout_sec": 45, "payload": {"dataType": "2009", "action": "format", "reboot": 0}, "need_t3x": true, "skip_auto": true, "tf_format": true, "allow_nonzero_ret": true, "note": "单独勾选「含 TF 格式化」才会跑。T3x 未就绪/无卡时 1009 ret=-1，不再吞应答"},
     {"id": "2004reboot", "name": "重启模组", "expect": "1004", "timeout_sec": 15, "payload": {"dataType": "2004", "action": "reboot"}, "skip_auto": true, "destructive": true, "note": "先 1004 reboot，约 0.8s 后复位；放最后测"},
-    {"id": "2004ota", "name": "自建OTA下发", "expect": "1004", "timeout_sec": 20, "payload": {"dataType": "2004", "action": "ota", "url": "http://43.136.55.143/api/site/firmware_upgrade?", "version": "2044.001.025", "timeout": 300000, "full_url": 0}, "skip_auto": true, "manual_only": true, "destructive": true, "note": "与管理台同协议。须先上传 sourceVersion=当前固件 的包。闭环请用「OTA闭环」页，勿以 1004 success 为唯一成功条件"}
+    {"id": "2004ota", "name": "自建OTA下发", "expect": "1004", "timeout_sec": 20, "payload": {"dataType": "2004", "action": "ota", "url": "http://112.86.146.219:18080/api/site/firmware_upgrade?", "version": "2044.001.025", "timeout": 300000, "full_url": 0}, "skip_auto": true, "manual_only": true, "destructive": true, "note": "与管理台同协议。须先上传 sourceVersion=当前固件 的包。闭环请用「OTA闭环」页，勿以 1004 success 为唯一成功条件"}
   ]
 }

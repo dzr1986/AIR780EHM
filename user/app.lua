@@ -881,30 +881,32 @@ local function scheduleBootUsbPolicySync()
 	end, delayMs)
 end
 local function startHeartbeat()
+	local intervalMs = tonumber((_G.APP_META or {}).heartbeat_log_interval_ms) or 60000
+	if intervalMs < 1000 then
+		intervalMs = 1000
+	end
 	sys.timerLoopStart(function()
 		if state.heartbeat_paused or _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active then
 			return
 		end
 		state.heartbeat_count = state.heartbeat_count + 1
-		if (state.heartbeat_count % 1) == 0 then
-			local rt = _G.APP_RUNTIME or {}
-			local usbInserted = isUsbInserted() and 1 or 0
-			local mqttConnected = tonumber(rt.online_status) == 1 and 1 or 0
-			if netModule and type(netModule.getState) == "function" then
-				local ok, ns = pcall(netModule.getState)
-				if ok and type(ns) == "table" and ns.connected ~= nil then
-					mqttConnected = ns.connected and 1 or 0
-				end
+		local rt = _G.APP_RUNTIME or {}
+		local usbInserted = isUsbInserted() and 1 or 0
+		local mqttConnected = tonumber(rt.online_status) == 1 and 1 or 0
+		if netModule and type(netModule.getState) == "function" then
+			local ok, ns = pcall(netModule.getState)
+			if ok and type(ns) == "table" and ns.connected ~= nil then
+				mqttConnected = ns.connected and 1 or 0
 			end
-			appInfo("heartbeat_status",
-				"usb=" .. tostring(usbInserted),
-				"power=" .. tostring(rt.power_status or 0),
-				"bat_mv=" .. tostring(rt.battery_mv or "--"),
-				"bat_pct=" .. tostring(rt.battery_percent or "--"),
-				"mqtt=" .. tostring(mqttConnected),
-				"lowpwr=" .. tostring(rt.low_power_mode or 0))
 		end
-	end, 10000)
+		appInfo("heartbeat_status",
+			"usb=" .. tostring(usbInserted),
+			"power=" .. tostring(rt.power_status or 0),
+			"bat_mv=" .. tostring(rt.battery_mv or "--"),
+			"bat_pct=" .. tostring(rt.battery_percent or "--"),
+			"mqtt=" .. tostring(mqttConnected),
+			"lowpwr=" .. tostring(rt.low_power_mode or 0))
+	end, intervalMs)
 end
 function start(gpio, net, t3x_ctrl)
 	if started then

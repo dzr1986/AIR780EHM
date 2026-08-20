@@ -51,6 +51,7 @@ _G.HOST_USB_CFG = {
 _G.APP_META = {
 	version = _G.VERSION or "",
 	log_enabled = false,
+	heartbeat_log_interval_ms = 60000, -- heartbeat_status 打印间隔
 	device_model = "awake_normal",
 	cmd_ext = "",
 	deep_rest_ms = 10 * 60 * 1000,
@@ -469,16 +470,52 @@ _G.MQTT_CFG = {
 	ip_lose_cooldown_sec = 3,
 	debug_uplink = true,
 }
+-- FOTA 拉包地址唯一来源（其它 lua 禁止硬编码；经 resolveFotaSelfUrl 读取）
+local FOTA_URL_PANSHI = "http://112.86.146.219:18080/api/site/firmware_upgrade?"
+local FOTA_URL_LEGACY = "http://43.136.55.143/api/site/firmware_upgrade?"
 _G.FOTA_CFG = {
-	-- self：拉本仓库 ota_server；其它值：走 libfota2 默认地址（不经过本服务器）
+	-- self：拉下方 servers；其它值：走 libfota2 默认地址（iot.openluat.com）
 	server_mode = "self",
-	self_url = "http://43.136.55.143/api/site/firmware_upgrade?",
+	-- OTA 端点选择（与下方 servers 键名对应）：
+	--   panshi / new  → 现网默认
+	--   legacy / old  → 原服务器（兼容保留）
+	-- 若填写 self_url / custom_url，则优先用手动 URL，忽略 server 选择。
+	server = "panshi",
+	default_url = FOTA_URL_PANSHI,
+	servers = {
+		panshi = FOTA_URL_PANSHI,
+		new = FOTA_URL_PANSHI,
+		legacy = FOTA_URL_LEGACY,
+		old = FOTA_URL_LEGACY,
+	},
+	-- self_url = nil,
 	request_delay_ms = 500,
 	network_wait_ms = 120000,
 	callback_timeout_ms = 320000,
 	timeout_ms = 300000,
 	auto_reboot_on_success = true,
 }
+-- 解析当前 FOTA 拉包地址（供 fota_svc / net_mqtt 共用）
+function _G.resolveFotaSelfUrl()
+	local cfg = type(_G.FOTA_CFG) == "table" and _G.FOTA_CFG or {}
+	if cfg.self_url and cfg.self_url ~= "" then
+		return cfg.self_url
+	end
+	if cfg.custom_url and cfg.custom_url ~= "" then
+		return cfg.custom_url
+	end
+	local servers = type(cfg.servers) == "table" and cfg.servers or {}
+	local key = string.lower(tostring(cfg.server or "panshi"))
+	local u = servers[key]
+	if u and u ~= "" then
+		return u
+	end
+	u = cfg.default_url or servers.panshi or servers.new or servers.legacy or servers.old
+	if u and u ~= "" then
+		return u
+	end
+	return nil
+end
 _G.MODULE_FLAGS = {
 	watchdog = true,
 	uart_bridge = true,

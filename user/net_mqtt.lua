@@ -636,7 +636,12 @@ local DL2004_ACTIONS = {
 			local cfg = type(_G.FOTA_CFG) == "table" and _G.FOTA_CFG or {}
 			local mode = string.lower(tostring(cfg.server_mode or "self"))
 			if mode == "self" or mode == "custom" then
-				data.url = cfg.self_url or cfg.custom_url or "http://43.136.55.143/api/site/firmware_upgrade?"
+				if _G.resolveFotaSelfUrl then
+					data.url = _G.resolveFotaSelfUrl()
+				else
+					-- 兜底读 FOTA_CFG，不硬编码站点地址
+					data.url = cfg.self_url or cfg.custom_url or cfg.default_url
+				end
 			end
 		end
 		mqttInfo("downlink_2004_ota", "action=ota version=" .. tostring(data.version or "") .. " url=" .. tostring(data.url or "") .. " product_key=" .. tostring(data.product_key or "") .. " messageId=" .. tostring(data.messageId or ""))

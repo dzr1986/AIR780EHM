@@ -566,7 +566,7 @@
 | `timeout` | 超时 ms |
 | `full_url` | `1` 时不再拼查询参数（直链文件） |
 
-无 `url` 时：若固件 `FOTA_CFG.server_mode=self`，设备会填入 `self_url`（与网页下发同一拉包地址）；其它模式不打本服务。
+无 `url` 时：若固件 `FOTA_CFG.server_mode=self`（或 `custom`），设备经 `resolveFotaSelfUrl()` 填入当前自建端点（默认 panshi `112.86.146.219:18080`，可用 `FOTA_CFG.server=legacy` 切回原服）；详见 [modules/FOTA_SVC_FLOW.md](modules/FOTA_SVC_FLOW.md) §3。其它模式不打本服务。
 
 **上位机闭环**（`tools/mqtt_tools_gui.bat` →「OTA闭环」，或 `mqtt_tools_gui.bat --tab ota`）与管理台发**同一条** 2004。判定顺序：
 

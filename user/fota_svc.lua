@@ -57,14 +57,25 @@ local function localIotVersion()
 	end
 	return nil
 end
-local DEFAULT_SELF_URL = "http://43.136.55.143/api/site/firmware_upgrade?"
 local function fotaCfg()
 	return type(_G.FOTA_CFG) == "table" and _G.FOTA_CFG or {}
 end
+-- 地址只来自 config.lua（resolveFotaSelfUrl / FOTA_CFG），此处不硬编码 URL
 local function selfUrl()
-	local u = fotaCfg().self_url or fotaCfg().custom_url
-	if u and u ~= "" then return u end
-	return DEFAULT_SELF_URL
+	if _G.resolveFotaSelfUrl then
+		local u = _G.resolveFotaSelfUrl()
+		if u and u ~= "" then
+			return u
+		end
+	end
+	local cfg = fotaCfg()
+	local u = cfg.self_url or cfg.custom_url or cfg.default_url
+	if u and u ~= "" then
+		return u
+	end
+	local servers = type(cfg.servers) == "table" and cfg.servers or {}
+	local key = string.lower(tostring(cfg.server or "panshi"))
+	return servers[key] or servers.panshi or servers.legacy or ""
 end
 local function useSelfServer(data)
 	data = type(data) == "table" and data or {}
@@ -266,6 +277,7 @@ function getState()
 		product_key = _G.PRODUCT_KEY,
 		iot_version = _G.IOT_VERSION,
 		server_mode = fotaCfg().server_mode or "self",
+		server = fotaCfg().server or "panshi",
 		self_url = selfUrl(),
 	}
 end
