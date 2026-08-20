@@ -1005,18 +1005,64 @@ class MqttGui(tk.Tk):
             except RuntimeError as e:
                 self.ui(self._play_log, f"2013[{i}] 发送失败：{e}", "err")
                 return
-            got = self._wait_reply("1013", n, 20, sent.get("messageId"))
+            mid = sent.get("messageId")
+            got = self._wait_pred(
+                n, 20,
+                lambda d, m=mid: (
+                    str(d.get("dataType")) == "1013"
+                    and str(d.get("messageId")) == str(m)
+                    and (d.get("reply") == 1 or str(d.get("reply")) == "1")
+                ),
+            )
             if got:
                 ret = got.get("ret")
                 msg = got.get("message") or ""
                 if ret in (0, "0", None) and (not msg or msg in {"ok", "cancelled"}):
                     ok_n += 1
-                    self.ui(self._play_log, f"2013[{i}] → 1013 ok  {w['begin']}~{w['end']}  {msg}", "ok")
+                    self.ui(
+                        self._play_log,
+                        f"2013[{i}] → 1013 受理 ok  {w['begin']}~{w['end']}",
+                        "ok",
+                    )
+                    with self._lock:
+                        n2 = len(self._inbox)
+                    done = self._wait_pred(
+                        n2, 180,
+                        lambda d, m=mid: (
+                            str(d.get("dataType")) == "1013"
+                            and str(d.get("messageId")) == str(m)
+                            and (d.get("reply") == 0 or str(d.get("reply")) == "0")
+                        ),
+                    )
+                    if done:
+                        dr = done.get("ret")
+                        fn = done.get("fileName") or done.get("httpPath") or ""
+                        if dr in (0, "0", None):
+                            self.ui(
+                                self._play_log,
+                                f"2013[{i}] → 1013 上传完成  {fn}",
+                                "ok",
+                            )
+                        else:
+                            self.ui(
+                                self._play_log,
+                                f"2013[{i}] → 1013 上传失败 ret={dr} {done.get('message') or ''}",
+                                "warn",
+                            )
+                    else:
+                        self.ui(
+                            self._play_log,
+                            f"2013[{i}] 已受理，HTTP 完成包 180s 内未到（可稍后「列出已上传」）",
+                            "warn",
+                        )
                 else:
                     self.ui(self._play_log, f"2013[{i}] → 1013 ret={ret} {msg}", "warn")
             else:
-                self.ui(self._play_log, f"2013[{i}] 未收到 1013（T3x 未就绪属预期）", "warn")
-        self.ui(self._play_log, f"信令闭环 {ok_n}/{len(windows)}。再点「列出已上传」看 7003；失败标 NETWORK")
+                self.ui(self._play_log, f"2013[{i}] 未收到 1013 受理（T3x 未就绪属预期）", "warn")
+        self.ui(
+            self._play_log,
+            f"信令受理 {ok_n}/{len(windows)}。完整闭环需等 1013 reply=0（上传完成/失败）",
+        )
         self.after(2500, self._play_probe_http)
 
     def _play_probe_http(self):
@@ -1028,7 +1074,7 @@ class MqttGui(tk.Tk):
                 self.ui(self._play_log, f"NETWORK HTTP 列 7003 失败（USB 占网/无 eth0 时预期）：{e}", "warn")
                 return
             self._play_http_mark = ""
-            self.ui(self._play_log, f"7003 当前 playback {len(items)} 条")
+            self.ui(self._play_log, f"7003 当前 playback {len(items)} 条（含历史；新上传看 mtime 或等 1013 reply=0）")
 
         threading.Thread(target=work, daemon=True).start()
 

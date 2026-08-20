@@ -18,9 +18,19 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
 | **2012** | 下行 | **开本地 TF 录** | ✅ 写盘；上行 **1012** + **1010** |
 | **2011** | 下行 | **停本地 TF 录** | ✅ 封盘；上行 **1011** |
 | **2013** | 下行 | 平台声明/请求 **需要上传视频** | ❌ MQTT 不传文件；T31 按时间窗抽片后 HTTP 上传 |
-| **1013** | 上行 | 受理应答（`reply=1`）或设备主动「需要上传」 | 同上 |
+| **1013** | 上行 | 受理（`reply=1`）/ 完成（`reply=0`）/ 人形排队通知 | 同上 |
 
 停录后平台若要片：发 **2013**（带时间窗），不要指望 2010 `uploadMode` 自动等价于上传。
+
+### 1.1 1013 两阶段闭环（后台必读）
+
+| 阶段 | `reply` | 何时发 | 平台应做什么 |
+|------|---------|--------|--------------|
+| **受理** | `1` | 收到 2013 后 ~1s 内 | 标记「设备已入队」，**还不能**当文件已上传 |
+| **完成** | `0` | T31 抽片 + HTTP 结束后（通常 10s～数分钟） | 用 `fileName`/`httpPath` 展示或下载；`ret≠0` 可重发 2013 |
+| **人形排队** | 缺省 | IVS 人形触发后 | 仅通知「即将上传」，等 `reply=0` 才确认到云 |
+
+**同一 `messageId`**：回放模式下，受理包与完成包共用 2013 下发的 `messageId`，便于后台关联。
 
 ---
 
@@ -37,9 +47,10 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
 5. Cat.1 优先用 beginTs/endTs → AT+UPLOADVIDEO=<need>,<vtype>,<unix>,<unix>,...
 6. T31 clip_extract_window 扫 /mnt/sdcard/media/vi0/YYYYMMDD/ 抽 I 帧
    → 中间片落 /mnt/sdcard/media/vi0/upload_clip/
-7. 上行 1013 reply=1 ret=0（只表示已排队抽片，不是 HTTP 已到云）
+7. 上行 1013 **reply=1** ret=0（只表示已排队抽片，不是 HTTP 已到云）
 8. T31 HTTP POST 到 43.136.55.143:7003（type=2）
-9. 上位机再打 7003 列表/下载已上传 TS
+9. 上行 1013 **reply=0** ret=0（HTTP 成功，带 fileName/httpPath）或 ret=-1（最终失败）
+10. 上位机再打 7003 列表/下载已上传 TS（可选，与 reply=0 交叉验证）
 ```
 
 **时间匹配**：用户窗与录像段重叠即可，T31 用 I 帧裁切，不必文件名等于用户时间。可跨天。单条 MQTT 最长 **600 秒**；更长由上位机 `split_window` 拆多条（Cat.1 `resolveUploadWindow` 只会截前 600 秒）。
@@ -90,7 +101,7 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
 
 主题：`/panshi/app/862323084068124/event`
 
-### 4.1 应答（有下行 2013）
+### 4.1 应答 — 受理（有下行 2013，`reply=1`）
 
 ```json
 {
@@ -114,13 +125,63 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
 
 | `ret` | `message` | 含义 |
 |------|-----------|------|
-| 0 | `ok` | T31 已排队抽片/上传 |
+| 0 | `ok` | T31 已排队抽片/上传（**非 HTTP 完成**） |
 | 0 | `cancelled` | `needUpload=0` |
 | -1 | `t3x_not_ready` / `no_host_uart` / `fail` | 未排队 |
 
-**不另发 1004**。平台等 **1013 `reply=1`** 即可确认信令闭环。HTTP 是否到 7003 要另查列表。
+**不另发 1004**。平台收到 **1013 `reply=1`** 表示信令受理；**HTTP 是否成功须等 `reply=0`** 或查 7003 列表。
 
-### 4.2 主动上报（无下行）
+### 4.2 应答 — 上传完成/失败（`reply=0`）
+
+T31 HTTP 结束（或抽片最终失败）后，经 UART `AT+UPLOADRESULT` → Cat.1 上报：
+
+```json
+{
+  "deviceNo": "862323084068124",
+  "dataType": "1013",
+  "reply": 0,
+  "messageId": "up-req-001",
+  "ret": 0,
+  "message": "uploaded",
+  "needUpload": 1,
+  "action": "upload_video",
+  "reason": "cloud",
+  "source": "t3x",
+  "videoType": 2,
+  "beginTime": "2026-08-19 09:13:18",
+  "endTime": "2026-08-19 09:18:18",
+  "beginTs": 1755565998,
+  "endTs": 1755566298,
+  "uploadTs": "1787157961904",
+  "fileName": "34020000001310989442-20260820-1787157961904.ts",
+  "httpPath": "/apps/video/playback/34020000001310989442-20260820-1787157961904-20260820004636643.ts",
+  "time": "2026-08-20 00:46:36"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `reply` | **固定 `0`** = 进度/完成包（与 `reply=1` 受理区分） |
+| `messageId` | 与 2013 下发相同；人形自动上传时为 `person` 或空 |
+| `ret` | `0` 成功；`-1` 失败（见 `message`） |
+| `message` | `uploaded` / `extract_fail` / `file_missing` / `upload_fail` |
+| `videoType` | `1` 人形侦测 / `2` 回放 |
+| `reason` | `cloud`（平台 2013）/ `person`（人形）/ `record_done`（UPLOADNEED） |
+| `fileName` | 实际上传文件名（含国标 deviceId 前缀） |
+| `httpPath` | 7003 返回的相对路径，成功时有值 |
+| `uploadTs` | 毫秒时间戳，写入文件名的第三段 |
+| `beginTs` / `endTs` | 抽片时间窗（Unix 秒） |
+
+| `ret` | `message` | 含义 | 平台建议 |
+|------|-----------|------|----------|
+| 0 | `uploaded` | HTTP 200，文件已到 7003 | 标记成功，可按 `httpPath` 拉取 |
+| -1 | `extract_fail` | TF 无重叠录像或 I 帧裁切失败 | 提示用户换时间窗 |
+| -1 | `file_missing` | 续传时本地 `.ts` 已删 | 重发 2013 |
+| -1 | `upload_fail` | HTTP 失败且 T31 重试已耗尽（5 次） | 可重发 2013；设备侧也会扫盘续传 |
+
+> T31 本地失败会自动重试（最多 5 次，间隔 30s），**重试过程中不会发 MQTT**。只有最终结果才发 `reply=0`。
+
+### 4.3 主动上报 — 人形排队（无下行，`reply` 缺省）
 
 人形抽片排队成功后，T31 发 `AT+UPLOADNEED`，4G 转 1013（无 `reply`）：
 
@@ -147,6 +208,8 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
   ← T31    +UPLOADVIDEO:OK,need=1,type=2,start=…,end=…,queued=1
   → T31    clip_extract_window() 抽 [start,end]
   → T31    clip_upload_request() HTTP type=1/2
+  ← T31    AT+UPLOADRESULT=ret=0,type=2,...,file=...,httpPath=...,msgId=...
+  → 平台   1013 reply=0（上传完成或最终失败）
 
 T31 人形自动抽片后（可选）
   → Cat.1  AT+UPLOADNEED=1,reason=record_done,pirStatus=t3x_active
@@ -197,7 +260,7 @@ OK
 1. 从 LiveGBS 粘贴国标时段，或粘贴 `ch0_*.ts` 文件名
 2. 填任意开始 / 结束时间
 3. 「匹配录像段」：看覆盖哪些 TS、是否需拆成多条 600s
-4. 「请求上传 2013」：下发信令并等 1013
+4. 「请求上传 2013」：下发信令，等 **1013 reply=1**（受理）→ **1013 reply=0**（完成）
 5. 切到 **已上传文件** 再打 7003（不要把 7003 当录像目录）
 
 匹配 / 拆段实现：`tools/gui/mqtt/playback.py`（单测 `tools/gui/mqtt/test_playback.py`）。  
@@ -239,16 +302,18 @@ python tools/cat1_flash.py flash-script --wait 90
 2. 确认脚本 `001.000.037`（1008）
 3. 从国标/TF 取时段，或直接填任意墙钟 + Unix
 4. 发 2013（`videoType=2`，带 `beginTs`/`endTs`）
-5. 等 **1013** `ret=0`
-6. UART 应有 `+UPLOADVIDEO:OK queued=1`
-7. T31 `upload_clip/` 应有抽片段
-8. 有 4G / eth0 时到 `http://43.136.55.143:7003/admin/api/v1/videos` 看 `playback/`
-9. USB 占电脑、无 4G 时 HTTP 失败是预期；信令仍应有 1013
+5. 等 **1013 reply=1** `ret=0`（受理）
+6. 等 **1013 reply=0** `ret=0`（HTTP 完成，含 `fileName`）
+7. UART 应有 `+UPLOADVIDEO:OK queued=1`，完成后 `AT+UPLOADRESULT=...`
+8. T31 `upload_clip/` 应有抽片段
+9. 有 4G / eth0 时到 `http://43.136.55.143:7003/admin/api/v1/videos` 看 `playback/`
+10. USB 占电脑、无 4G 时 HTTP 失败 → **1013 reply=0 ret=-1 message=upload_fail**
 
 ---
 
 ## 10. 相关文档
 
+- **[MQTT_1013_BACKEND_GUIDE.md](MQTT_1013_BACKEND_GUIDE.md)** — 后台 1013 两阶段闭环速查
 - [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) §4.9b
 - [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §10b
 - [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) §4.4

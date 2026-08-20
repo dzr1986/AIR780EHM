@@ -2387,6 +2387,67 @@ function publishUploadVideoReply(retCode, message, messageId, extra)
 			reasonField, pathField, winField)
 	})
 end
+function publishUploadVideoComplete(retCode, messageId, extra)
+	extra = type(extra) == "table" and extra or {}
+	local need = tonumber(extra.needUpload)
+	if need == nil then
+		need = 1
+	end
+	need = (need == 0) and 0 or 1
+	local beginTs = tonumber(extra.beginTs) or 0
+	local endTs = tonumber(extra.endTs) or 0
+	local beginTime = extra.beginTime
+	local endTime = extra.endTime
+	if not beginTime and beginTs > 0 then
+		beginTime = os.date("%Y-%m-%d %H:%M:%S", beginTs)
+	end
+	if not endTime and endTs > 0 then
+		endTime = os.date("%Y-%m-%d %H:%M:%S", endTs)
+	end
+	local reasonField = ""
+	if extra.reason and extra.reason ~= "" then
+		reasonField = string.format(',"reason":"%s"', escJson(extra.reason))
+	end
+	local fileField = ""
+	if extra.fileName and extra.fileName ~= "" then
+		fileField = string.format(',"fileName":"%s"', escJson(extra.fileName))
+	end
+	local httpField = ""
+	if extra.httpPath and extra.httpPath ~= "" then
+		httpField = string.format(',"httpPath":"%s"', escJson(extra.httpPath))
+	end
+	local uploadTsField = ""
+	if extra.uploadTs and extra.uploadTs ~= "" then
+		uploadTsField = string.format(',"uploadTs":"%s"', escJson(extra.uploadTs))
+	end
+	local winField = ""
+	if beginTime and endTime then
+		winField = string.format(
+			',"beginTime":"%s","endTime":"%s","beginTs":%d,"endTs":%d,"videoType":%d',
+			escJson(beginTime), escJson(endTime), beginTs, endTs,
+			tonumber(extra.videoType) or 1)
+	elseif beginTs > 0 and endTs > 0 then
+		winField = string.format(
+			',"beginTs":%d,"endTs":%d,"videoType":%d',
+			beginTs, endTs, tonumber(extra.videoType) or 1)
+	end
+	local srcField = ""
+	if extra.source and extra.source ~= "" then
+		srcField = string.format(',"source":"%s"', escJson(extra.source))
+	end
+	publishUplink({
+		suffix = "event",
+		dataType = DT.UL_UPLOAD_VIDEO,
+		no_conn = NC,
+		fields = string.format(
+			',"reply":0,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"upload_video"%s%s%s%s%s%s',
+			escJson(messageId or ""),
+			tostring(retCode ~= nil and retCode or -1),
+			escJson(extra.message or (retCode == 0 and "uploaded" or "fail")),
+			need,
+			reasonField, fileField, httpField, uploadTsField, winField, srcField)
+	})
+end
 function publishUploadVideoNeed(opts)
 	opts = type(opts) == "table" and opts or {}
 	local need = tonumber(opts.needUpload)

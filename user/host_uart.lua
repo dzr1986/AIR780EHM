@@ -785,6 +785,32 @@ local function uart_uploadneed_notify(cmd)
 	})
 	return rsp_fmt("UPLOADNEED", "ok,need=%d", need)
 end
+local function uart_uploadresult_notify(cmd)
+	local arg = cmd:match("^AT%+UPLOADRESULT=(.+)$")
+	if not arg or arg == "" then
+		return RSP_ERROR
+	end
+	local function kv(key)
+		local v = arg:match(key .. "=([^,]+)")
+		return v and v:gsub("^%s+", ""):gsub("%s+$", "") or ""
+	end
+	local ret = tonumber(kv("ret")) or -1
+	local vtype = tonumber(kv("type")) or 1
+	local startTs = tonumber(kv("start")) or 0
+	local endTs = tonumber(kv("end")) or 0
+	mod_call("net_mqtt", "publishUploadVideoComplete", ret, kv("msgId"), {
+		videoType = vtype,
+		beginTs = startTs,
+		endTs = endTs,
+		uploadTs = kv("uploadTs"),
+		fileName = kv("file"),
+		httpPath = kv("httpPath"),
+		reason = kv("reason"),
+		message = kv("msg"),
+		source = "t3x",
+	})
+	return rsp_fmt("UPLOADRESULT", "ok,ret=%d", ret)
+end
 local function ipc_ready_from_lifecycle(st)
 	return (st == "ready") and 1 or 0
 end
@@ -1391,6 +1417,7 @@ local AT_CMD_TABLE = {
 	uart_cmd_entry(nil, "AT+PERSONCNT=", uart_person_cnt_notify),
 	uart_cmd_entry(nil, "AT+IPCALERT=", uart_ipc_alert_notify),
 	uart_cmd_entry(nil, "AT+UPLOADNEED=", uart_uploadneed_notify),
+	uart_cmd_entry(nil, "AT+UPLOADRESULT=", uart_uploadresult_notify),
 	uart_cmd_entry({ "AT+HOSTEVT", "AT+HOSTEVT?" }, nil, uart_hostevt_query),
 	uart_cmd_entry("AT+HOSTEVTCLR", nil, uart_hostevt_clr),
 	uart_cmd_entry("AT+TIME", nil, uart_time_query),
@@ -3240,12 +3267,13 @@ function formatHostTfCard(opts)
 	end
 	return false, outcome.reason
 end
-local function encode_timeout_ms(opts)
+-- 以下编码相关函数不用 local：本文件顶层 local 已贴 LuatOS 200 上限
+function encode_timeout_ms(opts)
 	opts = opts or {}
 	local cfg = encode_cfg()
 	return tonumber(opts.timeout_ms) or tonumber(cfg.query_timeout_ms) or 8000
 end
-local function encode_rows_valid(rows, isAudio)
+function encode_rows_valid(rows, isAudio)
 	if type(rows) ~= "table" or rows.__error then
 		return false
 	end
@@ -3259,7 +3287,7 @@ local function encode_rows_valid(rows, isAudio)
 	end
 	return false
 end
-local function finish_encode_query(rows, isAudio)
+function finish_encode_query(rows, isAudio)
 	if type(rows) == "table" and rows.__error then
 		return nil, rows.__error
 	end
@@ -3271,7 +3299,7 @@ local function finish_encode_query(rows, isAudio)
 	end
 	return { video = rows }, nil
 end
-local function build_encode_query_cmd(opts)
+function build_encode_query_cmd(opts)
 	opts = opts or {}
 	if opts.scope == "audio" then
 		if opts.camera ~= nil then
@@ -3287,7 +3315,7 @@ local function build_encode_query_cmd(opts)
 	end
 	return "AT+VENC?"
 end
-local function queryHostEncodeInner(opts)
+function queryHostEncodeInner(opts)
 	opts = opts or {}
 	local isAudio = opts.scope == "audio"
 	local cfg = encode_cfg()
@@ -3335,7 +3363,7 @@ function queryHostEncode(opts)
 	end
 	return nil, err or "query_fail"
 end
-local function setHostEncode(scope, opts)
+function setHostEncode(scope, opts)
 	opts = opts or {}
 	local timeoutMs = encode_timeout_ms(opts)
 	local isAudio = scope == "audio"
