@@ -55,10 +55,6 @@ local function getStrategy()
     return _G.LOW_POWER_ENTER_STRATEGY or "battery"
 end
 
-local function isHybrStrt()
-    return getStrategy() == "hybrid"
-end
-
 local function enabled()
     local fc = _G.FEATURE_CFG
     if fc and fc.low_power == false then
@@ -271,14 +267,6 @@ local function loadPctThrs()
     }
 end
 
-local function thrsRdyBttr(t)
-    return t.shutdown ~= nil
-end
-
-local function thrsRdyHybr(t)
-    return t.shutdown and t.rest and t.recover and t.pir_suspend and t.pir_resume
-end
-
 local function schdShtd()
     if guard.shutdown_timer then
         return
@@ -395,13 +383,13 @@ function evaluate(pct, mv)
         return
     end
     local t = loadPctThrs()
-    if isHybrStrt() then
-        if not thrsRdyHybr(t) then
+    if getStrategy() == "hybrid" then
+        if not (t.shutdown and t.rest and t.recover and t.pir_suspend and t.pir_resume) then
             return
         end
         evltStrt(pct, t, mv or guard.last_mv)
     else
-        if not thrsRdyBttr(t) then
+        if not (t.shutdown ~= nil) then
             return
         end
         evltStrt(pct, t, mv or guard.last_mv)

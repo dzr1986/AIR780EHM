@@ -61,10 +61,6 @@ local function rslvMvScl()
     return scale
 end
 
-local function pinToCellMv(pinMv, scale)
-    return math.floor(pinMv * scale + 0.5)
-end
-
 local function prcnFrom(cellMv)
     local vmax = tonumber(getCellCfg().v_max_mv) or 4200
     local vmin = tonumber(getCellCfg().v_min_mv) or 3000
@@ -256,7 +252,7 @@ local function batteryTask()
     while true do
         local pinMv = readPinMllv(adc, channel)
         if pinMv then
-            local rawMv = pinToCellMv(pinMv, scale)
+            local rawMv = math.floor(pinMv * scale + 0.5)
             local cellMv = smoothCellMv(rawMv)
             local vmax = tonumber(getCellCfg().v_max_mv) or 4200
             if cellMv > vmax then

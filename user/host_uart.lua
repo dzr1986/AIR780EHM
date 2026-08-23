@@ -352,11 +352,6 @@ local function setPndnWake(sid, evt)
     state.pending_valid = true
 end
 
-local function clrPndnWake()
-    state.pending_valid = false
-    state.pending_evt = -1
-end
-
 function getHostEvtPending()
     if state.pending_valid then
         return true, state.pending_sid, state.pending_evt
@@ -455,7 +450,8 @@ end
 -- @param cmd AT 命令字符串（已去除首尾空格）
 -- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartHstvClr(_cmd)
-    clrPndnWake()
+    state.pending_valid = false
+    state.pending_evt = -1
     mod_call("pir_ctrl", "clearConsumableMarkers")
     return rsp_body("HOSTEVTCLR", "OK")
 end
@@ -489,10 +485,6 @@ end
 
 local escIpcFld = utils.escKv
 
-local function isVldP2PUid(uid)
-    return type(uid) == "string" and #uid == 8 and uid:match("^[A-Za-z0-9]+$") ~= nil
-end
-
 local function isVldP2P(product)
     return type(product) == "string"
         and #product >= 1 and #product <= 31
@@ -503,15 +495,6 @@ local function isVldGb28181(id)
     return type(id) == "string"
         and #id >= 10 and #id <= 20
         and id:match("^[0-9]+$") ~= nil
-end
-
-local function isVldGb(pwd)
-    return type(pwd) == "string" and #pwd >= 1 and #pwd <= 63
-        and pwd:match("^[%w%p]+$") ~= nil
-end
-
-local function isVldImei(imei)
-    return type(imei) == "string" and #imei == 15 and imei:match("^[0-9]+$") ~= nil
 end
 
 local function prsGb28181(body)
@@ -537,7 +520,7 @@ local function uart_p2pcfg(cmd)
     if not uid or not product then
         return RSP_ERROR
     end
-    if not isVldP2PUid(uid) or not isVldP2P(product) then
+    if not (type(uid) == "string" and #uid == 8 and uid:match("^[A-Za-z0-9]+$") ~= nil) or not isVldP2P(product) then
         return RSP_ERROR
     end
     state.p2p_uid = uid
@@ -560,10 +543,11 @@ local function uartGb28181(cmd)
         return RSP_ERROR
     end
     if not isVldGb28181(device_id)
-            or not isVldGb(password) then
+            or not (type(password) == "string" and #password >= 1 and #password <= 63
+            and password:match("^[%w%p]+$") ~= nil) then
         return RSP_ERROR
     end
-    if imei and imei ~= "" and not isVldImei(imei) then
+    if imei and imei ~= "" and not (type(imei) == "string" and #imei == 15 and imei:match("^[0-9]+$") ~= nil) then
         return RSP_ERROR
     end
     state.host_gb28181_id = device_id
@@ -1138,10 +1122,6 @@ local function wled_cfg()
     return _G.WLED_CFG or {}
 end
 
-local function wled_enabled()
-    return wled_cfg().enabled ~= false
-end
-
 local function wledExpRt(on)
     if _G.APP_RUNTIME then
         _G.APP_RUNTIME.wled_on = on
@@ -1231,7 +1211,7 @@ end
 
 local function wled_set(on, opts)
     opts = utils.optTable(opts)
-    if not wled_enabled() then
+    if not (wled_cfg().enabled ~= false) then
         on = on == 1 and 1 or 0
         wled_state.on = on
         wledExpRt(on)
@@ -2347,10 +2327,6 @@ for i = 1, #RX_LINE_HANDLER_REGISTRY do
     RX_LINE_TRY_HANDLERS[i] = RX_LINE_HANDLER_REGISTRY[i].fn
 end
 
-local function hostFirsAt()
-    return utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT")
-end
-
 local function ntfyHost(cmd)
     if state.host_at_ready then
         return
@@ -2376,7 +2352,7 @@ local function ntfyHost(cmd)
             mrgTfCloudStat()
         end
     end)
-    sys.publish(hostFirsAt(), cmd or "")
+    sys.publish(utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT"), cmd or "")
 end
 
 local function hostPrcs(line)
@@ -2774,11 +2750,6 @@ local function applRcrd(cloud)
     return cloud
 end
 
-local function ipcCldStat()
-    local cfg = ipc_cfg()
-    return tonumber(cfg.status_cache_max_age_sec) or 90
-end
-
 local function overLiveIpc(snap)
     if type(snap) ~= "table" then
         return snap
@@ -2810,7 +2781,7 @@ function isIpcCloudStatStale()
     if ts == 0 then
         return true
     end
-    if os.time() - ts > ipcCldStat() then
+    if os.time() - ts > (tonumber(ipc_cfg().status_cache_max_age_sec) or 90) then
         return true
     end
     return false
@@ -3010,20 +2981,11 @@ end
 -- @desc AT 命令分发处理：uart_recovery_enabled
 -- @param cmd AT 命令字符串（已去除首尾空格）
 -- @return 写入 UART 的应答字符串，或 nil 直接 +OK
-local function uartRcvr()
-    return uartRcvryCfg().enabled == true
-end
-
 local function rstUrtRcvr()
     state.ipc_uart_miss_streak = 0
 end
 note_uart_link_ok = function()
     rstUrtRcvr()
-end
-
-local function isT3XPwrdOn()
-    local st = mod_call("t3x_ctrl", "getState")
-    return st ~= nil and st.powered_on == true
 end
 
 local function runUartPwr(attempt)
@@ -3032,7 +2994,8 @@ local function runUartPwr(attempt)
     if not t3x then
         return false
     end
-    if isT3XPwrdOn() and t3x.powerOff then
+    local st = mod_call("t3x_ctrl", "getState")
+    if st ~= nil and st.powered_on == true and t3x.powerOff then
         t3x.powerOff()
         sys.wait(rc.power_off_ms)
     end
@@ -3052,7 +3015,7 @@ local function runUartPwr(attempt)
 end
 
 local function mybUartRcvr(source)
-    if not uartRcvr() then
+    if not (uartRcvryCfg().enabled == true) then
         return
     end
     if state.host_ready_seen ~= true then
@@ -3484,10 +3447,6 @@ queryHostTfCard = defineQuery{
         return nil
     end,
 }
-local function tfcrFrmtCfg()
-    return _G.HOST_TFCARD_FORMAT_CFG or {}
-end
-
 local function nrmlLuaErrr(err)
     local s = tostring(err or "error")
     local tail = s:match(": ([^:]+)$")
@@ -3499,7 +3458,7 @@ end
 
 function formatHostTfCard(opts)
     opts = utils.optTable(opts)
-    local cfg = tfcrFrmtCfg()
+    local cfg = _G.HOST_TFCARD_FORMAT_CFG or {}
     if cfg.enabled == false then
         return false, "disabled"
     end

@@ -28,12 +28,8 @@ local bluePin, redPinRaw
 local started = false
 local lastPattern = ""
 
-local function ledCfg()
-    return _G.LED_CFG or {}
-end
-
 local function applyConfigs()
-    local fromLed = ledCfg()
+    local fromLed = _G.LED_CFG or {}
     if type(fromLed.startup) == "table" then
         cfgman.merge(LED_CONFIG.startup, fromLed.startup)
     end

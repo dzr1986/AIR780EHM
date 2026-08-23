@@ -43,10 +43,6 @@ local state = {
     usb_insert_tick = 0,
     pir_watch_sleep_timer = nil,
 }
-local function usbPwrkGrc()
-    return tonumber((_G.HOST_USB_CFG or {}).pwrkey_grace_ms) or 5000
-end
-
 local function lazyMod(name)
     return loader.load(name)
 end
@@ -57,10 +53,6 @@ end
 
 local function lowPwrWake()
     return lazyMod("low_power_wakeup")
-end
-
-local function deviceIdMod()
-    return lazyMod("device_id")
 end
 
 local function rtPwrMod()
@@ -441,7 +433,7 @@ stopWatchdogBeforePowerOff = function()
 end
 
 local function getImei()
-    local did = deviceIdMod()
+    local did = lazyMod("device_id")
     if did and did.getDisplayId then
         return did.getDisplayId()
     end
@@ -727,13 +719,8 @@ local function schePirWatc(delayMs)
     end, tonumber(delayMs) or 5000)
 end
 
-local function stopMqtt()
-    local cfg = _G.PIR_RECORD_CFG or {}
-    return tonumber(cfg.stop_mqtt_fallback_ms) or 15000
-end
-
 local function schdStop(reason, uploadMode, quality)
-    local waitMs = stopMqtt()
+    local waitMs = tonumber((_G.PIR_RECORD_CFG or {}).stop_mqtt_fallback_ms) or 15000
     sys.taskInit(function()
         sys.wait(waitMs)
         if not pir_ctrl.canStopMqtt or not pir_ctrl.canStopMqtt() then
@@ -836,7 +823,7 @@ local function bldSystEvnt()
         { E.GPIO_PWRKEY_LONG, function()
             if state.usb_insert_tick > 0 and (_G.APP_RUNTIME.power_status or 0) == 1 then
                 local elapsed = nowMs() - state.usb_insert_tick
-                if elapsed < usbPwrkGrc() then
+                if elapsed < (tonumber((_G.HOST_USB_CFG or {}).pwrkey_grace_ms) or 5000) then
                     return
                 end
             end

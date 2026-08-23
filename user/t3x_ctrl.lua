@@ -62,11 +62,6 @@ local function getEntries()
     return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
 end
 
-local function getWakePls()
-    local cfg = _G.HOST_WAKE_CFG or {}
-    return tonumber(cfg.pulse_ms) or pulseLowMs
-end
-
 local function getMcuInt(entry_int)
     local cfg = _G.HOST_WAKE_CFG or {}
     local idle = cfg.idle_level
@@ -180,7 +175,7 @@ function pulseMcuInt()
         return false
     end
     local idle, active = getMcuInt(entry_int)
-    local ms = getWakePls()
+    local ms = tonumber((_G.HOST_WAKE_CFG or {}).pulse_ms) or pulseLowMs
     t3xMcuIntPin(active)
     sys.timerStart(function()
         t3xMcuIntPin(idle)

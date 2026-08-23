@@ -49,10 +49,6 @@ local function getHostUart()
     return utils.getHostUart()
 end
 
-local function hostFirsAt()
-    return utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT")
-end
-
 local function waitHostRdy(timeoutMs)
     local hu = getHostUart()
     if hu and hu.isHostAtReady and hu.isHostAtReady() then
@@ -62,7 +58,7 @@ local function waitHostRdy(timeoutMs)
     if timeoutMs <= 0 then
         return false
     end
-    local got = sys.waitUntil(hostFirsAt(), timeoutMs)
+    local got = sys.waitUntil(utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT"), timeoutMs)
     if not got then
         return false
     end

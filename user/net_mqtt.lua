@@ -170,15 +170,11 @@ local function msgIdPart(messageId)
     return ""
 end
 
-local function mqttTmst()
-    return os.date("%Y-%m-%d %H:%M:%S")
-end
-
 local function formatUplink(dataType, fields)
     fields = fields or ""
     return string.format(
         '{"deviceNo":"%s","dataType":"%s"%s,"time":"%s"}',
-        getDeviceId(), dataType, fields, mqttTmst())
+        getDeviceId(), dataType, fields, os.date("%Y-%m-%d %H:%M:%S"))
 end
 
 local function pblsUpln(opts)
@@ -216,17 +212,13 @@ local function getWledState()
     return 0
 end
 
-local function getCellular()
-    return loader.load("cellular_bootstrap")
-end
-
 function bootstrapNetwork()
     if btstStrt then
         return false
     end
     btstStrt = true
     sys.taskInit(function()
-        local cellular = getCellular()
+        local cellular = loader.load("cellular_bootstrap")
         local ipOk, ip
         if cellular and cellular.waitForNetwork and loader.enabled("cellular") then
             ipOk, ip = cellular.waitForNetwork()
@@ -898,12 +890,8 @@ local function tfCardCfg()
     return _G.HOST_TFCARD_CFG or {}
 end
 
-local function tfCardEnbl()
-    return tfCardCfg().enabled ~= false
-end
-
 local function rfrsTfCard(messageId)
-    if not tfCardEnbl() then
+    if not (tfCardCfg().enabled ~= false) then
         publishTfCardStatus({ present = 0, total_mb = 0, used_mb = 0, free_mb = 0 }, messageId)
         return
     end
@@ -1028,10 +1016,6 @@ local function tfFormatCfg()
     return _G.HOST_TFCARD_FORMAT_CFG or {}
 end
 
-local function tfFrmtEnbl()
-    return tfFormatCfg().enabled ~= false
-end
-
 local function stopRcrdBfr()
     if pir_ctrl.reqStopCloud then
         pcall(pir_ctrl.reqStopCloud, { messageId = "tf-fmt" })
@@ -1050,7 +1034,7 @@ local function stopRcrdBfr()
 end
 
 local function runTfCard(messageId, reboot)
-    if not tfFrmtEnbl() then
+    if not (tfFormatCfg().enabled ~= false) then
         publishTfFormatResult(-1, "disabled", messageId, { reboot = reboot })
         return
     end

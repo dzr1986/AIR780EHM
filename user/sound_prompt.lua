@@ -26,12 +26,8 @@ local function enabled()
     return true
 end
 
-local function isBurnActive()
-    return _G.T3X_BURN_MODE_ACTIVE
-end
-
 function shouldPlay(scene)
-    if not enabled() or isBurnActive() then
+    if not enabled() or _G.T3X_BURN_MODE_ACTIVE then
         return false
     end
     local c = cfgm.get("SOUND_CFG")

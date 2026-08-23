@@ -34,11 +34,6 @@ local function alertLookup(code)
     return IPC_ALERT[code] or CAT1_ONLY[code]
 end
 
-local function shldMap1011(code)
-    local e = alertLookup(code)
-    return e and e.map1011 == true
-end
-
 local function shldRcnc(code)
     local e = alertLookup(code)
     return e and e.reconcile == true
@@ -222,7 +217,8 @@ local function pblsIpcAlrt(alertCode, alertDetail)
 end
 
 local function hndlMap1011(alertCode)
-    if not shldMap1011(alertCode) then
+    local e = alertLookup(alertCode)
+    if not (e and e.map1011 == true) then
         return
     end
     local uploadMode, quality = "auto", "high"
