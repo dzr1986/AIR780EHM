@@ -34,12 +34,12 @@ local function alertLookup(code)
     return IPC_ALERT[code] or CAT1_ONLY[code]
 end
 
-local function shouldMap1011(code)
+local function shldMap1011(code)
     local e = alertLookup(code)
     return e and e.map1011 == true
 end
 
-local function shouldReconcile(code)
+local function shldRcnc(code)
     local e = alertLookup(code)
     return e and e.reconcile == true
 end
@@ -49,16 +49,16 @@ local ALERT_CLOUD_PATCH = {
     time_invalid = { timeSynced = 0 },
     gb28181_register_fail = { gb28181Online = 0 },
 }
-local ipc_stat_refresh_pending = false
-local ipc_stat_refresh_force = false
-local record_reconcile_pending = false
+local ipcStatRfrsh = false
+local ipcStatRfrs = false
+local rcrdRcnc = false
 function bind(deps)
     if type(deps) == "table" then
         _deps = deps
     end
 end
 
-local function publishUplink(opts)
+local function pblsUpln(opts)
     if _deps.publish_uplink then
         return _deps.publish_uplink(opts)
     end
@@ -127,7 +127,7 @@ function refCloudB1003(timeoutMs, force)
     return type(hu.getCloudStat and hu.getCloudStat()) == "table"
 end
 
-local function isT3xIdleForIpcRef()
+local function is3XIdleFor()
     local hu = hostUartMod()
     if not hu or not hu.isT31HostQry then
         return true
@@ -135,23 +135,23 @@ local function isT3xIdleForIpcRef()
     return hu.isT31HostQry() ~= true
 end
 
-local function scheIpcClouStatRef(force)
+local function scheIpcClou(force)
     force = force == true
     if force then
-        ipc_stat_refresh_force = true
-    elseif isT3xIdleForIpcRef() then
+        ipcStatRfrs = true
+    elseif is3XIdleFor() then
         return
     end
-    if ipc_stat_refresh_pending then
+    if ipcStatRfrsh then
         return
     end
-    ipc_stat_refresh_pending = true
+    ipcStatRfrsh = true
     sys.taskInit(function()
         sys.wait(300)
-        ipc_stat_refresh_pending = false
-        local doForce = ipc_stat_refresh_force
-        ipc_stat_refresh_force = false
-        if not doForce and isT3xIdleForIpcRef() then
+        ipcStatRfrsh = false
+        local doForce = ipcStatRfrs
+        ipcStatRfrs = false
+        if not doForce and is3XIdleFor() then
             return
         end
         local hu = hostUartMod()
@@ -162,7 +162,7 @@ local function scheIpcClouStatRef(force)
     end)
 end
 
-local function canReconcileRecord()
+local function canRcncRcrd()
     local pc = pirCtrlMod()
     if not pc or not pc.isRecording or not pc.isRecording() then
         return false
@@ -181,14 +181,14 @@ local function canReconcileRecord()
 end
 
 local function scheRecRec()
-    if record_reconcile_pending then
+    if rcrdRcnc then
         return
     end
-    record_reconcile_pending = true
+    rcrdRcnc = true
     sys.taskInit(function()
         sys.wait(800)
-        record_reconcile_pending = false
-        local ok = canReconcileRecord()
+        rcrdRcnc = false
+        local ok = canRcncRcrd()
         if not ok then
             return
         end
@@ -199,7 +199,7 @@ local function scheRecRec()
     end)
 end
 
-local function patchCloudStatFromAlert(alertCode)
+local function ptchCldStat(alertCode)
     local patch = ALERT_CLOUD_PATCH[tostring(alertCode or "")]
     if not patch then
         return
@@ -210,8 +210,8 @@ local function patchCloudStatFromAlert(alertCode)
     end
 end
 
-local function publishIpcAlertUplink(alertCode, alertDetail)
-    publishUplink({
+local function pblsIpcAlrt(alertCode, alertDetail)
+    pblsUpln({
         suffix = "event",
         dataType = _deps.dt_ul_control,
         fields = string.format(
@@ -221,8 +221,8 @@ local function publishIpcAlertUplink(alertCode, alertDetail)
     })
 end
 
-local function handleMap1011(alertCode)
-    if not shouldMap1011(alertCode) then
+local function hndlMap1011(alertCode)
+    if not shldMap1011(alertCode) then
         return
     end
     local uploadMode, quality = "auto", "high"
@@ -243,17 +243,17 @@ function publishAlert(alertCode, alertDetail)
     if not _deps.publish_uplink or not _deps.dt_ul_control then
         return
     end
-    patchCloudStatFromAlert(alertCode)
-    publishIpcAlertUplink(alertCode, alertDetail)
-    handleMap1011(alertCode)
-    if shouldReconcile(alertCode) then
+    ptchCldStat(alertCode)
+    pblsIpcAlrt(alertCode, alertDetail)
+    hndlMap1011(alertCode)
+    if shldRcnc(alertCode) then
         scheRecRec()
     end
-    scheIpcClouStatRef(true)
+    scheIpcClou(true)
 end
 
 function afterBatteryStatusPublished()
     scheRecRec()
-    scheIpcClouStatRef(false)
+    scheIpcClou(false)
 end
 return _M

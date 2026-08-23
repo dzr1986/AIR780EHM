@@ -30,11 +30,11 @@ local function getFilterCfg()
     return getCfg().filter or {}
 end
 
-local function sampleIntervalMs()
+local function smplIntrMs()
     return getCfg().sample_interval_ms or (10 * 1000)
 end
 
-local function resolveMvScale()
+local function rslvMvScl()
     local adcCfg = getAdcCfg()
     local scale
     local s = tonumber(adcCfg.mv_scale)
@@ -65,7 +65,7 @@ local function pinToCellMv(pinMv, scale)
     return math.floor(pinMv * scale + 0.5)
 end
 
-local function percentFromCellMv(cellMv)
+local function prcnFrom(cellMv)
     local vmax = tonumber(getCellCfg().v_max_mv) or 4200
     local vmin = tonumber(getCellCfg().v_min_mv) or 3000
     if cellMv >= vmax then
@@ -128,7 +128,7 @@ local function smoothCellMv(rawCellMv)
     return filteredMv
 end
 
-local function smoothPercent(cellMv, rawPct)
+local function smthPrcn(cellMv, rawPct)
     local fc = getFilterCfg()
     local vmax = tonumber(getCellCfg().v_max_mv) or 4200
     local hystHigh = tonumber(fc.percent_hyst_high_mv) or (vmax - 80)
@@ -140,7 +140,7 @@ local function smoothPercent(cellMv, rawPct)
     end
     if stablePercent >= 100 then
         if cellMv < hystHigh then
-            pct = percentFromCellMv(cellMv)
+            pct = prcnFrom(cellMv)
         else
             pct = 100
         end
@@ -166,7 +166,7 @@ local function smoothPercent(cellMv, rawPct)
     return pct
 end
 
-local function updateConsumptionRate(currentPercent)
+local function updtCnsm(currentPercent)
     local rate = 0
     local now = os.time()
     if lastPercent and lastReadTime then
@@ -181,7 +181,7 @@ local function updateConsumptionRate(currentPercent)
     return rate
 end
 
-local function exportGlobals(pct, cellMv, rate)
+local function exprGlbl(pct, cellMv, rate)
     local rt = _G.APP_RUNTIME
     if not rt then
         return
@@ -196,7 +196,7 @@ local function getChannel()
     return c
 end
 
-local function applyAdcRange(ad)
+local function applAdcRng(ad)
     if not ad or not ad.setRange then
         return
     end
@@ -225,7 +225,7 @@ local function readPinOnce(ad, channel)
     return nil
 end
 
-local function readPinMillivolts(ad, channel)
+local function readPinMllv(ad, channel)
     local fc = getFilterCfg()
     local count = tonumber(fc.sample_count) or 11
     local spacing = tonumber(fc.sample_spacing_ms) or 20
@@ -250,11 +250,11 @@ local function batteryTask()
         return
     end
     local channel = getChannel()
-    applyAdcRange(adc)
+    applAdcRng(adc)
     adc.open(channel)
-    local scale = resolveMvScale()
+    local scale = rslvMvScl()
     while true do
-        local pinMv = readPinMillivolts(adc, channel)
+        local pinMv = readPinMllv(adc, channel)
         if pinMv then
             local rawMv = pinToCellMv(pinMv, scale)
             local cellMv = smoothCellMv(rawMv)
@@ -262,15 +262,15 @@ local function batteryTask()
             if cellMv > vmax then
                 cellMv = vmax
             end
-            local rawPct = percentFromCellMv(cellMv)
-            local pct = smoothPercent(cellMv, rawPct)
+            local rawPct = prcnFrom(cellMv)
+            local pct = smthPrcn(cellMv, rawPct)
             voltageMv = cellMv
             percent = pct
-            consumptionRate = updateConsumptionRate(percent)
-            exportGlobals(percent, voltageMv, consumptionRate)
+            consumptionRate = updtCnsm(percent)
+            exprGlbl(percent, voltageMv, consumptionRate)
             sys.publish(APP_EVENTS.BATTERY_UPDATE, percent, voltageMv, consumptionRate)
         end
-        sys.wait(sampleIntervalMs())
+        sys.wait(smplIntrMs())
     end
 end
 
@@ -292,8 +292,8 @@ function getState()
         started = taskStarted,
         build = BUILD_TAG,
         config = getCfg(),
-        sample_ms = sampleIntervalMs(),
-        mv_scale = resolveMvScale(),
+        sample_ms = smplIntrMs(),
+        mv_scale = rslvMvScl(),
         voltage = voltageMv,
         percent = percent,
         consumptionRate = consumptionRate,

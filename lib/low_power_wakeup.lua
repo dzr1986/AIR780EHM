@@ -22,16 +22,16 @@ local function getMode()
     return MODE_MQTT
 end
 
-local function tcpModeActive()
+local function tcpModeActv()
     return getMode() == MODE_TCP
 end
 
 function isMqttMode()
-    return not tcpModeActive()
+    return not tcpModeActv()
 end
 
 function allowTcpChannel()
-    return tcpModeActive()
+    return tcpModeActv()
 end
 
 function shouldCloseTcpOnEnterRest()
@@ -39,7 +39,7 @@ function shouldCloseTcpOnEnterRest()
 end
 
 function shouldRestoreTcpOnExitRest()
-    return tcpModeActive()
+    return tcpModeActv()
 end
 
 function getModemHibernate()
@@ -47,7 +47,7 @@ function getModemHibernate()
 end
 local netTcpMod
 local function netTcp()
-    if not tcpModeActive() then
+    if not tcpModeActv() then
         return nil
     end
     if netTcpMod == nil then

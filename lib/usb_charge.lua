@@ -14,7 +14,7 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 local updateChg
 local started = false
-local usb_det_ready = false
+local usbDetRdy = false
 local last_usb = nil
 local last_chg = nil
 local CHARGE_CONFIG = {
@@ -24,7 +24,7 @@ local CHARGE_CONFIG = {
     chg_active_level = 1,
     debounce_ms = 50,
 }
-local function loadConfigFromGlobals()
+local function loadCnfg()
     local gin = _G.GPIO_IN
     local usb = gin and gin.usb_det
     local chg = gin and gin.chg_state
@@ -40,7 +40,7 @@ local function loadConfigFromGlobals()
         CHARGE_CONFIG.debounce_ms = usb.debounce_ms
     end
 end
-loadConfigFromGlobals()
+loadCnfg()
 local function cfg()
     return CHARGE_CONFIG
 end
@@ -53,8 +53,8 @@ local function chgPin()
     return cfg().chg_state_pin
 end
 
-local function ensureUsbDetPin()
-    if usb_det_ready then
+local function ensrUsbDet()
+    if usbDetRdy then
         return true
     end
     local entry = (_G.GPIO_IN or {}).usb_det
@@ -67,12 +67,12 @@ local function ensureUsbDetPin()
         trigger_mode = entry and entry.trigger_mode or "both",
         debounce_ms = entry and entry.debounce_ms,
     })
-    usb_det_ready = true
+    usbDetRdy = true
     return true
 end
 
 local function readUsbInse()
-    if not ensureUsbDetPin() then
+    if not ensrUsbDet() then
         return false
     end
     local pin = usbPin()
@@ -94,12 +94,12 @@ local function effChar()
     return readUsbInse() and readCharging()
 end
 
-local function publishUsbChange(inserted)
+local function pblsUsbChng(inserted)
     local ev = utils.appEvent("GPIO_USB_DET_CHANGED", "APP_GPIO_USB_DET_CHANGED")
     sys.publish(ev, inserted and 1 or 0)
 end
 
-local function publishChgChange(charging)
+local function pblsChgChng(charging)
     local ev = utils.appEvent("GPIO_CHG_STATE_CHANGED", "APP_GPIO_CHG_STATE_CHANGED")
     sys.publish(ev, charging and 1 or 0)
 end
@@ -115,7 +115,7 @@ local function updateUsb(inserted, fromIrq)
             peri.cancelLongPress("pwr")
         end
     end
-    publishUsbChange(inserted)
+    pblsUsbChng(inserted)
     updateChg(effChar(), fromIrq)
 end
 updateChg = function(charging, fromIrq)
@@ -123,7 +123,7 @@ updateChg = function(charging, fromIrq)
         return
     end
     last_chg = charging
-    publishChgChange(charging)
+    pblsChgChng(charging)
 end
 
 local function onUsbIrq(_level)
@@ -150,7 +150,7 @@ function start()
         return false
     end
     local gin = _G.GPIO_IN or {}
-    ensureUsbDetPin()
+    ensrUsbDet()
     if not setupPinIrq(gin.usb_det, onUsbIrq) or not setupPinIrq(gin.chg_state, onChgIrq) then
         return false
     end
@@ -175,7 +175,7 @@ local function usb_cfg()
     return _G.HOST_USB_CFG or {}
 end
 
-local function usbGatedPolicy(cfgKey)
+local function usbGtdPlcy(cfgKey)
     if usb_cfg()[cfgKey] == false then
         return false
     end
@@ -183,11 +183,11 @@ local function usbGatedPolicy(cfgKey)
 end
 
 function blocksHostIdle()
-    return usbGatedPolicy("block_host_idle_when_usb")
+    return usbGtdPlcy("block_host_idle_when_usb")
 end
 
 function blocks4gRest()
-    return usbGatedPolicy("block_4g_rest_when_usb")
+    return usbGtdPlcy("block_4g_rest_when_usb")
 end
 
 function getState()

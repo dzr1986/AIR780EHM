@@ -14,8 +14,8 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 local ACK_EVENT = "SOUND_PROMPT_ACK"
 local uart_bridge
-local coldBootPlayed = false
-local bootColdTaskStarted = false
+local coldBoot = false
+local bootCold = false
 local function enabled()
     if cfgm.get("SOUND_CFG").enabled == false then
         return false
@@ -36,7 +36,7 @@ function shouldPlay(scene)
     end
     local c = cfgm.get("SOUND_CFG")
     if scene == "boot_cold" then
-        return c.boot_on_cold_start ~= false and not coldBootPlayed
+        return c.boot_on_cold_start ~= false and not coldBoot
     elseif scene == "boot_wake" then
         return c.boot_on_wake == true
     elseif scene == "shutdown_user" then
@@ -88,7 +88,7 @@ function playBlocking(name, scene)
     t3xOn()
     local timeoutMs = tonumber(cfgm.get("SOUND_CFG").play_timeout_ms) or 2500
     if scene == "boot_cold" then
-        coldBootPlayed = true
+        coldBoot = true
     end
     ub.sendString("AT+PLAYSOUND=" .. name, true)
     local ok = waitSoundAck(name, timeoutMs)
@@ -102,10 +102,10 @@ function onSoundAck(name)
 end
 
 function onAppStarted()
-    if bootColdTaskStarted or not shouldPlay("boot_cold") then
+    if bootCold or not shouldPlay("boot_cold") then
         return
     end
-    bootColdTaskStarted = true
+    bootCold = true
     sys.taskInit(function()
         local ipcCfg = _G.HOST_IPC_CFG or {}
         local timeoutMs = tonumber(cfgm.get("SOUND_CFG").boot_wait_host_ms)

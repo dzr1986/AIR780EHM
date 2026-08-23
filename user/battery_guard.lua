@@ -55,7 +55,7 @@ local function getStrategy()
     return _G.LOW_POWER_ENTER_STRATEGY or "battery"
 end
 
-local function isHybridStrategy()
+local function isHybrStrt()
     return getStrategy() == "hybrid"
 end
 
@@ -91,7 +91,7 @@ local function shutdownMv()
     return tonumber(cfg().shutdown_mv)
 end
 
-local function shutdownRecoverMv()
+local function shtdRcvrMv()
     local recover = tonumber(cfg().shutdown_recover_mv)
     local cut = shutdownMv()
     if recover then
@@ -103,7 +103,7 @@ local function shutdownRecoverMv()
     return nil
 end
 
-local function isShutdownByVoltage(mv)
+local function isShtdBy(mv)
     local cut = shutdownMv()
     mv = tonumber(mv)
     if cut == nil or mv == nil then
@@ -114,7 +114,7 @@ end
 
 function getBatteryTier(pct, mv)
     mv = tonumber(mv) or tonumber(guard.last_mv)
-    local byMv = isShutdownByVoltage(mv)
+    local byMv = isShtdBy(mv)
     if byMv == true then
         return TIER_SHUTDOWN
     end
@@ -129,7 +129,7 @@ function getBatteryTier(pct, mv)
     return TIER_NORMAL
 end
 
-local function syncBatteryTier(pct)
+local function syncBttr(pct)
     local tier = getBatteryTier(pct, guard.last_mv)
     if _G.APP_RUNTIME and tier then
         _G.APP_RUNTIME.battery_tier = tier
@@ -193,7 +193,7 @@ local function dynDeteOn()
     return cfg().battery_rest_dynamic_detect ~= false
 end
 
-local function enterBatteryRest()
+local function entrBttr()
     if guard.rest_by_battery then
         return
     end
@@ -260,7 +260,7 @@ function markT3xWoken()
     noteHostIdle()
 end
 
-local function loadPctThresholds()
+local function loadPctThrs()
     return {
         shutdown = pctThreshold("shutdown_percent"),
         rest = pctThreshold("t3x_rest_percent"),
@@ -271,15 +271,15 @@ local function loadPctThresholds()
     }
 end
 
-local function thresholdsReadyBattery(t)
+local function thrsRdyBttr(t)
     return t.shutdown ~= nil
 end
 
-local function thresholdsReadyHybrid(t)
+local function thrsRdyHybr(t)
     return t.shutdown and t.rest and t.recover and t.pir_suspend and t.pir_resume
 end
 
-local function scheduleShutdown()
+local function schdShtd()
     if guard.shutdown_timer then
         return
     end
@@ -300,27 +300,27 @@ local function scheduleShutdown()
     end, delay)
 end
 
-local function reseShutMvStre()
+local function reseShutMv()
     guard.shutdown_mv_streak = 0
 end
 
-local function confirmShutdownByVoltage(mv)
-    local byMv = isShutdownByVoltage(mv)
+local function cnfrShtdBy(mv)
+    local byMv = isShtdBy(mv)
     if byMv == nil then
         return nil
     end
     if byMv then
         guard.shutdown_mv_streak = (guard.shutdown_mv_streak or 0) + 1
     else
-        reseShutMvStre()
+        reseShutMv()
         return false
     end
     local need = math.max(1, intCfg("shutdown_mv_confirm_count", 2))
     return guard.shutdown_mv_streak >= need
 end
 
-local function shouldEnterShutdown(pct, mv, shutdownPct)
-    local confirmed = confirmShutdownByVoltage(mv)
+local function shldEntr(pct, mv, shutdownPct)
+    local confirmed = cnfrShtdBy(mv)
     if confirmed == true then
         return true
     end
@@ -330,8 +330,8 @@ local function shouldEnterShutdown(pct, mv, shutdownPct)
     return pct ~= nil and shutdownPct ~= nil and pct <= shutdownPct
 end
 
-local function shouldLeaveShutdown(pct, mv, shutdownPct)
-    local recover = shutdownRecoverMv()
+local function shldLvShtd(pct, mv, shutdownPct)
+    local recover = shtdRcvrMv()
     mv = tonumber(mv)
     if recover and mv then
         return mv > recover
@@ -339,22 +339,22 @@ local function shouldLeaveShutdown(pct, mv, shutdownPct)
     return pct ~= nil and shutdownPct ~= nil and pct > shutdownPct
 end
 
-local function handleShutdownZone(pct, shutdownPct, mv)
-    if not shouldEnterShutdown(pct, mv, shutdownPct) then
+local function hndlShtd(pct, shutdownPct, mv)
+    if not shldEntr(pct, mv, shutdownPct) then
         return false
     end
     suspendPir()
-    enterBatteryRest()
-    scheduleShutdown()
+    entrBttr()
+    schdShtd()
     return true
 end
 
-local function evaluateStrategy(pct, t, mv)
-    syncBatteryTier(pct)
-    if handleShutdownZone(pct, t.shutdown, mv) then
+local function evltStrt(pct, t, mv)
+    syncBttr(pct)
+    if hndlShtd(pct, t.shutdown, mv) then
         return
     end
-    if guard.shutdown_timer and not shouldLeaveShutdown(pct, mv, t.shutdown) then
+    if guard.shutdown_timer and not shldLvShtd(pct, mv, t.shutdown) then
         return
     end
     cnclShutTmr()
@@ -384,7 +384,7 @@ function evaluate(pct, mv)
         guard.last_mv = mv
     end
     if isUsbInserted() then
-        reseShutMvStre()
+        reseShutMv()
         cnclShutTmr()
         if guard.rest_by_battery or guard.pir_suspended then
             onUsbIns()
@@ -394,17 +394,17 @@ function evaluate(pct, mv)
     if pct == nil and mv == nil then
         return
     end
-    local t = loadPctThresholds()
-    if isHybridStrategy() then
-        if not thresholdsReadyHybrid(t) then
+    local t = loadPctThrs()
+    if isHybrStrt() then
+        if not thrsRdyHybr(t) then
             return
         end
-        evaluateStrategy(pct, t, mv or guard.last_mv)
+        evltStrt(pct, t, mv or guard.last_mv)
     else
-        if not thresholdsReadyBattery(t) then
+        if not thrsRdyBttr(t) then
             return
         end
-        evaluateStrategy(pct, t, mv or guard.last_mv)
+        evltStrt(pct, t, mv or guard.last_mv)
     end
 end
 
@@ -413,7 +413,7 @@ function onUsbIns(opts)
     local source = opts.source
     bgInfo("usb_inserted", tostring(source or ""))
     cnclShutTmr()
-    reseShutMvStre()
+    reseShutMv()
     local wasRest = guard.rest_by_battery
     local wasPir = guard.pir_suspended
     guard.rest_by_battery = false

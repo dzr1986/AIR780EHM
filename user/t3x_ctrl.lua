@@ -20,27 +20,27 @@ local function ipcInTask()
     return utils.inSysTask() == true
 end
 local isPoweredOn = false
-local currentPowerLevel = nil
+local crrnPwrLvl = nil
 local isInBootMode = false
-local currentBootLevel = nil
-local currentOtaLevel = nil
+local crrnBootLvl = nil
+local crrnOtaLvl = nil
 local t3xPowerPin = nil
 local t3xMcuIntPin = nil
-local t3xBootModePin = nil
+local t3XBootMode = nil
 local t3xOtaPin = nil
 local lastAction = nil
 local pulseLowMs = 120
 local bootDelay = 500
 local powerOnLevel = 1
-local powerOffLevel = 0
-local bootModeLevel = 1
+local pwrOffLvl = 0
+local bootModeLvl = 1
 local otaModeLevel = 1
 local state = {
     power_state = "off",
     last_wake_reason = nil,
     rest_enter_time = nil,
 }
-local sleep_in_progress = false
+local slpInPrgr = false
 local function loadMod(name)
     return utils.lazyRequire(name)
 end
@@ -62,12 +62,12 @@ local function getEntries()
     return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
 end
 
-local function getWakePulseMs()
+local function getWakePls()
     local cfg = _G.HOST_WAKE_CFG or {}
     return tonumber(cfg.pulse_ms) or pulseLowMs
 end
 
-local function getMcuIntLevels(entry_int)
+local function getMcuInt(entry_int)
     local cfg = _G.HOST_WAKE_CFG or {}
     local idle = cfg.idle_level
     if idle == nil then
@@ -80,11 +80,11 @@ local function getMcuIntLevels(entry_int)
     return idle, active
 end
 
-local function refreshLevels()
+local function rfrsLvls()
     local entry_pwr, _, entry_boot, entry_ota = getEntries()
     powerOnLevel = entry_pwr and entry_pwr.on_level or 1
-    powerOffLevel = entry_pwr and entry_pwr.init_level or 0
-    bootModeLevel = entry_boot and entry_boot.on_level or 1
+    pwrOffLvl = entry_pwr and entry_pwr.init_level or 0
+    bootModeLvl = entry_boot and entry_boot.on_level or 1
     otaModeLevel = entry_ota and entry_ota.on_level or 1
 end
 
@@ -96,11 +96,11 @@ local function setOutIfNeed(entry, pinRef)
 end
 
 local function ensurePins()
-    refreshLevels()
+    rfrsLvls()
     local entry_pwr, entry_int, entry_boot, entry_ota = getEntries()
     t3xPowerPin = setOutIfNeed(entry_pwr, t3xPowerPin)
     t3xMcuIntPin = setOutIfNeed(entry_int, t3xMcuIntPin)
-    t3xBootModePin = setOutIfNeed(entry_boot, t3xBootModePin)
+    t3XBootMode = setOutIfNeed(entry_boot, t3XBootMode)
     t3xOtaPin = setOutIfNeed(entry_ota, t3xOtaPin)
     return entry_pwr, entry_int, entry_boot, entry_ota
 end
@@ -111,12 +111,12 @@ local function aplPwrLeve(on)
         t3xError("power_pin_missing")
         return false
     end
-    local level = on and powerOnLevel or powerOffLevel
-    if on and isPoweredOn and currentPowerLevel == level then
+    local level = on and powerOnLevel or pwrOffLvl
+    if on and isPoweredOn and crrnPwrLvl == level then
         return true
     end
     t3xPowerPin(level)
-    currentPowerLevel = level
+    crrnPwrLvl = level
     isPoweredOn = on
     t3xInfo("power", on and "on" or "off", level)
     state.power_state = on and "on" or "off"
@@ -143,7 +143,7 @@ function start()
 end
 
 function waitSleepIdle(timeoutMs)
-    if not sleep_in_progress then
+    if not slpInPrgr then
         return true
     end
     if not ipcInTask() then
@@ -152,19 +152,19 @@ function waitSleepIdle(timeoutMs)
     timeoutMs = tonumber(timeoutMs) or 20000
     local elapsed = 0
     local step = 50
-    while sleep_in_progress and elapsed < timeoutMs do
+    while slpInPrgr and elapsed < timeoutMs do
         sys.wait(step)
         elapsed = elapsed + step
     end
-    return not sleep_in_progress
+    return not slpInPrgr
 end
 
-local function waitBeforeWake()
+local function waitBfrWake()
     waitSleepIdle(20000)
 end
 
 function powerOn()
-    waitBeforeWake()
+    waitBfrWake()
     return aplPwrLeve(true)
 end
 
@@ -179,8 +179,8 @@ function pulseMcuInt()
         t3xError("mcu_int_pin_missing")
         return false
     end
-    local idle, active = getMcuIntLevels(entry_int)
-    local ms = getWakePulseMs()
+    local idle, active = getMcuInt(entry_int)
+    local ms = getWakePls()
     t3xMcuIntPin(active)
     sys.timerStart(function()
         t3xMcuIntPin(idle)
@@ -191,17 +191,17 @@ end
 
 function entBootMode()
     ensurePins()
-    if not t3xPowerPin or not t3xBootModePin or not t3xOtaPin then
+    if not t3xPowerPin or not t3XBootMode or not t3xOtaPin then
         t3xError("enter_bootmode_pin_missing")
         return false
     end
     t3xWarn("enter_bootmode")
     powerOff()
     sys.timerStart(function()
-        t3xBootModePin(bootModeLevel)
+        t3XBootMode(bootModeLvl)
         t3xOtaPin(otaModeLevel)
-        currentBootLevel = bootModeLevel
-        currentOtaLevel = otaModeLevel
+        crrnBootLvl = bootModeLvl
+        crrnOtaLvl = otaModeLevel
         isInBootMode = true
     end, bootDelay)
     sys.timerStart(function()
@@ -226,11 +226,11 @@ function pulseUsbDebugEn(opts)
     local otaOff = entry_ota.init_level or 0
     local function finishPulse()
         t3xOtaPin(otaOff)
-        currentOtaLevel = otaOff
+        crrnOtaLvl = otaOff
         lastAction = "pulseUsbDebugEn"
     end
     t3xOtaPin(otaModeLevel)
-    currentOtaLevel = otaModeLevel
+    crrnOtaLvl = otaModeLevel
     if high_ms <= 0 then
         finishPulse()
         return true, 0
@@ -241,23 +241,23 @@ end
 
 function extBootMode()
     ensurePins()
-    if not t3xBootModePin or not t3xOtaPin then
+    if not t3XBootMode or not t3xOtaPin then
         t3xError("exit_bootmode_pin_missing")
         return false
     end
-    local bootOff = 1 - bootModeLevel
+    local bootOff = 1 - bootModeLvl
     local otaOff = 1 - otaModeLevel
-    t3xBootModePin(bootOff)
+    t3XBootMode(bootOff)
     t3xOtaPin(otaOff)
-    currentBootLevel = bootOff
-    currentOtaLevel = otaOff
+    crrnBootLvl = bootOff
+    crrnOtaLvl = otaOff
     isInBootMode = false
     lastAction = "exitBootMode"
     t3xInfo("exit_bootmode")
     return true
 end
 
-local function shouldBlockSleep(opts)
+local function shldBlckSlp(opts)
     if opts.skip_pending_work_check == true then
         return false
     end
@@ -269,7 +269,7 @@ local function shouldBlockSleep(opts)
     return he.shouldBlockT3xSleep(hu.buildHostEvtBody()) == true
 end
 
-local function shutdownPoweredT3x(opts)
+local function shtdPwrd3X(opts)
     if not isPoweredOn then
         return
     end
@@ -295,7 +295,7 @@ function enterSleep(opts)
         t3xInfo("sleep_already")
         return
     end
-    if shouldBlockSleep(opts) then
+    if shldBlckSlp(opts) then
         t3xWarn("sleep_blocked_pending_work")
         return false
     end
@@ -306,10 +306,10 @@ function enterSleep(opts)
         pm.hibernate()
         return
     end
-    sleep_in_progress = true
+    slpInPrgr = true
     sys.taskInit(function()
-        local ok, err = pcall(shutdownPoweredT3x, opts)
-        sleep_in_progress = false
+        local ok, err = pcall(shtdPwrd3X, opts)
+        slpInPrgr = false
         if not ok then
             t3xError("enter_sleep_fail", tostring(err or ""))
         end
@@ -317,7 +317,7 @@ function enterSleep(opts)
 end
 
 function wake()
-    waitBeforeWake()
+    waitBfrWake()
     state.last_wake_reason = rtos.last_wake_reason and rtos.last_wake_reason() or nil
     t3xInfo("wake", tostring(state.last_wake_reason or ""))
     if not isPoweredOn then
@@ -330,12 +330,12 @@ function getState()
     local entry_pwr, entry_int, entry_boot, entry_ota = getEntries()
     return {
         powered_on = isPoweredOn,
-        power_level = currentPowerLevel,
+        power_level = crrnPwrLvl,
         in_boot_mode = isInBootMode,
-        boot_level = currentBootLevel,
-        ota_level = currentOtaLevel,
+        boot_level = crrnBootLvl,
+        ota_level = crrnOtaLvl,
         power_state = state.power_state,
-        sleep_in_progress = sleep_in_progress,
+        slpInPrgr = slpInPrgr,
         last_wake_reason = state.last_wake_reason,
         rest_enter_time = state.rest_enter_time,
         last_action = lastAction,
@@ -360,7 +360,7 @@ local function ipcHostUart()
     return hostUartMod()
 end
 
-local function resolvePowerWaitMs(opts)
+local function rslvPwrWait(opts)
     opts = utils.optTable(opts)
     local waitMs = tonumber(opts.power_wait_ms) or tonumber(opts.t3x_power_wait_ms)
     if waitMs ~= nil then
@@ -372,7 +372,7 @@ local function resolvePowerWaitMs(opts)
         or 800
 end
 
-local function resetHostLink(hu)
+local function rstHostLink(hu)
     if hu and hu.resetHostLinkState then
         hu.resetHostLinkState()
     end
@@ -380,7 +380,7 @@ end
 
 function ensPowOn(tag, opts)
     opts = utils.optTable(opts)
-    waitBeforeWake()
+    waitBfrWake()
     local policy = t3xPolicyMod()
     if type(policy) == "table" and policy.mayPowerT3x
         and not policy.mayPowerT3x(tag or "t3x_ipc") then
@@ -392,7 +392,7 @@ function ensPowOn(tag, opts)
     end
     t3xInfo("ensure_power_on", tostring(tag or "t3x_ipc"))
     powerOn()
-    local waitMs = resolvePowerWaitMs(opts)
+    local waitMs = rslvPwrWait(opts)
     if waitMs > 0 and ipcInTask() then
         sys.wait(waitMs)
     end
@@ -416,7 +416,7 @@ function gracePowOff(opts)
         end
     end
     powerOff()
-    resetHostLink(hu)
+    rstHostLink(hu)
     return true
 end
 
@@ -433,7 +433,7 @@ function pwrOnReady(opts)
     end
     if not isPoweredOn then
         powerOn()
-        sys.wait(resolvePowerWaitMs(opts))
+        sys.wait(rslvPwrWait(opts))
     end
     if ipcEnabled() and hu and hu.waitHostIpcReady then
         return hu.waitHostIpcReady(opts.ready_timeout_ms, opts.poll_ms)

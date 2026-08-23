@@ -59,7 +59,7 @@ local function emptySummary()
     }
 end
 
-local function resolvePendingWake(pirBody, wakeValid, wakeSid, wakeEvt)
+local function rslvPndn(pirBody, wakeValid, wakeSid, wakeEvt)
     if wakeValid then
         return true, wakeSid or 0, wakeEvt or 0
     end
@@ -103,7 +103,7 @@ local function collectPir(types, ctx)
     end
 end
 
-local function collectRecord(types, ctx)
+local function cllcRcrd(types, ctx)
     if not typeEnabled("record") or not ctx.pirBody then
         return
     end
@@ -138,7 +138,7 @@ function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
     if not isEnabled() then
         return emptySummary()
     end
-    local pendingWake, sid, evt = resolvePendingWake(pirBody, wakeValid, wakeSid, wakeEvt)
+    local pendingWake, sid, evt = rslvPndn(pirBody, wakeValid, wakeSid, wakeEvt)
     local types = {}
     local ctx = {
         pirBody = pirBody,
@@ -151,7 +151,7 @@ function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
     }
     collectWake(types, ctx)
     collectPir(types, ctx)
-    collectRecord(types, ctx)
+    cllcRcrd(types, ctx)
     collectMqtt(types, ctx)
     local has = #types > 0
     return {

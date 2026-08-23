@@ -64,7 +64,7 @@ local function blinkBlue(light, dark)
     sys.wait(dark or 0)
 end
 
-local function readChargeFlags()
+local function readChrg()
     local rt = _G.APP_RUNTIME or {}
     local usb, charging = false, false
     if loader.enabled("charge") then
@@ -78,9 +78,9 @@ local function readChargeFlags()
     return usb, charging
 end
 
-local function runtimeSnapshot()
+local function rntmSnps()
     local rt = _G.APP_RUNTIME or {}
-    local usb, charging = readChargeFlags()
+    local usb, charging = readChrg()
     return {
         battery_percent = rt.battery_percent,
         online_status = rt.online_status,
@@ -109,10 +109,10 @@ local function runOneCycle(st, cfg)
     local pct = tonumber(st.battery_percent)
     local online = st.online_status == 1
     local mqttOn = st.mqtt_enabled ~= false
-    local chargingActive = cfg.suppress_low_when_charging ~= false
+    local chrgActv = cfg.suppress_low_when_charging ~= false
         and st.usb_inserted and (st.charging == 1 or st.charging == true)
     setBlue(0)
-    if pct ~= nil and pct <= (tonumber(cfg.low_percent) or 20) and not chargingActive then
+    if pct ~= nil and pct <= (tonumber(cfg.low_percent) or 20) and not chrgActv then
         local n = tonumber(cfg.low_blinks_per_round) or 6
         local ms = tonumber(cfg.low_blink_ms) or 400
         for _ = 1, n do blinkBlue(ms, ms) end
@@ -121,15 +121,15 @@ local function runOneCycle(st, cfg)
     if cfg.check_network ~= false and mqttOn and not online then
         local ms = tonumber(cfg.offline_blink_ms) or 1000
         blinkBlue(ms, ms)
-        return chargingActive and "charging_offline" or "offline"
+        return chrgActv and "charging_offline" or "offline"
     end
-    if pct == nil and not chargingActive then
+    if pct == nil and not chrgActv then
         sys.wait(tonumber(cfg.unknown_hold_ms) or 3000)
         return "unknown"
     end
     setBlue(1)
     sys.wait(tonumber(cfg.ok_hold_ms) or 5000)
-    return chargingActive and "charging_ok" or "ok"
+    return chrgActv and "charging_ok" or "ok"
 end
 
 local function ledTask()
@@ -141,7 +141,7 @@ local function ledTask()
             for _ = 1, n do blinkBlue(s.light_ms or 400, s.dark_ms or 400) end
         end
         while true do
-            local pattern = runOneCycle(runtimeSnapshot(), cycleCfg())
+            local pattern = runOneCycle(rntmSnps(), cycleCfg())
             if pattern ~= lastPattern then
                 lastPattern = pattern
             end
@@ -149,7 +149,7 @@ local function ledTask()
     end)
 end
 
-local function setupEventRefresh()
+local function stpEvntRfrs()
     local E = _G.APP_EVENTS
     if not E then return end
 
@@ -186,7 +186,7 @@ function _M.start(cfg)
         return false
     end
     setBlue(0)
-    setupEventRefresh()
+    stpEvntRfrs()
     ledTask()
     started = true
     return true

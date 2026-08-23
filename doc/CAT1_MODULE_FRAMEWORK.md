@@ -313,3 +313,16 @@ local function mod_call(name, fn, ...)  -- 模块或函数缺失时返回 nil
 **结果**：排除 sys.lua 口径 531859 → 526807B（−5052B，514.5KB）。注意：debug99 口径下 514.5KB 仍未进 512KB 线（用户侧约差 1~4KB），**治本方案是打包链改用较低 luac 调试级别**——实测同代码 `--luac-debug 1`（仅行号）= 456085B(445.4KB)、`--luac-debug 2`（仅变量名）= 393727B(384.5KB)，均稳过 512KB；量产链 pack_mass_prod.py 已用 `luac_debug = 0` + 内存压缩（≈346KB）不受影响。
 
 **验证**：luatos-cli `build luac` 全量零错误；test_parsers（44 断言）+ test_factories（17 断言）lupa 宿主全部通过；提交 8d949c1。
+
+### 9.10 脚本区第二轮压缩：长局部变量名缩短（debug99 口径 −6560B）
+
+背景：9.9 之后用户仍报 513kb 超限。上一轮已挖完函数级存量（死代码/日志/if-nil），本轮主攻 debug99 的**变量名调试表**——实测其占包体约 15%（≈84KB），且按**每次出现**存储（声明处、参数、嵌套闭包 upvalue 名都各存一份），缩名按出现次数线性省钱，删语句同效。
+
+**方法**（`_temp/varname_shorten.py`，零行为变化，纯改名）：
+- ≥13 字符的 local 声明名缩写至 ≤11 字符，驼峰风格与既有轮次一致（如 `run_uart_power_cycle_recovery`→`runUartPwr`、`handleDownlink2001`→`hndDwn2001`）；全大写常量、表字段、配置键不碰
+- 安全约束：Lua 感知扫描（字符串/注释内不替换）；只替换裸标识符（`.`/`:` 后的字段/方法名不碰，`_M.xxx` 导出字段保持原名）；文件内出现 `{ name = ... }` 构造器键、全局定义（`function name(`/`name = function`）的名字跳过；撞名组保留最短原名、其余加区分后缀；测试文件锚点名（`norm_matchers`/`try_vencset_line` 等行解析器）进黑名单
+- 实测 987 处出现被缩短，跨越 22 个文件
+
+**结果**：526807 → 520247B（−6560B，508.1KB）→ 用户 Luatools 口径约 506KB，低于 512KB 线且留 ~5KB 余量。验证：luatos-cli 全量编译零错误；test_parsers/test_factories 全断言通过；git diff 删除行长名逐一回扫代码区确认零残留裸引用（残留项均为表字段/配置键/全大写常量/测试锚点，属预期保留）。
+
+**后续建议**：代码侧余量约 5KB；若后续功能持续增长，治本方案仍是打包链将 `--luac-debug` 从 99 降为 1（仅行号，445.4KB）或 2（仅变量名，384.5KB），可腾出 70~130KB 永久空间。

@@ -39,7 +39,7 @@ local function reportStatus(stage, retCode, message, extra)
     end
 end
 
-local function waitNetworkReady(timeoutMs)
+local function waitNtwrRdy(timeoutMs)
     timeoutMs = tonumber(timeoutMs) or 120000
     if socket and socket.localIP then
         local ip = socket.localIP()
@@ -50,19 +50,19 @@ local function waitNetworkReady(timeoutMs)
     return ok and ip ~= nil and ip ~= "" and ip ~= "0.0.0.0", ip
 end
 
-local function resolveOtaVersion(ver)
+local function rslvOtaVrsn(ver)
     if _G.resIotOtaVer then
         return _G.resIotOtaVer(ver)
     end
     return ver
 end
 
-local function localIotVersion()
+local function lclIotVrsn()
     if _G.IOT_VERSION and _G.IOT_VERSION ~= "" then
         return _G.IOT_VERSION
     end
     if _G.VERSION and _G.VERSION ~= "" then
-        local v = resolveOtaVersion(_G.VERSION)
+        local v = rslvOtaVrsn(_G.VERSION)
         if v and v ~= "" then return v end
         return _G.VERSION
     end
@@ -80,7 +80,7 @@ local function selfUrl()
     return ""
 end
 
-local function useSelfServer(data)
+local function useSelfSrvr(data)
     data = utils.optTable(data)
     local url = data.url or data.otaUrl or data.firmwareUrl
     if url and url ~= "" then
@@ -90,10 +90,10 @@ local function useSelfServer(data)
     return mode == "self" or mode == "custom"
 end
 
-local function buildRequestOpts(data)
+local function bldRqstOpts(data)
     data = utils.optTable(data)
     local timeout = tonumber(data.timeout) or config.timeout_ms
-    local currentVer = localIotVersion()
+    local currentVer = lclIotVrsn()
     local targetVer = data.version or data.targetVersion or data.firmwareVersion
     if targetVer and targetVer ~= "" and _G.resIotOtaVer then
         targetVer = _G.resIotOtaVer(targetVer) or targetVer
@@ -103,7 +103,7 @@ local function buildRequestOpts(data)
     local fw = data.firmware_name or data.firmwareName
     local imei = data.imei or data.deviceId or data.device_id
     local projectKey = data.product_key or data.project_key or data.projectKey or _G.PRODUCT_KEY
-    if useSelfServer(data) then
+    if useSelfSrvr(data) then
         local url = data.url or data.otaUrl or data.firmwareUrl or selfUrl()
         local full = data.url_no_query or data.full_url == true or data.full_url == 1
         return {
@@ -125,7 +125,7 @@ local function buildRequestOpts(data)
     }
 end
 
-local function validateIotConfig(opts)
+local function vldtIotCnfg(opts)
     if opts.url and opts.url ~= "" then
         return true
     end
@@ -155,7 +155,7 @@ local function fota_cb(ret)
     end
 end
 
-local function requestLibFota(opts, cbFnc)
+local function rqstLibFota(opts, cbFnc)
     opts = opts or {}
     cbFnc = cbFnc or function() end
     if opts.full_url then
@@ -191,14 +191,14 @@ local function autoOta(data)
         data = utils.optTable(data)
         lastPayload = data
         requestCount = requestCount + 1
-        local opts = buildRequestOpts(data)
-        local netOk, ip = waitNetworkReady(config.network_wait_ms)
+        local opts = bldRqstOpts(data)
+        local netOk, ip = waitNtwrRdy(config.network_wait_ms)
         if not netOk then
             if log and log.warn then log.warn(L, "ota_network_fail", "timeout=" .. tostring(config.network_wait_ms)) end
             reportStatus("failed", 1, "network_not_ready", data)
             return
         end
-        local valid, err = validateIotConfig(opts)
+        local valid, err = vldtIotCnfg(opts)
         if not valid then
             if log and log.warn then log.warn(L, "ota_config_invalid", tostring(err or "")) end
             reportStatus("failed", 5, err, data)
@@ -208,27 +208,27 @@ local function autoOta(data)
         reportStatus("starting", 0, "check_upgrade", data)
         sys.wait(config.request_delay_ms or 500)
         local done = false
-        local fallbackTried = false
+        local fllbTrd = false
         local function wrapped_cb(ret)
             if done then return end
-            if ret ~= 0 and not opts.url and not fallbackTried then
-                local fallbackVer = localIotVersion()
+            if ret ~= 0 and not opts.url and not fllbTrd then
+                local fallbackVer = lclIotVrsn()
                 if fallbackVer and fallbackVer ~= "" and tostring(fallbackVer) ~= tostring(opts.version or "") then
-                    fallbackTried = true
+                    fllbTrd = true
                     if log and log.warn then
                         log.warn(L, "ota_retry_with_local_version",
                             "requested=" .. tostring(opts.version or "") ..
                             " current=" .. tostring(fallbackVer))
                     end
                     opts.version = fallbackVer
-                    requestLibFota(opts, wrapped_cb)
+                    rqstLibFota(opts, wrapped_cb)
                     return
                 end
             end
             done = true
             fota_cb(ret)
         end
-        requestLibFota(opts, wrapped_cb)
+        rqstLibFota(opts, wrapped_cb)
         local timeoutMs = tonumber(config.callback_timeout_ms) or 320000
         sys.wait(timeoutMs)
         if not done then

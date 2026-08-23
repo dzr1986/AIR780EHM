@@ -17,7 +17,7 @@ local tsInfo = logFuncs.info
 local tsWarn = logFuncs.warn
 local ACK_EVENT = "TIME_SYNC_ACK"
 local uart_bridge
-local lastPushedUnix = 0
+local lastPshd = 0
 local function enabled()
     if cfgm.get("TIME_SYNC_CFG").enabled == false then
         return false
@@ -49,11 +49,11 @@ local function getHostUart()
     return utils.getHostUart()
 end
 
-local function hostFirsAtEvt()
+local function hostFirsAt()
     return utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT")
 end
 
-local function waitHostReady(timeoutMs)
+local function waitHostRdy(timeoutMs)
     local hu = getHostUart()
     if hu and hu.isHostAtReady and hu.isHostAtReady() then
         return true
@@ -62,7 +62,7 @@ local function waitHostReady(timeoutMs)
     if timeoutMs <= 0 then
         return false
     end
-    local got = sys.waitUntil(hostFirsAtEvt(), timeoutMs)
+    local got = sys.waitUntil(hostFirsAt(), timeoutMs)
     if not got then
         return false
     end
@@ -87,7 +87,7 @@ function pushToHost(force)
     end
     if not force then
         local skew = tonumber(cfgm.get("TIME_SYNC_CFG").resync_skew_sec) or 2
-        if lastPushedUnix > 0 and math.abs(t - lastPushedUnix) < skew then
+        if lastPshd > 0 and math.abs(t - lastPshd) < skew then
             return true
         end
     end
@@ -98,7 +98,7 @@ function pushToHost(force)
     end
     tsInfo("sync_push", t, force == true and 1 or 0)
     t3xOn()
-    if not waitHostReady(tonumber(cfgm.get("TIME_SYNC_CFG").hostBootWaitMs) or 1500) then
+    if not waitHostRdy(tonumber(cfgm.get("TIME_SYNC_CFG").hostBootWaitMs) or 1500) then
         tsWarn("host_not_ready")
         return false
     end
@@ -106,7 +106,7 @@ function pushToHost(force)
     local timeoutMs = tonumber(cfgm.get("TIME_SYNC_CFG").ack_timeout_ms) or 800
     local ok = utils.waitT3xCmdAck(ACK_EVENT, timeoutMs)
     if ok then
-        lastPushedUnix = t
+        lastPshd = t
         tsInfo("sync_ack_ok", t)
     else
         tsWarn("sync_ack_timeout", timeoutMs)

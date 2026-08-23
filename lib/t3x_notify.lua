@@ -24,7 +24,7 @@ local function getMod(name)
     return m ~= false and m or nil
 end
 
-local function notifyViaTimeSync(sid, evt)
+local function ntfyViaTime(sid, evt)
     local time_sync = loader.load("time_sync")
     if not time_sync or not time_sync.pushBeforeNotifyAsync then
         return false
@@ -36,7 +36,7 @@ local function notifyViaTimeSync(sid, evt)
     return true
 end
 
-local function notifyViaHostUart(sid, evt)
+local function ntfyViaHost(sid, evt)
     local hu = getMod("host_uart")
     if hu and hu.notify_host then
         return hu.notify_host(sid, evt) ~= false
@@ -44,7 +44,7 @@ local function notifyViaHostUart(sid, evt)
     return false
 end
 
-local function fallbackGpioWake(onDone)
+local function fllbGpio(onDone)
     local t3x = getMod("t3x_ctrl")
     if not t3x or not t3x.wake then
         return false
@@ -66,21 +66,21 @@ function wakeHost(sid, evt, opts)
     -- 保留真值判断：t3x_wakeup 需显式为真，与 enabled() 的 nil 视为开启语义不同
     if not (_G.MODULE_FLAGS and _G.MODULE_FLAGS.t3x_wakeup
         and (_G.MODULE_FLAGS.t3x_app ~= false)) then
-        return fallbackGpioWake(onDone)
+        return fllbGpio(onDone)
     end
-    if notifyViaTimeSync(sid, evt) then
+    if ntfyViaTime(sid, evt) then
         if onDone then
             onDone()
         end
         return true
     end
-    if notifyViaHostUart(sid, evt) then
+    if ntfyViaHost(sid, evt) then
         if onDone then
             onDone()
         end
         return true
     end
-    return fallbackGpioWake(onDone)
+    return fllbGpio(onDone)
 end
 
 function ensPowOn(tag, opts)

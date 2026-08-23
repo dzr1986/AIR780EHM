@@ -16,7 +16,7 @@ local function valBuildVer(ver)
     return ver
 end
 
-local function coreVersionNumber()
+local function coreVrsn()
     local coreVer = rtos and rtos.version and rtos.version()
     if (not coreVer or coreVer == "") and rtos and rtos.get_version then
         local full = rtos.get_version() or ""
@@ -36,7 +36,7 @@ local function bldIotOtaVer(scriptVer)
     if not v then
         return nil
     end
-    local core = coreVersionNumber()
+    local core = coreVrsn()
     if not core then
         return nil
     end
@@ -125,7 +125,7 @@ if loader.enabled("cellular") then
     end
 end
 
-local function startNetwBoot()
+local function strtNetw()
     -- ===== 第 4 段：MQTT 网络引导 + app.start 编排子系统（battery/uart/pir/mqtt/t3x）=====
     if loader.enabled("mqtt") and net.bootstrapNetwork then
         net.bootstrapNetwork()
@@ -137,13 +137,13 @@ if loader.enabled("rndis") then
     if usb_rndis and usb_rndis.open then
         sys.taskInit(function()
             usb_rndis.open()
-            startNetwBoot()
+            strtNetw()
         end)
     else
-        startNetwBoot()
+        strtNetw()
     end
 else
-    startNetwBoot()
+    strtNetw()
 end
 app.start(peripheral, net, t3x_ctrl)
 -- ===== 第 5 段：进入 sys.run() 事件主循环 =====

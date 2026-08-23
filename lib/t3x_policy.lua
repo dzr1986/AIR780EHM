@@ -7,12 +7,12 @@
 require "sys"
 require "config"
 local loader = require "module_loader"
-local runtime_power = require "runtime_power"
+local rntmPwr = require "runtime_power"
 local t3x_notify = require "t3x_notify"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local lastMqttOfflineWakeSec = 0
+local lastMqtt = 0
 local function cfg()
     return _G.T3X_POLICY_CFG or {}
 end
@@ -23,7 +23,7 @@ local function guardCfg()
 end
 
 function isUsbInserted()
-    return runtime_power.isUsbInserted()
+    return rntmPwr.isUsbInserted()
 end
 
 function getBatteryPercent()
@@ -46,22 +46,22 @@ function getBatteryMv()
 end
 
 function isLowPowerMode()
-    return runtime_power.isLowPowerMode()
+    return rntmPwr.isLowPowerMode()
 end
 
 local function isBatDynRest()
-    return runtime_power.isBatDynRest()
+    return rntmPwr.isBatDynRest()
 end
 
 function isBurnActive()
     return _G.T3X_BURN_MODE_ACTIVE == true
 end
 
-local function isWledWakeReason(reason)
+local function isWledWake(reason)
     return tostring(reason or "") == "wled"
 end
 
-local function isPirWakeReason(reason)
+local function isPirWake(reason)
     reason = tostring(reason or "")
     if reason == "notify_host" or reason == "pir_media" or reason == "exit_low_power" then
         return true
@@ -69,11 +69,11 @@ local function isPirWakeReason(reason)
     return reason:sub(1, 9) == "pir_stop"
 end
 
-local function allowsWakeInRest(reason)
-    if cfg().allow_wled_wake_in_rest ~= false and isWledWakeReason(reason) then
+local function allwWakeIn(reason)
+    if cfg().allow_wled_wake_in_rest ~= false and isWledWake(reason) then
         return true
     end
-    if not isPirWakeReason(reason) then
+    if not isPirWake(reason) then
         return false
     end
     if cfg().allow_pir_wake_in_rest ~= false then
@@ -85,14 +85,14 @@ local function allowsWakeInRest(reason)
     return false
 end
 
-local function policyDisabled()
+local function plcyDsbl()
     if cfg().enabled == false then
         return true
     end
     return not loader.enabled("t3x_policy")
 end
 
-local function passesUsbGate(reason)
+local function psssUsbGate(reason)
     if not isUsbInserted() then
         return false
     end
@@ -102,17 +102,17 @@ local function passesUsbGate(reason)
     return true
 end
 
-local function passesLowPowerGate(reason, opts)
+local function psssLowPwr(reason, opts)
     if cfg().block_wake_in_low_power == false or not isLowPowerMode() then
         return true
     end
-    if allowsWakeInRest(reason) then
+    if allwWakeIn(reason) then
         return true
     end
     return false
 end
 
-local function passesBatteryGate()
+local function psssBttr()
     local mv = getBatteryMv()
     local blockMv = tonumber(cfg().block_wake_below_mv) or tonumber(guardCfg().shutdown_mv)
     if blockMv and mv and mv <= blockMv then
@@ -128,13 +128,13 @@ end
 
 function mayPowerT3x(reason, opts)
     opts = type(opts) == "table" and opts or {}
-    if policyDisabled() or isBurnActive() or passesUsbGate(reason) or opts.force_wake then
+    if plcyDsbl() or isBurnActive() or psssUsbGate(reason) or opts.force_wake then
         return true
     end
-    if not passesLowPowerGate(reason, opts) then
+    if not psssLowPwr(reason, opts) then
         return false
     end
-    return passesBatteryGate()
+    return psssBttr()
 end
 
 function shdWakeOffline()
@@ -145,8 +145,8 @@ function shdWakeOffline()
         return false
     end
     local cd = tonumber(cfg().mqtt_offline_wake_cooldown_sec)
-    if cd and cd > 0 and lastMqttOfflineWakeSec > 0
-        and os.time() - lastMqttOfflineWakeSec < cd then
+    if cd and cd > 0 and lastMqtt > 0
+        and os.time() - lastMqtt < cd then
         return false
     end
     if cfg().block_mqtt_offline_wake_when_usb ~= false and isUsbInserted() then
@@ -155,9 +155,9 @@ function shdWakeOffline()
     return mayPowerT3x("mqtt_offline")
 end
 
-local function recordMqttOfflineWake(reason)
+local function rcrdMqtt(reason)
     if reason == "mqtt_offline" then
-        lastMqttOfflineWakeSec = os.time()
+        lastMqtt = os.time()
     end
 end
 
@@ -170,7 +170,7 @@ function reqT3xWake(reason, sid, evt, opts)
     end
     return t3x_notify.wakeHost(sid, evt, {
         on_done = function()
-            recordMqttOfflineWake(reason)
+            rcrdMqtt(reason)
         end,
     })
 end

@@ -29,7 +29,7 @@ local stats = {
     last_tx_raw = nil,
     last_line = nil,
 }
-local function load_uart_cfg()
+local function loadUartCfg()
     local c = _G.UART_CFG
     if type(c) ~= "table" or c.id == nil or c.baud == nil or c.rx_line_max == nil then
         return false
@@ -41,7 +41,7 @@ local function load_uart_cfg()
     return true
 end
 
-local function bind_handlers(options)
+local function bindHndl(options)
     handlers.on_raw = nil
     handlers.on_line = nil
     if type(options) ~= "table" then
@@ -94,7 +94,7 @@ local function emit_line(line)
     cb(line)
 end
 
-local function feed_line_buffer(chunk)
+local function feedLine(chunk)
     drv.rx_line_buf = drv.rx_line_buf .. chunk
     if #drv.rx_line_buf > drv.rx_line_max then
         drv.rx_line_buf = ""
@@ -130,7 +130,7 @@ local function on_uart_recv(id, len)
     end
     on_rx_raw(data)
     if drv.line_protocol then
-        feed_line_buffer(data)
+        feedLine(data)
     end
 end
 
@@ -142,10 +142,10 @@ function start(options)
     if drv.started then
         return false
     end
-    if not load_uart_cfg() then
+    if not loadUartCfg() then
         return false
     end
-    bind_handlers(options)
+    bindHndl(options)
     drv.rx_line_buf = ""
     uart.setup(drv.uart_id, drv.baud, 8, 0, 0, 0)
     uart.on(drv.uart_id, "recv", on_uart_recv)

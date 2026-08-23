@@ -25,7 +25,7 @@ local function shallowMerge(base, over)
     return out
 end
 
-local function loadKeySection(name, overrides)
+local function loadKeySctn(name, overrides)
     return shallowMerge((_G.KEY_CONFIG and _G.KEY_CONFIG[name]) or {}, overrides)
 end
 
@@ -34,7 +34,7 @@ local function pubAppEvt(eventKey)
     if E and E[eventKey] then sys.publish(E[eventKey]) end
 end
 
-local function setupLongPressKey(cfg, state)
+local function stpLongPrss(cfg, state)
     if not cfg or not cfg.pin then return end
     local pressLevel = cfg.pressLevel
     if pressLevel == nil then pressLevel = 0 end
@@ -70,7 +70,7 @@ local function setupLongPressKey(cfg, state)
     })
 end
 
-local function setupReadySignal(cfg)
+local function stpRdySgnl(cfg)
     if not cfg or not cfg.pin then return end
     local active = cfg.activeLevel
     if active == nil then active = 1 end
@@ -86,7 +86,7 @@ local function setupReadySignal(cfg)
     })
 end
 
-local function normalizeConfig(cfg)
+local function nrmlCnfg(cfg)
     cfg = cfg or {}
     local led = cfg.led or {}
     local keyCfg = cfg.key or {}
@@ -120,16 +120,16 @@ function _M.cancelLongPress(name)
 end
 
 function _M.start(cfg)
-    local sub = normalizeConfig(cfg)
+    local sub = nrmlCnfg(cfg)
     led_ctrl.start(sub.led)
     if not keyStarted then
         cfg = sub.key or {}
-        pwrCfg = loadKeySection("pwrkey", cfg.pwrkey)
-        bootCfg = loadKeySection("bootkey", cfg.bootkey)
-        readyCfg = loadKeySection("ready", cfg.ready)
-        setupLongPressKey(pwrCfg, pressStates.pwr)
-        setupLongPressKey(bootCfg, pressStates.boot)
-        setupReadySignal(readyCfg)
+        pwrCfg = loadKeySctn("pwrkey", cfg.pwrkey)
+        bootCfg = loadKeySctn("bootkey", cfg.bootkey)
+        readyCfg = loadKeySctn("ready", cfg.ready)
+        stpLongPrss(pwrCfg, pressStates.pwr)
+        stpLongPrss(bootCfg, pressStates.boot)
+        stpRdySgnl(readyCfg)
         keyStarted = true
     end
     pir_ctrl.startHw()
