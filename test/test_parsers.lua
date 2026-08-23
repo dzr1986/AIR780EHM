@@ -19,15 +19,18 @@ local env = {
 env._G = env
 
 -- 提取代码段: normalize_host_line + DSL 助手 + 各 try_* 定义
-local function extract(pat)
-	local s = src:match(pat)
-	assert(s, "extract failed: " .. pat:sub(1, 40))
-	return s
+-- 定界方式: 起点 marker 到下一个已知函数/变量起点, 避免 Lua pattern 不跨行的限制
+local function extract_between(start_marker, end_marker, name)
+	local s = src:find(start_marker, 1, true)
+	assert(s, "no start for " .. name)
+	local e = src:find(end_marker, s + #start_marker, true)
+	assert(e, "no end for " .. name)
+	return src:sub(s, e - 1)
 end
 local chunks = {
-	extract("(local function normalize_host_line.-\nend)\n"),
-	extract("(%-%- 行解析 DSL.-local function norm_matchers.-\nend)\nlocal function try_encode_uart_error"),
-	extract("(local try_venc_line = norm_matchers.-\n\tend%))"),
+	extract_between("local function normHostLine", "local function parse_recordtime_line", "normHostLine"),
+	extract_between("-- 行解析 DSL", "local function try_encode_uart_error", "dsl"),
+	extract_between("local try_venc_line = norm_matchers", "local try_vencset_line", "try_venc_line"),
 }
 -- try_vencset/audioset/micset/mic/softphoto(set)/framerate/recordctrl/persondet
 local function extract_def(name)
@@ -107,7 +110,8 @@ check("mic row2", P.mic("+MIC:1,50,10"))
 check("mic end", P.mic("+MIC:END"))
 check("mic end pub", last().ev == "EVT_MIC_QUERY" and #last().val == 2 and last().val[2].camera == 1)
 check("mic state cleared", state.mic_rows == nil)
-check("mic end empty", P.mic("+MIC:END") and #last().val == 0)
+-- 无收集行时 END 不发布(rowsEndFlus 语义,与 venc/audio/framerate 一致)
+check("mic end empty", P.mic("+MIC:END") == false)
 
 -- softphoto
 reset()

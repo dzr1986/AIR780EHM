@@ -8,8 +8,16 @@ local env = {
 	parse_ok_rsp = function() end,
 }
 env._G = env
-local body = src:match("(local function defineQuery.-\nend)\nlocal function defineSet") ..
-	"\n" .. src:match("(local function defineSet.-\nend)\nfunction getCachedHostGb28181Id") ..
+-- 定界提取(起点 marker 到下一个定义起点), 避免 Lua pattern 不跨行的限制
+local function extract_between(s, e, name)
+	local a = src:find(s, 1, true)
+	assert(a, "no start for " .. name)
+	local b = src:find(e, a + #s, true)
+	assert(b, "no end for " .. name)
+	return src:sub(a, b - 1)
+end
+local body = extract_between("local function defineQuery", "local function defineSet", "defineQuery") ..
+	"\n" .. extract_between("local function defineSet", "function getCachedHostGb28181Id", "defineSet") ..
 	"\nreturn defineQuery, defineSet"
 local defineQuery, defineSet = assert(load(body, "f", "t", env))()
 
