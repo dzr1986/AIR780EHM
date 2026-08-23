@@ -110,6 +110,8 @@ local state = {
     host_push_quiet_until = 0,
     uart_txn_busy = false,
 }
+local E = _G.APP_EVENTS or {}
+local rt = _G.APP_RUNTIME or {}
 local uartTxnOwnr = nil
 local uartTxnDpth = 0
 local started = false
@@ -289,7 +291,6 @@ local function isUsbInse()
     if uc and uc.isUsbInserted then
         return uc.isUsbInserted()
     end
-    local rt = _G.APP_RUNTIME or {}
     return tonumber(rt.power_status) == 1
 end
 
@@ -303,7 +304,6 @@ end
 
 local function getCnfgSnps()
     local meta = _G.APP_META or {}
-    local rt = _G.APP_RUNTIME or {}
     local tcp_extra = mod_call("low_power_wakeup", "appCfgFields") or ""
     local workmode = mod_call("runtime_power", "getWorkMode") or "person_detect"
     return {
@@ -525,7 +525,6 @@ local function uart_p2pcfg(cmd)
     end
     state.p2p_uid = uid
     state.p2p_product = product
-    local E = _G.APP_EVENTS or {}
     sys.publish(E.HOST_NET_ID_P2P or "APP_HOST_NET_ID_P2P", uid, product)
     return rsp_fmt(
         "P2PCFG", "OK,uid=%s,product=%s",
@@ -553,7 +552,6 @@ local function uartGb28181(cmd)
     state.host_gb28181_id = device_id
     state.gb28181_password = password
     state.gb28181_imei = (imei and imei ~= "") and imei or nil
-    local E = _G.APP_EVENTS or {}
     sys.publish(
         E.HOST_NET_ID_GB28181 or "APP_HOST_NET_ID_GB28181",
         device_id, password, state.gb28181_imei
@@ -749,8 +747,7 @@ local function uartHstd(cmd)
         return rsp_only("HOSTIDLE", "BUSY")
     end
     if cmd == "AT+HOSTIDLE?" then
-        local rt = _G.APP_RUNTIME or {}
-        local lp = tonumber(rt.low_power_mode) or 0
+            local lp = tonumber(rt.low_power_mode) or 0
         local usb = isUsbInse() and 1 or 0
         local allow = 0
         if not usbBlocHost() and mod_call("battery_guard", "shdHostSleep") == true then
@@ -816,8 +813,7 @@ local function uartRcrd(cmd)
         if reason == "allday_person" then
             return rsp_body("RECORD", "1,active=1")
         end
-        local E = _G.APP_EVENTS or {}
-        sys.publish(E.T3X_RECORD_ACTIVE or "APP_T3X_RECORD_ACTIVE")
+            sys.publish(E.T3X_RECORD_ACTIVE or "APP_T3X_RECORD_ACTIVE")
         return rsp_body("RECORD", "1,active=1")
     end
     local reason = arg:match("^0,reason=(.+)$") or "unknown"
@@ -833,7 +829,6 @@ local function uartRcrd(cmd)
         pchCloudStat({ recordingT3x = 0 })
     end
     local uploadMode, quality = mod_call("pir_ctrl", "syncStopT3x", reason)
-    local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_RECORD_STOP or "APP_T3X_RECORD_STOP", reason, uploadMode, quality)
     return rsp_fmt("RECORD", "0,reason=%s", reason)
 end
@@ -847,7 +842,6 @@ local function uartPrsnCnt(cmd)
         return RSP_ERROR
     end
     local n = tonumber(cnt) or 0
-    local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_PERSON_CNT or "APP_T3X_PERSON_CNT", n)
     -- 人数不上 MQTT；app.lua 对 T3X_PERSON_CNT 不再 publishPirToMqtt
     return rsp_fmt("PERSONCNT", "ok,count=%d", n)
@@ -874,7 +868,6 @@ local function uartIpcAlrt(cmd)
         return RSP_ERROR
     end
     detail = detail or ""
-    local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_IPC_ALERT or "APP_T3X_IPC_ALERT", code, detail)
     return rsp_fmt("IPCALERT", "OK,code=%s", code)
 end
@@ -1003,7 +996,6 @@ local function uartSnps(cmd)
     if not path or path == "" then
         return RSP_ERROR
     end
-    local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_SNAPSHOT_DONE or "APP_T3X_SNAPSHOT_DONE", path)
     return rsp_fmt("SNAPSHOT", "ok,path=%s", path)
 end
@@ -1071,7 +1063,6 @@ local function uartLwpw(cmd)
     if fc and fc.low_power == false then
         return rsp_only("LOWPOWER", "NOT_SUPPORTED")
     end
-    local rt = _G.APP_RUNTIME or {}
     if cmd == "AT+LOWPOWER=ENTER" then
         if (rt.low_power_mode or 0) == 0 then
             if hooks.on_enter_low_power then
@@ -1272,7 +1263,6 @@ local function t3XRestBlck()
     if cfg.block_usb_reset_when_t3x_rest == false then
         return false
     end
-    local rt = _G.APP_RUNTIME or {}
     if tonumber(rt.low_power_mode) ~= 1 then
         return false
     end
@@ -1299,7 +1289,6 @@ local function usbRcvrAllw(cfg)
 end
 
 local function expUsbRcvr(st)
-    local rt = _G.APP_RUNTIME or {}
     if st.state then
         rt.usb_recovery = st.state
     end
@@ -1534,8 +1523,7 @@ local function uart_ota(_cmd)
     if hooks.on_ota then
         hooks.on_ota()
     else
-        local E = _G.APP_EVENTS or {}
-        if E.DEVICE_OTA_REQUEST then
+            if E.DEVICE_OTA_REQUEST then
             sys.publish(E.DEVICE_OTA_REQUEST, {})
         end
     end
@@ -1704,7 +1692,6 @@ local function hostPlnLine(line)
         hooks.on_plain_line(line)
         return
     end
-    local E = _G.APP_EVENTS or {}
     if E.UART_RX_STRING then
         sys.publish(E.UART_RX_STRING, line)
     end
@@ -2923,7 +2910,6 @@ function recHostSess(timeoutMs)
     if pc and pc.syncStopT3x then
         uploadMode, quality = pc.syncStopT3x(reason)
     end
-    local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_RECORD_STOP or "APP_T3X_RECORD_STOP", reason, uploadMode, quality)
     return true
 end

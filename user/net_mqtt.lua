@@ -15,6 +15,7 @@ local mqttInfo = logFuncs.info
 local mqttWarn = logFuncs.warn
 local mqttError = logFuncs.error
 local _modname = ...
+local rt = _G.APP_RUNTIME or {}
 module(_modname, package.seeall)
 _G[_modname] = _M
 local function mqttLogEnbl()
@@ -308,7 +309,6 @@ local function cllcRdSnps()
 end
 
 local function cllcBttr()
-    local rt = _G.APP_RUNTIME or {}
     local snap = {
         power_status = tonumber(rt.power_status) or 0,
         battery_percent = rt.battery_percent or "--",
@@ -2092,7 +2092,6 @@ function publishRest(opts)
     })
         return
     end
-    local rt = _G.APP_RUNTIME or {}
     local reason = opts.reason or rt.last_rest_reason or "unknown"
     local source = opts.source or "enter"
     pblsUpln({
@@ -2108,7 +2107,6 @@ end
 function publishStatus(opts)
     opts = utils.optTable(opts)
     local snap = cllcBttr()
-    local rt = _G.APP_RUNTIME or {}
     local intervalSec = getStatIntv()
     local usbLogical = tonumber(rt.usb_logical) or snap.usb_inserted
     local usbNetdev = tonumber(rt.usb_netdev) or 0
@@ -2178,7 +2176,6 @@ function publishStatus(opts)
 end
 
 function publishConnectUplink()
-    local rt = _G.APP_RUNTIME or {}
     if tonumber(rt.low_power_mode) == 1 then
         publishRest({ reason = rt.last_rest_reason or "unknown", source = "reconnect" })
         publishStatus()
@@ -2672,7 +2669,6 @@ function stop()
     if not started and not mqttClient then
         return false
     end
-    local rt = _G.APP_RUNTIME or {}
     if isConnected and mqttClient and publishRest and tonumber(rt.low_power_mode) == 1 then
         pcall(publishRest, {
             reason = rt.last_rest_reason or "unknown",

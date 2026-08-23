@@ -30,6 +30,7 @@ local appWarn = logFuncs.warn
 local appError = logFuncs.error
 local stopWatchdogBeforePowerOff
 local E = APP_EVENTS
+local rt = _G.APP_RUNTIME or {}
 local started = false
 local gpioModule = nil
 local netModule = nil
@@ -942,7 +943,6 @@ local function strtHrtb()
             return
         end
         state.heartbeat_count = state.heartbeat_count + 1
-        local rt = _G.APP_RUNTIME or {}
         local usbInserted = isUsbInsr() and 1 or 0
         local mqttCnnc = tonumber(rt.online_status) == 1 and 1 or 0
         if netModule and type(netModule.getState) == "function" then
