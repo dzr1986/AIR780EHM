@@ -347,3 +347,17 @@ local function mod_call(name, fn, ...)  -- 模块或函数缺失时返回 nil
 - 字符串/注释内的名字不动
 
 **结果**：520247 → 516558B（−3689B，504.5KB）→ 用户 Luatools 口径约 503KB，比 512KB 线余量 9KB。净 −107 行（10 个文件）。验证：luatos-cli 全量编译零错误；test_parsers/test_factories 全断言通过；残留回扫确认被内联名零残留（命中的均为子串同名函数：isVldGb28181/uartRcvryCfg/t3x_policy.isBurnActive，属预期保留）。提交 905ea56。
+
+### 9.12 脚本区第四轮压缩：重构式内联 + lib 侧单调用点内联（debug99 口径 −1027B）
+
+背景：9.11 之后继续。第三轮暂缓的三个候选本轮处理两个，并扩展到 lib/（inline_scan 本就覆盖 lib，但候选多为公共 API，需逐一甄别）。
+
+**重构式内联**（net_mqtt）：
+- `rdUplnFlds`（16 行嵌套函数）：调用点在 `string.format` 参数列表中间且外层已有局部变量 `snap` → 前置 `local rdSnp = cllcRdSnps()` + 嵌套 `local function sv(v)`（改名规避遮蔽），调用点展开为内层 `string.format` 表达式。cllcRdSnps() 求值时机从调用点提前到语句块开头，同函数内无中间写操作，行为等价
+- `makeRfrs`（闭包工厂）：唯一调用点 `map[spec.dl] = makeRfrs(spec)` 纯表达式替换，闭包体展开到赋值处（spec 为循环局部变量，upvalue 可见性不变）
+
+**lib 侧内联 8 处**（cellular_bootstrap 2、usb_charge 4、low_power_wakeup 1、t3x_policy 1）：均为 local 函数、单文件单调用点；`pblsUsbChng`/`pblsChgChng` 展开为 `local ev = utils.appEvent(...)` + `sys.publish(ev, ...)` 两行（无外层 `ev` 冲突）；`cfg()`/`usb_cfg()` 等配置读取内联为 `(_G.XXX or {})` 直查
+
+**甄别后跳过**：gpio_util.trigger_mode/pull、module_loader.enabled、usb_charge.isUsbInserted 等全局导出公共 API；`isBatDynRest` 跨 3 文件引用；`stpUartBrdg`（app，40 行，函数体 `return false` 展开后会使外层 appStart 提前返回，语义不等价）；`type(x)=="table" and x or {}` 样板 12 处中 lib 5 处受"lib 不反向依赖 user"约束、config.lua 2 处在 require 链最前端不可新增依赖，剩余收益约 20B/处放弃
+
+**结果**：516558 → 515277B（−1027B，503.2KB）→ 用户口径约 501.7KB，余量 ~10KB。净 −38 行（5 个文件）。验证：全量编译零错误；test_parsers/test_factories 全断言通过；残留回扫干净（命中的 cellInfoRfrsh/host_usb_cfg 为子串同名）。提交 db12bf7。
