@@ -307,23 +307,6 @@ local function cllcRdSnps()
     }
 end
 
-local function rdUplnFlds()
-    local snap = cllcRdSnps()
-    local function s(v)
-        if v == nil then
-            return ""
-        end
-        return tostring(v)
-    end
-    return string.format(
-        ',"csq":"%s","rssi":"%s","rsrp":"%s","rsrq":"%s","snr":"%s"',
-        escJson(s(snap.csq)),
-        escJson(s(snap.rssi)),
-        escJson(s(snap.rsrp)),
-        escJson(s(snap.rsrq)),
-        escJson(s(snap.snr)))
-end
-
 local function cllcBttr()
     local rt = _G.APP_RUNTIME or {}
     local snap = {
@@ -959,24 +942,6 @@ function publishVersion(opts)
     })
 end
 
-local function makeRfrs(spec)
-    return function(data)
-        local function exec()
-            if spec.async then
-                sys.taskInit(function()
-                    spec.run(data)
-                end)
-            else
-                spec.run(data)
-            end
-        end
-        if spec.hostGate then
-            hndlHost(spec.dl, data, exec)
-        else
-            exec()
-        end
-    end
-end
 local HOST_DOWNLINK_REFRESH_SPECS = {
     {
         dl = DT.DL_DEVICE_ID,
@@ -1007,7 +972,22 @@ local function regiRefDown(map)
     for i = 1, #HOST_DOWNLINK_REFRESH_SPECS do
         local spec = HOST_DOWNLINK_REFRESH_SPECS[i]
         if spec and spec.dl then
-            map[spec.dl] = makeRfrs(spec)
+            map[spec.dl] = function(data)
+                local function exec()
+                    if spec.async then
+                        sys.taskInit(function()
+                            spec.run(data)
+                        end)
+                    else
+                        spec.run(data)
+                    end
+                end
+                if spec.hostGate then
+                    hndlHost(spec.dl, data, exec)
+                else
+                    exec()
+                end
+            end
         end
     end
 end
@@ -2157,6 +2137,13 @@ function publishStatus(opts)
     if rp and rp.getWorkMode then
         workMode = rp.getWorkMode() or workMode
     end
+    local rdSnp = cllcRdSnps()
+    local function sv(v)
+        if v == nil then
+            return ""
+        end
+        return tostring(v)
+    end
     pblsUpln({
         suffix = "status",
         dataType = DT.UL_STATUS,
@@ -2174,7 +2161,13 @@ function publishStatus(opts)
             escJson(usbRecovery),
             usbRcvrCnt,
             escJson(usbRcvrLast),
-            rdUplnFlds(),
+            string.format(
+                ',"csq":"%s","rssi":"%s","rsrp":"%s","rsrq":"%s","snr":"%s"',
+                escJson(sv(rdSnp.csq)),
+                escJson(sv(rdSnp.rssi)),
+                escJson(sv(rdSnp.rsrp)),
+                escJson(sv(rdSnp.rsrq)),
+                escJson(sv(rdSnp.snr))),
             extra,
             ipc_sup.ipcCloudStatFields()),
         on_published = function()

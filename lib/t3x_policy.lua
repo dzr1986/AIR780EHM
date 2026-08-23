@@ -57,10 +57,6 @@ function isBurnActive()
     return _G.T3X_BURN_MODE_ACTIVE == true
 end
 
-local function isWledWake(reason)
-    return tostring(reason or "") == "wled"
-end
-
 local function isPirWake(reason)
     reason = tostring(reason or "")
     if reason == "notify_host" or reason == "pir_media" or reason == "exit_low_power" then
@@ -70,7 +66,7 @@ local function isPirWake(reason)
 end
 
 local function allwWakeIn(reason)
-    if cfg().allow_wled_wake_in_rest ~= false and isWledWake(reason) then
+    if cfg().allow_wled_wake_in_rest ~= false and tostring(reason or "") == "wled" then
         return true
     end
     if not isPirWake(reason) then

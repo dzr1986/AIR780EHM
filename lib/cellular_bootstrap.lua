@@ -106,10 +106,6 @@ local function mtchApnOprt(apn)
     return nil
 end
 
-local function oprtFrom(plmn5)
-    return plmn5 and mtchImsi(plmn5) or nil
-end
-
 local function buildPlmn5(mcc, mnc)
     mcc = tonumber(mcc)
     mnc = tonumber(mnc)
@@ -211,7 +207,7 @@ local function prsSrvnFrom(cells)
         return nil, nil
     end
     local plmn5 = buildPlmn5(c.mcc, c.mnc)
-    local op = oprtFrom(plmn5)
+    local op = plmn5 and mtchImsi(plmn5) or nil
     if op then
         return op, operatorName(op)
     end
@@ -246,10 +242,6 @@ local function rqstCell(timeoutSec)
     end
     mobile.reqCellInfo(timeoutSec)
     return true
-end
-
-local function cellInfo()
-    return cfg().cell_info_refresh_on_start == true
 end
 
 local function strtCell()
@@ -434,7 +426,7 @@ function start()
         return false
     end
     started = true
-    if cellInfo() then
+    if cfg().cell_info_refresh_on_start == true then
         strtCell()
     end
     sys.subscribe("SIM_IND", onSimInd)

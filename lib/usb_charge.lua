@@ -49,10 +49,6 @@ local function usbPin()
     return cfg().usb_det_pin
 end
 
-local function chgPin()
-    return cfg().chg_state_pin
-end
-
 local function ensrUsbDet()
     if usbDetRdy then
         return true
@@ -83,7 +79,7 @@ local function readUsbInse()
 end
 
 local function readCharging()
-    local pin = chgPin()
+    local pin = cfg().chg_state_pin
     if not pin or not gpio or not gpio.get then
         return false
     end
@@ -92,16 +88,6 @@ end
 
 local function effChar()
     return readUsbInse() and readCharging()
-end
-
-local function pblsUsbChng(inserted)
-    local ev = utils.appEvent("GPIO_USB_DET_CHANGED", "APP_GPIO_USB_DET_CHANGED")
-    sys.publish(ev, inserted and 1 or 0)
-end
-
-local function pblsChgChng(charging)
-    local ev = utils.appEvent("GPIO_CHG_STATE_CHANGED", "APP_GPIO_CHG_STATE_CHANGED")
-    sys.publish(ev, charging and 1 or 0)
 end
 
 local function updateUsb(inserted, fromIrq)
@@ -115,7 +101,8 @@ local function updateUsb(inserted, fromIrq)
             peri.cancelLongPress("pwr")
         end
     end
-    pblsUsbChng(inserted)
+    local ev = utils.appEvent("GPIO_USB_DET_CHANGED", "APP_GPIO_USB_DET_CHANGED")
+    sys.publish(ev, inserted and 1 or 0)
     updateChg(effChar(), fromIrq)
 end
 updateChg = function(charging, fromIrq)
@@ -123,7 +110,8 @@ updateChg = function(charging, fromIrq)
         return
     end
     last_chg = charging
-    pblsChgChng(charging)
+    local ev = utils.appEvent("GPIO_CHG_STATE_CHANGED", "APP_GPIO_CHG_STATE_CHANGED")
+    sys.publish(ev, charging and 1 or 0)
 end
 
 local function onUsbIrq(_level)
@@ -171,12 +159,8 @@ function isCharging()
     return effChar() and 1 or 0
 end
 
-local function usb_cfg()
-    return _G.HOST_USB_CFG or {}
-end
-
 local function usbGtdPlcy(cfgKey)
-    if usb_cfg()[cfgKey] == false then
+    if (_G.HOST_USB_CFG or {})[cfgKey] == false then
         return false
     end
     return isUsbInserted()

@@ -10,12 +10,9 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 local MODE_MQTT = "mqtt"
 local MODE_TCP = "tcp"
-local function cfg()
-    return _G.LOW_POWER_WAKEUP_CFG or {}
-end
 
 local function getMode()
-    local m = cfg().mode
+    local m = (_G.LOW_POWER_WAKEUP_CFG or {}).mode
     if type(m) == "string" and m:lower() == MODE_TCP then
         return MODE_TCP
     end
