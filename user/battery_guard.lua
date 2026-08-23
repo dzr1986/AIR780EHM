@@ -279,26 +279,6 @@ local function thresholdsReadyHybrid(t)
     return t.shutdown and t.rest and t.recover and t.pir_suspend and t.pir_resume
 end
 
-local function canEnterRestNow()
-    local minOn = intCfg("min_always_on_duration_sec", 0)
-    if minOn > 0 and guard.rest_exit_ts > 0 then
-        if os.time() - guard.rest_exit_ts < minOn then
-            return false
-        end
-    end
-    return true
-end
-
-local function canExitRestNow()
-    local minRest = intCfg("min_rest_duration_sec", 0)
-    if minRest > 0 and guard.rest_enter_ts > 0 then
-        if os.time() - guard.rest_enter_ts < minRest then
-            return false
-        end
-    end
-    return true
-end
-
 local function scheduleShutdown()
     if guard.shutdown_timer then
         return

@@ -28,10 +28,7 @@ function isEnabled()
 end
 
 local function typeEnabled(name)
-    local mask = tonumber(cfg().types_mask)
-    if mask == nil then
-        mask = 0x0F
-    end
+    local mask = tonumber(cfg().types_mask) or 0x0F
     local bit = TYPE_BIT[name] or 0
     return bit ~= 0 and (mask & bit) ~= 0
 end

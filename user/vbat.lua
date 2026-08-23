@@ -131,10 +131,7 @@ end
 local function smoothPercent(cellMv, rawPct)
     local fc = getFilterCfg()
     local vmax = tonumber(getCellCfg().v_max_mv) or 4200
-    local hystHigh = tonumber(fc.percent_hyst_high_mv)
-    if hystHigh == nil then
-        hystHigh = vmax - 80
-    end
+    local hystHigh = tonumber(fc.percent_hyst_high_mv) or (vmax - 80)
     local maxStep = tonumber(fc.percent_max_step) or 2
     local pct = rawPct
     if stablePercent == nil then
@@ -195,10 +192,7 @@ local function exportGlobals(pct, cellMv, rate)
 end
 
 local function getChannel()
-    local c = getAdcCfg().channel
-    if c == nil then
-        c = 1
-    end
+    local c = getAdcCfg().channel or 1
     return c
 end
 

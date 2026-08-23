@@ -66,10 +66,7 @@ function setup_output(entry)
     if not entry or not entry.pin then
         return nil
     end
-    local level = entry.init_level
-    if level == nil then
-        level = 0
-    end
+    local level = entry.init_level or 0
     return gpio.setup(entry.pin, level)
 end
 

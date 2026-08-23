@@ -114,18 +114,12 @@ end
 
 local function passesBatteryGate()
     local mv = getBatteryMv()
-    local blockMv = tonumber(cfg().block_wake_below_mv)
-    if blockMv == nil then
-        blockMv = tonumber(guardCfg().shutdown_mv)
-    end
+    local blockMv = tonumber(cfg().block_wake_below_mv) or tonumber(guardCfg().shutdown_mv)
     if blockMv and mv and mv <= blockMv then
         return false
     end
     local pct = getBatteryPercent()
-    local blockPct = tonumber(cfg().block_wake_below_percent)
-    if blockPct == nil then
-        blockPct = tonumber(guardCfg().pir_suspend_percent) or 15
-    end
+    local blockPct = tonumber(cfg().block_wake_below_percent) or tonumber(guardCfg().pir_suspend_percent) or 15
     if pct ~= nil and pct <= blockPct then
         return false
     end

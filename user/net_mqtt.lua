@@ -579,15 +579,6 @@ local function handleDownlink2003(data)
     })
 end
 
-local function fetchWledFromHost()
-    local on = getWledState()
-    local hu = getHostUart()
-    if hu and hu.queryHostWled and hu.isHostAtReady and hu.isHostAtReady() then
-        on = hu.queryHostWled() or on
-    end
-    return on
-end
-
 local function makeDownlink2004Reply(data)
     local action = data.action
     local messageId = data.messageId or ""
@@ -1413,10 +1404,7 @@ local function handleDownlink2013(data)
         if action ~= "upload_video" and action ~= "notify_upload" then
             action = "upload_video"
         end
-        local need = tonumber(data.needUpload)
-        if need == nil then
-            need = 1
-        end
+        local need = tonumber(data.needUpload) or 1
         need = (need == 0) and 0 or 1
         local reason = tostring(data.reason or "cloud")
         local recordPath = tostring(data.recordPath or data.path or "")
@@ -2020,6 +2008,15 @@ function restart()
     return true
 end
 
+local function pushNetLed(online)
+    pcall(function()
+        local hu = getHostUart()
+        if hu and hu.pushNetLedSt then
+            hu.pushNetLedSt(online)
+        end
+    end)
+end
+
 local function mqttTask()
     local _, deviceId = waitForNetworkReady()
     local mcfg = _G.MQTT_CFG or {}
@@ -2057,12 +2054,7 @@ local function mqttTask()
             state.reconnect_count = 0
             subscribeDownlink(client)
             sys.publish(mqttConnEvt())
-            pcall(function()
-                local hu = getHostUart()
-                if hu and hu.pushNetLedSt then
-                    hu.pushNetLedSt(true)
-                end
-            end)
+            pushNetLed(true)
             publishConnectUplink()
             maybeAutoPubId()
             pcall(function()
@@ -2076,12 +2068,7 @@ local function mqttTask()
             state.reconnect_count = (state.reconnect_count or 0) + 1
             mqttWarn("mqtt_disconnect", state.reconnect_count)
             pubAppEvt("MQTT_OFFLINE")
-            pcall(function()
-                local hu = getHostUart()
-                if hu and hu.pushNetLedSt then
-                    hu.pushNetLedSt(false)
-                end
-            end)
+            pushNetLed(false)
             if callbacks.onOffline then callbacks.onOffline() end
         elseif event == "error" or event == "connect" then
             if event == "error" then
@@ -2159,10 +2146,7 @@ function publishStatus(opts)
     local snap = collectBatterySnapshot()
     local rt = _G.APP_RUNTIME or {}
     local intervalSec = getStatIntv()
-    local usbLogical = tonumber(rt.usb_logical)
-    if usbLogical == nil then
-        usbLogical = snap.usb_inserted
-    end
+    local usbLogical = tonumber(rt.usb_logical) or snap.usb_inserted
     local usbNetdev = tonumber(rt.usb_netdev) or 0
     local usbRecovery = rt.usb_recovery or "idle"
     local usbRecoveryCount = tonumber(rt.usb_recovery_count) or 0
@@ -2477,9 +2461,7 @@ end
 function publishUploadVideoReply(retCode, message, messageId, extra)
     extra = utils.optTable(extra)
     local need = tonumber(extra.needUpload)
-    if need == nil then
-        need = 1
-    end
+    need = need or 1
     need = (need == 0) and 0 or 1
     local pathField = ""
     if extra.recordPath and extra.recordPath ~= "" then
@@ -2514,9 +2496,7 @@ end
 function publishUploadVideoComplete(retCode, messageId, extra)
     extra = utils.optTable(extra)
     local need = tonumber(extra.needUpload)
-    if need == nil then
-        need = 1
-    end
+    need = need or 1
     need = (need == 0) and 0 or 1
     local beginTs = tonumber(extra.beginTs) or 0
     local endTs = tonumber(extra.endTs) or 0
@@ -2575,9 +2555,7 @@ end
 function publishUploadVideoNeed(opts)
     opts = utils.optTable(opts)
     local need = tonumber(opts.needUpload)
-    if need == nil then
-        need = 1
-    end
+    need = need or 1
     need = (need == 0) and 0 or 1
     if need == 1 then
         local now = os.time()

@@ -1960,9 +1960,6 @@ local function parse_venc_row(line)
     local cam, stream, en, w, h, br, fps, rc, enc = line:match(
         "^%+VENC:(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)")
     if not cam then
-        if line and line:match("^%+VENC:") and line ~= "+VENC:END" and log and log.info then
-            log.info("host_uart", "venc_unparsed", line)
-        end
         return nil
     end
     return {
@@ -2300,17 +2297,11 @@ local function try_ipcpoweroff_line(line)
         return false
     end
     if line == "+IPCPOWEROFF:OK" then
-        if log and log.info then
-            log.info("host_uart", "ipcpoweroff_rx", "OK")
-        end
         sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = true })
         return true
     end
     local stage = line:match("^%+IPCPOWEROFF:STAGE,([%w_]+)$")
     if stage then
-        if log and log.info then
-            log.info("host_uart", "ipcpoweroff_rx", "STAGE", stage)
-        end
         sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, stage = stage })
         return true
     end
@@ -3177,10 +3168,7 @@ function hostIpcPowerOff(playSound, timeoutMs)
             sends = sends + 1
             uart_bridge.sendString("", true)
             sys.wait(40)
-            local sent = uart_bridge.sendString(cmd, true)
-            if log and log.info then
-                log.info("host_uart", "ipcpoweroff_tx", cmd, "n=" .. tostring(sends), sent and "sent" or "fail")
-            end
+            uart_bridge.sendString(cmd, true)
         end
         tx_once()
         local nextRetry = host_now_ms() + 2000
@@ -3392,10 +3380,7 @@ requestUploadVideo = defineSet{
     tag = "host_uploadvideo", cfg = identity_cfg, boot = record_cfg,
     tmo = 12000, ev = SYS_EVT.UPLOADVIDEO_SET, skip_quiet = true,
     prep = function(o)
-        local need = tonumber(o.needUpload or o.need)
-        if need == nil then
-            need = 1
-        end
+        local need = tonumber(o.needUpload or o.need) or 1
         need = (need == 0) and 0 or 1
         local vtype = tonumber(o.videoType or o.vtype) or 2
         if vtype ~= 1 then

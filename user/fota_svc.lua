@@ -148,7 +148,6 @@ local function fota_cb(ret)
     local row = FOTA_RET[ret] or { "failed", "unknown_ret_" .. tostring(ret) }
     reportStatus(row[1], ret, row[2], lastPayload)
     if ret == 0 and row[3] and config.auto_reboot_on_success ~= false then
-        if log and log.info then log.info(L, "ota_reboot_scheduled", "delay_ms=2000") end
         sys.taskInit(function()
             sys.wait(2000)
             rtos.reboot()
@@ -192,22 +191,13 @@ local function autoOta(data)
         data = utils.optTable(data)
         lastPayload = data
         requestCount = requestCount + 1
-    local opts = buildRequestOpts(data)
-    local logMsg = string.format(
-        "ota_start request_count=%d current=%s target=%s url=%s product_key=%s",
-        requestCount,
-        tostring(opts.version or ""),
-        tostring(data.targetVersion or data.version or ""),
-        tostring(opts.url or ""),
-        tostring(opts.project_key or ""))
-    if log and log.info then log.info(L, logMsg) end
+        local opts = buildRequestOpts(data)
         local netOk, ip = waitNetworkReady(config.network_wait_ms)
         if not netOk then
             if log and log.warn then log.warn(L, "ota_network_fail", "timeout=" .. tostring(config.network_wait_ms)) end
             reportStatus("failed", 1, "network_not_ready", data)
             return
         end
-        if log and log.info then log.info(L, "ota_network_ok", "ip=" .. tostring(ip or "")) end
         local valid, err = validateIotConfig(opts)
         if not valid then
             if log and log.warn then log.warn(L, "ota_config_invalid", tostring(err or "")) end
@@ -215,11 +205,6 @@ local function autoOta(data)
             return
         end
         busy = true
-        if log and log.info then
-            log.info(L, "ota_checking",
-                "url=" .. tostring(opts.url or "") ..
-                " full_url=" .. tostring(opts.full_url == true))
-        end
         reportStatus("starting", 0, "check_upgrade", data)
         sys.wait(config.request_delay_ms or 500)
         local done = false
@@ -241,10 +226,6 @@ local function autoOta(data)
                 end
             end
             done = true
-            if log and log.info then
-                local retMsg = FOTA_RET[ret] or { "failed", "unknown_ret_" .. tostring(ret) }
-                log.info(L, "ota_callback", "ret=" .. tostring(ret) .. " stage=" .. tostring(retMsg[1]) .. " msg=" .. tostring(retMsg[2]))
-            end
             fota_cb(ret)
         end
         requestLibFota(opts, wrapped_cb)

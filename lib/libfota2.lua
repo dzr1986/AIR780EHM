@@ -14,14 +14,14 @@ end
 
 -- 云平台错误码 → log 文案（键为 hziot 返回 code；特殊分支见 fota_task）
 local FOTA_ERR_INFO = {
-    [43] = { "请等待", ",云平台生成差分升级包需要等待,一到三分钟后云平台生成完成差分包便可以请求成功" },
+    [43] = { "请等待", "云平台生成差分包需1-3分钟,稍后重试" },
     [3] = { "无效的设备", "检查请求键名(imei小写)正确性" },
-    [17] = { "无权限", "设备会上报imei、固件名、项目key,服务器会以此查出设备、固件、项目三 条记录，如果 这三者不在同一个用户名下，就会认为无权限。设备不在项目key对应的账户下，可寻找合宙技术支持查询该设备在哪个账户下，核实情况后可修改设备归属" },
-    [21] = { "不允许升级", "请检查IOT平台,是否对应imei被禁止了升级" },
-    [25] = { "无效的项目", "productkey不一致,检查是否存在拼写错误,检查模块是否在本人账户下,若不在本人账户下,请联系合宙工作人员处理" },
-    [26] = { "无效的固件", "固件名称错误,项目中没有对应的固件,也有可能是用户自己修改了固件名称,可对照升级日志中设备当前固件名与升级配置中固件名是否相同(固件名称,固件功能要完全一致,只是版本号不同)" },
-    [27] = { "已是最新版本", "1.设备的固件/脚本版本高于或等于云平台上的版本号 2.用户项目升级配置中未添加该设备 3.云平台升级配置中，是否升级配置为否" },
-    [40] = { "循环升级", "云平台进入设备列表搜索被禁止的imei,解除禁止升级即可. 云平台防止模块在升级失败后,反复请求升级导致流量卡流量耗尽,在模块一天请求升级六次后会禁止模块升级. 可在平台解除" },
+    [17] = { "无权限", "设备imei/固件/项目key需在同一账户下,可联系合宙技术支持核实修改归属" },
+    [21] = { "不允许升级", "检查IOT平台该imei是否被禁止升级" },
+    [25] = { "无效的项目", "productkey不一致或设备不在本人账户下,请联系合宙处理" },
+    [26] = { "无效的固件", "固件名称错误或项目无对应固件,对照升级日志中设备当前固件名与配置固件名" },
+    [27] = { "已是最新版本", "固件/脚本已是最新,或项目未添加该设备,或升级配置为否" },
+    [40] = { "循环升级", "解除该imei的禁止升级;一天请求超6次会被平台禁止" },
 }
 
 local function fota_task(cbFnc, opts)
@@ -49,12 +49,10 @@ local function fota_task(cbFnc, opts)
     elseif code == -5 then
         ret = 3
     else
-        log.info("libfota2", code, body)
         ret = 4
         local hziot = "iot.openluat.com"
         local msg, json_body, result
         if string.find(url, hziot) then
-            log.info("使用合宙服务器,接下来解析body里的code")
             if type(body) == "string" and body ~= "" then
                 json_body, result = json.decode(body)
             else
@@ -174,11 +172,8 @@ function libfota2.request(cbFnc, opts)
     if not opts.method then
         opts.method = "GET"
     end
-    log.info("libfota2.url", opts.method, opts.url)
-    log.info("libfota2.imei/mac/uid", query)
-    log.info("libfota2.project_key", opts.project_key)
-    log.info("libfota2.firmware_name", opts.firmware_name)
-    log.info("libfota2.version", opts.version)
+    log.info("libfota2", "url", opts.method, opts.url, "q", query, "pk", opts.project_key,
+             "fn", opts.firmware_name, "ver", opts.version)
     sys.taskInit(fota_task, cbFnc, opts)
 end
 
