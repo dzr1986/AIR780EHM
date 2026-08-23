@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : low_power_wakeup.lua
 -- Module   : 低功耗唤醒抽象：rest 期间 TCP/MQTT 行为切换，onEnterRest/onExitRest 两态
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/LOW_POWER_WAKEUP.md
 -- ================================================================
 

@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : runtime_power.lua
 -- Module   : 运行时功耗管理：pm 接口封装、休眠/唤醒调度辅助
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : 见 doc/LUA_MODULES.md
 -- ================================================================
 
@@ -10,8 +9,8 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-WORK_PERSON_DETECT = "person_detect"
-WORK_PIR_WATCH = "pir_watch"
+local WORK_PERSON_DETECT = "person_detect"
+local WORK_PIR_WATCH = "pir_watch"
 
 function getWorkMode()
     local rt = _G.APP_RUNTIME

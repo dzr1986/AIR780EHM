@@ -1,13 +1,13 @@
 -- ================================================================
 -- Filename : time_sync.lua
 -- Module   : 时间同步：SNTP→AT+TIMESET、唤醒前 pushBeforeNotify 对时
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/TIME_SYNC_FLOW.md
 -- ================================================================
 
 require "sys"
 require "config"
 local utils = require "utils"
+local cfgm = require "config_manager"
 local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
@@ -18,16 +18,11 @@ local tsWarn = logFuncs.warn
 local ACK_EVENT = "TIME_SYNC_ACK"
 local uart_bridge
 local lastPushedUnix = 0
-local function cfg()
-    return _G.TIME_SYNC_CFG or {}
-end
-
 local function enabled()
-    if cfg().enabled == false then
+    if cfgm.get("TIME_SYNC_CFG").enabled == false then
         return false
     end
-    local flags = _G.MODULE_FLAGS
-    if flags and flags.time_sync == false then
+    if not loader.enabled("time_sync") then
         return false
     end
     return true
@@ -35,7 +30,7 @@ end
 
 function isTimeValid(t)
     t = tonumber(t) or os.time()
-    local minTs = tonumber(cfg().min_valid_unix) or utils.MIN_VALID_UNIX
+    local minTs = tonumber(cfgm.get("TIME_SYNC_CFG").min_valid_unix) or utils.MIN_VALID_UNIX
     return t >= minTs
 end
 
@@ -55,7 +50,7 @@ local function getHostUart()
 end
 
 local function hostFirsAtEvt()
-    return (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+    return utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT")
 end
 
 local function waitHostReady(timeoutMs)
@@ -63,7 +58,7 @@ local function waitHostReady(timeoutMs)
     if hu and hu.isHostAtReady and hu.isHostAtReady() then
         return true
     end
-    timeoutMs = tonumber(timeoutMs) or tonumber(cfg().hostBootWaitMs) or 1500
+    timeoutMs = tonumber(timeoutMs) or tonumber(cfgm.get("TIME_SYNC_CFG").hostBootWaitMs) or 1500
     if timeoutMs <= 0 then
         return false
     end
@@ -74,40 +69,10 @@ local function waitHostReady(timeoutMs)
     hu = getHostUart()
     return hu and hu.isHostAtReady and hu.isHostAtReady() or false
 end
-local ipcMod
 local function t3xOn(extra)
-    if ipcMod == nil then
-        local m = loader.load("t3x_ctrl")
-        ipcMod = m or false
-    end
-    if not ipcMod or not ipcMod.ensPowOn then
-        return false
-    end
-    extra = extra or {
-        t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
-        log_skip = "低功耗/低电量，跳过 T3x 上电",
-    }
-    return ipcMod.ensPowOn("time_sync", extra)
-end
-
-local function waitTimesetAck(timeoutMs)
-    local deadline = (mcu and mcu.ticks and mcu.ticks() or 0) + timeoutMs
-    while true do
-        local remain = timeoutMs
-        if mcu and mcu.ticks then
-            remain = deadline - mcu.ticks()
-            if remain <= 0 then
-                return false
-            end
-        end
-        local got = sys.waitUntil(ACK_EVENT, remain)
-        if got then
-            return true
-        end
-        if not mcu or not mcu.ticks then
-            return false
-        end
-    end
+    return utils.t3xOn("time_sync", extra, {
+        t3x_power_wait_ms = tonumber(cfgm.get("TIME_SYNC_CFG").t3x_power_wait_ms) or 800,
+    })
 end
 
 function pushToHost(force)
@@ -121,7 +86,7 @@ function pushToHost(force)
         return false
     end
     if not force then
-        local skew = tonumber(cfg().resync_skew_sec) or 2
+        local skew = tonumber(cfgm.get("TIME_SYNC_CFG").resync_skew_sec) or 2
         if lastPushedUnix > 0 and math.abs(t - lastPushedUnix) < skew then
             return true
         end
@@ -133,13 +98,13 @@ function pushToHost(force)
     end
     tsInfo("sync_push", t, force == true and 1 or 0)
     t3xOn()
-    if not waitHostReady(tonumber(cfg().hostBootWaitMs) or 1500) then
+    if not waitHostReady(tonumber(cfgm.get("TIME_SYNC_CFG").hostBootWaitMs) or 1500) then
         tsWarn("host_not_ready")
         return false
     end
     ub.sendString("AT+TIMESET=" .. t, true)
-    local timeoutMs = tonumber(cfg().ack_timeout_ms) or 800
-    local ok = waitTimesetAck(timeoutMs)
+    local timeoutMs = tonumber(cfgm.get("TIME_SYNC_CFG").ack_timeout_ms) or 800
+    local ok = utils.waitT3xCmdAck(ACK_EVENT, timeoutMs)
     if ok then
         lastPushedUnix = t
         tsInfo("sync_ack_ok", t)
@@ -160,7 +125,7 @@ function onTimesetAck()
 end
 
 function onSntpSuccess(unix, server)
-    if not enabled() or cfg().sync_on_sntp == false then
+    if not enabled() or cfgm.get("TIME_SYNC_CFG").sync_on_sntp == false then
         return
     end
     tsInfo("sntp_ok", tostring(server or ""), tostring(unix or ""))
@@ -174,7 +139,7 @@ function pushBeforeNotify(sid, evt)
             return
         end
     end
-    if not enabled() or cfg().sync_before_wake == false then
+    if not enabled() or cfgm.get("TIME_SYNC_CFG").sync_before_wake == false then
         local hu = getHostUart()
         if hu and hu.notify_host then
             hu.notify_host(sid, evt)
@@ -197,7 +162,7 @@ function pushBeforeNotifyAsync(sid, evt)
 end
 
 function start(opts)
-    if cfg().sync_on_sntp ~= false then
+    if cfgm.get("TIME_SYNC_CFG").sync_on_sntp ~= false then
         sys.subscribe("SNTP_SYNC_SUCCESS", function(unix, server)
             onSntpSuccess(unix, server)
         end)

@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : pir_ctrl.lua
 -- Module   : PIR 侦测与会话：GPIO 中断、冷却、录像会话、云端启停、PIRSTAT 统计
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/PIR_CTRL_FLOW.md
 -- ================================================================
 
@@ -144,9 +143,7 @@ local function getHwState()
     return { started = hwStarted, pin = hwPin, cooldown_remaining_ms = remain }
 end
 
-local function escVal(s)
-    return (tostring(s or ""):gsub(",", "_"):gsub("=", "_"))
-end
+local escVal = utils.escKv
 
 function buildAtBod()
     local hw = getHwState()
@@ -220,7 +217,7 @@ local function toBool(value, default)
 end
 
 function normPirMCfg(config)
-    local input = type(config) == "table" and config or {}
+    local input = utils.optTable(config)
     local A, U, Q, D = PIR_MEDIA.ACTION, PIR_MEDIA.UPLOAD_MODE, PIR_MEDIA.QUALITY, PIR_MEDIA.DEFAULT_CONFIG
     local action = input.action
     local uploadMode = input.uploadMode
@@ -234,7 +231,7 @@ function normPirMCfg(config)
 end
 
 function normPirRPol(policy)
-    local input = type(policy) == "table" and policy or {}
+    local input = utils.optTable(policy)
     local maxSec = tonumber(input.maxDurationSec) or DEFAULT_RECORD_POLICY.maxDurationSec
     if maxSec < 1 then maxSec = 1 end
     if maxSec > 3600 then maxSec = 3600 end
@@ -345,7 +342,7 @@ local function clearRecTmr()
 end
 
 local function endRecordingSession(reason, opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     clearRecTmr()
     local uploadMode = session.uploadMode
     local quality = session.quality
@@ -439,7 +436,7 @@ function applEffMedia(action)
 end
 
 function reqStartCloud(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local policy = getRecPol()
     if not policy.startOnCloud then
         pirWarn("cloud_start_denied_policy")
@@ -480,7 +477,7 @@ function reqStartCloud(opts)
 end
 
 function reqStopCloud(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     if not getRecPol().stopOnCloud then
         pirWarn("cloud_stop_denied_policy")
         return false, "stop_on_cloud_denied"

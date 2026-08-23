@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : t3x_notify.lua
 -- Module   : T3x 通知辅助：AT 指令封装、URC 解析、IPC 事件上报桥
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : 见 doc/LUA_MODULES.md
 -- ================================================================
 
@@ -11,12 +10,26 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
+local modCache = {}
+local function getMod(name)
+    local g = _G[name]
+    if g then
+        return g
+    end
+    local m = modCache[name]
+    if m == nil then
+        m = loader.load(name) or false
+        modCache[name] = m
+    end
+    return m ~= false and m or nil
+end
+
 local function notifyViaTimeSync(sid, evt)
     local time_sync = loader.load("time_sync")
     if not time_sync or not time_sync.pushBeforeNotifyAsync then
         return false
     end
-    if _G.MODULE_FLAGS and _G.MODULE_FLAGS.time_sync == false then
+    if not loader.enabled("time_sync") then
         return false
     end
     time_sync.pushBeforeNotifyAsync(sid, evt)
@@ -24,11 +37,7 @@ local function notifyViaTimeSync(sid, evt)
 end
 
 local function notifyViaHostUart(sid, evt)
-    local hu = _G.host_uart
-    if not hu then
-        local mod = loader.load("host_uart")
-        hu = mod or nil
-    end
+    local hu = getMod("host_uart")
     if hu and hu.notify_host then
         return hu.notify_host(sid, evt) ~= false
     end
@@ -36,11 +45,7 @@ local function notifyViaHostUart(sid, evt)
 end
 
 local function fallbackGpioWake(onDone)
-    local t3x = _G.t3x_ctrl
-    if not t3x then
-        local mod = loader.load("t3x_ctrl")
-        t3x = mod or nil
-    end
+    local t3x = getMod("t3x_ctrl")
     if not t3x or not t3x.wake then
         return false
     end
@@ -58,6 +63,7 @@ function wakeHost(sid, evt, opts)
     sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
     evt = evt or 0
     local onDone = opts.on_done
+    -- 保留真值判断：t3x_wakeup 需显式为真，与 enabled() 的 nil 视为开启语义不同
     if not (_G.MODULE_FLAGS and _G.MODULE_FLAGS.t3x_wakeup
         and (_G.MODULE_FLAGS.t3x_app ~= false)) then
         return fallbackGpioWake(onDone)
@@ -78,11 +84,7 @@ function wakeHost(sid, evt, opts)
 end
 
 function ensPowOn(tag, opts)
-    local t3x = _G.t3x_ctrl
-    if not t3x then
-        local mod = loader.load("t3x_ctrl")
-        t3x = mod or nil
-    end
+    local t3x = getMod("t3x_ctrl")
     if t3x and t3x.ensPowOn then
         return t3x.ensPowOn(tag, opts)
     end

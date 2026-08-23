@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : usb_vuart.lua
 -- Module   : USB 虚拟串口：VCOM 枚举、AT 透传通道、USB→UART 桥接
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : 见 doc/LUA_MODULES.md
 -- ================================================================
 
@@ -17,6 +16,9 @@ local started = false
 local uartId = nil
 local rxBuf = ""
 local pending = false
+
+-- 两处命令清单共用；AT+RESET 仅保留在带换行的命令路径（现状差异，不扩展短命令路径）
+local REBOOT_CMDS = { REBOOT = true, ["AT+REBOOT"] = true, ["AT+RST"] = true }
 
 local function vuartId()
     if uart and uart.VUART_0 then
@@ -54,7 +56,7 @@ local function handleLine(line)
         return
     end
     local u = line:upper()
-    if u == "REBOOT" or u == "AT+REBOOT" or u == "AT+RST" or u == "AT+RESET" then
+    if REBOOT_CMDS[u] or u == "AT+RESET" then
         doReboot()
         return
     end
@@ -92,7 +94,7 @@ local function onReceive(id)
     -- 无换行的短命令（部分串口助手只发 reboot）
     if #rxBuf <= 16 then
         local u = rxBuf:upper():gsub("%s+$", "")
-        if u == "REBOOT" or u == "AT+REBOOT" or u == "AT+RST" then
+        if REBOOT_CMDS[u] then
             rxBuf = ""
             doReboot()
         end

@@ -1,12 +1,12 @@
 -- ================================================================
 -- Filename : t3x_policy.lua
 -- Module   : T3x 唤醒门禁：USB 优先、rest 白名单、低电阻断，统一 mayPowerT3x/reqT3xWake
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/T3X_POLICY_GATE.md
 -- ================================================================
 
 require "sys"
 require "config"
+local loader = require "module_loader"
 local runtime_power = require "runtime_power"
 local t3x_notify = require "t3x_notify"
 local _modname = ...
@@ -89,8 +89,7 @@ local function policyDisabled()
     if cfg().enabled == false then
         return true
     end
-    local flags = _G.MODULE_FLAGS
-    return flags and flags.t3x_policy == false
+    return not loader.enabled("t3x_policy")
 end
 
 local function passesUsbGate(reason)
@@ -152,11 +151,9 @@ function shdWakeOffline()
         return false
     end
     local cd = tonumber(cfg().mqtt_offline_wake_cooldown_sec)
-    if cd and cd > 0 and lastMqttOfflineWakeSec > 0 then
-        local elapsed = os.time() - lastMqttOfflineWakeSec
-        if elapsed < cd then
-            return false
-        end
+    if cd and cd > 0 and lastMqttOfflineWakeSec > 0
+        and os.time() - lastMqttOfflineWakeSec < cd then
+        return false
     end
     if cfg().block_mqtt_offline_wake_when_usb ~= false and isUsbInserted() then
         return false
@@ -171,7 +168,6 @@ local function recordMqttOfflineWake(reason)
 end
 
 function reqT3xWake(reason, sid, evt, opts)
-    reason = reason or "wake"
     sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
     evt = evt or 0
     opts = type(opts) == "table" and opts or {}

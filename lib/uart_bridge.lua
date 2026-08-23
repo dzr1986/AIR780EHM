@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : uart_bridge.lua
 -- Module   : 底层 UART 驱动：start/stop/write/sendString、行/原始 RX 回调，唯一硬件串口入口
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/LIB_UART_GPIO.md
 -- ================================================================
 
@@ -32,25 +31,12 @@ local stats = {
 }
 local function load_uart_cfg()
     local c = _G.UART_CFG
-    if type(c) ~= "table" then
-        return false
-    end
-    if c.id == nil then
-        return false
-    end
-    if c.baud == nil then
+    if type(c) ~= "table" or c.id == nil or c.baud == nil or c.rx_line_max == nil then
         return false
     end
     drv.uart_id = c.id
     drv.baud = c.baud
-    if c.line_protocol == false then
-        drv.line_protocol = false
-    else
-        drv.line_protocol = true
-    end
-    if c.rx_line_max == nil then
-        return false
-    end
+    drv.line_protocol = c.line_protocol ~= false
     drv.rx_line_max = c.rx_line_max
     return true
 end

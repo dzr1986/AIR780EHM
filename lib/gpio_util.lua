@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : gpio_util.lua
 -- Module   : GPIO 配置工具：GPIO_IN/OUT 表转 gpio.setup，含 pull/边沿/防抖/输出初始化
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/LIB_UART_GPIO.md
 -- ================================================================
 

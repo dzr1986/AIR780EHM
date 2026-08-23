@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : net_tcp.lua
 -- Module   : TCP 唤醒桩：LOW_POWER_WAKEUP_CFG.mode=tcp 时占位，默认 MQTT 模式不加载
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : 见 doc/LUA_MODULES.md
 -- ================================================================
 

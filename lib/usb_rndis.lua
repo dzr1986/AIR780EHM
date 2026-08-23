@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : usb_rndis.lua
 -- Module   : USB 网卡 tethering：RNDIS 枚举、IP_READY 刷新、网卡数据链路维持
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/USB_RNDIS_FLOW.md
 -- ================================================================
 
@@ -27,6 +26,10 @@ local runtime = {
     last_error = nil,
     configured_at = nil,
 }
+local function cfg()
+    return _G.RNDIS_CFG or {}
+end
+
 local function pubBootStab()
     if bootStable then
         return
@@ -100,7 +103,7 @@ local function usbHostPresent()
 end
 
 local function refreshAllowed()
-    local cfg = _G.RNDIS_CFG or {}
+    local c = cfg()
     if cfg.refresh_on_ip == false then
         return false
     end
@@ -181,7 +184,7 @@ local function hookIpReadyForRndi()
         return
     end
     ipReadyHooked = true
-    local cfg = _G.RNDIS_CFG or {}
+    local c = cfg()
     if cfg.refresh_on_ip_ready ~= true then
         return
     end

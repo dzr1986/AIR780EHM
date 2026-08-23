@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : device_id.lua
 -- Module   : 设备标识：IMEI 获取 + 显示用 deviceNo 生成
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/LIB_RUNTIME_UTILS.md
 -- ================================================================
 

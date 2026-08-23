@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : led_ctrl.lua
 -- Module   : LED 指示：蓝/红 LED 模式（开机序列、低电、离线），读充电态
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/PERIPHERAL_LED_FLOW.md
 -- ================================================================
 
@@ -13,8 +12,6 @@ local gpio_util = require "gpio_util"
 local cfgman = require "config_manager"
 local _M = { _VERSION = "1.2.0" }
 module(..., package.seeall)
-
-_G[_M] = _M
 
 local LED_CONFIG = {
     bluePin = 21,
@@ -70,7 +67,7 @@ end
 local function readChargeFlags()
     local rt = _G.APP_RUNTIME or {}
     local usb, charging = false, false
-    if _G.MODULE_FLAGS.charge ~= false then
+    if loader.enabled("charge") then
         local uc = loader.load("usb_charge")
         if uc then
             if uc.isUsbInserted then usb = uc.isUsbInserted() and true or false end
@@ -87,7 +84,7 @@ local function runtimeSnapshot()
     return {
         battery_percent = rt.battery_percent,
         online_status = rt.online_status,
-        mqtt_enabled = (_G.MODULE_FLAGS or {}).mqtt ~= false,
+        mqtt_enabled = loader.enabled("mqtt"),
         usb_inserted = usb,
         charging = charging,
     }

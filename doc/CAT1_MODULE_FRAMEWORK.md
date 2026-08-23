@@ -274,3 +274,24 @@ local function mod_call(name, fn, ...)  -- 模块或函数缺失时返回 nil
 - net_mqtt 等其他文件的守卫多带默认值回退，收益低于引入助手成本，不转换。
 
 验证：luacheck 告警差分与重构前完全一致，test/ 等价性测试通过，`luac5.3 -p` 通过。
+
+### 9.8 第十轮：旧名调用修复 + 死代码清理 + helper 收敛（user/ + lib/，−232 行）
+
+基线 b9907b8（第九轮 122 条函数名缩写后）。行数 15098 → 14866（目标 −350~450 未达：提取类改动本身有定义成本，utils.lua +58 行；剩余空间均经核实不宜动，见"不处理"清单）。
+
+**2A 旧名 mod_call 修复（行为变化，需真机回归）**：`user/host_uart.lua` 中 7 处调用仍指向缩写前的旧名，模块加载后永远命中"函数缺失"静默分支，本轮改名修复：
+- `appendGetCfgFields`→`appCfgFields`（low_power_wakeup）：恢复 AT+GETCFG 应答中的 `wakeup_mode`/`tcp_on` 字段（文档承诺）
+- `buildAtBody`→`buildAtBod`（pir_ctrl）、`syncStopFromT3x`→`syncStopT3x`（pir_ctrl）、`applyEffectiveMediaAction`→`applEffMedia`（pir_ctrl）
+- `shouldAllowHostIdleSleep`→`shdHostSleep`（battery_guard，2 处）、`canAcceptHostIdleSleep`→`canHostSleep`（battery_guard）
+
+**2B 死代码清理**：`okLp` 未定义全局的死 elseif 分支；net_mqtt `NC` 常量 + `no_conn` 实参传递链；`opts.warn`、`state.last_event`/`last_publish_topic`、`publish()` 死导出；t3x_ctrl `logGpio` 空函数及 3 处调用；battery_guard `handleRestZoneHybrid`/`handlePirZoneHybrid` 零调用函数；led_ctrl `_G[_M] = _M` 死行；fota_svc `selfUrl` 死兜底折叠；runtime_power `WORK_*` 全局零引用改 local。
+
+**2C 重复 helper 提取到 utils.lua**（`nowMs`/`escKv`/`optTable`/`appEvent`/`t3xOn`/`waitT3xCmdAck`）：收敛 app/host_uart/pir_ctrl/net_mqtt/t3x_ctrl/battery_guard/fota_svc 的重复实现；time_sync/sound_prompt 的 T3x 上电等待 + ACK 等待循环跨文件去重（保留"无 `mcu.ticks` 只等一拍"语义）；`hostFirsAtEvt` 等 12 处 `_G.APP_EVENTS` fallback 统一走 `appEvent`。约 80 处 `type(x)=="table" and x or {}` 机械替换为 `optTable`。utils 保持零依赖（仅 require module_loader，sys 经全局运行时解析，避免循环 require）。
+
+**2D 样板收敛**：`_G.MODULE_FLAGS` 直查 → `loader.enabled()`（config.lua 显式定义全部键，转换安全；t3x_notify:61-62 真值语义不同，保留并注释）；battery_guard 两个逐字相同的 evaluate 函数合并；host_uart 新增 `t3xSectOff()`/`rspLineOk(tag)`/`writeT3xNotif` 本地助手；t3x_notify 三份 getGlobalOrLoad 拷贝 → `getMod()` 带负缓存；ipc_supervision 模块折叠为 `loader.load()`；usb_charge `ensureUsbDetPin` → `gpio_util.setup_input`（显式传 trigger_mode 保持原默认）；usb_rndis 补 `cfg()` 助手；uart_bridge 三个早退合并 + 布尔样板一行化；t3x_policy `reqT3xWake` 删预置默认（5 个调用点均已传非 nil reason）、`shdWakeOffline` 冷却期条件压缩；net_mqtt `identityEnabled`/`tfCardEnabled` 改 `~= false`、`midField` 复用 `msgIdPart`；cellular_bootstrap `applyApnForSim` 三分支 → 两分支（真值表已验证等价）；libfota2 云平台错误码 if/elseif 链 → `FOTA_ERR_INFO` 表驱动（文案逐字保留，1111111111111 动态参数分支保留）；usb_vuart 两处 REBOOT 命令清单提取共用（AT+RESET 仅保留带换行路径的现状差异）。
+
+**2E 文件头注释修正**：34 个文件头部 `Notes: 本地 helper 速查：无本地压缩 helper` 与事实不符（各文件均有大量 local helper，第九轮已压缩 122 个函数名），统一删除该占位行。
+
+**核实后不处理**：t3xPowerWaitMs 六处 fallback 链统一、battery_guard `cfg()`（有 guard fallback 与 config_manager 语义不同）、peripheral `shallowMerge`（嵌套子表整体替换 vs 逐 key 合并）、host_uart 3249/3552-3559 内联、cellular_bootstrap `waitSimInfo`、各文件零星 optTable——均有语义差异或收益过低，保持现状。
+
+**验证**：luatos-cli `build luac` 全量编译 user/（17 文件）+ lib/（17 文件）零错误；test_parsers.lua（44 断言）+ test_factories.lua（17 断言）经 lupa（Lua 5.5 宿主）全部通过。注：两份测试的提取锚点此前全部失效（Lua pattern `.-` 不跨行，函数均为多行定义），本轮改为"起点 marker 定界提取"后首次真正运行，并修正一处历史错误断言（mic 无收集行时 END 不发布，与 venc/audio/framerate 共用 rowsEndFlus 语义一致）。2A 的 7 处行为变化项（2001/2003/2005/2008 + HOSTIDLE + GETCFG 字段）需整机回归。

@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : host_uart.lua
 -- Module   : T3x AT 业务：UART 行协议解析、AT 表驱动、HOSTEVT/PIRSTAT、IPC 查询、USB 策略通知
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/HOST_UART_AT_DISPATCH.md
 -- ================================================================
 
@@ -120,11 +119,9 @@ local parse_ipcstat_line
 local parse_tfcard_line
 local note_uart_link_ok
 local HOST_PUSH_QUIET_MS = 300
-local function host_now_ms()
-    if mcu and mcu.ticks then
-        return mcu.ticks()
-    end
-    return os.time() * 1000
+local host_now_ms = utils.nowMs
+local function t3xSectOff()
+    return not loader.enabled("t3x_app") or not loader.enabled("uart_bridge")
 end
 
 local function noteHostPush()
@@ -235,6 +232,10 @@ local function rsp_line(tag, ok)
     return rsp_only(tag, ok and "OK" or "ERROR")
 end
 
+local function rspLineOk(tag)
+    return rsp_line(tag, true) .. ok_tail()
+end
+
 local function encode_hex(data)
     if not data or #data == 0 then
         return ""
@@ -303,7 +304,7 @@ end
 local function get_config_snapshot()
     local meta = _G.APP_META or {}
     local rt = _G.APP_RUNTIME or {}
-    local tcp_extra = mod_call("low_power_wakeup", "appendGetCfgFields") or ""
+    local tcp_extra = mod_call("low_power_wakeup", "appCfgFields") or ""
     local workmode = mod_call("runtime_power", "getWorkMode") or "person_detect"
     return {
         version = (_G.PROJECT or "780EHM") .. "_" .. (_G.VERSION or "2034.001.000"),
@@ -402,7 +403,7 @@ local function build_hostevt_media_suffix(pirBody)
 end
 
 local function build_pir_wake_context()
-    local pirBody = mod_call("pir_ctrl", "buildAtBody") or ""
+    local pirBody = mod_call("pir_ctrl", "buildAtBod") or ""
     local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
     local sum
     local he
@@ -486,10 +487,7 @@ local function uart_imei(_cmd)
     return rsp_fmt("IMEI", "%s", imei)
 end
 
-local function esc_ipc_field(s)
-    s = tostring(s or "")
-    return (s:gsub(",", "_"):gsub("=", "_"))
-end
+local esc_ipc_field = utils.escKv
 
 local function is_valid_p2p_uid(uid)
     return type(uid) == "string" and #uid == 8 and uid:match("^[A-Za-z0-9]+$") ~= nil
@@ -698,8 +696,6 @@ local function uart_servcreate(cmd)
     state.channel = ch
     if hooks.on_servcreate then
         hooks.on_servcreate(ch)
-    elseif okLp and lpw and lpw.applyTcpChannel then
-        lpw.applyTcpChannel(ch)
     end
     return rsp_fmt("SERVCREATE", "%d,OK", ch.sid)
 end
@@ -773,7 +769,7 @@ local function uart_hostidle(cmd)
         local lp = tonumber(rt.low_power_mode) or 0
         local usb = isUsbInse() and 1 or 0
         local allow = 0
-        if not usbBlocHostIdle() and mod_call("battery_guard", "shouldAllowHostIdleSleep") == true then
+        if not usbBlocHostIdle() and mod_call("battery_guard", "shdHostSleep") == true then
             allow = 1
         end
         return rsp_fmt(
@@ -784,8 +780,8 @@ local function uart_hostidle(cmd)
         if cmd == "AT+HOSTIDLE=0" then
             return rsp_body("HOSTIDLE", "OK")
         end
-        if mod_call("battery_guard", "shouldAllowHostIdleSleep") == false
-            or mod_call("battery_guard", "canAcceptHostIdleSleep") == false then
+        if mod_call("battery_guard", "shdHostSleep") == false
+            or mod_call("battery_guard", "canHostSleep") == false then
             return rsp_only("HOSTIDLE", "BUSY")
         end
         local t3x = loader.load("t3x_ctrl")
@@ -812,7 +808,7 @@ local function uart_pirclr(_cmd)
     local pir = loader.load("pir_ctrl")
     if pir and pir.resetCounters then
         pir.resetCounters()
-        return rsp_line("PIRCLR", true) .. ok_tail()
+        return rspLineOk("PIRCLR")
     end
     return rsp_line("PIRCLR", false)
 end
@@ -852,7 +848,7 @@ local function uart_record_notify(cmd)
     if pchCloudStat then
         pchCloudStat({ recordingT3x = 0 })
     end
-    local uploadMode, quality = mod_call("pir_ctrl", "syncStopFromT3x", reason)
+    local uploadMode, quality = mod_call("pir_ctrl", "syncStopT3x", reason)
     local E = _G.APP_EVENTS or {}
     sys.publish(E.T3X_RECORD_STOP or "APP_T3X_RECORD_STOP", reason, uploadMode, quality)
     return rsp_fmt("RECORD", "0,reason=%s", reason)
@@ -881,7 +877,7 @@ local function uart_pir_media_notify(cmd)
     if not action or action == "" then
         return RSP_ERROR
     end
-    mod_call("pir_ctrl", "applyEffectiveMediaAction", action)
+    mod_call("pir_ctrl", "applEffMedia", action)
     return rsp_fmt("PIRMEDIA", "ok,action=%s", action)
 end
 
@@ -990,7 +986,7 @@ function uart_ipcstat_notify(cmd)
     else
         state.host_ipc_cloud_stat = snap
     end
-    return rsp_line("IPCSTAT", true) .. ok_tail()
+    return rspLineOk("IPCSTAT")
 end
 
 function uart_tfcard_notify(cmd)
@@ -1012,7 +1008,7 @@ function uart_tfcard_notify(cmd)
         pchCloudStat({ tfPresent = (tonumber(snap.present) or 0) == 1 and 1 or 0 })
     end
     sys.publish(SYS_EVT.TFCARD_ACK, snap)
-    return rsp_line("TFCARD", true) .. ok_tail()
+    return rspLineOk("TFCARD")
 end
 
 -- @desc AT 命令分发处理：uart_snapshot_notify
@@ -1176,7 +1172,7 @@ local function forwWledToHost(on, timeoutMs)
     if wc.forward_to_t3x == false then
         return true
     end
-    if _G.MODULE_FLAGS and (_G.MODULE_FLAGS.t3x_app == false or _G.MODULE_FLAGS.uart_bridge == false) then
+    if t3xSectOff() then
         return false
     end
     if not wledEnsT3xPowe() then
@@ -1234,7 +1230,7 @@ function queryHostWled(timeoutMs)
 end
 
 local function wled_set(on, opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     if not wled_enabled() then
         on = on == 1 and 1 or 0
         wled_state.on = on
@@ -1250,14 +1246,14 @@ local function wled_set(on, opts)
     if opts.sync then
         if coroutine.running() then
             local ok = forwWledToHost(on, opts.timeout_ms)
-            wled_state.last_forward_ms = mcu and mcu.ticks and mcu.ticks() or 0
+            wled_state.last_forward_ms = host_now_ms()
             return ok
         end
         return false
     end
     sys.taskInit(function()
         if forwWledToHost(on, opts.timeout_ms) then
-            wled_state.last_forward_ms = mcu and mcu.ticks and mcu.ticks() or 0
+            wled_state.last_forward_ms = host_now_ms()
         end
     end)
     return true
@@ -1485,7 +1481,7 @@ local function uart_usbrecovery(cmd)
 end
 
 function rstUsbRcvry()
-    if _G.MODULE_FLAGS and (_G.MODULE_FLAGS.t3x_app == false or _G.MODULE_FLAGS.uart_bridge == false) then
+    if t3xSectOff() then
         expUsbRcvryRt({
             state = "idle",
             count = 0,
@@ -1538,7 +1534,7 @@ local function uart_rndis(cmd)
                 usb_rndis.enable()
             end
         end)
-        return rsp_line("RNDIS", true) .. ok_tail()
+        return rspLineOk("RNDIS")
     end
     if n == 0 then
         sys.taskInit(function()
@@ -1546,7 +1542,7 @@ local function uart_rndis(cmd)
                 usb_rndis.disable()
             end
         end)
-        return rsp_line("RNDIS", true) .. ok_tail()
+        return rspLineOk("RNDIS")
     end
     return RSP_ERROR
 end
@@ -2255,7 +2251,7 @@ function pchCloudStat(fields)
     if type(cloud) ~= "table" then
         cloud = {}
     end
-    fields = type(fields) == "table" and fields or {}
+    fields = utils.optTable(fields)
     for k, v in pairs(fields) do
         cloud[k] = v
     end
@@ -2361,7 +2357,7 @@ for i = 1, #RX_LINE_HANDLER_REGISTRY do
 end
 
 local function hostFirsAtEvt()
-    return (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+    return utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT")
 end
 
 local function notify_host_first_at(cmd)
@@ -3517,7 +3513,7 @@ local function normalizeLuaErrorReason(err)
 end
 
 function formatHostTfCard(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local cfg = tfcard_format_cfg()
     if cfg.enabled == false then
         return false, "disabled"
@@ -3525,7 +3521,7 @@ function formatHostTfCard(opts)
     if state.tfcard_format_busy then
         return false, "busy"
     end
-    if _G.MODULE_FLAGS and (_G.MODULE_FLAGS.t3x_app == false or _G.MODULE_FLAGS.uart_bridge == false) then
+    if t3xSectOff() then
         return false, "no_uart"
     end
     if not ensT3xHostQry("host_tfcard_format", cfg) then
@@ -3781,12 +3777,7 @@ function stop()
     return true
 end
 
-function pushUsbIdleSt(inserted)
-    local cfg = host_usb_cfg()
-    local notify = cfg.notify_t3x_usb_state
-    if notify == false then
-        return false
-    end
+local function writeT3xNotif(tpl, val)
     local writeFn = hooks.uart_write
     if not writeFn and package.loaded.uart_bridge then
         writeFn = package.loaded.uart_bridge.write
@@ -3794,13 +3785,20 @@ function pushUsbIdleSt(inserted)
     if not writeFn then
         return false
     end
-    local tpl = cfg.t3x_usb_ursp or "+CAT1:USB,%d"
-    local line = string.format(tpl, inserted and 1 or 0)
+    local line = string.format(tpl, val and 1 or 0)
     if not line:find("\r\n", 1, true) then
         line = line .. CRLF
     end
     writeFn(line)
     return true
+end
+
+function pushUsbIdleSt(inserted)
+    local cfg = host_usb_cfg()
+    if cfg.notify_t3x_usb_state == false then
+        return false
+    end
+    return writeT3xNotif(cfg.t3x_usb_ursp or "+CAT1:USB,%d", inserted)
 end
 
 function isUsbInserted()
@@ -3809,24 +3807,10 @@ end
 
 function pushNetLedSt(online)
     local cfg = _G.LED_CFG or {}
-    local notify = cfg.notify_t3x_net_led
-    if notify ~= true then
+    if cfg.notify_t3x_net_led ~= true then
         return false
     end
-    local writeFn = hooks.uart_write
-    if not writeFn and package.loaded.uart_bridge then
-        writeFn = package.loaded.uart_bridge.write
-    end
-    if not writeFn then
-        return false
-    end
-    local tpl = cfg.t3x_net_ursp or "+CAT1:MQTT,%d"
-    local line = string.format(tpl, online and 1 or 0)
-    if not line:find("\r\n", 1, true) then
-        line = line .. CRLF
-    end
-    writeFn(line)
-    return true
+    return writeT3xNotif(cfg.t3x_net_ursp or "+CAT1:MQTT,%d", online)
 end
 
 function notify_host(sid, evt)

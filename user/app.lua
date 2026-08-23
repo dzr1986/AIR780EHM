@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : app.lua
 -- Module   : 编排中心：依赖注入、事件订阅、低功耗进/出、USB 边沿、PIR→MQTT 桥、T3x 烧录模式
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/APP_EVENT_BUS.md
 -- ================================================================
 
@@ -70,7 +69,7 @@ end
 
 local function isUsbInserted(opts)
     opts = opts or {}
-    if opts.boot_gpio and not (_G.MODULE_FLAGS and _G.MODULE_FLAGS.charge) then
+    if opts.boot_gpio and not loader.enabled("charge") then
         return (gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1) or false
     end
     if type(usbCharge) == "table" and usbCharge.isUsbInserted then
@@ -84,12 +83,7 @@ local function isUsbInserted(opts)
     return (_G.APP_RUNTIME and _G.APP_RUNTIME.power_status or 0) == 1
 end
 
-local function nowMs()
-    if mcu and mcu.ticks then
-        return mcu.ticks()
-    end
-    return os.time() * 1000
-end
+local nowMs = utils.nowMs
 
 local function cancelPwrKeyLongPress()
     if gpioModule and gpioModule.cancelLongPress then
@@ -116,7 +110,7 @@ local function isLowPwrOn()
     if lp and lp.enabled == false then
         return false
     end
-    if _G.MODULE_FLAGS and _G.MODULE_FLAGS.low_power == false then
+    if not loader.enabled("low_power") then
         return false
     end
     return true
@@ -265,7 +259,7 @@ local function onExtLowPwr(reason)
     if lpw and lpw.onExitRest then
         lpw.onExitRest()
     end
-    if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table"
+    if loader.enabled("sound_prompt") and type(sound_prompt) == "table"
         and sound_prompt.onWakeFromLowPower then
         sound_prompt.onWakeFromLowPower()
     end
@@ -293,7 +287,7 @@ local function onPowerOff(reason)
     end
 
     local function proceedShutdown()
-        if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table"
+        if loader.enabled("sound_prompt") and type(sound_prompt) == "table"
             and sound_prompt.playShutdownThen then
             sound_prompt.playShutdownThen(reason or "user", shutdownNow)
             return
@@ -313,14 +307,14 @@ local function setupUartBridge()
     end
     local ok = uart_bridge.start({
         onRaw = function(data)
-            if _G.MODULE_FLAGS.t3x_app ~= false then
+            if loader.enabled("t3x_app") then
                 host_uart.on_rx_raw(data)
             end
         end,
     })
     if ok then
         _G.uart_bridge = uart_bridge
-        if _G.MODULE_FLAGS.t3x_app ~= false then
+        if loader.enabled("t3x_app") then
             host_uart.start({
                 t3x = t3xModule,
                 -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
@@ -367,14 +361,14 @@ local function entRestIfNeedAfteUsbRm(source)
     if not isLowPwrOn() then
         return
     end
-    local rndisOn = _G.MODULE_FLAGS.rndis
+    local rndisOn = loader.enabled("rndis")
         and type(usbRndis) == "table"
         and usbRndis.isEnabled
         and usbRndis.isEnabled()
     if rndisOn then
         return
     end
-    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+    if loader.enabled("battery_guard") and type(battery_guard) == "table" then
         battery_guard.onUsbRm()
     elseif _G.APP_RUNTIME.low_power_mode == 0 then
         -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
@@ -383,7 +377,7 @@ local function entRestIfNeedAfteUsbRm(source)
 end
 
 local function extRestIfNeedAfteUsbIns(source)
-    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+    if loader.enabled("battery_guard") and type(battery_guard) == "table" then
         battery_guard.onUsbIns({ source = source })
     else
         -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
@@ -408,7 +402,7 @@ local function aplUsbInsSt(inserted, source)
 end
 
 local function handlePmdMessage(msg)
-    if not msg or _G.MODULE_FLAGS.charge then
+    if not msg or loader.enabled("charge") then
         return
     end
     if msg.state == 0 or msg.state == 1 then
@@ -428,7 +422,7 @@ local function setupPmd()
 end
 
 local function setupWatchdog()
-    if not _G.MODULE_FLAGS.watchdog then
+    if not loader.enabled("watchdog") then
         return
     end
     local wdtMod = watchdogMod or lazyMod("watchdog")
@@ -437,7 +431,7 @@ local function setupWatchdog()
     end
 end
 stopWatchdogBeforePowerOff = function()
-    if not _G.MODULE_FLAGS.watchdog then
+    if not loader.enabled("watchdog") then
         return
     end
     local wdtMod = watchdogMod or lazyMod("watchdog")
@@ -466,7 +460,7 @@ function startMqtt()
         appInfo("mqtt_already_started")
         return false
     end
-    if not _G.MODULE_FLAGS.mqtt then
+    if not loader.enabled("mqtt") then
         appWarn("mqtt_module_disabled")
         return false
     end
@@ -481,7 +475,7 @@ function startMqtt()
 end
 
 local function bootMqtt()
-    if not _G.MODULE_FLAGS.mqtt then
+    if not loader.enabled("mqtt") then
         return
     end
     if not netModule then
@@ -495,7 +489,7 @@ local function bootMqtt()
 end
 
 local function setupFota()
-    if not _G.MODULE_FLAGS.fota then
+    if not loader.enabled("fota") then
         return
     end
     local fotaMod = fota or _G.fota_svc
@@ -512,7 +506,7 @@ local function setupFota()
 end
 
 local function setupRndis()
-    if not _G.MODULE_FLAGS.rndis then
+    if not loader.enabled("rndis") then
         return
     end
     if type(usbRndis) ~= "table" or not usbRndis.isStarted then
@@ -605,7 +599,7 @@ local function shutdownServicesForT3xBurn(cfg)
             ub.stop()
         end
     end
-    if cfg.stop_rndis ~= false and _G.MODULE_FLAGS.rndis then
+    if cfg.stop_rndis ~= false and loader.enabled("rndis") then
         if type(usbRndis) == "table" and usbRndis.disable then
             local rndisOk, rndisErr = usbRndis.disable()
             if rndisOk then
@@ -646,11 +640,11 @@ local function tryEnterT3xBurnMode()
 end
 
 local function wakeT3xForPir(tag, sid, evt)
-    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table"
+    if loader.enabled("battery_guard") and type(battery_guard) == "table"
         and battery_guard.noteHostIdle then
         battery_guard.noteHostIdle()
     end
-    if _G.MODULE_FLAGS.t3x_wakeup and (_G.MODULE_FLAGS.t3x_app ~= false) then
+    if loader.enabled("t3x_wakeup") and loader.enabled("t3x_app") then
         local wakeSid = sid or ((_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1)
         local opts = nil
         if (_G.PIR_CFG or {}).high_priority ~= false then
@@ -877,7 +871,7 @@ local function buildSystemEventHandlers()
             end
         end },
         { E.BATTERY_UPDATE, function(pct, mv)
-            if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+            if loader.enabled("battery_guard") and type(battery_guard) == "table" then
                 battery_guard.onBatUpd(pct, mv)
             end
         end },
@@ -895,7 +889,7 @@ local function setupEventHandlers()
 end
 
 local function setupGpio()
-    if not gpioModule or not _G.MODULE_FLAGS.gpio then return end
+    if not gpioModule or not loader.enabled("gpio") then return end
     local gin, gout = _G.GPIO_IN, _G.GPIO_OUT
     gpioModule.start({
         pwrkeyPin = gin and gin.pwr_key and gin.pwr_key.pin,
@@ -911,13 +905,13 @@ local function startOptiServ(mod, fn)
 end
 
 local function startBackgroundServices()
-    if _G.MODULE_FLAGS.battery then
+    if loader.enabled("battery") then
         startOptiServ(batAdc, "start")
     end
-    if _G.MODULE_FLAGS.charge then
+    if loader.enabled("charge") then
         startOptiServ(usbCharge, "start")
     end
-    if _G.MODULE_FLAGS.sntp then
+    if loader.enabled("sntp") then
         startOptiServ(time_sync, "startSntp")
     end
 end
@@ -929,7 +923,7 @@ local function initPowerStatus()
         sys.publish(E.GPIO_VBUS_CHANGED, 0)
         return
     end
-    if not _G.MODULE_FLAGS.pmd_runtime then
+    if not loader.enabled("pmd_runtime") then
         aplUsbInsSt(inserted, "boot")
     else
         _G.APP_RUNTIME.power_status = inserted and 1 or 0
@@ -989,7 +983,7 @@ function start(gpio, net, t3x_ctrl)
     gpioModule, netModule, t3xModule = gpio, net, t3x_ctrl
     _G.device_imei = getImei()
     setupEventHandlers()
-    if _G.MODULE_FLAGS.battery_guard ~= false and type(battery_guard) == "table" then
+    if loader.enabled("battery_guard") and type(battery_guard) == "table" then
         battery_guard.start({
             on_enter_low_power = onEntLowPwr,
             on_exit_low_power = onExtLowPwr,
@@ -1007,25 +1001,25 @@ function start(gpio, net, t3x_ctrl)
             end,
         })
     end
-    if _G.MODULE_FLAGS.watchdog then setupWatchdog() end
-    if _G.MODULE_FLAGS.uart_bridge then setupUartBridge() end
+    if loader.enabled("watchdog") then setupWatchdog() end
+    if loader.enabled("uart_bridge") then setupUartBridge() end
     initPowerStatus()
     scheduleBootUsbPolicySync()
     if t3xModule then t3xModule.start() end
-    if _G.MODULE_FLAGS.sound_prompt ~= false and type(sound_prompt) == "table" then
+    if loader.enabled("sound_prompt") and type(sound_prompt) == "table" then
         sound_prompt.start({ t3x = t3xModule })
-        if _G.MODULE_FLAGS.uart_bridge and sound_prompt.onAppStarted then
+        if loader.enabled("uart_bridge") and sound_prompt.onAppStarted then
             sound_prompt.onAppStarted()
         end
     end
-    if _G.MODULE_FLAGS.time_sync ~= false and type(time_sync) == "table" then
+    if loader.enabled("time_sync") and type(time_sync) == "table" then
         time_sync.start({ t3x = t3xModule })
     end
-    if _G.MODULE_FLAGS.gpio then setupGpio() end
-    if _G.MODULE_FLAGS.pmd_runtime then setupPmd() end
+    if loader.enabled("gpio") then setupGpio() end
+    if loader.enabled("pmd_runtime") then setupPmd() end
     startBackgroundServices()
     setupRndis()
-    if _G.MODULE_FLAGS.mqtt and netModule and netModule.bootstrapNetwork then
+    if loader.enabled("mqtt") and netModule and netModule.bootstrapNetwork then
         netModule.bootstrapNetwork()
     end
     bootMqtt()

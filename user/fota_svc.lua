@@ -1,11 +1,11 @@
 -- ================================================================
 -- Filename : fota_svc.lua
 -- Module   : LuatOS IoT OTA 服务：MQTT 2004 触发、差分包下载与应用
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/FOTA_SVC_FLOW.md
 -- ================================================================
 
 require "sys"
+local utils = require "utils"
 local libfota2 = require "libfota2"
 local _modname = ...
 module(_modname, package.seeall)
@@ -70,28 +70,18 @@ local function localIotVersion()
 end
 
 local function fotaCfg()
-    return type(_G.FOTA_CFG) == "table" and _G.FOTA_CFG or {}
+    return utils.optTable(_G.FOTA_CFG)
 end
 -- 地址只来自 config.lua（resFotaUrl / FOTA_CFG），此处不硬编码 URL
 local function selfUrl()
     if _G.resFotaUrl then
-        local u = _G.resFotaUrl()
-        if u and u ~= "" then
-            return u
-        end
+        return _G.resFotaUrl() or ""
     end
-    local cfg = fotaCfg()
-    local u = cfg.self_url or cfg.custom_url or cfg.default_url
-    if u and u ~= "" then
-        return u
-    end
-    local servers = type(cfg.servers) == "table" and cfg.servers or {}
-    local key = string.lower(tostring(cfg.server or "panshi"))
-    return servers[key] or servers.panshi or servers.legacy or ""
+    return ""
 end
 
 local function useSelfServer(data)
-    data = type(data) == "table" and data or {}
+    data = utils.optTable(data)
     local url = data.url or data.otaUrl or data.firmwareUrl
     if url and url ~= "" then
         return true
@@ -101,7 +91,7 @@ local function useSelfServer(data)
 end
 
 local function buildRequestOpts(data)
-    data = type(data) == "table" and data or {}
+    data = utils.optTable(data)
     local timeout = tonumber(data.timeout) or config.timeout_ms
     local currentVer = localIotVersion()
     local targetVer = data.version or data.targetVersion or data.firmwareVersion
@@ -199,7 +189,7 @@ local function autoOta(data)
             reportStatus("busy", -1, "ota_in_progress", data)
             return
         end
-        data = type(data) == "table" and data or {}
+        data = utils.optTable(data)
         lastPayload = data
         requestCount = requestCount + 1
     local opts = buildRequestOpts(data)
@@ -282,7 +272,7 @@ function start(options)
     if _G.FOTA_CFG then mergeConfig(_G.FOTA_CFG) end
     if options and options.publishStatus then handlers.publishStatus = options.publishStatus end
     if options then mergeConfig(options) end
-    local evt = (_G.APP_EVENTS and _G.APP_EVENTS.DEVICE_OTA_REQUEST) or "device_ota_request"
+    local evt = utils.appEvent("DEVICE_OTA_REQUEST", "device_ota_request")
     sys.subscribe(evt, autoOta)
     sys.subscribe("REST_SEND_OTA", autoOta)
     started = true

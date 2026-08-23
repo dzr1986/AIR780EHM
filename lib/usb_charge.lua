@@ -1,12 +1,12 @@
 -- ================================================================
 -- Filename : usb_charge.lua
 -- Module   : USB 充电检测：GPIO27/CHG_STATE 中断，发布 GPIO_USB_DET_CHANGED
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/USB_CHARGE_POLICY.md
 -- ================================================================
 
 require "sys"
 require "config"
+local utils = require "utils"
 local loader = require "module_loader"
 local gpio_util = require "gpio_util"
 local _modname = ...
@@ -62,16 +62,11 @@ local function ensureUsbDetPin()
     if not pin or not gpio or not gpio.setup then
         return false
     end
-    gpio.setup(
-        pin,
-        function() end,
-        gpio_util.pull(entry and entry.pull or "pullup"),
-        gpio_util.trigger_mode(entry and entry.trigger_mode or "both")
-    )
-    local debounce = entry and entry.debounce_ms
-    if debounce and debounce > 0 and gpio.debounce then
-        gpio.debounce(pin, debounce)
-    end
+    gpio_util.setup_input(pin, function() end, {
+        pull = entry and entry.pull,
+        trigger_mode = entry and entry.trigger_mode or "both",
+        debounce_ms = entry and entry.debounce_ms,
+    })
     usb_det_ready = true
     return true
 end
@@ -100,12 +95,12 @@ local function effChar()
 end
 
 local function publishUsbChange(inserted)
-    local ev = (_G.APP_EVENTS and _G.APP_EVENTS.GPIO_USB_DET_CHANGED) or "APP_GPIO_USB_DET_CHANGED"
+    local ev = utils.appEvent("GPIO_USB_DET_CHANGED", "APP_GPIO_USB_DET_CHANGED")
     sys.publish(ev, inserted and 1 or 0)
 end
 
 local function publishChgChange(charging)
-    local ev = (_G.APP_EVENTS and _G.APP_EVENTS.GPIO_CHG_STATE_CHANGED) or "APP_GPIO_CHG_STATE_CHANGED"
+    local ev = utils.appEvent("GPIO_CHG_STATE_CHANGED", "APP_GPIO_CHG_STATE_CHANGED")
     sys.publish(ev, charging and 1 or 0)
 end
 

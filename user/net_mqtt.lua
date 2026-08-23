@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : net_mqtt.lua
 -- Module   : 云端 MQTT 协议：连接管理、200x 下行分发、100x 上行、rest/PIR/OTA/关机通知
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- ================================================================
 
@@ -18,7 +17,6 @@ local mqttError = logFuncs.error
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local NC = "mqtt_not_connected"
 local function mqttLogEnabled()
     return _G.APP_META and _G.APP_META.log_enabled == true
 end
@@ -91,9 +89,7 @@ local callbacks = {
     onMessage = nil,
 }
 local state = {
-    last_event = nil,
     reconnect_count = 0,
-    last_publish_topic = nil,
 }
 local pendingHostQueue = {}
 local pendingHostDrainHooked = false
@@ -232,7 +228,7 @@ function bootstrapNetwork()
     sys.taskInit(function()
         local cellular = getCellular()
         local ipOk, ip
-        if cellular and cellular.waitForNetwork and (_G.MODULE_FLAGS.cellular ~= false) then
+        if cellular and cellular.waitForNetwork and loader.enabled("cellular") then
             ipOk, ip = cellular.waitForNetwork()
         else
             ipOk = sys.waitUntil("IP_READY", 300000)
@@ -689,15 +685,10 @@ local DL2004_ACTIONS = {
     ota = function(data, reply)
         local url = data.url or data.otaUrl or data.firmwareUrl
         if (not url or url == "") then
-            local cfg = type(_G.FOTA_CFG) == "table" and _G.FOTA_CFG or {}
+            local cfg = utils.optTable(_G.FOTA_CFG)
             local mode = string.lower(tostring(cfg.server_mode or "self"))
             if mode == "self" or mode == "custom" then
-                if _G.resFotaUrl then
-                    data.url = _G.resFotaUrl()
-                else
-                    -- 兜底读 FOTA_CFG，不硬编码站点地址
-                    data.url = cfg.self_url or cfg.custom_url or cfg.default_url
-                end
+                data.url = _G.resFotaUrl()
             end
         end
         mqttInfo("downlink_2004_ota", "action=ota version=" .. tostring(data.version or "") .. " url=" .. tostring(data.url or "") .. " product_key=" .. tostring(data.product_key or "") .. " messageId=" .. tostring(data.messageId or ""))
@@ -758,10 +749,7 @@ local function identityCfg()
 end
 
 local function identityEnabled()
-    if identityCfg().enabled == false then
-        return false
-    end
-    return true
+    return identityCfg().enabled ~= false
 end
 
 local function refDevId(messageId)
@@ -903,7 +891,6 @@ local function publishReplyBase(opts)
     publishUplink({
         suffix = opts.suffix,
         dataType = opts.dataType,
-        no_conn = NC,
         fields = fields
     })
 end
@@ -921,10 +908,7 @@ local function tfCardCfg()
 end
 
 local function tfCardEnabled()
-    if tfCardCfg().enabled == false then
-        return false
-    end
-    return true
+    return tfCardCfg().enabled ~= false
 end
 
 local function refreshTfCardStatus(messageId)
@@ -978,7 +962,7 @@ local function collectVersionSnapshot(messageId)
 end
 
 function publishVersion(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local snap = collectVersionSnapshot(opts.messageId)
     local mid = msgIdPart(snap.messageId)
     publishUplink({
@@ -1151,7 +1135,7 @@ local function setupIdentityAutoPublish()
         return
     end
     identityAutoHooked = true
-    local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+    local evt = utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT")
     sys.subscribe(evt, function()
         maybeAutoPubId()
     end)
@@ -1335,7 +1319,7 @@ local function handleDownlink2012(data)
         })
         if ok then
             publishControlReply("pir_start", 0, "ok", { messageId = messageId })
-            local media = type(result) == "table" and result or {}
+            local media = utils.optTable(result)
             local st = pir_ctrl.getState()
             pubPirStart(
                 media.action or (st.mediaConfig and st.mediaConfig.action) or "video",
@@ -2143,7 +2127,7 @@ function publishWakeup()
 end
 
 function publishRest(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local mode = opts.lowPowerMode or "enter"
     if mode == "exit" then
         local reason = opts.reason or "unknown"
@@ -2171,7 +2155,7 @@ function publishRest(opts)
 end
 
 function publishStatus(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local snap = collectBatterySnapshot()
     local rt = _G.APP_RUNTIME or {}
     local intervalSec = getStatIntv()
@@ -2208,7 +2192,6 @@ function publishStatus(opts)
     publishUplink({
         suffix = "status",
         dataType = DT.UL_STATUS,
-        warn = false,
         fields = string.format(
             ',"usbInserted":%d,"charging":%d,"remainPower":"%s","batteryMv":"%s","lowPowerMode":"%s","workMode":"%s","interval":%d,"usbLogical":%d,"usbNetdev":%d,"usbRecovery":"%s","usbRecoveryCount":%d,"usbRecoveryLastErr":"%s"%s%s%s',
             snap.usb_inserted,
@@ -2248,7 +2231,6 @@ function publishSimInfo()
     publishUplink({
         suffix = "sim",
         dataType = DT.UL_SIM,
-        no_conn = NC,
         fields = string.format(
             ',"imei":"%s","imsi":"%s","iccid":"%s","operator":"%s","operatorName":"%s","status":"%s","csq":"%s","rssi":"%s","rsrp":"%s","snr":"%s","simid":"%s","ip":"%s","apn":"%s"',
             escJson(snap.imei),
@@ -2275,7 +2257,6 @@ function publishDeviceIdentity(imei, gb28181Id, messageId)
     publishUplink({
         suffix = "identity",
         dataType = DT.UL_DEVICE_ID,
-        no_conn = NC,
         fields = string.format(
             ',"imei":"%s","gb28181Id":"%s","ret":%d%s',
             escJson(imei), escJson(gb28181Id), ret, msgIdPart(messageId))
@@ -2292,7 +2273,7 @@ function refPubDeviceId(messageId)
 end
 
 function publishTfCardStatus(snap, messageId)
-    snap = type(snap) == "table" and snap or {}
+    snap = utils.optTable(snap)
     local present = (snap.present == 1 or snap.present == true) and 1 or 0
     local totalMb = tonumber(snap.total_mb) or 0
     local usedMb = tonumber(snap.used_mb) or 0
@@ -2301,7 +2282,6 @@ function publishTfCardStatus(snap, messageId)
     publishUplink({
         suffix = "tfcard",
         dataType = DT.UL_TF_CARD,
-        no_conn = NC,
         fields = string.format(
             ',"tfPresent":%d,"totalMb":%d,"usedMb":%d,"freeMb":%d,"ret":%d%s',
             present, totalMb, usedMb, freeMb, ret, msgIdPart(messageId))
@@ -2309,7 +2289,7 @@ function publishTfCardStatus(snap, messageId)
 end
 
 function publishTfFormatResult(retCode, message, messageId, extra)
-    extra = type(extra) == "table" and extra or {}
+    extra = utils.optTable(extra)
     local rebootField = ""
     if extra.reboot ~= nil then
         rebootField = string.format(',"reboot":%d', (extra.reboot == 1 or extra.reboot == true) and 1 or 0)
@@ -2317,7 +2297,6 @@ function publishTfFormatResult(retCode, message, messageId, extra)
     publishUplink({
         suffix = "tfcard_format",
         dataType = DT.UL_TF_FORMAT,
-        no_conn = NC,
         fields = string.format(
             ',"ret":%s,"message":"%s"%s%s',
             tostring(retCode ~= nil and retCode or -1),
@@ -2332,7 +2311,7 @@ function publishIpcAlert(alertCode, alertDetail)
 end
 
 function publishControlReply(action, retCode, message, extra)
-    extra = type(extra) == "table" and extra or {}
+    extra = utils.optTable(extra)
     local enableField = ""
     if extra.enable ~= nil then
         local en = (extra.enable == 1 or extra.enable == true) and 1 or 0
@@ -2342,7 +2321,6 @@ function publishControlReply(action, retCode, message, extra)
     publishUplink({
         suffix = "event",
         dataType = DT.UL_CONTROL,
-        no_conn = NC,
         fields = string.format(
             ',"reply":1,"messageId":"%s","action":"%s","ret":%s,"message":"%s"%s',
             escJson(mid),
@@ -2375,7 +2353,7 @@ function notifyPowerOff(reason, callback)
                 local msg = POWEROFF_NOTIFY_MSG[reason] or ("shutdown_" .. tostring(reason))
                 publishControlReply("off", 0, msg, {})
             end
-            publishStatus({ skip_ipc_stat_refresh = true, warn = false })
+            publishStatus({ skip_ipc_stat_refresh = true })
             sys.wait(graceMs)
         end
         if type(callback) == "function" then
@@ -2396,11 +2374,10 @@ local function mqttBuildVersion(ver)
 end
 
 function publishOtaStatus(stage, retCode, message, extra)
-    extra = type(extra) == "table" and extra or {}
+    extra = utils.optTable(extra)
     publishUplink({
         suffix = "event",
         dataType = DT.UL_CONTROL,
-        no_conn = NC,
         fields = string.format(
             ',"action":"ota","stage":"%s","ret":%s,"message":"%s","currentVersion":"%s","targetVersion":"%s"%s',
             escJson(stage),
@@ -2464,7 +2441,6 @@ function pubPirDetect(extra)
     publishUplink({
         suffix = "pir",
         dataType = DT.UL_PIR_DETECT,
-        no_conn = NC,
         fields = string.format(
             ',"status":"%s","pirStatus":"%s","recording":%s,"action":"%s","uploadMode":"%s","quality":"%s"%s%s%s%s%s',
             escJson(extra.status or "detected"),
@@ -2499,7 +2475,7 @@ function pubRecActive()
 end
 
 function publishUploadVideoReply(retCode, message, messageId, extra)
-    extra = type(extra) == "table" and extra or {}
+    extra = utils.optTable(extra)
     local need = tonumber(extra.needUpload)
     if need == nil then
         need = 1
@@ -2524,7 +2500,6 @@ function publishUploadVideoReply(retCode, message, messageId, extra)
     publishUplink({
         suffix = "event",
         dataType = DT.UL_UPLOAD_VIDEO,
-        no_conn = NC,
         fields = string.format(
             ',"reply":1,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"%s"%s%s%s',
             escJson(messageId or ""),
@@ -2537,7 +2512,7 @@ function publishUploadVideoReply(retCode, message, messageId, extra)
 end
 
 function publishUploadVideoComplete(retCode, messageId, extra)
-    extra = type(extra) == "table" and extra or {}
+    extra = utils.optTable(extra)
     local need = tonumber(extra.needUpload)
     if need == nil then
         need = 1
@@ -2587,7 +2562,6 @@ function publishUploadVideoComplete(retCode, messageId, extra)
     publishUplink({
         suffix = "event",
         dataType = DT.UL_UPLOAD_VIDEO,
-        no_conn = NC,
         fields = string.format(
             ',"reply":0,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"upload_video"%s%s%s%s%s%s',
             escJson(messageId or ""),
@@ -2599,7 +2573,7 @@ function publishUploadVideoComplete(retCode, messageId, extra)
 end
 
 function publishUploadVideoNeed(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local need = tonumber(opts.needUpload)
     if need == nil then
         need = 1
@@ -2625,7 +2599,6 @@ function publishUploadVideoNeed(opts)
     publishUplink({
         suffix = "event",
         dataType = DT.UL_UPLOAD_VIDEO,
-        no_conn = NC,
         fields = string.format(
             ',"needUpload":%d,"action":"%s","reason":"%s","source":"%s"%s%s',
             need,
@@ -2640,14 +2613,13 @@ function pubPirStart(action, uploadMode, quality, opts)
     if not isConnected then
         return
     end
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local source = opts.source or "4g"
     local mid = opts.messageId
-    local midField = mid and string.format(',"messageId":"%s"', escJson(mid)) or ""
+    local midField = msgIdPart(mid)
     publishUplink({
         suffix = "event",
         dataType = DT.UL_PIR_START,
-        no_conn = NC,
         fields = string.format(
             ',"reason":"device","source":"%s","action":"%s","uploadMode":"%s","quality":"%s","recording":1%s',
             escJson(source), escJson(action or "video"),
@@ -2659,7 +2631,7 @@ function pubPirStop(reason, uploadMode, quality, opts)
     if not isConnected then
         return
     end
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     if not opts.force then
         if pir_ctrl.canStopMqtt and not pir_ctrl.canStopMqtt() then
             return
@@ -2677,7 +2649,6 @@ function pubPirStop(reason, uploadMode, quality, opts)
     publishUplink({
         suffix = "event",
         dataType = DT.UL_PIR_STOP,
-        no_conn = NC,
         fields = string.format(
             ',"reason":"%s","source":"%s","uploadMode":"%s","quality":"%s"%s',
             escJson(reason), escJson(source), escJson(uploadMode), escJson(quality), midField)
@@ -2692,10 +2663,6 @@ function pubT3xStop(reason, uploadMode, quality)
         quality or st.quality or "high",
         { source = "t3x" }
     )
-end
-
-function publish(topic, data, qos)
-    sys.publish("mqtt_pub", topic, data, qos or 1)
 end
 
 function publishRaw(topicSuffix, payload, qos)
@@ -2724,7 +2691,7 @@ function start(options)
     setupIdentityAutoPublish()
     if not pendingHostDrainHooked then
         pendingHostDrainHooked = true
-        local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "APP_HOST_UART_FIRST_AT"
+        local evt = utils.appEvent("HOST_UART_FIRST_AT", "APP_HOST_UART_FIRST_AT")
         sys.subscribe(evt, function()
             sys.taskInit(function()
                 sys.wait(500)
@@ -2780,9 +2747,7 @@ function getState()
         started = started,
         connected = isConnected,
         client = mqttClient ~= nil,
-        last_event = state.last_event,
         reconnect_count = state.reconnect_count,
-        last_publish_topic = state.last_publish_topic,
     }
 end
 loadIvCfg()
@@ -2790,7 +2755,6 @@ ipc_sup.bind({
     publish_uplink = publishUplink,
     esc_json = escJson,
     dt_ul_control = DT.UL_CONTROL,
-    nc = NC,
     publish_t3x_record_stop = pubT3xStop,
 })
 return _M

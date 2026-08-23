@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : host_event.lua
 -- Module   : T3x 待处理事件汇总：wake/pir/record/mqtt → has_event 供 HOSTIDLE 与 enterSleep 门禁
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/HOST_EVENT_PENDING.md
 -- ================================================================
 

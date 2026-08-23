@@ -1,12 +1,12 @@
 -- ================================================================
 -- Filename : cellular_bootstrap.lua
 -- Module   : 蜂窝网络引导：SIM/APN 探测、IP_READY 等待、运营商映射，main 与 net_mqtt 共用
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/CELLULAR_BOOTSTRAP.md
 -- ================================================================
 
 require "sys"
 require "config"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -155,8 +155,7 @@ local function enabled()
     if cfg().enabled == false then
         return false
     end
-    local flags = _G.MODULE_FLAGS
-    if flags and flags.cellular == false then
+    if not loader.enabled("cellular") then
         return false
     end
     return mobile ~= nil
@@ -323,9 +322,7 @@ function applyApnForSim()
     local ok, apnMode
     local apnName = resolveApnName(operator)
     local useAuto = cfg().apn_auto ~= false and not shouldForceExplicitApn(operator)
-    if useAuto and (operator == "unknown" or not apnName or apnName == "") then
-        ok, apnMode = applyApnAuto()
-    elseif apnName and apnName ~= "" then
+    if apnName and apnName ~= "" and not (useAuto and operator == "unknown") then
         ok, apnMode = applyApnExplicit(apnName)
     else
         ok, apnMode = applyApnAuto()

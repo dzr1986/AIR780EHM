@@ -1,12 +1,13 @@
 -- ================================================================
 -- Filename : sound_prompt.lua
 -- Module   : 提示音：冷启动/关机 AT+PLAYSOUND、等 +SOUNDACK
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/SOUND_PROMPT_FLOW.md
 -- ================================================================
 
 require "sys"
 require "config"
+local utils = require "utils"
+local cfgm = require "config_manager"
 local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
@@ -15,16 +16,11 @@ local ACK_EVENT = "SOUND_PROMPT_ACK"
 local uart_bridge
 local coldBootPlayed = false
 local bootColdTaskStarted = false
-local function cfg()
-    return _G.SOUND_CFG or {}
-end
-
 local function enabled()
-    if cfg().enabled == false then
+    if cfgm.get("SOUND_CFG").enabled == false then
         return false
     end
-    local flags = _G.MODULE_FLAGS
-    if flags and flags.sound_prompt == false then
+    if not loader.enabled("sound_prompt") then
         return false
     end
     return true
@@ -38,7 +34,7 @@ function shouldPlay(scene)
     if not enabled() or isBurnActive() then
         return false
     end
-    local c = cfg()
+    local c = cfgm.get("SOUND_CFG")
     if scene == "boot_cold" then
         return c.boot_on_cold_start ~= false and not coldBootPlayed
     elseif scene == "boot_wake" then
@@ -63,38 +59,16 @@ local function getUart()
     end
     return uart_bridge
 end
-local ipcMod
 local function t3xOn(extra)
-    if ipcMod == nil then
-        local m = loader.load("t3x_ctrl")
-        ipcMod = m or false
-    end
-    if not ipcMod or not ipcMod.ensPowOn then
-        return false
-    end
-    return ipcMod.ensPowOn("sound_prompt", extra or {
-        t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
+    return utils.t3xOn("sound_prompt", extra, {
+        t3x_power_wait_ms = tonumber(cfgm.get("SOUND_CFG").t3x_power_wait_ms) or 800,
     })
 end
 
 local function waitSoundAck(name, timeoutMs)
-    local deadline = (mcu and mcu.ticks and mcu.ticks() or 0) + timeoutMs
-    while true do
-        local remain = timeoutMs
-        if mcu and mcu.ticks then
-            remain = deadline - mcu.ticks()
-            if remain <= 0 then
-                return false
-            end
-        end
-        local got, ackName = sys.waitUntil(ACK_EVENT, remain)
-        if got and (ackName == name or ackName == nil) then
-            return true
-        end
-        if not mcu or not mcu.ticks then
-            return false
-        end
-    end
+    return utils.waitT3xCmdAck(ACK_EVENT, timeoutMs, function(ackName)
+        return ackName == name or ackName == nil
+    end)
 end
 
 function playBlocking(name, scene)
@@ -112,7 +86,7 @@ function playBlocking(name, scene)
         return false
     end
     t3xOn()
-    local timeoutMs = tonumber(cfg().play_timeout_ms) or 2500
+    local timeoutMs = tonumber(cfgm.get("SOUND_CFG").play_timeout_ms) or 2500
     if scene == "boot_cold" then
         coldBootPlayed = true
     end
@@ -134,8 +108,8 @@ function onAppStarted()
     bootColdTaskStarted = true
     sys.taskInit(function()
         local ipcCfg = _G.HOST_IPC_CFG or {}
-        local timeoutMs = tonumber(cfg().boot_wait_host_ms)
-            or tonumber(cfg().boot_delay_ms)
+        local timeoutMs = tonumber(cfgm.get("SOUND_CFG").boot_wait_host_ms)
+            or tonumber(cfgm.get("SOUND_CFG").boot_delay_ms)
             or 60000
         if ipcCfg.enabled ~= false and ipcCfg.boot_sound_wait_ready ~= false then
             local ipc = loader.load("t3x_ctrl")
@@ -147,7 +121,7 @@ function onAppStarted()
                     return
                 end
             else
-                local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "host_uart_first_at"
+                local evt = utils.appEvent("HOST_UART_FIRST_AT", "host_uart_first_at")
                 if not sys.waitUntil(evt, timeoutMs) then
                     return
                 end

@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : main.lua
 -- Module   : 固件入口：版本校验、蜂窝/RNDIS 引导、app.start 编排、sys.run 主循环
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : 见 doc/LUA_MODULES.md
 -- ================================================================
 
@@ -119,7 +118,7 @@ do
         usb_vuart.start()
     end
 end
-if _G.MODULE_FLAGS and _G.MODULE_FLAGS.cellular ~= false then
+if loader.enabled("cellular") then
     local cellular = loader.load("cellular_bootstrap")
     if cellular and cellular.start then
         cellular.start()
@@ -128,11 +127,11 @@ end
 
 local function startNetwBoot()
     -- ===== 第 4 段：MQTT 网络引导 + app.start 编排子系统（battery/uart/pir/mqtt/t3x）=====
-    if _G.MODULE_FLAGS and _G.MODULE_FLAGS.mqtt and net.bootstrapNetwork then
+    if loader.enabled("mqtt") and net.bootstrapNetwork then
         net.bootstrapNetwork()
     end
 end
-if _G.MODULE_FLAGS and _G.MODULE_FLAGS.rndis then
+if loader.enabled("rndis") then
     -- ===== 第 3 段：蜂窝 SIM/APN 引导 + 可选 USB RNDIS 异步 open =====
     local usb_rndis = loader.load("usb_rndis")
     if usb_rndis and usb_rndis.open then

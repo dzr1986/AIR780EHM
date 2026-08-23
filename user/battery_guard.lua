@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : battery_guard.lua
 -- Module   : 电量分档策略：USB 优先 / 三档电量 / PIR 挂起 / 4G rest / 关机定时器 / HOSTIDLE 门禁
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/BATTERY_GUARD_TIERS.md
 -- ================================================================
 
@@ -68,8 +67,7 @@ local function enabled()
     if cfg().enabled == false then
         return false
     end
-    local flags = _G.MODULE_FLAGS
-    if flags and flags.battery_guard == false then
+    if not loader.enabled("battery_guard") then
         return false
     end
     return true
@@ -301,64 +299,6 @@ local function canExitRestNow()
     return true
 end
 
-local function tryEnterBatteryRest(pct, restPct)
-    local need = math.max(1, intCfg("enter_rest_confirm_count", 1))
-    if pct <= restPct then
-        guard.enter_confirm_streak = guard.enter_confirm_streak + 1
-    else
-        guard.enter_confirm_streak = 0
-        return
-    end
-    if guard.enter_confirm_streak < need then
-        return
-    end
-    if not canEnterRestNow() then
-        guard.enter_confirm_streak = 0
-        return
-    end
-    if not dynDeteOn() then
-        suspendPir()
-    end
-    enterBatteryRest()
-end
-
-local function tryExitBatteryRest(pct, recoverPct)
-    local need = math.max(1, intCfg("exit_rest_confirm_count", 1))
-    if pct > recoverPct then
-        guard.exit_confirm_streak = guard.exit_confirm_streak + 1
-    else
-        guard.exit_confirm_streak = 0
-        return
-    end
-    if guard.exit_confirm_streak < need then
-        return
-    end
-    if not canExitRestNow() then
-        return
-    end
-    extBatRest()
-end
-
-local function tryExitMismatchedRest(pct, recoverPct)
-    local rp = loader.load("runtime_power")
-    if rp and rp.isPirWatch and rp.isPirWatch() then
-        return
-    end
-    if pct == nil or recoverPct == nil or pct <= recoverPct then
-        return
-    end
-    if guard.rest_by_battery then
-        return
-    end
-    local rt = _G.APP_RUNTIME
-    if not rt or tonumber(rt.low_power_mode) ~= 1 then
-        return
-    end
-    if type(hooks.on_exit_low_power) == "function" then
-        hooks.on_exit_low_power("battery_recover")
-    end
-end
-
 local function scheduleShutdown()
     if guard.shutdown_timer then
         return
@@ -429,41 +369,7 @@ local function handleShutdownZone(pct, shutdownPct, mv)
     return true
 end
 
-local function evaluateBatteryStrategy(pct, t, mv)
-    syncBatteryTier(pct)
-    if handleShutdownZone(pct, t.shutdown, mv) then
-        return
-    end
-    if guard.shutdown_timer and not shouldLeaveShutdown(pct, mv, t.shutdown) then
-        return
-    end
-    cnclShutTmr()
-    if guard.pir_suspended then
-        resumePir()
-    end
-    if guard.rest_by_battery then
-        extBatRest()
-    end
-end
-
-local function handleRestZoneHybrid(pct, t)
-    if guard.rest_by_battery then
-        tryExitBatteryRest(pct, t.recover)
-    else
-        tryEnterBatteryRest(pct, t.rest)
-        tryExitMismatchedRest(pct, t.recover)
-    end
-end
-
-local function handlePirZoneHybrid(pct, t)
-    if pct <= t.pir_suspend then
-        suspendPir()
-    elseif pct > t.pir_resume then
-        resumePir()
-    end
-end
-
-local function evaluateHybridStrategy(pct, t, mv)
+local function evaluateStrategy(pct, t, mv)
     syncBatteryTier(pct)
     if handleShutdownZone(pct, t.shutdown, mv) then
         return
@@ -513,17 +419,17 @@ function evaluate(pct, mv)
         if not thresholdsReadyHybrid(t) then
             return
         end
-        evaluateHybridStrategy(pct, t, mv or guard.last_mv)
+        evaluateStrategy(pct, t, mv or guard.last_mv)
     else
         if not thresholdsReadyBattery(t) then
             return
         end
-        evaluateBatteryStrategy(pct, t, mv or guard.last_mv)
+        evaluateStrategy(pct, t, mv or guard.last_mv)
     end
 end
 
 function onUsbIns(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local source = opts.source
     bgInfo("usb_inserted", tostring(source or ""))
     cnclShutTmr()
@@ -575,7 +481,7 @@ function onBatUpd(pct, mv)
 end
 
 function start(opts)
-    hooks = type(opts) == "table" and opts or {}
+    hooks = utils.optTable(opts)
     bgInfo("start", tostring(getStrategy()))
     local pct = _G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.battery_percent)
     local mv = _G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.battery_mv)

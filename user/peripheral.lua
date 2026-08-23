@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : peripheral.lua
 -- Module   : 外设聚合：PWR/BOOT 长按、coproc_ready、LED 模式、启动 pir_ctrl 硬件
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/PERIPHERAL_LED_FLOW.md
 -- ================================================================
 

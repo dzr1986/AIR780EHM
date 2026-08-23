@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : ipc_supervision.lua
 -- Module   : IPC 监管：AT+IPCALERT→1004、1011 映射、录像对账、1003 IPCSTAT 刷新调度
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/IPC_SUPERVISION_FLOW.md
 -- ================================================================
 
@@ -79,19 +78,11 @@ local function pubT3xStop(reason, uploadMode, quality)
 end
 
 local function hostUartMod()
-    local hu = loader.load("host_uart")
-    if hu then
-        return hu
-    end
-    return nil
+    return loader.load("host_uart")
 end
 
 local function pirCtrlMod()
-    local pc = loader.load("pir_ctrl")
-    if pc then
-        return pc
-    end
-    return nil
+    return loader.load("pir_ctrl")
 end
 
 function ipcCloudStatFields()
@@ -223,7 +214,6 @@ local function publishIpcAlertUplink(alertCode, alertDetail)
     publishUplink({
         suffix = "event",
         dataType = _deps.dt_ul_control,
-        no_conn = _deps.nc,
         fields = string.format(
             ',"reply":0,"action":"ipc_alert","alertCode":"%s","alertDetail":"%s","ret":0,"message":"ok"',
             escJson(alertCode),

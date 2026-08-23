@@ -1,7 +1,6 @@
 -- ================================================================
 -- Filename : t3x_ctrl.lua
 -- Module   : 协处理器电源控制：GPIO22 上断电、GPIO29 唤醒脉冲、BOOT/OTA 引脚、优雅 IPC 关机
--- Notes    : 本地 helper 速查：无本地压缩 helper
 -- Arch     : doc/modules/T3X_POWER_WAKEUP.md
 -- ================================================================
 
@@ -61,9 +60,6 @@ end
 local function getEntries()
     local gout = _G.GPIO_OUT or {}
     return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
-end
-
-local function logGpio(action, entry_pwr, entry_boot, entry_ota, pwrLv, bootLv, otaLv)
 end
 
 local function getWakePulseMs()
@@ -194,35 +190,29 @@ function pulseMcuInt()
 end
 
 function entBootMode()
-    local entry_pwr, _, entry_boot, entry_ota = ensurePins()
+    ensurePins()
     if not t3xPowerPin or not t3xBootModePin or not t3xOtaPin then
         t3xError("enter_bootmode_pin_missing")
         return false
     end
     t3xWarn("enter_bootmode")
     powerOff()
-    logGpio("t3x_power_off", entry_pwr, entry_boot, entry_ota,
-        powerOffLevel, currentBootLevel, currentOtaLevel)
     sys.timerStart(function()
         t3xBootModePin(bootModeLevel)
         t3xOtaPin(otaModeLevel)
         currentBootLevel = bootModeLevel
         currentOtaLevel = otaModeLevel
         isInBootMode = true
-        logGpio("t3x_boot_ota_levels_set", entry_pwr, entry_boot, entry_ota,
-            powerOffLevel, bootModeLevel, otaModeLevel)
     end, bootDelay)
     sys.timerStart(function()
         powerOn()
-        logGpio("t3x_power_on", entry_pwr, entry_boot, entry_ota,
-            powerOnLevel, bootModeLevel, otaModeLevel)
     end, bootDelay)
     lastAction = "enterBootMode"
     return true
 end
 
 function pulseUsbDebugEn(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local _, _, _, entry_ota = getEntries()
     ensurePins()
     if not t3xOtaPin or not entry_ota or not entry_ota.pin then
@@ -300,7 +290,7 @@ local function shutdownPoweredT3x(opts)
 end
 
 function enterSleep(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     if state.power_state == "sleeping" and not isPoweredOn then
         t3xInfo("sleep_already")
         return
@@ -371,7 +361,7 @@ local function ipcHostUart()
 end
 
 local function resolvePowerWaitMs(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local waitMs = tonumber(opts.power_wait_ms) or tonumber(opts.t3x_power_wait_ms)
     if waitMs ~= nil then
         return waitMs
@@ -389,7 +379,7 @@ local function resetHostLink(hu)
 end
 
 function ensPowOn(tag, opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     waitBeforeWake()
     local policy = t3xPolicyMod()
     if type(policy) == "table" and policy.mayPowerT3x
@@ -410,7 +400,7 @@ function ensPowOn(tag, opts)
 end
 
 function gracePowOff(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     local hu = ipcHostUart()
     local playSound = opts.play_sound
     if playSound == nil then
@@ -431,7 +421,7 @@ function gracePowOff(opts)
 end
 
 function pwrOnReady(opts)
-    opts = type(opts) == "table" and opts or {}
+    opts = utils.optTable(opts)
     if not ipcInTask() then
         return false
     end
