@@ -67,6 +67,8 @@
 |------|------|
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | MQTT 上下行（含 2006/2007、2021/2020、2024–2027、2012、**2013**） |
 | [MQTT_2013_1013_UPLOAD_VIDEO.md](MQTT_2013_1013_UPLOAD_VIDEO.md) | **2013↔1013**：国标 RecordInfo 列表 + MQTT 时间窗抽片（MQTT 不传文件） |
+| [MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md) | **回放上传闭环**：2013 → queued → 进度 percent → reply=0；IPC / Cat.1 / Python+Java GUI |
+| [MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md](MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md) | **回放/人形上传**：串口 `UPLOADVIDEO`/`UPLOADPROGRESS`/`UPLOADRESULT` → 1013 |
 | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) | **远程控制**：帧率/录像/人形（MQTT + AT + 时序） |
 | [T3X_IPC_CLOUD_EXCEPTION_REPORT.md](T3X_IPC_CLOUD_EXCEPTION_REPORT.md) | **T3x IPC 联网异常上报分析**（已上报 vs 缺口） |
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | **本机 IMEI 862323084068314** MQTT 联调手册 |
@@ -84,6 +86,8 @@
 | [../video_upload_server/README.md](../video_upload_server/README.md) | **报警视频 uploadVideo**（7003，兼容南京后台） |
 | [REMOTE_ENCODE_CONFIG.md](REMOTE_ENCODE_CONFIG.md) | 远程视频/音频编码 2021/2020 / 1021/1020 |
 | [T31X_MQTT_PARAM_HOT_APPLY.md](T31X_MQTT_PARAM_HOT_APPLY.md) | **MQTT 设参动态生效**：2020–2031（不含 2013）不重启 `t31x_ipc` 进程 |
+| [T31X_SOFTPHOTO_REPEAT_SWITCH.md](T31X_SOFTPHOTO_REPEAT_SWITCH.md) | **软光敏**：重复切换、开灯仍黑白、日→夜品红闪；ISP/IRCUT 顺序 |
+| [T31X_ETH0_DHCP_SLOW_BOOT.md](T31X_ETH0_DHCP_SLOW_BOOT.md) | **重启后 eth0 有、IP 慢**：RNDIS DHCP Discover 停发 + 30s 重试 |
 | [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T3x `AT+MQTTCFG` 下发 4G MQTT |
 | [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX |

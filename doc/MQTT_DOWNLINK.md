@@ -88,7 +88,7 @@
 | **2010** | PIR 策略 / 查询 | **1010** | `pir` |
 | **2011** | 设备停录 | **1011** | `event` |
 | **2012** | 平台开 TF 卡录 | **1012** + **1010** | `event` / `pir` |
-| **2013** | 请求上传视频（信令，不传文件） | **1013** | `event` |
+| **2013** | 请求上传视频（信令，不传文件） | **1013** queued / 进度 / 完成 | `event` |
 | **2021** | 设置视频/音频编码 | **1021** | `encode` |
 | **2020** | 查询视频/音频编码 | **1020** | `encode` |
 | **2022** | 查询录像时长档位 | **1022** | `record` |
@@ -981,11 +981,99 @@
 
 ---
 
-## 10b. `2013` — 请求上传视频 → `1013`
+## 10b. `2013` / `1013` — 上传视频信令（回放 + 人形报警）
 
-专题：[MQTT_2013_1013_UPLOAD_VIDEO.md](MQTT_2013_1013_UPLOAD_VIDEO.md)
+MQTT **不传文件**。文件由 T31 HTTP 传到  
+`http://112.86.146.218:7003/admin/api/v1/uploadVideo`。  
+Cat.1 只做 **UART ↔ MQTT**：把平台 2013 转成 `AT+UPLOADVIDEO`，把 T31 的 `UPLOADNEED` / `UPLOADPROGRESS` / `UPLOADRESULT` 转成上行 **1013**。
 
-**发布**：`/panshi/device/862323084068124/`
+| 项 | 值 |
+|----|-----|
+| 下行主题 | `/panshi/device/862323084068124/` |
+| 上行主题 | `/panshi/app/862323084068124/event` |
+| 上行 `dataType` | **1013**（不发 1004） |
+| 关联键 | 同一任务全程同一 **`messageId`** |
+| HTTP | T31 → 7003，弱网不换 IP |
+
+与 **2012 开录 / 2011 停录** 独立；`2010.uploadMode` **不能**替代本命令。  
+MQTTX 单行抄录：[MQTT_DOWNLINK_862323084068124.txt](MQTT_DOWNLINK_862323084068124.txt) §3.9b
+
+Cat.1 代码：`user/net_mqtt.lua`（`handleDownlink2013` / `publishUploadVideoReply` / `publishUploadVideoNeed` / `publishUploadVideoProgress` / `publishUploadVideoComplete`）· `user/host_uart.lua`（`requestUploadVideo` / `uart_uploadneed_notify` / `uart_uploadprogress_notify` / `uart_uploadresult_notify`）。
+
+所有 1013 由 `formatUplink` 包一层：`deviceNo` + `dataType` + 业务字段 + `time`（设备墙钟）。
+
+---
+
+### 10b.1 两条路径（Cat.1 视角）
+
+| | 回放 `videoType=2` | 人形报警 `videoType=1` |
+|--|-------------------|------------------------|
+| 触发 | 平台下行 **2013** | T31 IVS，**无 2013** |
+| Cat.1 入队串口 | → T31 `AT+UPLOADVIDEO=1,2,<start>,<end>,<max>,<msgId>` | ← T31 `AT+UPLOADNEED=…file=…,msgId=person-{uploadTs}` |
+| 开始 1013 | `reply=1 stage=queued`（入队后立刻） | 同左，**已带 `fileName` / `alarmTime` / 时间窗** |
+| 进度 1013 | ← `AT+UPLOADPROGRESS` → `reply=1 stage=uploading percent` | 同左 |
+| 完成 1013 | ← `AT+UPLOADRESULT` → `reply=0 stage=uploaded` + `httpPath` | 同左 |
+
+```text
+【回放】
+平台 2013
+  → Cat.1 handleDownlink2013
+  → UART AT+UPLOADVIDEO=1,2,<unix>,<unix>,<maxSec>,<messageId>
+  ← T31  +UPLOADVIDEO:OK,queued=1
+  → MQTT 1013 reply=1 stage=queued          ← 开始（文件未到 7003）
+  ← T31  AT+UPLOADPROGRESS=pct=N,file=…,msgId=…
+  → MQTT 1013 reply=1 stage=uploading percent  ← 上传中
+  ← T31  AT+UPLOADRESULT=ret=0,file=…,httpPath=…,msgId=…
+  → MQTT 1013 reply=0 stage=uploaded           ← 完成
+
+【人形】
+T31 IVS → clip_upload_on_person → 入队（已生成文件名 + person-{uploadTs}）
+  → UART AT+UPLOADNEED=1,reason=person,type=1,start=,end=,alarmTs=,uploadTs=,file=,msgId=
+  → Cat.1 uart_uploadneed_notify → publishUploadVideoNeed
+  → MQTT 1013 reply=1 stage=queued + fileName + alarmTime   ← 后台可先建报警
+  ← T31  AT+UPLOADPROGRESS …（同上）
+  → MQTT 1013 进度
+  ← T31  AT+UPLOADRESULT …
+  → MQTT 1013 reply=0 + fileName + httpPath                 ← 文件已到 7003
+```
+
+后台用人形 **queued 包**即可拿到 **报警时间 + 文件名**；`httpPath` 等 `reply=0`。回放 queued 一般还没有 `fileName`（抽片在入队之后）。
+
+---
+
+### 10b.2 1013 字段（两条路径共用）
+
+| 字段 | 出现阶段 | 说明 |
+|------|----------|------|
+| `deviceNo` | 全部 | IMEI，例 `862323084068124` |
+| `dataType` | 全部 | `"1013"` |
+| `time` | 全部 | Cat.1 上报墙钟 |
+| `reply` | 全部（新固件） | `1`=进行中（queued/进度）；`0`=终态 |
+| `stage` | 全部（新固件） | `queued` / `start` / `uploading` / `waiting_resp` / `uploaded` / `fail` |
+| `messageId` | 全部 | 回放=2013 原样；人形=`person-{uploadTs毫秒}` |
+| `ret` | 全部 | `0` 正常；`-1` 失败（queued 时表示未入队） |
+| `message` | 全部 | `ok` / `uploading` / `uploaded` / `extract_fail` / `upload_fail` / `file_missing` / `t3x_not_ready` … |
+| `needUpload` | 全部 | 一般为 `1` |
+| `action` | 全部 | `"upload_video"` |
+| `videoType` | 全部 | `1` 人形 · `2` 回放 |
+| `reason` | 视路径 | 回放 `cloud`；人形 `person` |
+| `source` | 人形 / 完成 | `"t3x"` |
+| `fileName` | 人形 queued 起；回放进度/完成 | `{国标ID}-{YYYYMMDD}-{uploadTs}.ts` |
+| `httpPath` | **仅 reply=0 成功** | 7003 返回的相对路径 |
+| `uploadTs` | 人形 queued；完成 | 毫秒时间戳，文件名第三段 |
+| `beginTs` / `endTs` | 有时间窗时 | Unix 秒，抽片窗 |
+| `beginTime` / `endTime` | 有时间窗时 | 墙钟 |
+| `alarmTs` / `alarmTime` | **人形 queued** | IVS 报警时刻（窗中点，默认 ±15s） |
+| `percent` / `sentBytes` / `totalBytes` | 进度 | HTTP 进度；`waiting_resp` 时 percent=100 **仍未完成** |
+| `pirStatus` | 人形 queued | 常 `t3x_active` |
+
+`stage=waiting_resp`：body 已发完，等 7003 JSON，**不要**当成功。
+
+---
+
+### 10b.3 回放：下行 2013
+
+**Publish**：`/panshi/device/862323084068124/`
 
 ```json
 {
@@ -996,19 +1084,134 @@
   "reason": "cloud",
   "videoType": 2,
   "beginTime": "2026-08-17 19:00:00",
-  "endTime": "2026-08-17 19:05:00"
+  "endTime": "2026-08-17 19:05:00",
+  "beginTs": 1755428400,
+  "endTs": 1755428700
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
-| `action` | `"upload_video"` |
-| `needUpload` | `1` 请求上传；`0` 取消 |
-| `videoType` | `1` 侦测 / `2` 回放（默认） |
-| `beginTime` / `endTime` | 抽片窗口；省略则最近 60s（可用 `videoMaxDurationSec`） |
+| `action` | 固定 `"upload_video"` |
+| `needUpload` | `1` 上传；`0` 取消（不排队） |
+| `videoType` | **`2` 回放（默认）**；`1` 也可经 2013 抽侦测窗 |
+| `beginTs` / `endTs` | **本机 Unix 秒，优先于墙钟** |
+| `beginTime` / `endTime` | 墙钟；都省略则最近 60s（`videoMaxDurationSec`） |
+| 单段最长 | **600 秒**；更长请平台拆多条 2013 |
 | `recordPath` | 可选；当前以时间窗为准 |
 
-**应答**：`/panshi/app/862323084068124/event`，`dataType=1013`，`reply=1`。无 1004。T3x 在线时 `AT+UPLOADVIDEO=…`。与 **2012 开录 / 2011 停录** 独立；`2010.uploadMode` 不能替代。
+Cat.1 → UART：
+
+```
+AT+UPLOADVIDEO=1,2,1755428400,1755428700,300,up-req-001
++UPLOADVIDEO:OK,need=1,type=2,start=1755428400,end=1755428700,queued=1
+OK
+```
+
+`ret=-1` / `t3x_not_ready`：T31 未就绪，**仍会发** 1013 queued（`ret=-1`），不会抽片。
+
+---
+
+### 10b.4 回放：上行 1013
+
+**Subscribe**：`/panshi/app/862323084068124/event`
+
+**① 开始 / 已排队**（Cat.1 收到 `+UPLOADVIDEO:OK` 后立刻发，不经 `UPLOADRESULT`）
+
+```json
+{"deviceNo":"862323084068124","dataType":"1013","reply":1,"stage":"queued","messageId":"up-req-001","ret":0,"message":"ok","needUpload":1,"action":"upload_video","reason":"cloud","beginTime":"2026-08-17 19:00:00","endTime":"2026-08-17 19:05:00","beginTs":1755428400,"endTs":1755428700,"videoType":2,"time":"2026-08-17 19:00:01"}
+```
+
+**② 上传中**（T31 `AT+UPLOADPROGRESS` → Cat.1）
+
+```json
+{"deviceNo":"862323084068124","dataType":"1013","reply":1,"stage":"uploading","percent":58,"sentBytes":16777216,"totalBytes":28871327,"messageId":"up-req-001","ret":0,"message":"uploading","needUpload":1,"action":"upload_video","videoType":2,"fileName":"34020000001310267610-20260817-1755428400123.ts","time":"2026-08-17 19:01:20"}
+```
+
+UART：
+
+```
+AT+UPLOADPROGRESS=pct=58,sent=16777216,total=28871327,type=2,msgId=up-req-001,file=34020000001310267610-20260817-1755428400123.ts,stage=uploading
++UPLOADPROGRESS:ok,pct=58
+```
+
+`stage=waiting_resp` 且 `percent=100`：文件已发完，等 7003，**还不是完成**。
+
+**③ 完成**
+
+```json
+{"deviceNo":"862323084068124","dataType":"1013","reply":0,"stage":"uploaded","messageId":"up-req-001","ret":0,"message":"uploaded","needUpload":1,"action":"upload_video","reason":"cloud","source":"t3x","fileName":"34020000001310267610-20260817-1755428400123.ts","httpPath":"/apps/video/playback/34020000001310267610-20260817-1755428400123.ts","uploadTs":"1755428400123","beginTime":"2026-08-17 19:00:00","endTime":"2026-08-17 19:05:00","beginTs":1755428400,"endTs":1755428700,"videoType":2,"time":"2026-08-17 19:04:12"}
+```
+
+UART：
+
+```
+AT+UPLOADRESULT=ret=0,type=2,start=1755428400,end=1755428700,uploadTs=1755428400123,file=34020000001310267610-20260817-1755428400123.ts,httpPath=/apps/video/playback/....ts,msgId=up-req-001,reason=cloud,msg=uploaded
++UPLOADRESULT:ok,ret=0
+```
+
+失败：`reply=0` `stage=fail` `ret=-1`，`message`=`extract_fail` / `upload_fail` / `file_missing`。HTTP 中途重试不发 `UPLOADRESULT`。
+
+---
+
+### 10b.5 人形报警：设备主动 1013（无 2013）
+
+T31 入队时**已经生成文件名和时间窗**，经串口带给 Cat.1，Cat.1 **立刻** MQTT。后台用本包建报警记录，不必等 HTTP。
+
+UART（T31 → Cat.1）：
+
+```
+AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=1755740015,uploadTs=1755740015123,file=34020000001310267610-20260821-1755740015123.ts,msgId=person-1755740015123,pirStatus=t3x_active
++UPLOADNEED:ok,need=1
+```
+
+**① 开始（带文件名 + 报警时间）**
+
+```json
+{"deviceNo":"862323084068124","dataType":"1013","reply":1,"stage":"queued","needUpload":1,"action":"upload_video","reason":"person","source":"t3x","videoType":1,"messageId":"person-1755740015123","fileName":"34020000001310267610-20260821-1755740015123.ts","uploadTs":"1755740015123","alarmTs":1755740015,"alarmTime":"2026-08-21 15:20:15","beginTs":1755740000,"endTs":1755740030,"beginTime":"2026-08-21 15:20:00","endTime":"2026-08-21 15:20:30","pirStatus":"t3x_active","time":"2026-08-21 15:20:15"}
+```
+
+| 字段 | 后台用途 |
+|------|----------|
+| `alarmTime` / `alarmTs` | 人形报警时刻 |
+| `fileName` | 本段报警视频文件名（随后 HTTP 用同一名字） |
+| `beginTime`~`endTime` | 抽片窗（默认报警 ±15s） |
+| `messageId` | `person-{uploadTs}`，与进度、完成包关联 |
+
+**② 上传中**（同回放，`videoType=1`，`messageId` 同 queued）
+
+```json
+{"deviceNo":"862323084068124","dataType":"1013","reply":1,"stage":"uploading","percent":40,"sentBytes":4096000,"totalBytes":10240000,"messageId":"person-1755740015123","ret":0,"message":"uploading","needUpload":1,"action":"upload_video","videoType":1,"fileName":"34020000001310267610-20260821-1755740015123.ts","time":"2026-08-21 15:20:45"}
+```
+
+**③ 完成**
+
+```json
+{"deviceNo":"862323084068124","dataType":"1013","reply":0,"stage":"uploaded","messageId":"person-1755740015123","ret":0,"message":"uploaded","needUpload":1,"action":"upload_video","reason":"person","source":"t3x","videoType":1,"fileName":"34020000001310267610-20260821-1755740015123.ts","httpPath":"/apps/video/detect/34020000001310267610-20260821-1755740015123.ts","uploadTs":"1755740015123","beginTime":"2026-08-21 15:20:00","endTime":"2026-08-21 15:20:30","beginTs":1755740000,"endTs":1755740030,"time":"2026-08-21 15:21:10"}
+```
+
+旧固件 `AT+UPLOADNEED` 可能没有 `file=`：1013 无 `reply`/`stage`/`fileName`，须等 `reply=0`。无 `fileName` 的 need 包 Cat.1 仍 30s 节流。
+
+---
+
+### 10b.6 后台状态机（推荐）
+
+```text
+【回放】发 2013(messageId=X)
+  → 1013 reply=1 stage=queued  messageId=X     开始
+  → 1013 reply=1 stage=uploading percent       进度（可无）
+  → 1013 reply=0 stage=uploaded fileName httpPath  成功
+  → 1013 reply=0 stage=fail ret=-1             失败，可重发 2013
+
+【人形】无 2013
+  → 1013 reply=1 stage=queued videoType=1 fileName alarmTime  建报警
+  → 1013 进度（同 messageId）
+  → 1013 reply=0 同一 messageId + httpPath                    可播
+```
+
+完成等待建议 **3600s**（约 30MB 弱网可达数分钟）。不要用 180s。
+
+专题：[MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md) · [MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md](MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md) · [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md)
 
 ---
 
@@ -1213,7 +1416,7 @@
 11. `2002` enter 断 T31 → **1004** `rest_enter` + **1002**；`2002` exit 上电 T31 → **1004** `rest_exit` + **1002**（不要用 2001）
 12. `2011`（录像中）→ **1011**（T3x 在线时另发 `AT+RECORDCTRL=0,cloud`）
 12a. `2012` → **1004** + **1012** + **1010**（T3x 在线时 `AT+RECORDCTRL=1,<sec>`）
-12b. `2013` → **1013** `reply=1`（T3x 在线时 `AT+UPLOADVIDEO`；不发 1004）
+12b. `2013` → **1013** `queued` → `uploading percent` → `reply=0`（回放）；人形无 2013，设备主动 1013 `videoType=1` 带 `fileName`/`alarmTime`
 13. `2020` → **1020**（encode 主题）
 14. `2021` 改码率 → **1021** `needReboot=0`；改分辨率 → `needReboot=1`
 15. `2024` → **1024**（framerate 主题）
@@ -1240,6 +1443,9 @@
 | 2011 | `handleDownlink2011` | `publishPirRecordStop` |
 | 2012 | `handleDownlink2012` | `publishPirRecordStart` + `recordCtrlStart` |
 | 2013 | `handleDownlink2013` | `publishUploadVideoReply` + `requestUploadVideo` |
+| （人形主动） | `uart_uploadneed_notify` | `publishUploadVideoNeed`（1013 queued + fileName） |
+| （上传进度） | `uart_uploadprogress_notify` | `publishUploadVideoProgress` |
+| （上传完成） | `uart_uploadresult_notify` | `publishUploadVideoComplete` |
 | 2021 | `handleDownlink2021` | `publishEncodeReply` → 1021 |
 | 2020 | `handleDownlink2020` | `publishEncodeReply` → 1020 |
 | 2022 | `handleDownlink2022` | `publishRecordTimeReply` → 1022 |

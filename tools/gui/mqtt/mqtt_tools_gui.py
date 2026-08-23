@@ -83,6 +83,16 @@ def _payload_preview(data: dict) -> str:
         ).strip()
     if dt == "1008":
         return f"script={data.get('scriptVersion')} fw={data.get('firmwareVersion')}"
+    if dt == "1013":
+        bits = [
+            f"reply={data.get('reply')}" if data.get("reply") not in (None, "") else "",
+            f"stage={data.get('stage')}" if data.get("stage") else "",
+            f"type={data.get('videoType')}" if data.get("videoType") not in (None, "") else "",
+            f"{data.get('percent')}%" if data.get("percent") not in (None, "") else "",
+            str(data.get("fileName") or ""),
+            str(data.get("beginTime") or data.get("alarmTime") or ""),
+        ]
+        return " ".join(x for x in bits if x).strip() or "1013"
     if dt == "1004":
         bits = [
             str(data.get("action") or ""),
@@ -795,6 +805,14 @@ class MqttGui(tk.Tk):
         )
         self.play_lbl.pack(fill=tk.X, padx=10, pady=(0, 4))
 
+        progf = tk.Frame(page, bg=BG)
+        progf.pack(fill=tk.X, padx=10, pady=(0, 4))
+        self.play_stage_var = tk.StringVar(value="未开始")
+        tk.Label(progf, textvariable=self.play_stage_var, bg=BG, fg=BLUE,
+                 font=("Microsoft YaHei UI", 10, "bold")).pack(side=tk.LEFT)
+        self.play_prog = ttk.Progressbar(progf, maximum=100, length=420, mode="determinate")
+        self.play_prog.pack(side=tk.LEFT, padx=12, fill=tk.X, expand=True)
+
         split = tk.PanedWindow(page, orient=tk.VERTICAL, sashwidth=6, bg="#c8c8c8")
         split.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
@@ -827,6 +845,68 @@ class MqttGui(tk.Tk):
         self.play_plan_txt.tag_configure("warn", foreground=ORANGE)
         self._bind_text_menu(self.play_plan_txt)
         split.add(botf, minsize=140)
+
+    def _play_set_progress(self, pct, stage: str, extra: str = ""):
+        try:
+            p = int(pct or 0)
+        except (TypeError, ValueError):
+            p = 0
+        p = max(0, min(100, p))
+        if hasattr(self, "play_prog"):
+            self.play_prog["value"] = p
+        st = stage or ""
+        if hasattr(self, "play_stage_var"):
+            self.play_stage_var.set(f"{st}  {p}%  {extra}".strip())
+
+    def _play_apply_1013(self, data: dict):
+        stage = str(data.get("stage") or "")
+        pct = data.get("percent")
+        reply = data.get("reply")
+        if reply in (0, "0"):
+            stage = stage or ("uploaded" if data.get("ret") in (0, "0", None) else "fail")
+            if data.get("ret") in (0, "0", None):
+                pct = 100
+        elif not stage:
+            stage = "queued" if reply in (1, "1") else ""
+        extra = data.get("fileName") or data.get("message") or ""
+        if pct is None and hasattr(self, "play_prog"):
+            pct = self.play_prog["value"]
+        self._play_set_progress(pct, stage, extra)
+
+    def _wait_upload_closed_loop(self, after_n: int, message_id: str, timeout: float = 3600):
+        deadline = time.time() + timeout
+        idx = after_n
+        last_pct = -1
+        while time.time() < deadline:
+            with self._lock:
+                newer = self._inbox[idx:]
+                idx = len(self._inbox)
+            for _topic, data, _ts in newer:
+                if str(data.get("dataType")) != "1013":
+                    continue
+                if str(data.get("messageId")) != str(message_id):
+                    continue
+                stage = str(data.get("stage") or "")
+                reply = data.get("reply")
+                pct = data.get("percent")
+                if reply in (0, "0"):
+                    return data
+                if pct is not None:
+                    try:
+                        ip = int(pct)
+                    except (TypeError, ValueError):
+                        ip = last_pct
+                    if ip != last_pct:
+                        last_pct = ip
+                        self.ui(self._play_apply_1013, data)
+                        self.ui(
+                            self._play_log,
+                            f"上传{stage or '中'} {ip}%  sent={data.get('sentBytes') or 0}/{data.get('totalBytes') or 0}",
+                        )
+                elif stage:
+                    self.ui(self._play_apply_1013, data)
+            time.sleep(0.2)
+        return None
 
     def _play_log(self, msg: str, tag: str = "info"):
         line = f"{_now()}  {msg}\n"
@@ -1012,6 +1092,7 @@ class MqttGui(tk.Tk):
                     str(d.get("dataType")) == "1013"
                     and str(d.get("messageId")) == str(m)
                     and (d.get("reply") == 1 or str(d.get("reply")) == "1")
+                    and str(d.get("stage") or "queued") in ("", "queued")
                 ),
             )
             if got:
@@ -1024,19 +1105,14 @@ class MqttGui(tk.Tk):
                         f"2013[{i}] → 1013 受理 ok  {w['begin']}~{w['end']}",
                         "ok",
                     )
+                    self.ui(self._play_set_progress, 0, "queued", str(mid))
                     with self._lock:
                         n2 = len(self._inbox)
-                    done = self._wait_pred(
-                        n2, 180,
-                        lambda d, m=mid: (
-                            str(d.get("dataType")) == "1013"
-                            and str(d.get("messageId")) == str(m)
-                            and (d.get("reply") == 0 or str(d.get("reply")) == "0")
-                        ),
-                    )
+                    done = self._wait_upload_closed_loop(n2, str(mid), 3600)
                     if done:
                         dr = done.get("ret")
                         fn = done.get("fileName") or done.get("httpPath") or ""
+                        self.ui(self._play_apply_1013, done)
                         if dr in (0, "0", None):
                             self.ui(
                                 self._play_log,
@@ -1052,7 +1128,7 @@ class MqttGui(tk.Tk):
                     else:
                         self.ui(
                             self._play_log,
-                            f"2013[{i}] 已受理，HTTP 完成包 180s 内未到（可稍后「列出已上传」）",
+                            f"2013[{i}] 已受理，HTTP 完成包 3600s 内未到（可稍后「列出已上传」）",
                             "warn",
                         )
                 else:
@@ -1809,9 +1885,12 @@ class MqttGui(tk.Tk):
             if fw and hasattr(self, "ota_cur_var"):
                 self.ota_cur_var.set(str(fw))
         elif dt == "1013" and hasattr(self, "play_lbl"):
+            self._play_apply_1013(data)
             self.play_lbl.configure(
-                text=f"1013 reply={data.get('reply')} ret={data.get('ret')} {data.get('message') or ''} "
-                f"{data.get('beginTime') or ''}~{data.get('endTime') or ''}"
+                text=f"1013 stage={data.get('stage') or '-'} reply={data.get('reply')} "
+                f"type={data.get('videoType')} pct={data.get('percent')} ret={data.get('ret')} "
+                f"{data.get('fileName') or data.get('message') or ''} "
+                f"{data.get('alarmTime') or ''} {data.get('beginTime') or ''}~{data.get('endTime') or ''}"
             )
 
     def _on_msg_select(self, _evt=None):

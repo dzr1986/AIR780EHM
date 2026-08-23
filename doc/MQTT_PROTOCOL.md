@@ -586,7 +586,7 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 
 ### 4.9b `2013` — 请求上传视频 → `1013`
 
-专题：[MQTT_2013_1013_UPLOAD_VIDEO.md](MQTT_2013_1013_UPLOAD_VIDEO.md)。MQTT **不传文件**；T31x 按时间窗抽片后 HTTP 上传。
+专题：[MQTT_2013_1013_UPLOAD_VIDEO.md](MQTT_2013_1013_UPLOAD_VIDEO.md) · 闭环：[MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md)。MQTT **不传文件**；T31x 按时间窗抽片后 HTTP 上传。
 
 ```json
 {
@@ -601,7 +601,7 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 }
 ```
 
-Cat.1 → `AT+UPLOADVIDEO=<need>,<type>,<start>,<end>,<max_sec>,<messageId>` → 上行 **1013** `reply=1`（主题 `event`）。`videoType`：`1` 侦测 / `2` 回放（默认）。无时间窗则截最近 `videoMaxDurationSec`（默认 60s，最长 600s）。`2010.uploadMode` 不能替代本命令。
+Cat.1 → `AT+UPLOADVIDEO=…` → 上行 **1013** `reply=1 stage=queued`，HTTP 中 `stage=uploading`+`percent`，结束 `reply=0`（主题 `event`）。`videoType`：`1` 侦测 / `2` 回放（默认）。无时间窗则截最近 `videoMaxDurationSec`（默认 60s，最长 600s）。`2010.uploadMode` 不能替代本命令。
 
 T31x 人形抽片排队后可主动 `AT+UPLOADNEED` → **1013**（无 `reply`）。
 

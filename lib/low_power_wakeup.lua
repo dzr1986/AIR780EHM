@@ -1,3 +1,10 @@
+-- ================================================================
+-- Filename : low_power_wakeup.lua
+-- Module   : 低功耗唤醒抽象：rest 期间 TCP/MQTT 行为切换，onEnterRest/onExitRest 两态
+-- Notes    : 本地 helper 速查：无本地压缩 helper
+-- Arch     : doc/modules/LOW_POWER_WAKEUP.md
+-- ================================================================
+
 local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
@@ -5,99 +12,112 @@ _G[_modname] = _M
 local MODE_MQTT = "mqtt"
 local MODE_TCP = "tcp"
 local function cfg()
-	return _G.LOW_POWER_WAKEUP_CFG or {}
+    return _G.LOW_POWER_WAKEUP_CFG or {}
 end
+
 local function getMode()
-	local m = cfg().mode
-	if type(m) == "string" and m:lower() == MODE_TCP then
-		return MODE_TCP
-	end
-	return MODE_MQTT
+    local m = cfg().mode
+    if type(m) == "string" and m:lower() == MODE_TCP then
+        return MODE_TCP
+    end
+    return MODE_MQTT
 end
+
 local function tcpModeActive()
-	return getMode() == MODE_TCP
+    return getMode() == MODE_TCP
 end
+
 function isMqttMode()
-	return not tcpModeActive()
+    return not tcpModeActive()
 end
+
 function allowTcpChannel()
-	return tcpModeActive()
+    return tcpModeActive()
 end
+
 function shouldCloseTcpOnEnterRest()
-	return isMqttMode()
+    return isMqttMode()
 end
+
 function shouldRestoreTcpOnExitRest()
-	return tcpModeActive()
+    return tcpModeActive()
 end
+
 function getModemHibernate()
-	return false
+    return false
 end
 local netTcpMod
 local function netTcp()
-	if not tcpModeActive() then
-		return nil
-	end
-	if netTcpMod == nil then
-		local mod = loader.load("net_tcp")
-		netTcpMod = mod or false
-	end
-	return netTcpMod or nil
+    if not tcpModeActive() then
+        return nil
+    end
+    if netTcpMod == nil then
+        local mod = loader.load("net_tcp")
+        netTcpMod = mod or false
+    end
+    return netTcpMod or nil
 end
+
 local function withNetTcp(fn)
-	if not allowTcpChannel() then
-		return false
-	end
-	local nt = netTcp()
-	if not nt then
-		return false
-	end
-	return fn(nt) == true
+    if not allowTcpChannel() then
+        return false
+    end
+    local nt = netTcp()
+    if not nt then
+        return false
+    end
+    return fn(nt) == true
 end
+
 function onEnterRest()
-	if not shouldCloseTcpOnEnterRest() then
-		return
-	end
-	local nt = netTcp()
-	if not nt or not nt.getState then
-		return
-	end
-	local st = nt.getState()
-	if st and st.configured then
-		nt.closeChannel(st.sid)
-	end
+    if not shouldCloseTcpOnEnterRest() then
+        return
+    end
+    local nt = netTcp()
+    if not nt or not nt.getState then
+        return
+    end
+    local st = nt.getState()
+    if st and st.configured then
+        nt.closeChannel(st.sid)
+    end
 end
+
 function onExitRest()
-	if not shouldRestoreTcpOnExitRest() then
-		return
-	end
-	local ch = _G.NET_TCP_CHANNEL
-	if not ch then
-		return
-	end
-	withNetTcp(function(nt)
-		if nt.applyChannel then
-			return nt.applyChannel(ch)
-		end
-		return false
-	end)
+    if not shouldRestoreTcpOnExitRest() then
+        return
+    end
+    local ch = _G.NET_TCP_CHANNEL
+    if not ch then
+        return
+    end
+    withNetTcp(function(nt)
+        if nt.applyChannel then
+            return nt.applyChannel(ch)
+        end
+        return false
+    end)
 end
+
 function applyTcpChannel(ch)
-	return withNetTcp(function(nt)
-		return nt.applyChannel and nt.applyChannel(ch)
-	end)
+    return withNetTcp(function(nt)
+        return nt.applyChannel and nt.applyChannel(ch)
+    end)
 end
+
 function closeTcpChannel(sid)
-	return withNetTcp(function(nt)
-		return nt.closeChannel and nt.closeChannel(sid)
-	end)
+    return withNetTcp(function(nt)
+        return nt.closeChannel and nt.closeChannel(sid)
+    end)
 end
-function appendGetCfgFields()
-	local mode = getMode()
-	if not allowTcpChannel() then
-		return string.format(",wakeup_mode=%s", mode)
-	end
-	local nt = netTcp()
-	local extra = (nt and nt.appendGetCfgFields and nt.appendGetCfgFields()) or ",tcp_on=0"
-	return string.format(",wakeup_mode=%s", mode) .. extra
+
+function appCfgFields()
+    local mode = getMode()
+    if not allowTcpChannel() then
+        return string.format(",wakeup_mode=%s", mode)
+    end
+    local nt = netTcp()
+    local extra = (nt and nt.appCfgFields and nt.appCfgFields()) or ",tcp_on=0"
+    return string.format(",wakeup_mode=%s", mode) .. extra
 end
 return _M

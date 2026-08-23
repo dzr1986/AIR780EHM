@@ -1,3 +1,10 @@
+-- ================================================================
+-- Filename : libfota2.lua
+-- Module   : FOTA 下载引擎：合宙差分升级协议、HTTP(S)、断点续传、校验写盘
+-- Notes    : 本地 helper 速查：无本地压缩 helper
+-- Arch     : 见 doc/LUA_MODULES.md
+-- ================================================================
+
 local libfota2 = {}
 
 local function isjson(str)

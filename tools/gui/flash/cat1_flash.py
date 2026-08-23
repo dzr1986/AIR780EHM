@@ -653,10 +653,148 @@ def cmd_probe(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# LuaDB 打包（与 Luatools 脚本区格式一致）
+# 内存压缩管线（bytes -> bytes，不改磁盘源文件）
 # ---------------------------------------------------------------------------
 
-def collect_script_files(include_core: bool = False) -> list[tuple[str, bytes]]:
+_STRIP_COMMENT_BLOCK_RE = re.compile(r"--\[\[.*?\]\]", re.DOTALL)
+_STRIP_COMMENT_LINE_RE = re.compile(r"^\s*--.*$", re.MULTILINE)
+_STRIP_LOG_RE = re.compile(r"^\s*log\.(info|warn)\s*\(")
+_EMPTY_IF_THEN_END_RE = re.compile(
+    r"^[ \t]*if[^\n]+then[ \t]*\n[ \t]*end[ \t]*\n",
+    re.MULTILINE,
+)
+
+def _strip_comments_bytes(data: bytes) -> bytes:
+    """剥离 -- 行注释与 --[[ ]] 块注释（保留字符串字面量）。"""
+    text = data.decode("utf-8")
+    # 先去块注释
+    text = _STRIP_COMMENT_BLOCK_RE.sub("", text)
+    # 再去行注释（整行为 -- 开头的行）
+    text = _STRIP_COMMENT_LINE_RE.sub("", text)
+    # 合并连续空行为最多 1 行
+    collapsed: list[str] = []
+    blank = 0
+    for line in text.splitlines():
+        if line.strip() == "":
+            blank += 1
+            if blank <= 1:
+                collapsed.append("")
+        else:
+            blank = 0
+            collapsed.append(line)
+    new = "\n".join(collapsed).rstrip() + "\n"
+    return new.encode("utf-8")
+
+
+def _paren_depth(line: str) -> int:
+    """计算括号深度（忽略字符串内的括号，简化处理：仅做近似计算）。"""
+    depth = 0
+    in_str: str | None = None
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if in_str:
+            if c == "\\" and i + 1 < len(line):
+                i += 2
+                continue
+            if c == in_str:
+                in_str = None
+            i += 1
+            continue
+        if c in ("'", '"'):
+            in_str = c
+            i += 1
+            continue
+        if c == "-" and i + 1 < len(line) and line[i + 1] == "-":
+            break
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        i += 1
+    return depth
+
+
+def _strip_logs_bytes(data: bytes) -> bytes:
+    """剥离 log.info(...) 与 log.warn(...) 调用（保留 log.error）。"""
+    text = data.decode("utf-8")
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if _STRIP_LOG_RE.match(line):
+            depth = _paren_depth(line)
+            end = i
+            while depth > 0 and end + 1 < len(lines):
+                end += 1
+                depth += _paren_depth(lines[end])
+            i = end + 1
+            continue
+        out.append(line)
+        i += 1
+    collapsed: list[str] = []
+    blank = 0
+    for line in out:
+        if line.strip() == "":
+            blank += 1
+            if blank <= 1:
+                collapsed.append("")
+        else:
+            blank = 0
+            collapsed.append(line)
+    new = "\n".join(collapsed).rstrip() + "\n"
+    return new.encode("utf-8")
+
+
+def _cleanup_dead_bytes(data: bytes) -> bytes:
+    """剥离日志剥离后残留的空 if-then-end 块。"""
+    text = data.decode("utf-8")
+    while True:
+        nxt = _EMPTY_IF_THEN_END_RE.sub("", text)
+        if nxt == text:
+            break
+        text = nxt
+    new = text.rstrip() + "\n"
+    return new.encode("utf-8")
+
+
+def _minify_ws_bytes(data: bytes) -> bytes:
+    """压缩空白：4 空格缩进转 tab、去空行、去行尾空白。"""
+    text = data.decode("utf-8")
+    out_lines: list[str] = []
+    for line in text.splitlines():
+        raw = line.rstrip()
+        if raw == "":
+            continue
+        i = 0
+        while i < len(raw) and raw[i] in " \t":
+            i += 1
+        leading = raw[:i].replace("\t", "    ")
+        rest = raw[i:]
+        levels = len(leading) // 4
+        rem = len(leading) % 4
+        compact = ("\t" * levels + " " * rem) + rest
+        out_lines.append(compact)
+    new = "\n".join(out_lines).rstrip() + "\n"
+    return new.encode("utf-8")
+
+
+def _compress_lua_bytes(data: bytes) -> bytes:
+    """4 步内存压缩：去注释 → 去日志 → 去死代码 → 压缩空白。"""
+    data = _strip_comments_bytes(data)
+    data = _strip_logs_bytes(data)
+    data = _cleanup_dead_bytes(data)
+    data = _minify_ws_bytes(data)
+    return data
+
+
+def collect_script_files(include_core: bool = False, compress: bool = True) -> list[tuple[str, bytes]]:
+    """收集 user/ + lib/ 下的 .lua/.json 文件。
+
+    compress=True 时对 .lua 文件执行 4 步内存压缩（不改磁盘源文件）。
+    .json 文件原样保留。
+    """
     files: list[tuple[str, bytes]] = []
     seen: set[str] = set()
     for folder in (ROOT / "user", ROOT / "lib"):
@@ -673,7 +811,10 @@ def collect_script_files(include_core: bool = False) -> list[tuple[str, bytes]]:
             if name in seen:
                 continue
             seen.add(name)
-            files.append((name, path.read_bytes()))
+            raw = path.read_bytes()
+            if compress and path.suffix.lower() == ".lua":
+                raw = _compress_lua_bytes(raw)
+            files.append((name, raw))
     # main.lua 放最前，贴近 Luatools 习惯
     files.sort(key=lambda x: (0 if x[0] == "main.lua" else 1, x[0].lower()))
     return files
@@ -710,10 +851,28 @@ def cmd_pack(args) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(blob)
     used = sum(len(d) for _, d in entries)
+    # 统计压缩节省
+    uncompressed = 0
+    compressed = 0
+    for folder in (ROOT / "user", ROOT / "lib"):
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob("*")):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".lua", ".json"}:
+                continue
+            uncompressed += path.stat().st_size
+    saved = uncompressed - used
     _info(f"已写入 {out}")
-    _info(f"文件 {len(entries)} 个，源码 {used/1024:.1f} KB，LuaDB {len(blob)/1024:.1f} KB / 脚本区 {SCRIPT_AREA_KB} KB")
+    _info(f"文件 {len(entries)} 个")
+    _info(f"  原始源码 {uncompressed/1024:.1f} KB → 压缩后 {used/1024:.1f} KB  (节省 {saved/1024:.1f} KB)")
+    _info(f"  LuaDB  {len(blob)/1024:.1f} KB / 脚本区 {SCRIPT_AREA_KB} KB")
+    margin = SCRIPT_AREA_KB * 1024 - len(blob)
+    if margin > 0:
+        _info(f"  裕量 {margin/1024:.1f} KB")
     if len(blob) > SCRIPT_AREA_KB * 1024:
-        return _err("超出脚本区 512KB，请先精简或改用 luac")
+        return _err(f"超出脚本区 {SCRIPT_AREA_KB}KB，仍超 {len(blob) - SCRIPT_AREA_KB * 1024} KB，请进一步精简")
     for name, data in entries:
         print(f"  {len(data)/1024:7.2f} KB  {name}")
     return 0

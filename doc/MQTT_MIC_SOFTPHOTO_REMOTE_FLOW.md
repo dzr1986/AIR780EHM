@@ -3,7 +3,8 @@
 > **现网对本机 IMEI**：**`862323084068124`**（另一台样机 `…8314` 勿混用主题）  
 > **协议总表**：[MQTT_PROTOCOL.md](MQTT_PROTOCOL.md)  
 > **Lua 真源**：`user/net_mqtt.lua` · `user/host_uart.lua`  
-> **IPC 真源**：`app/host/host_at.c` · `app/host/host_remote.c` · `app/cfg_ini/sysconfig.c` · `media_plat/t31x/audio_interface.c`
+> **IPC 真源**：`app/host/host_at.c` · `app/host/host_remote.c` · `app/cfg_ini/sysconfig.c` · `media_plat/t31x/audio_interface.c`  
+> **软光敏（T31 状态机，非 MQTT）**：来回切 / 开灯仍黑白 / 日夜紫闪，见 [T31X_SOFTPHOTO_REPEAT_SWITCH.md](T31X_SOFTPHOTO_REPEAT_SWITCH.md)
 
 ```text
 平台 MQTT  /panshi/device/{IMEI}/

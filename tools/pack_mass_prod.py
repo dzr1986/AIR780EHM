@@ -208,11 +208,20 @@ def _luatos_toml(ver: str, soc_name: str | None) -> str:
 
 
 def build_luatos_archive(out_dir: Path, ver: str, soc_name: str | None) -> Path:
-    """打一份 luatos-cli / Luatools 可导入的 .luatos（标准 ZIP）。"""
+    """打一份 luatos-cli / Luatools 可导入的 .luatos（标准 ZIP）。
+
+    .lua 文件会在写入 ZIP 前经过内存压缩（去注释/日志/空白），
+    确保 Luatools 导入后打包的 script.bin ≤ 512 KB。
+    源仓库 .lua 文件保持不变，压缩仅作用于交付包。
+    """
+    import io
+
     dest = out_dir / f"PANSHI_CAT1_{ver}.luatos"
     if dest.exists():
         dest.unlink()
     files = 0
+    orig_size = 0
+    comp_size = 0
     with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as z:
         z.writestr("luatos-project.toml", _luatos_toml(ver, soc_name))
         files += 1
@@ -230,8 +239,17 @@ def build_luatos_archive(out_dir: Path, ver: str, soc_name: str | None) -> Path:
                 if path.name in flash.SKIP_PACK_NAMES:
                     continue
                 rel = f"{folder}/{path.relative_to(base).as_posix()}"
-                z.write(path, rel)
+                raw = path.read_bytes()
+                if path.suffix.lower() == ".lua":
+                    compressed = flash._compress_lua_bytes(raw)
+                    orig_size += len(raw)
+                    comp_size += len(compressed)
+                    z.writestr(rel, compressed)
+                else:
+                    z.write(path, rel)
                 files += 1
+    if orig_size:
+        _info(f"  .lua 压缩: {orig_size/1024:.1f} KB → {comp_size/1024:.1f} KB (节省 {(orig_size-comp_size)/1024:.1f} KB)")
     _info(f"已生成工程包 {dest}  ({dest.stat().st_size / 1024:.1f} KB, {files} 个文件)")
     return dest
 

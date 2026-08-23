@@ -2,11 +2,27 @@
 
 > **代码**：Cat.1 `user/net_mqtt.lua` `handleDownlink2013` / `resolveUploadWindow` · `user/host_uart.lua` `requestUploadVideo`  
 > **T31**：`AT+UPLOADVIDEO` → `clip_extract_window` → `clip_upload_request`（HTTP type=2 回放 / type=1 侦测）  
+> **T31 完整协议 + 流程日志**：[MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md](MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md)  
+> **闭环（下发/开始/进度/完成）**：[MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md)  
 > **主题**：下行 `/panshi/device/{IMEI}/` · 上行 `/panshi/app/{IMEI}/event`  
-> **现网 IMEI**：`862323084068124` · 脚本 **`001.000.037`**（固件 `2044.001.037`）  
-> **上位机**：`tools/mqtt_tools_gui.bat --tab playback`
+> **上位机**：`tools/mqtt_tools_gui.bat --tab playback` · Java：`tools/mqtt_tools_gui_java.bat`
 
 MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `uploadVideo`（7003）。Cat.1 带宽不够走 GB28181 拉流下载。
+
+---
+
+## 0. 两条上传路径
+
+| 模式 | videoType | 触发 | 1013 `reply=1` 受理 | 1013 `reply=0` 完成 |
+|------|-----------|------|---------------------|---------------------|
+| **动态侦测** | `1` | T31 IVS 人形 → `AT+UPLOADNEED` + 抽片 HTTP | 无（仅无 reply 的排队通知） | 有，`reason=person` |
+| **回放** | `2` | 平台 2013 → `AT+UPLOADVIDEO` + 抽片 HTTP | 有（入队后立刻） | 有，`reason=cloud` |
+
+T31 流程日志（需烧录带 `[clip_upload] flow_log=1` 的固件）：
+
+```sh
+cat /tmp/ipc/clip_upload.log
+```
 
 ---
 
@@ -22,15 +38,20 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
 
 停录后平台若要片：发 **2013**（带时间窗），不要指望 2010 `uploadMode` 自动等价于上传。
 
-### 1.1 1013 两阶段闭环（后台必读）
+### 1.1 1013 闭环（后台必读）
 
-| 阶段 | `reply` | 何时发 | 平台应做什么 |
-|------|---------|--------|--------------|
-| **受理** | `1` | 收到 2013 后 ~1s 内 | 标记「设备已入队」，**还不能**当文件已上传 |
-| **完成** | `0` | T31 抽片 + HTTP 结束后（通常 10s～数分钟） | 用 `fileName`/`httpPath` 展示或下载；`ret≠0` 可重发 2013 |
-| **人形排队** | 缺省 | IVS 人形触发后 | 仅通知「即将上传」，等 `reply=0` 才确认到云 |
+完整 JSON / 串口 / GUI：[MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md)
 
-**同一 `messageId`**：回放模式下，受理包与完成包共用 2013 下发的 `messageId`，便于后台关联。
+| 阶段 | `reply` | `stage` | 何时发 | 平台应做什么 |
+|------|---------|---------|--------|--------------|
+| **开始 / 受理** | `1` | `queued` | 收到 2013 后 ~1s 内 | 已入队，**还不能**当文件已上传 |
+| **上传中 / 进度** | `1` | `uploading` / `start` / `waiting_resp` | HTTP 过程，约 15s 或每 5% | 刷 `percent`；`waiting_resp` 仍未完成 |
+| **完成** | `0` | `uploaded` / `fail` | T31 HTTP 结束（通常 10s～数分钟） | `fileName`/`httpPath`；`ret≠0` 可重发 2013 |
+| **人形排队** | 缺省 | — | IVS 人形触发后 | 仅通知「即将上传」，等 `reply=0` |
+
+**同一 `messageId`**：queued、进度、完成共用 2013 的 `messageId`。
+
+旧固件没有 `AT+UPLOADPROGRESS` 时只有 queued + `reply=0`。HTTP 中途重试不发 `UPLOADRESULT`。完成超时请按 **3600s**，不要用 180s。
 
 ---
 
@@ -47,9 +68,9 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
 5. Cat.1 优先用 beginTs/endTs → AT+UPLOADVIDEO=<need>,<vtype>,<unix>,<unix>,...
 6. T31 clip_extract_window 扫 /mnt/sdcard/media/vi0/YYYYMMDD/ 抽 I 帧
    → 中间片落 /mnt/sdcard/media/vi0/upload_clip/
-7. 上行 1013 **reply=1** ret=0（只表示已排队抽片，不是 HTTP 已到云）
-8. T31 HTTP POST 到 43.136.55.143:7003（type=2）
-9. 上行 1013 **reply=0** ret=0（HTTP 成功，带 fileName/httpPath）或 ret=-1（最终失败）
+7. 上行 1013 **reply=1** `stage=queued`（只表示已排队，不是 HTTP 已到云）
+8. T31 HTTP POST 到 `112.86.146.218:7003`（type=2，不换 IP）；期间 1013 **reply=1** `stage=uploading` + `percent`
+9. 上行 1013 **reply=0** `stage=uploaded`（带 fileName/httpPath）或 `stage=fail` ret=-1
 10. 上位机再打 7003 列表/下载已上传 TS（可选，与 reply=0 交叉验证）
 ```
 
@@ -108,6 +129,7 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
   "deviceNo": "862323084068124",
   "dataType": "1013",
   "reply": 1,
+  "stage": "queued",
   "messageId": "up-req-001",
   "ret": 0,
   "message": "ok",
@@ -129,7 +151,7 @@ MQTT **只传 JSON 信令**，不传 MP4/TS。真实抽片由 T31 HTTP 发到 `u
 | 0 | `cancelled` | `needUpload=0` |
 | -1 | `t3x_not_ready` / `no_host_uart` / `fail` | 未排队 |
 
-**不另发 1004**。平台收到 **1013 `reply=1`** 表示信令受理；**HTTP 是否成功须等 `reply=0`** 或查 7003 列表。
+**不另发 1004**。平台收到 **1013 `reply=1` `stage=queued`** 表示信令受理；HTTP 过程还有 `stage=uploading` + `percent`；**是否成功须等 `reply=0`**。进度 JSON 见 [闭环专题 §3.3](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md#33-上传中--进度--reply1-stageuploadingstartwaiting_resp)。
 
 ### 4.2 应答 — 上传完成/失败（`reply=0`）
 
@@ -181,22 +203,28 @@ T31 HTTP 结束（或抽片最终失败）后，经 UART `AT+UPLOADRESULT` → C
 
 > T31 本地失败会自动重试（最多 5 次，间隔 30s），**重试过程中不会发 MQTT**。只有最终结果才发 `reply=0`。
 
-### 4.3 主动上报 — 人形排队（无下行，`reply` 缺省）
+### 4.3 主动上报 — 人形排队（无下行 2013）
 
-人形抽片排队成功后，T31 发 `AT+UPLOADNEED`，4G 转 1013（无 `reply`）：
+入队后 T31 发带 **文件名+时间** 的 `AT+UPLOADNEED`，4G 转 1013（`reply=1` `stage=queued` `videoType=1`）：
 
 ```json
 {
-  "deviceNo": "862323084068124",
   "dataType": "1013",
+  "reply": 1,
+  "stage": "queued",
+  "videoType": 1,
+  "messageId": "person-1755740015123",
+  "fileName": "34020000001310267610-20260821-1755740015123.ts",
+  "alarmTime": "2026-08-21 15:20:15",
+  "beginTime": "2026-08-21 15:20:00",
+  "endTime": "2026-08-21 15:20:30",
+  "reason": "person",
   "needUpload": 1,
-  "action": "upload_video",
-  "reason": "record_done",
-  "source": "t3x",
-  "pirStatus": "t3x_active",
-  "time": "2026-08-17 19:06:00"
+  "action": "upload_video"
 }
 ```
+
+同一 `messageId` 贯穿进度与 `reply=0` 完成包（完成包再带 `httpPath`）。详见 [MQTT_CLIP_UPLOAD_CLOSED_LOOP.md §6](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md#6-人形type1文件名--时间一起上报)。
 
 ---
 
@@ -211,9 +239,11 @@ T31 HTTP 结束（或抽片最终失败）后，经 UART `AT+UPLOADRESULT` → C
   ← T31    AT+UPLOADRESULT=ret=0,type=2,...,file=...,httpPath=...,msgId=...
   → 平台   1013 reply=0（上传完成或最终失败）
 
-T31 人形自动抽片后（可选）
-  → Cat.1  AT+UPLOADNEED=1,reason=record_done,pirStatus=t3x_active
-  → 平台   1013（无 reply）
+T31 人形自动抽片后
+  → Cat.1  AT+UPLOADNEED=1,reason=person,type=1,start=…,end=…,alarmTs=…,file=….ts,msgId=person-…
+  → 平台   1013 reply=1 stage=queued fileName + alarmTime
+  ← T31    AT+UPLOADRESULT=…file=…httpPath=…msgId=person-…
+  → 平台   1013 reply=0（同一 messageId，补 httpPath）
 ```
 
 成功应答：
@@ -260,7 +290,7 @@ OK
 1. 从 LiveGBS 粘贴国标时段，或粘贴 `ch0_*.ts` 文件名
 2. 填任意开始 / 结束时间
 3. 「匹配录像段」：看覆盖哪些 TS、是否需拆成多条 600s
-4. 「请求上传 2013」：下发信令，等 **1013 reply=1**（受理）→ **1013 reply=0**（完成）
+4. 「请求上传 2013」：下发信令，等 **queued → 进度 percent → reply=0**（见 [闭环专题](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md)）
 5. 切到 **已上传文件** 再打 7003（不要把 7003 当录像目录）
 
 匹配 / 拆段实现：`tools/gui/mqtt/playback.py`（单测 `tools/gui/mqtt/test_playback.py`）。  
@@ -313,7 +343,8 @@ python tools/cat1_flash.py flash-script --wait 90
 
 ## 10. 相关文档
 
-- **[MQTT_1013_BACKEND_GUIDE.md](MQTT_1013_BACKEND_GUIDE.md)** — 后台 1013 两阶段闭环速查
+- **[MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md)** — 下发 / 开始 / 进度 / 完成（IPC + Cat.1 + GUI）
+- **[MQTT_1013_BACKEND_GUIDE.md](MQTT_1013_BACKEND_GUIDE.md)** — 后台 1013 闭环速查
 - [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) §4.9b
 - [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) §10b
 - [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) §4.4

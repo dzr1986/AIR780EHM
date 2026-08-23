@@ -555,7 +555,8 @@ def _console_has_root(text: str) -> bool:
 def enter_shell(ser) -> None:
     send_line(ser, "")
     text = decode_console(drain(ser, 1.0))
-    if not _console_has_root(text) and "login:" not in text.lower():
+    low0 = text.lower()
+    if not _console_has_root(text) and "login:" not in low0 and "password:" not in low0:
         _info("控制台没有 #，按残留 lrz 处理：CAN + Ctrl+C + Ctrl+D")
         abort_stuck_console(ser)
         text = decode_console(drain(ser, 1.0))
@@ -586,6 +587,17 @@ def enter_shell(ser) -> None:
         drain(ser, 1.5)
     send_line(ser, "echo LOGIN_OK; id")
     text = decode_console(drain(ser, 2.5))
+    if "password:" in text.lower():
+        _info("LOGIN_OK 被当成用户名，改以 root 空密码登录")
+        send_line(ser, "")
+        drain(ser, 0.8)
+        send_line(ser, "root")
+        text = decode_console(drain(ser, 1.5))
+        if "password:" in text.lower():
+            send_line(ser, "")
+            drain(ser, 1.5)
+        send_line(ser, "echo LOGIN_OK; id")
+        text = decode_console(drain(ser, 2.5))
     if "uid=0" not in text:
         raise RuntimeError(
             "COM 未进入 root shell（id 无 uid=0）。"
