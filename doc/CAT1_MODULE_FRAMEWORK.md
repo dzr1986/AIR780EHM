@@ -326,3 +326,24 @@ local function mod_call(name, fn, ...)  -- 模块或函数缺失时返回 nil
 **结果**：526807 → 520247B（−6560B，508.1KB）→ 用户 Luatools 口径约 506KB，低于 512KB 线且留 ~5KB 余量。验证：luatos-cli 全量编译零错误；test_parsers/test_factories 全断言通过；git diff 删除行长名逐一回扫代码区确认零残留裸引用（残留项均为表字段/配置键/全大写常量/测试锚点，属预期保留）。
 
 **后续建议**：代码侧余量约 5KB；若后续功能持续增长，治本方案仍是打包链将 `--luac-debug` 从 99 降为 1（仅行号，445.4KB）或 2（仅变量名，384.5KB），可腾出 70~130KB 永久空间。
+
+### 9.11 脚本区第三轮压缩：单调用点函数内联（debug99 口径 −3689B）
+
+背景：9.10 之后用户仍要求继续压缩（余量仅 ~5KB）。函数名缩短已挖尽（第二轮 987 处），本轮转向**单调用点小函数内联**——实测每处内联净省 ≈142B（`_temp/inline_exp` 对照实验：同逻辑 a.luac=564B vs 内联后 b.luac=422B）。原理：删除定义端省下函数头尾、行号表（4B/指令）与变量名调试表（按出现次数存储），调用点端只增加正文表达式，且 debug99 下函数体调试信息随定义一并消失。
+
+**筛选**（`_temp/inline_cands.py`）：对候选名单按文件统计裸出现次数，恰好 2 次（= 定义 + 唯一调用点）且跨文件 grep 确认无外部引用的才内联。34 个候选中有 8 个因以下原因跳过：
+
+| 跳过项 | 原因 |
+|---|---|
+| `noteHostIdle`（battery_guard）、`lazyRequire`（utils） | 全局导出公共 API，内联即删接口 |
+| `stpUartBrdg`（app，30+ 行）、`rdUplnFlds`（net_mqtt，16 行含嵌套函数） | 长函数展开膨胀，且 rdUplnFlds 调用点在表达式参数中间、外层已有同名 `snap` 局部变量（遮蔽风险） |
+| `makeRfrs`（net_mqtt） | 闭包工厂，展开破坏构建表可读性，收益/风险比差 |
+| `stpEvntRfrs`（led_ctrl） | 函数体含 `if not E then return end`，展开后 return 会作用于外层函数，语义不等价 |
+
+**方法**（26 处，零行为变化）：
+- 单表达式体直接替换调用表达式（如 `isVldP2PUid(uid)` → `type(uid) == "string" and #uid == 8 and ...`）
+- 多语句体在表达式上下文（if 条件）的调用点改为前置局部变量（如 `isT3XPwrdOn()` 展开为 `local st = mod_call("t3x_ctrl", "getState")` + 条件，避免 mod_call 求值两次；`shldMap1011(alertCode)` 同理前置 `local e = alertLookup(alertCode)`）
+- 参数名替换为调用点实参名（如 isVldGb 的参数 `pwd` → 实参 `password`）
+- 字符串/注释内的名字不动
+
+**结果**：520247 → 516558B（−3689B，504.5KB）→ 用户 Luatools 口径约 503KB，比 512KB 线余量 9KB。净 −107 行（10 个文件）。验证：luatos-cli 全量编译零错误；test_parsers/test_factories 全断言通过；残留回扫确认被内联名零残留（命中的均为子串同名函数：isVldGb28181/uartRcvryCfg/t3x_policy.isBurnActive，属预期保留）。提交 905ea56。
