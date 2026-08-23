@@ -295,3 +295,21 @@ local function mod_call(name, fn, ...)  -- 模块或函数缺失时返回 nil
 **核实后不处理**：t3xPowerWaitMs 六处 fallback 链统一、battery_guard `cfg()`（有 guard fallback 与 config_manager 语义不同）、peripheral `shallowMerge`（嵌套子表整体替换 vs 逐 key 合并）、host_uart 3249/3552-3559 内联、cellular_bootstrap `waitSimInfo`、各文件零星 optTable——均有语义差异或收益过低，保持现状。
 
 **验证**：luatos-cli `build luac` 全量编译 user/（17 文件）+ lib/（17 文件）零错误；test_parsers.lua（44 断言）+ test_factories.lua（17 断言）经 lupa（Lua 5.5 宿主）全部通过。注：两份测试的提取锚点此前全部失效（Lua pattern `.-` 不跨行，函数均为多行定义），本轮改为"起点 marker 定界提取"后首次真正运行，并修正一处历史错误断言（mic 无收集行时 END 不发布，与 venc/audio/framerate 共用 rowsEndFlus 语义一致）。2A 的 7 处行为变化项（2001/2003/2005/2008 + HOSTIDLE + GETCFG 字段）需整机回归。
+
+### 9.9 脚本区 512KB 超限修复（Luatools 合并口径，−99 行）
+
+背景：Luatools 合并脚本报"文件总数据量(518kb)超过了固件脚本区空间(512kb)"。复现口径 = luatos-cli `build filesystem` 排除固件自带 `sys.lua` 后 debug99 全量编译：基线 531859B(519.4KB) 与用户 518KB 吻合。
+
+**体积构成实测**（决定削减方向）：debug99 总包 ≈ 代码+常量 58% + 行号信息 27% + 变量名信息 15%。行号表按**指令数**存储而非源码行数——单行化/删注释/删空行对 luac 体积零影响（实测 541 处守卫单行化 −1115 行后 script.bin 逐字节不变，该批改动已回退）。有效削减仅两类：删语句（减指令+行号）与减字符串/数字常量。
+
+**本轮削减**（全部零行为变化）：
+- 死函数 3 个：battery_guard `canEnterRestNow`/`canExitRestNow`（零调用）、net_mqtt `fetchWledFromHost`（零调用）
+- libfota2：`FOTA_ERR_INFO` 8 条长错误文案压缩为短形式（键与语义不变）；5 条参数日志合并为 1 条；删 2 条冗余日志（`使用合宙服务器…` 裸日志、`code/body` 重复日志）
+- fota_svc：删 5 条例行 info 日志（ota_start/ota_network_ok/ota_checking/ota_callback/ota_reboot_scheduled，信息均已被 reportStatus 上报覆盖）；4 条 warn 错误路径日志全保留
+- host_uart：删 ipcpoweroff 成功路径 3 条日志（OK/STAGE/tx）与 `venc_unparsed`、连带空 if 与死变量 `sent`
+- net_mqtt：conack/disconnect 两处 8 行 pushNetLed 块提取为本地函数；4 处 `need`/`usbLogical` 的 if-nil 改 `or`（tonumber 场景，无 false 语义风险）
+- vbat/gpio_util/host_event/t3x_policy 共 6 处 if-nil 改 `or`（全部为数字/tonumber 场景）
+
+**结果**：排除 sys.lua 口径 531859 → 526807B（−5052B，514.5KB）。注意：debug99 口径下 514.5KB 仍未进 512KB 线（用户侧约差 1~4KB），**治本方案是打包链改用较低 luac 调试级别**——实测同代码 `--luac-debug 1`（仅行号）= 456085B(445.4KB)、`--luac-debug 2`（仅变量名）= 393727B(384.5KB)，均稳过 512KB；量产链 pack_mass_prod.py 已用 `luac_debug = 0` + 内存压缩（≈346KB）不受影响。
+
+**验证**：luatos-cli `build luac` 全量零错误；test_parsers（44 断言）+ test_factories（17 断言）lupa 宿主全部通过；提交 8d949c1。
