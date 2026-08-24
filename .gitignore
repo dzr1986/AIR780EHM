@@ -7,8 +7,13 @@ luac.out
 .cursor/
 .vscode/
 .idea/
+.trae/
+.zcode/
 *.swp
 *~
+
+# 审计/报告临时目录
+doc/_audit/
 
 # 本地工具缓存
 .qoder/
@@ -26,6 +31,12 @@ release/
 firmware/*.soc
 firmware/*.bin
 *_量产/
+量产/
+firmware/SOC量产及远程升级文件/
+ota_server/量产/
+firmware/**/*.soc
+firmware/**/*.binpkg
+firmware/**/*.bin
 
 # 系统文件
 Thumbs.db
