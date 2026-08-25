@@ -21,6 +21,8 @@ _G.FEATURE_CFG = {
 }
 _G.RNDIS_CFG = {
     refresh_only_usb = true,
+    -- false：禁止 boot 后 flymode 再 refresh（会 IP_LOSE，拖垮 MQTT）
+    refresh_on_ip = false,
     refresh_on_ip_ready = false,  -- true=每个 IP_READY 再 refresh（易 IP 振荡，仅调试）
 }
 local LOW_POWER_WAKEUP_MODE = "mqtt"
@@ -56,9 +58,11 @@ _G.HOST_USB_CFG = {
     t3x_usb_ursp = "+CAT1:USB,%d",
     boot_notify_delay_ms = 1500,
     pwrkey_grace_ms = 5000,            -- USB 插入后忽略 PWRKEY 长按，防座子/线缆误触发关机
-    allow_t3x_usb_reset = (_G.FEATURE_CFG.usb_reenum ~= false), -- 1=CAT1 允许执行 AT+USBRESET；false=直接拒绝
+    allow_t3x_usb_reset = (_G.FEATURE_CFG.usb_reenum ~= false), -- 允许 T31 USBRESET；默认走软重枚举
     block_usb_reset_when_t3x_rest = true,
-    usb_reset_min_interval_sec = 60,
+    usb_reset_min_interval_sec = 120,
+    usb_reset_boot_guard_sec = 180,    -- 开机后 N 秒内拒绝 USBRESET（防 T31 抢跑 flymode）
+    usb_reset_soft_rebind = true,      -- true=只拨 USB 电源，不进飞行模式
     usb_reset_notify_after_ms = 800,
     usb_debug_en_pulse_ms = 300,
 }
@@ -515,9 +519,10 @@ _G.MQTT_CFG = {
     username = "fptop1",
     password = "fptop1.com2025@#$&",
     client_id = nil,
-    autoreconn_ms = 10000,
-    min_connect_interval_sec = 8,
-    ip_lose_cooldown_sec = 3,
+    autoreconn_ms = 10000,           -- 库内自动重连间隔（原硬编码 3s 过密）
+    min_connect_interval_sec = 8,     -- 业务侧主动 connect 最小间隔
+    ip_lose_cooldown_sec = 5,         -- IP_LOSE 后冷却，避免刚恢复就 connect=-1
+    ip_ready_settle_ms = 2000,        -- IP_READY 后再等承载稳定
     debug_uplink = true,
 }
 -- FOTA 拉包地址唯一来源（其它 lua 禁止硬编码；经 resFotaUrl 读取）

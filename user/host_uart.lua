@@ -1277,7 +1277,19 @@ local function usbRcvrAllw(cfg)
     if usbRcvrGrd.busy then
         return false, "BUSY"
     end
-    local min_iv = tonumber(cfg.usb_reset_min_interval_sec) or 60
+    -- 开机保护：未 stable 或上电未满 guard 秒，禁止 USBRESET
+    local usb_rndis = loader.load("usb_rndis")
+    if usb_rndis and usb_rndis.isBootStable and not usb_rndis.isBootStable() then
+        return false, "BOOT"
+    end
+    local guard = tonumber(cfg.usb_reset_boot_guard_sec) or 180
+    if guard > 0 and mcu and mcu.ticks then
+        local ticks = tonumber(mcu.ticks()) or 0
+        if ticks < (guard * 1000) then
+            return false, "BOOT"
+        end
+    end
+    local min_iv = tonumber(cfg.usb_reset_min_interval_sec) or 120
     local now = os.time()
     if usbRcvrGrd.last_sec > 0 and (now - usbRcvrGrd.last_sec) < min_iv then
         return false, "BUSY"
@@ -3754,7 +3766,12 @@ function notify_host(sid, evt)
     if not t3xModule then
         t3xModule = require "t3x_ctrl"
     end
-    if t3xModule.getState and not t3xModule.getState().powered_on and t3xModule.powerOn then
+    if t3xModule.getState and t3xModule.ensureNormalPowerOn then
+        if not t3xModule.getState().powered_on
+            or t3xModule.getState().in_boot_mode then
+            t3xModule.ensureNormalPowerOn("notify_host")
+        end
+    elseif t3xModule.getState and not t3xModule.getState().powered_on and t3xModule.powerOn then
         t3xModule.powerOn()
     end
     mod_call("battery_guard", "markT3xWoken")

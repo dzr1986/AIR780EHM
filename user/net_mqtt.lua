@@ -932,8 +932,8 @@ function publishVersion(opts)
         dataType = DT.UL_VERSION_QUERY,
         fields = string.format(
             ',"scriptVersion":"%s","firmwareVersion":"%s","coreVersion":"%s","project":"%s","buildTag":"%s","productKey":"%s"%s',
-            escJson(snap.scriptVersion),
-            escJson(snap.firmwareVersion),
+            escJson(snap.scrpVrsn),
+            escJson(snap.frmwVrsn),
             escJson(snap.coreVersion),
             escJson(snap.project),
             escJson(snap.buildTag),
@@ -1981,6 +1981,43 @@ local function pushNetLed(online)
     end)
 end
 
+local function mqttCellAdapter()
+    -- RNDIS/USB 网卡起来后 dft 可能漂移；MQTT 必须走蜂窝
+    if socket and socket.LWIP_GP ~= nil then
+        return socket.LWIP_GP
+    end
+    return nil
+end
+
+local function mqttAdapterReady(adp)
+    if socket and socket.localIP then
+        local ip = nil
+        if adp ~= nil then
+            local ok, v = pcall(socket.localIP, adp)
+            if ok then ip = v end
+        end
+        if not ip or ip == "" or ip == "0.0.0.0" then
+            local ok, v = pcall(socket.localIP)
+            if ok then ip = v end
+        end
+        if ip and ip ~= "" and ip ~= "0.0.0.0" then
+            return true
+        end
+    end
+    if not socket or not socket.adapter then
+        return true
+    end
+    if adp ~= nil then
+        local ok, ready = pcall(socket.adapter, adp)
+        return ok and ready == true
+    end
+    if socket.dft then
+        local ok, ready = pcall(socket.adapter, socket.dft())
+        return ok and ready == true
+    end
+    return true
+end
+
 local function mqttTask()
     local _, deviceId = waitForNtwr()
     local mcfg = _G.MQTT_CFG or {}
@@ -1994,21 +2031,81 @@ local function mqttTask()
         mqttError("mqtt_no_login_config")
         return
     end
-    if socket and socket.adapter and socket.dft then
-        local waitIp = 0
-        while not socket.adapter(socket.dft()) and waitIp < 120 do
-            sys.waitUntil("IP_READY", 5000)
-            waitIp = waitIp + 1
-        end
+    local cellAdp = mqttCellAdapter()
+    if cellAdp ~= nil and socket.dft then
+        pcall(socket.dft, cellAdp)
     end
-    mqttClient = mqtt.create(nil, mcfg.host, mcfg.port, mcfg.ssl)
+    local waitIp = 0
+    while not mqttAdapterReady(cellAdp) and waitIp < 60 do
+        sys.waitUntil("IP_READY", 5000)
+        waitIp = waitIp + 1
+    end
+    if not mqttAdapterReady(cellAdp) then
+        mqttWarn("mqtt_adapter_fallback_default", cellAdp ~= nil and tostring(cellAdp) or "nil")
+        cellAdp = nil
+    end
+    -- IP_READY 后略等承载稳定，避免立刻 connect 得到 ret=-1
+    local settleMs = tonumber(mcfg.ip_ready_settle_ms) or 2000
+    if settleMs > 0 then
+        sys.wait(settleMs)
+    end
+    mqttClient = mqtt.create(cellAdp, mcfg.host, mcfg.port, mcfg.ssl)
     mqttClient:auth(clientId, mcfg.username, mcfg.password)
-    mqttClient:autoreconn(true, 3000)
-    mqttInfo("mqtt_connecting", mcfg.host, tonumber(mcfg.port) or 1883, clientId)
-    sys.subscribe("IP_READY", function()
-        if mqttClient and not isConnected then
-            pcall(function() mqttClient:connect() end)
+    local autoMs = tonumber(mcfg.autoreconn_ms) or 10000
+    if autoMs < 3000 then
+        autoMs = 3000
+    end
+    mqttClient:autoreconn(true, autoMs)
+    local minConnSec = tonumber(mcfg.min_connect_interval_sec) or 8
+    local loseCoolSec = tonumber(mcfg.ip_lose_cooldown_sec) or 3
+    local lastConnAt = 0
+    local ipLoseUntil = 0
+    local function tryMqttConnect(reason)
+        if not mqttClient or isConnected then
+            return
         end
+        local now = os.time()
+        if now < ipLoseUntil then
+            return
+        end
+        if minConnSec > 0 and lastConnAt > 0 and (now - lastConnAt) < minConnSec then
+            return
+        end
+        if not mqttAdapterReady(cellAdp) then
+            return
+        end
+        lastConnAt = now
+        mqttInfo("mqtt_try_connect", reason or "manual")
+        pcall(function() mqttClient:connect() end)
+    end
+    mqttInfo("mqtt_connecting", mcfg.host, tonumber(mcfg.port) or 1883, clientId,
+        cellAdp ~= nil and tostring(cellAdp) or "default")
+    sys.subscribe("IP_READY", function(adapter)
+        if cellAdp ~= nil and adapter ~= nil and adapter ~= cellAdp then
+            return
+        end
+        if mqttClient and not isConnected then
+            sys.taskInit(function()
+                sys.wait(settleMs > 0 and settleMs or 1500)
+                pcall(function() mqttClient:autoreconn(true, autoMs) end)
+                tryMqttConnect("ip_ready")
+            end)
+        end
+    end)
+    sys.subscribe("IP_LOSE", function(adapter)
+        if cellAdp ~= nil and adapter ~= nil and adapter ~= cellAdp then
+            return
+        end
+        ipLoseUntil = os.time() + (loseCoolSec > 0 and loseCoolSec or 3)
+        isConnected = false
+        _G.APP_RUNTIME.online_status = 0
+        mqttWarn("mqtt_ip_lose_cooldown", loseCoolSec)
+        if mqttClient then
+            -- 先停自动重连，避免 IP 未稳时狂刷 connect=-1
+            pcall(function() mqttClient:autoreconn(false) end)
+            pcall(function() mqttClient:disconnect() end)
+        end
+        pushNetLed(false)
     end)
     mqttClient:on(function(client, event, data, payload)
         if event == "conack" then
@@ -2042,7 +2139,7 @@ local function mqttTask()
             end
         end
     end)
-    mqttClient:connect()
+    tryMqttConnect("boot")
     stpBttrStts()
     sys.waitUntil(mqttConnEvt(), 90000)
     strtStts()

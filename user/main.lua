@@ -6,7 +6,7 @@
 
 PROJECT = "PANSHI_CAT1"
 -- ===== 第 1 段：VERSION 格式校验 & 全局 OTA 版本函数 =====
-VERSION = "001.000.002"
+VERSION = "001.000.049"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function valBuildVer(ver)

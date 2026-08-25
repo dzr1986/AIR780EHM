@@ -100,6 +100,30 @@ local function ensurePins()
     return entry_pwr, entry_int, entry_boot, entry_ota
 end
 
+local function ensureNormalRunPins()
+    ensurePins()
+    local _, _, entry_boot, entry_ota = getEntries()
+    local bootOff = (entry_boot and entry_boot.init_level) or 0
+    local otaOff = (entry_ota and entry_ota.init_level) or 0
+    local dirty = isInBootMode == true
+    if t3XBootMode then
+        if crrnBootLvl == nil or crrnBootLvl ~= bootOff then
+            dirty = dirty or (crrnBootLvl == bootModeLvl)
+            t3XBootMode(bootOff)
+            crrnBootLvl = bootOff
+        end
+    end
+    if t3xOtaPin then
+        if crrnOtaLvl == nil or crrnOtaLvl ~= otaOff then
+            dirty = dirty or (crrnOtaLvl == otaModeLevel)
+            t3xOtaPin(otaOff)
+            crrnOtaLvl = otaOff
+        end
+    end
+    isInBootMode = false
+    return dirty
+end
+
 local function aplPwrLeve(on)
     ensurePins()
     if not t3xPowerPin then
@@ -127,6 +151,8 @@ end
 
 function start()
     ensurePins()
+    -- 启动即强制 BOOT/OTA 为正常运行电平，避免上电进烧录
+    ensureNormalRunPins()
     t3xInfo("start")
     local policy = t3xPolicyMod()
     if type(policy) == "table" and policy.bootPowerOn then
@@ -158,9 +184,37 @@ local function waitBfrWake()
     waitSleepIdle(20000)
 end
 
+-- 正常业务上电：先保证不在烧录脚位，必要时断电再上电
+function ensureNormalPowerOn(tag)
+    local function doIt()
+        waitBfrWake()
+        local wasBurn = isInBootMode == true
+            or crrnBootLvl == bootModeLvl
+            or crrnOtaLvl == otaModeLevel
+        ensureNormalRunPins()
+        if wasBurn and isPoweredOn then
+            t3xWarn("normal_power_cycle_clear_burn", tostring(tag or ""))
+            aplPwrLeve(false)
+            sys.wait(bootDelay)
+            ensureNormalRunPins()
+        end
+        local ok = aplPwrLeve(true)
+        lastAction = "ensureNormalPowerOn"
+        t3xInfo("ensure_normal_power_on", tostring(tag or ""), wasBurn and "cycled" or "ok")
+        return ok
+    end
+    if not ipcInTask() then
+        sys.taskInit(function()
+            doIt()
+        end)
+        return true
+    end
+    return doIt()
+end
+
 function powerOn()
-    waitBfrWake()
-    return aplPwrLeve(true)
+    -- 普通上电也清烧录脚，避免误进 U-Boot/烧录
+    return ensureNormalPowerOn("powerOn")
 end
 
 function powerOff()
@@ -191,7 +245,8 @@ function entBootMode()
         return false
     end
     t3xWarn("enter_bootmode")
-    powerOff()
+    -- 烧录上电必须用 aplPwrLeve，禁止走 powerOn/ensureNormalPowerOn（会清 BOOT/OTA）
+    aplPwrLeve(false)
     sys.timerStart(function()
         t3XBootMode(bootModeLvl)
         t3xOtaPin(otaModeLevel)
@@ -200,7 +255,7 @@ function entBootMode()
         isInBootMode = true
     end, bootDelay)
     sys.timerStart(function()
-        powerOn()
+        aplPwrLeve(true)
     end, bootDelay)
     lastAction = "enterBootMode"
     return true
@@ -315,9 +370,7 @@ function wake()
     waitBfrWake()
     state.last_wake_reason = rtos.last_wake_reason and rtos.last_wake_reason() or nil
     t3xInfo("wake", tostring(state.last_wake_reason or ""))
-    if not isPoweredOn then
-        aplPwrLeve(true)
-    end
+    ensureNormalPowerOn("wake")
     pulseMcuInt()
 end
 
@@ -382,11 +435,8 @@ function ensPowOn(tag, opts)
         t3xWarn("ensure_power_denied", tostring(tag or "t3x_ipc"))
         return false
     end
-    if isPoweredOn then
-        return true
-    end
-    t3xInfo("ensure_power_on", tostring(tag or "t3x_ipc"))
-    powerOn()
+    -- 即使已上电，也清一次烧录脚（卡在烧录态时需断电再上）
+    ensureNormalPowerOn(tag or "t3x_ipc")
     local waitMs = rslvPwrWait(opts)
     if waitMs > 0 and ipcInTask() then
         sys.wait(waitMs)

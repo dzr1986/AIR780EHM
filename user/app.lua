@@ -227,35 +227,66 @@ local function onExtLowPwr(reason)
     if rp and rp.setWorkMode then
         rp.setWorkMode("person_detect")
     end
-    if not setLowPwr(false) then return end
-    appInfo("exit_low_power", reason)
+    -- 即使已是非 rest，2002exit 也必须给 T31 正常上电（清 BOOT/OTA，防误进烧录）
+    local changed = setLowPwr(false)
+    appInfo("exit_low_power", reason, changed and "mode_changed" or "already_awake")
     _G.APP_RUNTIME.last_rest_reason = nil
-    if state.mqtt_started and netModule and netModule.publishRest then
-        if reason == "usb_insert" then
-            sys.taskInit(function()
-                sys.wait(5000)
-                if usbRndis and usbRndis.isRefreshing and usbRndis.isRefreshing() then
-                    return
-                end
-                local st = netModule.getState and netModule.getState() or nil
-                if st and st.connected then
-                    netModule.publishRest({ lowPowerMode = "exit", reason = reason })
-                end
-            end)
-        else
-            netModule.publishRest({ lowPowerMode = "exit", reason = reason })
+    if changed then
+        if state.mqtt_started and netModule and netModule.publishRest then
+            if reason == "usb_insert" then
+                sys.taskInit(function()
+                    sys.wait(5000)
+                    if usbRndis and usbRndis.isRefreshing and usbRndis.isRefreshing() then
+                        return
+                    end
+                    local st = netModule.getState and netModule.getState() or nil
+                    if st and st.connected then
+                        netModule.publishRest({ lowPowerMode = "exit", reason = reason })
+                    end
+                end)
+            else
+                netModule.publishRest({ lowPowerMode = "exit", reason = reason })
+            end
+        end
+        sys.publish(E.POWER_EXITED_REST)
+        local lpw = lowPwrWake()
+        if lpw and lpw.onExitRest then
+            lpw.onExitRest()
+        end
+        if loader.enabled("sound_prompt") and type(sound_prompt) == "table"
+            and sound_prompt.onWakeFromLowPower then
+            sound_prompt.onWakeFromLowPower()
         end
     end
-    sys.publish(E.POWER_EXITED_REST)
-    reqT3xWake("exit_low_power", nil, nil, { force_wake = true })
-    local lpw = lowPwrWake()
-    if lpw and lpw.onExitRest then
-        lpw.onExitRest()
-    end
-    if loader.enabled("sound_prompt") and type(sound_prompt) == "table"
-        and sound_prompt.onWakeFromLowPower then
-        sound_prompt.onWakeFromLowPower()
-    end
+    sys.taskInit(function()
+        local t3x = t3xModule
+        if type(t3x) ~= "table" then
+            t3x = lazyMod("t3x_ctrl")
+        end
+        -- 若卡在烧录态：退脚位并恢复业务标志
+        local st = t3x and t3x.getState and t3x.getState() or nil
+        if _G.T3X_BURN_MODE_ACTIVE or state.t3x_burn_active
+            or (st and st.in_boot_mode) then
+            appWarn("exit_low_power_clear_burn")
+            if t3x and t3x.extBootMode then
+                pcall(t3x.extBootMode)
+            end
+            _G.T3X_BURN_MODE_ACTIVE = false
+            state.t3x_burn_active = false
+            state.heartbeat_paused = false
+            if pir_ctrl and pir_ctrl.resume then
+                pcall(pir_ctrl.resume)
+            end
+        end
+        if t3x and t3x.ensureNormalPowerOn then
+            t3x.ensureNormalPowerOn("exit_low_power:" .. tostring(reason))
+            if t3x.pulseMcuInt then
+                t3x.pulseMcuInt()
+            end
+        else
+            reqT3xWake("exit_low_power", nil, nil, { force_wake = true })
+        end
+    end)
 end
 
 local function onReboot()
@@ -475,7 +506,23 @@ local function bootMqtt()
         return
     end
     sys.taskInit(function()
-        sys.waitUntil("net_ready", 300000)
+        -- RNDIS open 会 flymode；须等 stable 后再起 MQTT，避免与 IP_LOSE 竞态
+        if loader.enabled("rndis") and type(usbRndis) == "table" then
+            if usbRndis.waitForNetStable then
+                usbRndis.waitForNetStable(300000)
+            elseif usbRndis.isBootStable then
+                local n = 0
+                while not usbRndis.isBootStable() and n < 600 do
+                    sys.wait(500)
+                    n = n + 1
+                end
+            end
+        end
+        -- net_ready 可能已在 RNDIS 等待 IP 期间发布过，不能只 waitUntil
+        local ip = socket and socket.localIP and socket.localIP() or nil
+        if not (ip and ip ~= "" and ip ~= "0.0.0.0") then
+            sys.waitUntil("net_ready", 300000)
+        end
         _G.device_imei = getImei()
         startMqtt()
     end)
@@ -812,10 +859,8 @@ local function bldSystEvnt()
             onEntLowPwr("mqtt_2002")
         end },
         { E.POWER_EXIT_REST, function()
-            if isLowPwrOn() or (_G.APP_RUNTIME and _G.APP_RUNTIME.low_power_mode == 1) then
-                -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
-                onExtLowPwr("mqtt_2002")
-            end
+            -- 2002exit：无论当前是否已在 rest，都走退出逻辑给 T31 正常上电
+            onExtLowPwr("mqtt_2002")
         end },
         { E.DEVICE_REBOOT_REQUEST, onReboot },
         { E.DEVICE_POWER_OFF_REQUEST, function()
