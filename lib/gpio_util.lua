@@ -1,3 +1,9 @@
+-- ================================================================
+-- Filename : gpio_util.lua
+-- Module   : GPIO 配置工具：GPIO_IN/OUT 表转 gpio.setup，含 pull/边沿/防抖/输出初始化
+-- Arch     : doc/modules/LIB_UART_GPIO.md
+-- ================================================================
+
 require "sys"
 require "config"
 local _modname = ...
@@ -6,17 +12,21 @@ _G[_modname] = _M
 function trigger_mode(mode)
     return ({ rising = 0, falling = 1, both = 2 })[mode] or 0
 end
+
 function pull(pull_name)
     return ({ pullup = 1, pulldown = 2 })[pull_name] or 1
 end
+
 function in_pin(name)
     local e = _G.GPIO_IN and _G.GPIO_IN[name]
     return e and e.pin
 end
+
 function out_pin(name)
     local e = _G.GPIO_OUT and _G.GPIO_OUT[name]
     return e and e.pin
 end
+
 function setup_input(pin, callback, opts)
     if not pin or not callback then
         return false
@@ -34,6 +44,7 @@ function setup_input(pin, callback, opts)
     end
     return true
 end
+
 function setup_input_entry(entry, callback, overrides)
     if not entry or not entry.pin then
         return false
@@ -50,16 +61,15 @@ function setup_input_entry(entry, callback, overrides)
     end
     return setup_input(entry.pin, callback, opts)
 end
+
 function setup_output(entry)
     if not entry or not entry.pin then
         return nil
     end
-    local level = entry.init_level
-    if level == nil then
-        level = 0
-    end
+    local level = entry.init_level or 0
     return gpio.setup(entry.pin, level)
 end
+
 function set_output(entry, on)
     if not entry or not entry.pin then
         return false

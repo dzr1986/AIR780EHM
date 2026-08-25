@@ -22,7 +22,7 @@
     "only_code": "True",
     "only_luac_code": "True",
     "file_system_enable": "True",
-    "default_lib": "True"
+    "default_lib": "False"
   },
   "version": 2
 }

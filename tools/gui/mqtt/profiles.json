@@ -1,0 +1,19 @@
+{
+  "active": "现网 Broker",
+  "profiles": [
+    {
+      "name": "现网 Broker",
+      "broker": "112.86.146.218",
+      "port": 2123,
+      "client_id": "platform-test-001",
+      "device_imei": "862323084068124",
+      "username": "fptop1",
+      "password": "fptop1.com2025@#$&",
+      "keepalive": 60,
+      "reply_timeout_sec": 12.0,
+      "qos": 1,
+      "ssl": false,
+      "clean_session": true
+    }
+  ]
+}

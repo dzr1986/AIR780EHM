@@ -3,7 +3,7 @@ package com.luat.ota.entity;
 import jakarta.persistence.*;
 import java.time.Instant;
 
-/** 合宙 IoT 风格固件条目（对应 iot.openluat.com「我的固件」） */
+/** 固件包元数据。 */
 @Entity
 @Table(name = "firmware_packages")
 public class FirmwarePackage {
@@ -18,7 +18,7 @@ public class FirmwarePackage {
     @Column(nullable = false, length = 128)
     private String firmwareName;
 
-    /** 目标版本（合宙 IoT 版本号 xxx.xxx.xxx） */
+    /** 目标版本（xxx.xxx.xxx） */
     @Column(nullable = false, length = 32)
     private String version;
 
@@ -35,7 +35,7 @@ public class FirmwarePackage {
     @Column(nullable = false)
     private Boolean allowUpgrade = true;
 
-    /** false = 仅指定 IMEI 可升级（合宙「指定设备」） */
+    /** false = 仅指定 IMEI 可升级 */
     @Column(nullable = false)
     private Boolean upgradeAll = false;
 

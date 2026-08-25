@@ -20,6 +20,9 @@ public class OtaProperties {
     private String adminToken = "changeme";
     private List<String> allowedImeis = new ArrayList<>();
     private Map<String, String> firmwareMap = new HashMap<>();
+    private String ipcFileDir = "./ipc_upgrade/files";
+    private String ipcDemoBase = "http://127.0.0.1:8010";
+    private String ipcPublicDownloadBase = "http://43.136.55.143:8008";
 
     public String getFirmwareDir() {
         return firmwareDir;
@@ -99,5 +102,29 @@ public class OtaProperties {
 
     public void setFirmwareMap(Map<String, String> firmwareMap) {
         this.firmwareMap = firmwareMap;
+    }
+
+    public String getIpcFileDir() {
+        return ipcFileDir;
+    }
+
+    public void setIpcFileDir(String ipcFileDir) {
+        this.ipcFileDir = ipcFileDir;
+    }
+
+    public String getIpcDemoBase() {
+        return ipcDemoBase;
+    }
+
+    public void setIpcDemoBase(String ipcDemoBase) {
+        this.ipcDemoBase = ipcDemoBase;
+    }
+
+    public String getIpcPublicDownloadBase() {
+        return ipcPublicDownloadBase;
+    }
+
+    public void setIpcPublicDownloadBase(String ipcPublicDownloadBase) {
+        this.ipcPublicDownloadBase = ipcPublicDownloadBase;
     }
 }

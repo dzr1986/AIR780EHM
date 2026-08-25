@@ -14,6 +14,12 @@ public interface DeviceRepository extends JpaRepository<Device, Long> {
 
     List<Device> findByOtaEnabledTrue();
 
+    List<Device> findByProjectKey(String projectKey);
+
+    long countByProjectKey(String projectKey);
+
+    List<Device> findByImeiContaining(String imei);
+
     @Query("select d from Device d where d.otaEnabled = true and d.targetVersion is not null")
     List<Device> findUpgradeCandidates();
 

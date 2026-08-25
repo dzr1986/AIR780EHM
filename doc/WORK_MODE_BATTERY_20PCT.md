@@ -1,5 +1,7 @@
 # 工作模式与电量 20% 切换（一直录像 ↔ 动态侦测）
 
+> **已取代（2026-08-17）**：低电自动进 PIR 已取消。现行规范见 **[WORK_MODE_PERSON_DETECT_PIR.md](WORK_MODE_PERSON_DETECT_PIR.md)**（开机人形常电；仅 MQTT 2002 才断 T31 用 PIR）。下文仅作历史对照。
+
 > **2026-06-30 更新**：默认 `battery` 策略为三档（>20% 常电 · 5~20% HOSTIDLE · ≤5% 关机），5~20% **不进 4G rest**。见 [LUA_MODULES.md](LUA_MODULES.md) §5.1。下文 ≤10% rest 描述适用于 `hybrid` 或历史对照。
 
 > **产品规则**  

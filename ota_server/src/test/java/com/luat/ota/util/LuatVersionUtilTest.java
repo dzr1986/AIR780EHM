@@ -19,9 +19,22 @@ class LuatVersionUtilTest {
     }
 
     @Test
-    void isValid() {
-        assertTrue(LuatVersionUtil.isValid("2034.001.002"));
-        assertFalse(LuatVersionUtil.isValid(""));
-        assertFalse(LuatVersionUtil.isValid("abc"));
+    void canUpgradeScriptRules() {
+        assertTrue(LuatVersionUtil.canUpgrade("001.000.000", "001.000.001"));
+        assertTrue(LuatVersionUtil.canUpgrade("001.000.001", "002.000.200"));
+        assertTrue(LuatVersionUtil.canUpgrade("001.000.001", "002.000.001"));
+        assertFalse(LuatVersionUtil.canUpgrade("001.000.200", "002.000.001"));
+        assertFalse(LuatVersionUtil.canUpgrade("001.000.002", "001.000.002"));
+        assertFalse(LuatVersionUtil.canUpgrade("001.000.002", "001.000.001"));
+    }
+
+    @Test
+    void canUpgradeIotVersion() {
+        assertTrue(LuatVersionUtil.canUpgrade("2044.001.002", "2044.001.010"));
+        assertTrue(LuatVersionUtil.canUpgrade("2034.001.002", "2044.001.010"));
+        assertTrue(LuatVersionUtil.canUpgrade("2044.001.002", "2045.001.002"));
+        assertFalse(LuatVersionUtil.canUpgrade("2044.001.010", "2044.001.002"));
+        assertFalse(LuatVersionUtil.canUpgrade("2045.001.010", "2044.001.010"));
+        assertFalse(LuatVersionUtil.canUpgrade("2044.001.010", "2044.002.001"));
     }
 }

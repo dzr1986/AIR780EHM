@@ -1,3 +1,9 @@
+-- ================================================================
+-- Filename : peripheral.lua
+-- Module   : 外设聚合：PWR/BOOT 长按、coproc_ready、LED 模式、启动 pir_ctrl 硬件
+-- Arch     : doc/modules/PERIPHERAL_LED_FLOW.md
+-- ================================================================
+
 require "sys"
 require "sysplus"
 require "config"
@@ -6,7 +12,6 @@ local led_ctrl = require "led_ctrl"
 local pir_ctrl = require "pir_ctrl"
 local _M = {}
 module(..., package.seeall)
-local LOG_TAG = "peripheral"
 local keyStarted = false
 local bootCfg, pwrCfg, readyCfg
 local pressStates = {
@@ -19,14 +24,17 @@ local function shallowMerge(base, over)
     if over then for k, v in pairs(over) do out[k] = v end end
     return out
 end
-local function loadKeySection(name, overrides)
+
+local function loadKeySctn(name, overrides)
     return shallowMerge((_G.KEY_CONFIG and _G.KEY_CONFIG[name]) or {}, overrides)
 end
-local function publishAppEvent(eventKey)
+
+local function pubAppEvt(eventKey)
     local E = _G.APP_EVENTS
     if E and E[eventKey] then sys.publish(E[eventKey]) end
 end
-local function setupLongPressKey(cfg, state)
+
+local function stpLongPrss(cfg, state)
     if not cfg or not cfg.pin then return end
     local pressLevel = cfg.pressLevel
     if pressLevel == nil then pressLevel = 0 end
@@ -44,13 +52,13 @@ local function setupLongPressKey(cfg, state)
             state.timer = sys.timerStart(function()
                 state.timer = nil
                 state.long_fired = true
-                publishAppEvent(cfg.events and cfg.events.long)
+                pubAppEvt(cfg.events and cfg.events.long)
                 if cfg.onLongPress then cfg.onLongPress() end
             end, cfg.longPressMs or cfg.longPressTimeout or 2000)
         else
             if state.timer then sys.timerStop(state.timer); state.timer = nil end
             if not state.long_fired then
-                publishAppEvent(cfg.events and cfg.events.short)
+                pubAppEvt(cfg.events and cfg.events.short)
                 if cfg.onShortPress then cfg.onShortPress() end
             end
             state.long_fired = false
@@ -61,13 +69,14 @@ local function setupLongPressKey(cfg, state)
         debounce_ms = cfg.debounce or 100,
     })
 end
-local function setupReadySignal(cfg)
+
+local function stpRdySgnl(cfg)
     if not cfg or not cfg.pin then return end
     local active = cfg.activeLevel
     if active == nil then active = 1 end
     gpio_util.setup_input(cfg.pin, function(level)
         if level == active then
-            publishAppEvent(cfg.event)
+            pubAppEvt(cfg.event)
             if cfg.onReady then cfg.onReady() end
         end
     end, {
@@ -76,7 +85,8 @@ local function setupReadySignal(cfg)
         debounce_ms = cfg.debounce or 100,
     })
 end
-local function normalizeConfig(cfg)
+
+local function nrmlCnfg(cfg)
     cfg = cfg or {}
     local led = cfg.led or {}
     local keyCfg = cfg.key or {}
@@ -100,6 +110,7 @@ local function normalizeConfig(cfg)
     end
     return { led = led, key = keyCfg }
 end
+
 function _M.cancelLongPress(name)
     local state = pressStates[name]
     if not state then return false end
@@ -107,22 +118,24 @@ function _M.cancelLongPress(name)
     state.long_fired = false
     return true
 end
+
 function _M.start(cfg)
-    local sub = normalizeConfig(cfg)
+    local sub = nrmlCnfg(cfg)
     led_ctrl.start(sub.led)
     if not keyStarted then
         cfg = sub.key or {}
-        pwrCfg = loadKeySection("pwrkey", cfg.pwrkey)
-        bootCfg = loadKeySection("bootkey", cfg.bootkey)
-        readyCfg = loadKeySection("ready", cfg.ready)
-        setupLongPressKey(pwrCfg, pressStates.pwr)
-        setupLongPressKey(bootCfg, pressStates.boot)
-        setupReadySignal(readyCfg)
+        pwrCfg = loadKeySctn("pwrkey", cfg.pwrkey)
+        bootCfg = loadKeySctn("bootkey", cfg.bootkey)
+        readyCfg = loadKeySctn("ready", cfg.ready)
+        stpLongPrss(pwrCfg, pressStates.pwr)
+        stpLongPrss(bootCfg, pressStates.boot)
+        stpRdySgnl(readyCfg)
         keyStarted = true
     end
     pir_ctrl.startHw()
     return true
 end
+
 function _M.getState()
     return {
         led = led_ctrl.getState(),
@@ -130,21 +143,24 @@ function _M.getState()
         pir = pir_ctrl.getState(),
     }
 end
+
 function _M.getConfig()
     return { led = led_ctrl.getConfig(), pir = pir_ctrl.getMediaConfig() }
 end
+
 function _M.setLed(red, blue)
     led_ctrl.setLed(red, blue)
 end
+
 function _M.turnOffLed()
     led_ctrl.turnOff()
 end
+
 function _M.runLedPattern(pattern)
     if pattern == "blink_red" and led_ctrl.blinkRed then
         sys.taskInit(led_ctrl.blinkRed)
     elseif pattern == "blink_blue" and led_ctrl.blinkBlue then
         sys.taskInit(led_ctrl.blinkBlue)
-    else
     end
 end
 return _M

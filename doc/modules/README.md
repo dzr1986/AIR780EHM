@@ -48,6 +48,7 @@
 | 专题 / 文档 | 说明 |
 |-------------|------|
 | [MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md) | **平台 MQTT 客户端联调**（MQTTX、冒烟、mosquitto） |
+| [MQTT_ALL_CMD_FLOW_TEST.md](../MQTT_ALL_CMD_FLOW_TEST.md) | **全指令流程与实机结果**（`--run-all`、Cat.1 / T31x） |
 | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) | `AT_CMD_TABLE`、`RX_LINE_HANDLER_REGISTRY`、HOSTIDLE 门禁 |
 | [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) | `DOWNLINK_HANDLERS`、`DL2004_ACTIONS`、2022–2031 工厂 |
 | [MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) | 下行 200x 字段全集 · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) |

@@ -1,11 +1,13 @@
 package com.luat.ota.service;
 
 import com.luat.ota.config.OtaProperties;
+import com.luat.ota.entity.FirmwareDeviceAssignment;
 import com.luat.ota.entity.FirmwarePackage;
 import com.luat.ota.entity.OtaProject;
 import com.luat.ota.repository.FirmwareDeviceAssignmentRepository;
 import com.luat.ota.repository.FirmwarePackageRepository;
 import com.luat.ota.repository.OtaProjectRepository;
+import com.luat.ota.util.LuatFilenameParser;
 import com.luat.ota.util.LuatVersionUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,17 +20,22 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.SecureRandom;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
- * 合宙 IoT 风格固件库：固件名、版本号、允许升级、升级全部/指定设备。
+ * 固件库：固件名、版本号、允许升级、升级全部或指定设备。
  */
 @Service
 public class FirmwareRegistryService {
 
     private static final Logger log = LoggerFactory.getLogger(FirmwareRegistryService.class);
+    private static final String KEY_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    private static final SecureRandom RNG = new SecureRandom();
 
     private final FirmwarePackageRepository firmwareRepo;
     private final FirmwareDeviceAssignmentRepository assignmentRepo;
@@ -52,12 +59,88 @@ public class FirmwareRegistryService {
         return projectRepo.findAll();
     }
 
+    public List<Map<String, Object>> listProjectViews() {
+        return projectRepo.findAll().stream().map(this::toProjectView).toList();
+    }
+
+    public Optional<OtaProject> findProject(Long id) {
+        return projectRepo.findById(id);
+    }
+
+    public Optional<OtaProject> findProjectByKey(String projectKey) {
+        if (!StringUtils.hasText(projectKey)) {
+            return Optional.empty();
+        }
+        return projectRepo.findByProjectKey(projectKey.trim());
+    }
+
+    public boolean projectKeyExists(String projectKey) {
+        return findProjectByKey(projectKey).isPresent();
+    }
+
+    public boolean hasFirmwareName(String firmwareName) {
+        return StringUtils.hasText(firmwareName) && firmwareRepo.existsByFirmwareName(firmwareName);
+    }
+
     @Transactional
     public OtaProject saveProject(OtaProject project) {
+        if (!StringUtils.hasText(project.getName())) {
+            throw new IllegalArgumentException("项目名称必填");
+        }
         if (!StringUtils.hasText(project.getProjectKey())) {
-            throw new IllegalArgumentException("project_key required");
+            project.setProjectKey(newProjectKey());
+        }
+        if (project.getHidden() == null) {
+            project.setHidden(false);
         }
         return projectRepo.save(project);
+    }
+
+    @Transactional
+    public OtaProject updateProject(Long id, OtaProject patch) {
+        OtaProject existing = projectRepo.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("项目不存在"));
+        if (StringUtils.hasText(patch.getName())) {
+            existing.setName(patch.getName());
+        }
+        if (patch.getDescription() != null) {
+            existing.setDescription(patch.getDescription());
+        }
+        if (patch.getHidden() != null) {
+            existing.setHidden(patch.getHidden());
+        }
+        return projectRepo.save(existing);
+    }
+
+    @Transactional
+    public void deleteProject(Long id) {
+        OtaProject existing = projectRepo.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("项目不存在"));
+        for (FirmwarePackage pkg : firmwareRepo.findByProjectIdOrderByCreatedAtDesc(id)) {
+            delete(pkg.getId());
+        }
+        projectRepo.delete(existing);
+    }
+
+    public Map<String, Object> toProjectView(OtaProject p) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", p.getId());
+        m.put("name", p.getName());
+        m.put("projectKey", p.getProjectKey());
+        m.put("description", p.getDescription());
+        m.put("hidden", p.getHidden());
+        m.put("createdAt", p.getCreatedAt());
+        m.put("updatedAt", p.getUpdatedAt());
+        m.put("firmwareCount", firmwareRepo.countByProjectId(p.getId()));
+        return m;
+    }
+
+    public static String newProjectKey() {
+        StringBuilder sb = new StringBuilder(32);
+        for (int i = 0; i < 32; i++) {
+            sb.append(KEY_CHARS.charAt(RNG.nextInt(KEY_CHARS.length())));
+        }
+        return sb.toString();
     }
 
     public List<FirmwarePackage> listFirmware() {
@@ -71,6 +154,7 @@ public class FirmwareRegistryService {
     @Transactional
     public FirmwarePackage createFromUpload(MultipartFile file, FirmwarePackage meta, List<String> imeis)
             throws IOException {
+        applyParsedFilename(file.getOriginalFilename(), meta);
         validatePackageMeta(meta);
         String safeName = sanitizeFileName(file.getOriginalFilename());
         Path dest = catalog.resolveFirmwareFile(safeName);
@@ -94,6 +178,32 @@ public class FirmwareRegistryService {
         replaceAssignments(saved.getId(), imeis, Boolean.TRUE.equals(saved.getUpgradeAll()));
         log.info("firmware created id={} name={} ver={} src={}", saved.getId(),
                 saved.getFirmwareName(), saved.getVersion(), saved.getSourceVersion());
+        return saved;
+    }
+
+    @Transactional
+    public FirmwarePackage createOrReplaceFile(String fileName, byte[] content, FirmwarePackage meta, List<String> imeis)
+            throws IOException {
+        validatePackageMeta(meta);
+        String safeName = sanitizeFileName(fileName);
+        Path dest = catalog.resolveFirmwareFile(safeName);
+        Files.createDirectories(dest.getParent());
+        Files.write(dest, content);
+
+        FirmwarePackage existing = firmwareRepo.findFirstByFileName(safeName).orElseGet(FirmwarePackage::new);
+        existing.setFirmwareName(meta.getFirmwareName());
+        existing.setVersion(meta.getVersion());
+        existing.setSourceVersion(meta.getSourceVersion());
+        existing.setCoreVersion(StringUtils.hasText(meta.getCoreVersion()) ? meta.getCoreVersion() : "0");
+        existing.setProjectId(meta.getProjectId());
+        existing.setFileName(safeName);
+        existing.setAllowUpgrade(meta.getAllowUpgrade() == null || meta.getAllowUpgrade());
+        existing.setUpgradeAll(Boolean.TRUE.equals(meta.getUpgradeAll()));
+        existing.setEnabled(meta.getEnabled() == null || meta.getEnabled());
+        existing.setRemark(meta.getRemark());
+        FirmwarePackage saved = firmwareRepo.save(existing);
+        replaceAssignments(saved.getId(), imeis, Boolean.TRUE.equals(saved.getUpgradeAll()));
+        log.info("firmware file upsert id={} file={}", saved.getId(), safeName);
         return saved;
     }
 
@@ -139,7 +249,7 @@ public class FirmwareRegistryService {
     }
 
     /**
-     * 合宙 IoT 风格 OTA 匹配（优先于 manifest）。
+     * 按项目固件库匹配差分包（优先于 manifest）。
      */
     public Optional<MatchResult> findUpgradePackage(String projectKey, String firmwareName,
                                                     String currentVersion, String imei) {
@@ -151,7 +261,7 @@ public class FirmwareRegistryService {
 
         List<FirmwarePackage> candidates = firmwareRepo.findCandidates(firmwareName, projectId).stream()
                 .filter(fp -> matchesSourceVersion(fp, current))
-                .filter(fp -> LuatVersionUtil.compare(fp.getVersion(), current) > 0)
+                .filter(fp -> LuatVersionUtil.canUpgrade(current, fp.getVersion()))
                 .filter(fp -> catalog.resolveFirmwareFile(fp.getFileName()).toFile().exists())
                 .filter(fp -> isDeviceAllowed(fp, imei))
                 .sorted(Comparator.comparing(FirmwarePackage::getVersion, LuatVersionUtil::compare).reversed())
@@ -177,7 +287,7 @@ public class FirmwareRegistryService {
 
         List<FirmwarePackage> matched = firmwareRepo.findCandidates(firmwareName, projectId).stream()
                 .filter(fp -> matchesSourceVersion(fp, current))
-                .filter(fp -> LuatVersionUtil.compare(fp.getVersion(), current) > 0)
+                .filter(fp -> LuatVersionUtil.canUpgrade(current, fp.getVersion()))
                 .filter(fp -> catalog.resolveFirmwareFile(fp.getFileName()).toFile().exists())
                 .toList();
 
@@ -217,6 +327,7 @@ public class FirmwareRegistryService {
 
     private void replaceAssignments(Long firmwareId, List<String> imeis, boolean upgradeAll) {
         assignmentRepo.deleteByFirmwareId(firmwareId);
+        assignmentRepo.flush();
         if (upgradeAll || imeis == null) {
             return;
         }
@@ -228,6 +339,23 @@ public class FirmwareRegistryService {
                 assignmentRepo.save(a);
             }
         }
+    }
+
+    private void applyParsedFilename(String original, FirmwarePackage meta) {
+        LuatFilenameParser.parse(original).ifPresent(parsed -> {
+            if (!StringUtils.hasText(meta.getFirmwareName())) {
+                meta.setFirmwareName(parsed.firmwareName());
+            }
+            if (!StringUtils.hasText(meta.getVersion())) {
+                meta.setVersion(parsed.version());
+            }
+            if (!StringUtils.hasText(meta.getCoreVersion()) || "0".equals(meta.getCoreVersion())) {
+                meta.setCoreVersion(parsed.coreVersion());
+            }
+            if (!StringUtils.hasText(meta.getRemark())) {
+                meta.setRemark(original);
+            }
+        });
     }
 
     private void validatePackageMeta(FirmwarePackage meta) {

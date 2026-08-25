@@ -1,13 +1,19 @@
+-- ================================================================
+-- Filename : cellular_bootstrap.lua
+-- Module   : 蜂窝网络引导：SIM/APN 探测、IP_READY 等待、运营商映射，main 与 net_mqtt 共用
+-- Arch     : doc/modules/CELLULAR_BOOTSTRAP.md
+-- ================================================================
+
 require "sys"
 require "config"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "cellular_bootstrap"
 local started = false
 local apnApplied = false
-local cellInfoRefreshStarted = false
-local servingOperatorCache = { op = nil, name = nil }
+local cellInfoRfrsh = false
+local srvnOprtCch = { op = nil, name = nil }
 local CELL_INFO_REQ_SEC = 15
 local CELL_INFO_REFRESH_MS = 60000
 local lastState = {
@@ -53,7 +59,8 @@ local APN_HINTS = {
 local function operatorName(op)
     return OPERATOR_NAMES[op] or OPERATOR_NAMES.unknown
 end
-local function matchIccidOperator(iccid)
+
+local function mtchIccd(iccid)
     iccid = tostring(iccid or "")
     if #iccid < 6 then
         return nil
@@ -68,7 +75,8 @@ local function matchIccidOperator(iccid)
     end
     return nil
 end
-local function matchImsiOperator(imsi)
+
+local function mtchImsi(imsi)
     imsi = tostring(imsi or "")
     if #imsi < 5 then
         return nil
@@ -82,7 +90,8 @@ local function matchImsiOperator(imsi)
     end
     return nil
 end
-local function matchApnOperator(apn)
+
+local function mtchApnOprt(apn)
     apn = tostring(apn or ""):lower()
     if apn == "" then
         return nil
@@ -96,9 +105,7 @@ local function matchApnOperator(apn)
     end
     return nil
 end
-local function operatorFromPlmn5(plmn5)
-    return plmn5 and matchImsiOperator(plmn5) or nil
-end
+
 local function buildPlmn5(mcc, mnc)
     mcc = tonumber(mcc)
     mnc = tonumber(mnc)
@@ -113,10 +120,12 @@ local function buildPlmn5(mcc, mnc)
     end
     return nil
 end
+
 local function cfg()
     return _G.CELLULAR_CFG or {}
 end
-local function exportRuntime()
+
+local function exprRntm()
     local rt = _G.APP_RUNTIME
     if not rt then
         return
@@ -128,62 +137,68 @@ local function exportRuntime()
         rt.sim_present = lastState.sim_present and 1 or 0
     end
 end
-local function syncOperatorRuntime(operator)
+
+local function syncOprt(operator)
     if not operator or operator == "" or operator == "unknown" then
         return
     end
     lastState.operator = operator
     lastState.operator_name = operatorName(operator)
-    exportRuntime()
+    exprRntm()
 end
+
 local function enabled()
     if cfg().enabled == false then
         return false
     end
-    local flags = _G.MODULE_FLAGS
-    if flags and flags.cellular == false then
+    if not loader.enabled("cellular") then
         return false
     end
     return mobile ~= nil
 end
-local function operatorOverride()
+
+local function oprtOvrr()
     local override = cfg().sim_operator_override
     if type(override) == "string" and override ~= "" and override ~= "unknown" then
         return override
     end
 end
-local function matchOperator(imsi, iccid, apn)
-    local op = matchImsiOperator(imsi)
+
+local function mtchOprt(imsi, iccid, apn)
+    local op = mtchImsi(imsi)
     if op then
         return op, "imsi"
     end
-    op = matchIccidOperator(iccid)
+    op = mtchIccd(iccid)
     if op then
         return op, "iccid"
     end
-    op = matchApnOperator(apn)
+    op = mtchApnOprt(apn)
     if op then
         return op, "apn"
     end
     return "unknown", "none"
 end
+
 function detectOperator(imsi, iccid, apn)
-    return operatorOverride() or matchOperator(imsi, iccid, apn)
+    return oprtOvrr() or mtchOprt(imsi, iccid, apn)
 end
+
 function resolveOperator(imsi, iccid, apn)
-    local override = operatorOverride()
+    local override = oprtOvrr()
     if override then
-        syncOperatorRuntime(override)
+        syncOprt(override)
         return override, operatorName(override), "override"
     end
-    local op, src = matchOperator(imsi, iccid, apn)
+    local op, src = mtchOprt(imsi, iccid, apn)
     local name = operatorName(op)
     if op ~= "unknown" then
-        syncOperatorRuntime(op)
+        syncOprt(op)
     end
     return op, name, src
 end
-local function parseServingFromCells(cells)
+
+local function prsSrvnFrom(cells)
     if type(cells) ~= "table" or #cells == 0 then
         return nil, nil
     end
@@ -192,13 +207,14 @@ local function parseServingFromCells(cells)
         return nil, nil
     end
     local plmn5 = buildPlmn5(c.mcc, c.mnc)
-    local op = operatorFromPlmn5(plmn5)
+    local op = plmn5 and mtchImsi(plmn5) or nil
     if op then
         return op, operatorName(op)
     end
     return nil, nil
 end
-local function refreshServingOperatorCache()
+
+local function rfrsSrvn()
     if not mobile or not mobile.getCellInfo then
         return nil, nil
     end
@@ -206,14 +222,15 @@ local function refreshServingOperatorCache()
     if not ok then
         return nil, nil
     end
-    local op, name = parseServingFromCells(cells)
+    local op, name = prsSrvnFrom(cells)
     if op then
-        servingOperatorCache.op = op
-        servingOperatorCache.name = name
+        srvnOprtCch.op = op
+        srvnOprtCch.name = name
     end
     return op, name
 end
-local function requestCellInfo(timeoutSec)
+
+local function rqstCell(timeoutSec)
     if not mobile or not mobile.reqCellInfo then
         return false
     end
@@ -226,36 +243,25 @@ local function requestCellInfo(timeoutSec)
     mobile.reqCellInfo(timeoutSec)
     return true
 end
-local function cellInfoRefreshWanted()
-    if _G.MODULE_FLAGS and _G.MODULE_FLAGS.mobile_info == true then
-        return true
-    end
-    return cfg().cell_info_refresh_on_start == true
-end
-local function startCellInfoRefresh()
-    if cellInfoRefreshStarted or not mobile or not mobile.getCellInfo or not mobile.reqCellInfo then
+
+local function strtCell()
+    if cellInfoRfrsh or not mobile or not mobile.getCellInfo or not mobile.reqCellInfo then
         return
     end
-    cellInfoRefreshStarted = true
+    cellInfoRfrsh = true
     sys.subscribe("CELL_INFO_UPDATE", function()
-        refreshServingOperatorCache()
+        rfrsSrvn()
     end)
     sys.taskInit(function()
         while true do
-            requestCellInfo(CELL_INFO_REQ_SEC)
+            rqstCell(CELL_INFO_REQ_SEC)
             sys.waitUntil("CELL_INFO_UPDATE", (CELL_INFO_REQ_SEC + 1) * 1000)
             sys.wait(CELL_INFO_REFRESH_MS)
         end
     end)
 end
-function detectServingOperator()
-    startCellInfoRefresh()
-    if servingOperatorCache.op then
-        return servingOperatorCache.op, servingOperatorCache.name
-    end
-    return nil, nil
-end
-local function readCurrentApn()
+
+local function readCrrnApn()
     if not mobile or not mobile.apn then
         return ""
     end
@@ -265,17 +271,20 @@ local function readCurrentApn()
     end
     return ""
 end
-local function shouldForceExplicitApn(operator)
+
+local function shldFrcExpl(operator)
     local force = cfg().force_explicit_apn
     if type(force) == "table" then
         return force[operator] == true
     end
     return operator == "unicom"
 end
-local function resolveApnName(operator)
+
+local function rslvApnName(operator)
     local byOp = cfg().apn_by_operator or {}
     return byOp[operator]
 end
+
 local function applyApnAuto()
     if not mobile or not mobile.apn then
         return false, ""
@@ -283,45 +292,42 @@ local function applyApnAuto()
     mobile.apn(0, 1, "", "", "", nil, 0)
     return true, "auto"
 end
-local function applyApnExplicit(apnName)
+
+local function applApnExpl(apnName)
     if not mobile or not mobile.apn or not apnName or apnName == "" then
         return false, ""
     end
     mobile.apn(0, 1, apnName, "", "", nil, 0)
     return true, apnName
 end
+
 function applyApnForSim()
     if not enabled() then
         return false, "disabled"
     end
     local imsi = mobile.imsi and mobile.imsi() or ""
     local iccid = mobile.iccid and mobile.iccid() or ""
-    local apnNow = readCurrentApn()
+    local apnNow = readCrrnApn()
     local operator = detectOperator(imsi, iccid, apnNow)
     lastState.operator = operator
     lastState.operator_name = operatorName(operator)
     local ok, apnMode
-    local apnName = resolveApnName(operator)
-    local useAuto = cfg().apn_auto ~= false and not shouldForceExplicitApn(operator)
-    if useAuto and (operator == "unknown" or not apnName or apnName == "") then
-        ok, apnMode = applyApnAuto()
-    elseif apnName and apnName ~= "" then
-        ok, apnMode = applyApnExplicit(apnName)
+    local apnName = rslvApnName(operator)
+    local useAuto = cfg().apn_auto ~= false and not shldFrcExpl(operator)
+    if apnName and apnName ~= "" and not (useAuto and operator == "unknown") then
+        ok, apnMode = applApnExpl(apnName)
     else
         ok, apnMode = applyApnAuto()
     end
     apnApplied = ok
-    lastState.apn = readCurrentApn()
+    lastState.apn = readCrrnApn()
     if lastState.apn == "" then
         lastState.apn = apnMode or ""
     end
-    exportRuntime()
-    log.info(LOG_TAG, "operator_update", lastState.operator_name, operator,
-        imsi ~= "" and imsi or "--",
-        iccid ~= "" and iccid:sub(1, 10) .. "..." or "--",
-        lastState.apn ~= "" and lastState.apn or apnMode or "--")
+    exprRntm()
     return ok, operator
 end
+
 local function waitSimInfo(timeoutMs)
     timeoutMs = timeoutMs or tonumber(cfg().sim_wait_ms) or 30000
     local deadline = (mcu and mcu.ticks and mcu.ticks() or 0) + timeoutMs
@@ -344,10 +350,11 @@ local function waitSimInfo(timeoutMs)
         end
     end
 end
+
 local function onSimInd(status, value)
     if status == "RDY" then
         lastState.sim_present = true
-        exportRuntime()
+        exprRntm()
         if not apnApplied then
             sys.taskInit(function()
                 sys.wait(500)
@@ -357,9 +364,10 @@ local function onSimInd(status, value)
     elseif status == "NORDY" then
         lastState.sim_present = false
         apnApplied = false
-        exportRuntime()
+        exprRntm()
     end
 end
+
 local function setupSetAuto()
     if not mobile or not mobile.setAuto then
         return
@@ -371,6 +379,7 @@ local function setupSetAuto()
         tonumber(c.set_auto_count) or 5
     )
 end
+
 function waitForNetwork()
     if not enabled() then
         local ip = socket and socket.localIP and socket.localIP() or nil
@@ -387,19 +396,15 @@ function waitForNetwork()
         if ret and ip and ip ~= "" and ip ~= "0.0.0.0" then
             lastState.ip = ip
             lastState.ip_ready = true
-            lastState.apn = readCurrentApn()
-            exportRuntime()
+            lastState.apn = readCrrnApn()
+            exprRntm()
             return true, ip
         end
-        log.warn(LOG_TAG, "net_fail", "attempt", attempt,
-            "status", mobile.status and mobile.status() or "?",
-            "csq", mobile.csq and mobile.csq() or "?",
-            "apn", readCurrentApn())
         if attempt < maxAttempts then
             if attempt == 1 and lastState.operator == "unicom" then
                 local fallback = cfg().unicom_apn_fallback
-                if fallback and fallback ~= "" and fallback ~= resolveApnName("unicom") then
-                    applyApnExplicit(fallback)
+                if fallback and fallback ~= "" and fallback ~= rslvApnName("unicom") then
+                    applApnExpl(fallback)
                     lastState.apn = fallback
                 end
             end
@@ -412,16 +417,17 @@ function waitForNetwork()
         end
     end
     lastState.ip_ready = false
-    exportRuntime()
+    exprRntm()
     return false, nil
 end
+
 function start()
     if started or not enabled() then
         return false
     end
     started = true
-    if cellInfoRefreshWanted() then
-        startCellInfoRefresh()
+    if cfg().cell_info_refresh_on_start == true then
+        strtCell()
     end
     sys.subscribe("SIM_IND", onSimInd)
     setupSetAuto()
@@ -435,11 +441,5 @@ function start()
         end
     end)
     return true
-end
-function getLastState()
-    return lastState
-end
-function getOperatorName()
-    return lastState.operator_name, lastState.operator
 end
 return _M

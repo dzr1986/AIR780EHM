@@ -2,10 +2,15 @@ package com.luat.ota.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luat.ota.config.MqttProperties;
+import com.luat.ota.entity.Device;
 import com.luat.ota.entity.OtaTask;
 import com.luat.ota.entity.OtaTaskStatus;
 import com.luat.ota.repository.OtaTaskRepository;
+import com.luat.ota.util.LuatVersionUtil;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,7 +43,31 @@ public class OtaTriggerService {
     }
 
     public List<OtaTask> recentTasks() {
+        return recentTasks(null);
+    }
+
+    public List<OtaTask> recentTasks(String imei) {
+        if (StringUtils.hasText(imei)) {
+            return taskRepository.findByImeiContainingOrderByCreatedAtDesc(imei.trim());
+        }
         return taskRepository.findTop100ByOrderByCreatedAtDesc();
+    }
+
+    public Page<OtaTask> pageTasks(String imei, OtaTaskStatus status, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+        boolean hasImei = StringUtils.hasText(imei);
+        if (hasImei && status != null) {
+            return taskRepository.findByImeiContainingAndStatusOrderByCreatedAtDesc(imei.trim(), status, pageable);
+        }
+        if (hasImei) {
+            return taskRepository.findByImeiContainingOrderByCreatedAtDesc(imei.trim(), pageable);
+        }
+        if (status != null) {
+            return taskRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+        }
+        return taskRepository.findAllByOrderByCreatedAtDesc(pageable);
     }
 
     @Transactional
@@ -61,6 +90,16 @@ public class OtaTriggerService {
                 continue;
             }
             String trimmedImei = imei.trim();
+            Optional<Device> existing = deviceService.findByImei(trimmedImei);
+            if (existing.isPresent()) {
+                String cur = LuatVersionUtil.normalize(existing.get().getCurrentVersion());
+                if (StringUtils.hasText(cur) && LuatVersionUtil.compare(cur, normalizedTarget) >= 0) {
+                    results.add(new TriggerResult(
+                            trimmedImei, null, OtaTaskStatus.SUCCESS,
+                            "设备已是 " + cur + "，无需再下发 " + normalizedTarget));
+                    continue;
+                }
+            }
             try {
                 TriggerResult result = triggerOne(mqttBridge, trimmedImei, normalizedTarget, source);
                 results.add(result);

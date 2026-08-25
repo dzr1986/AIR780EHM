@@ -1,10 +1,19 @@
+-- ================================================================
+-- Filename : pir_ctrl.lua
+-- Module   : PIR 侦测与会话：GPIO 中断、冷却、录像会话、云端启停、PIRSTAT 统计
+-- Arch     : doc/modules/PIR_CTRL_FLOW.md
+-- ================================================================
+
 require "sys"
 require "config"
+local utils = require "utils"
 local gpio_util = require "gpio_util"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local L = "pirc"
+local logFuncs = utils.crtLogFns("pirc")
+local pirInfo = logFuncs.info
+local pirWarn = logFuncs.warn
 local PIR_MEDIA = {
     ACTION = { PHOTO = "photo", VIDEO = "video", BOTH = "both", DEVINFO = "devinfo" },
     UPLOAD_MODE = { AUTO = "auto", MANUAL = "manual" },
@@ -35,28 +44,35 @@ local session = {
     stop_mqtt_published = false,
     cloud_stop_message_id = nil,
 }
-local modCache = {}
 local function loadMod(name)
-    local mod = modCache[name]
-    if mod ~= nil then
-        return mod or nil
-    end
-    local ok, loaded = pcall(require, name)
-    modCache[name] = ok and loaded or false
-    return ok and loaded or nil
+    return utils.lazyRequire(name)
 end
+
+local function t31IsPwrdOn()
+    local t3x = loadMod("t3x_ctrl")
+    if t3x and t3x.getState then
+        local st = t3x.getState()
+        if st and st.powered_on then
+            return true
+        end
+    end
+    return false
+end
+
 local function netMqttMod()
     return loadMod("net_mqtt")
 end
-local effectiveMediaAction = nil
-local handlerStarted = false
+local effcMdActn = nil
+local hndlStrt = false
 local suspended = false
 local hwPin, hwCfg, hwStarted = nil, nil, false
-local cooldownUntil = 0
+local cldwUntl = 0
 local stats = {
     cnt_hw_irq = 0, cnt_hw_ignore_level = 0, cnt_hw_ignore_cooldown = 0,
     cnt_hw_ignore_burn = 0, cnt_hw_accept = 0,
-    cnt_biz_ignore_suspend = 0, cnt_biz_ignore_rest = 0, cnt_biz_detected = 0,
+    cnt_biz_ignore_suspend = 0, cnt_biz_ignore_rest = 0,
+    cnt_biz_ignore_person_detect = 0, cnt_biz_ignore_t31_on = 0,
+    cnt_biz_detected = 0,
     cnt_biz_retrigger = 0, cnt_biz_photo = 0, cnt_biz_video = 0,
     cnt_stop_timer = 0, cnt_stop_retrigger = 0, cnt_stop_cloud = 0, cnt_stop_manual = 0,
     cnt_start_cloud = 0,
@@ -65,15 +81,23 @@ local stats = {
 local function statBump(key)
     if stats[key] ~= nil then stats[key] = stats[key] + 1 end
 end
+
 local function statLast(evt)
     stats.last_event = evt or "none"
     stats.last_ts = os.time()
 end
-local function onHwInterrupt(level)
+
+local function onHwIntr(level)
     statBump("cnt_hw_irq")
     if _G.T3X_BURN_MODE_ACTIVE then
         statBump("cnt_hw_ignore_burn")
         statLast("ignore_burn")
+        return
+    end
+    if t31IsPwrdOn() then
+        statBump("cnt_biz_ignore_t31_on")
+        statLast("ignore_t31_on")
+        pirInfo("hw_ignored", "t31_on")
         return
     end
     local active = hwCfg and hwCfg.active_level
@@ -83,12 +107,12 @@ local function onHwInterrupt(level)
         return
     end
     local now = os.time() * 1000
-    if now < cooldownUntil then
+    if now < cldwUntl then
         statBump("cnt_hw_ignore_cooldown")
         statLast("ignore_cooldown")
         return
     end
-    cooldownUntil = now + (hwCfg.cooldown_ms or 10000)
+    cldwUntl = now + (hwCfg.cooldown_ms or 10000)
     statBump("cnt_hw_accept")
     statLast("hw_accept")
     local E = _G.APP_EVENTS
@@ -96,6 +120,7 @@ local function onHwInterrupt(level)
         sys.publish(E.PIR_HW_TRIGGERED)
     end
 end
+
 function startHw()
     if hwStarted then return false end
     hwCfg = _G.PIR_CFG
@@ -103,7 +128,7 @@ function startHw()
     if not hwPin or not hwCfg then
         return false
     end
-    gpio_util.setup_input(hwPin, onHwInterrupt, {
+    gpio_util.setup_input(hwPin, onHwIntr, {
         trigger_mode = hwCfg.trigger_mode or "rising",
         pull = hwCfg.pull or "pulldown",
         debounce_ms = hwCfg.debounce_ms or 100,
@@ -111,21 +136,22 @@ function startHw()
     hwStarted = true
     return true
 end
+
 local function getHwState()
     local now = os.time() * 1000
-    local remain = cooldownUntil > now and (cooldownUntil - now) or 0
+    local remain = cldwUntl > now and (cldwUntl - now) or 0
     return { started = hwStarted, pin = hwPin, cooldown_remaining_ms = remain }
 end
-local function escVal(s)
-    return (tostring(s or ""):gsub(",", "_"):gsub("=", "_"))
-end
-function buildAtBody()
+
+local escVal = utils.escKv
+
+function buildAtBod()
     local hw = getHwState()
     local biz = getState()
     local cfg = _G.PIR_CFG or {}
     local media = biz.mediaConfig or {}
-    if effectiveMediaAction then
-        media = { action = effectiveMediaAction, uploadMode = media.uploadMode, quality = media.quality }
+    if effcMdActn then
+        media = { action = effcMdActn, uploadMode = media.uploadMode, quality = media.quality }
     end
     local policy = biz.recordPolicy or {}
     local rt = _G.APP_RUNTIME or {}
@@ -149,7 +175,8 @@ function buildAtBody()
     }
     for _, k in ipairs({
         "cnt_hw_irq", "cnt_hw_ignore_level", "cnt_hw_ignore_cooldown", "cnt_hw_ignore_burn",
-        "cnt_hw_accept", "cnt_biz_ignore_suspend", "cnt_biz_ignore_rest", "cnt_biz_detected",
+        "cnt_hw_accept", "cnt_biz_ignore_suspend", "cnt_biz_ignore_rest",
+        "cnt_biz_ignore_person_detect", "cnt_biz_ignore_t31_on", "cnt_biz_detected",
         "cnt_biz_retrigger", "cnt_biz_photo", "cnt_biz_video", "cnt_stop_timer",
         "cnt_stop_retrigger", "cnt_stop_cloud", "cnt_stop_manual", "cnt_start_cloud",
     }) do
@@ -165,10 +192,12 @@ function buildAtBody()
     end
     return table.concat(parts, ",")
 end
+
 function clearConsumableMarkers()
     stats.last_event = "none"
     stats.last_ts = 0
 end
+
 function resetCounters()
     for k, v in pairs(stats) do
         if type(v) == "number" then stats[k] = 0 end
@@ -184,12 +213,11 @@ local STOP_CNT = {
     [PIR_MEDIA.STOP_REASON.MANUAL] = "cnt_stop_manual",
 }
 local function toBool(value, default)
-    if value == nil then return default end
-    if value == false or value == 0 or value == "0" then return false end
-    return true
+    return utils.parseBoolDefault(value, default)
 end
-function normalizePirMediaConfig(config)
-    local input = type(config) == "table" and config or {}
+
+function normPirMCfg(config)
+    local input = utils.optTable(config)
     local A, U, Q, D = PIR_MEDIA.ACTION, PIR_MEDIA.UPLOAD_MODE, PIR_MEDIA.QUALITY, PIR_MEDIA.DEFAULT_CONFIG
     local action = input.action
     local uploadMode = input.uploadMode
@@ -201,8 +229,9 @@ function normalizePirMediaConfig(config)
     if quality ~= Q.HIGH and quality ~= Q.LOW then quality = D.quality end
     return { action = action, uploadMode = uploadMode, quality = quality }
 end
-function normalizePirRecordPolicy(policy)
-    local input = type(policy) == "table" and policy or {}
+
+function normPirRPol(policy)
+    local input = utils.optTable(policy)
     local maxSec = tonumber(input.maxDurationSec) or DEFAULT_RECORD_POLICY.maxDurationSec
     if maxSec < 1 then maxSec = 1 end
     if maxSec > 3600 then maxSec = 3600 end
@@ -213,17 +242,19 @@ function normalizePirRecordPolicy(policy)
         startOnCloud = toBool(input.startOnCloud, DEFAULT_RECORD_POLICY.startOnCloud),
     }
 end
-_G.normalizePirMediaConfig = normalizePirMediaConfig
-_G.normalizePirRecordPolicy = normalizePirRecordPolicy
+_G.normPirMCfg = normPirMCfg
+_G.normPirRPol = normPirRPol
 local PIR_CFG_PATH = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.pir_mqtt)
     or "/pir_mqtt_cfg.json"
 local PIR_CFG_SCHEMA_VER = (_G.APP_PERSIST_CFG and _G.APP_PERSIST_CFG.pir_mqtt_schema) or 2
-local pirCfgSchemaVersion = PIR_CFG_SCHEMA_VER
-local function savePersistedConfig()
+local pirCfgSchm = PIR_CFG_SCHEMA_VER
+local saveBusy = false
+local saveWanted = false
+local function savePrsstd()
     local payload = json.encode({
-        schemaVersion = pirCfgSchemaVersion,
-        mediaConfig = normalizePirMediaConfig(_G.pirMediaConfig),
-        recordPolicy = normalizePirRecordPolicy(_G.pirRecordPolicy),
+        schemaVersion = pirCfgSchm,
+        mediaConfig = normPirMCfg(_G.pirMediaConfig),
+        recordPolicy = normPirRPol(_G.pirRecordPolicy),
     })
     if not payload then
         return
@@ -235,23 +266,40 @@ local function savePersistedConfig()
     f:write(payload)
     f:close()
 end
-local function migratePersistedConfig(data)
-    pirCfgSchemaVersion = tonumber(data.schemaVersion) or 1
-    if pirCfgSchemaVersion >= PIR_CFG_SCHEMA_VER then
+-- 写盘放到 task，避免在 MQTT 回调里卡住 1010/1004
+local function savePrss()
+    saveWanted = true
+    if saveBusy then
+        return
+    end
+    saveBusy = true
+    sys.taskInit(function()
+        while saveWanted do
+            saveWanted = false
+            savePrsstd()
+        end
+        saveBusy = false
+    end)
+end
+
+local function mgrtPrss(data)
+    pirCfgSchm = tonumber(data.schemaVersion) or 1
+    if pirCfgSchm >= PIR_CFG_SCHEMA_VER then
         return false
     end
     if _G.pirMediaConfig.action == PIR_MEDIA.ACTION.PHOTO then
         local old = _G.pirMediaConfig
-        _G.pirMediaConfig = normalizePirMediaConfig({
+        _G.pirMediaConfig = normPirMCfg({
             action = PIR_MEDIA.ACTION.VIDEO,
             uploadMode = old.uploadMode,
             quality = old.quality,
         })
     end
-    pirCfgSchemaVersion = PIR_CFG_SCHEMA_VER
+    pirCfgSchm = PIR_CFG_SCHEMA_VER
     return true
 end
-local function loadPersistedConfig()
+
+local function loadPrss()
     local f = io.open(PIR_CFG_PATH, "r")
     if not f then
         return
@@ -266,41 +314,43 @@ local function loadPersistedConfig()
         return
     end
     if data.mediaConfig then
-        _G.pirMediaConfig = normalizePirMediaConfig(data.mediaConfig)
+        _G.pirMediaConfig = normPirMCfg(data.mediaConfig)
     end
     if data.recordPolicy then
-        _G.pirRecordPolicy = normalizePirRecordPolicy(data.recordPolicy)
+        _G.pirRecordPolicy = normPirRPol(data.recordPolicy)
     end
-    if migratePersistedConfig(data) then
-        savePersistedConfig()
+    if mgrtPrss(data) then
+        savePrss()
     end
 end
-_G.pirMediaConfig = normalizePirMediaConfig(PIR_MEDIA.DEFAULT_CONFIG)
-_G.pirRecordPolicy = normalizePirRecordPolicy(DEFAULT_RECORD_POLICY)
-loadPersistedConfig()
-local function getRecordPolicy()
-    return normalizePirRecordPolicy(_G.pirRecordPolicy)
+_G.pirMediaConfig = normPirMCfg(PIR_MEDIA.DEFAULT_CONFIG)
+_G.pirRecordPolicy = normPirRPol(DEFAULT_RECORD_POLICY)
+loadPrss()
+local function getRecPol()
+    return normPirRPol(_G.pirRecordPolicy)
 end
+
 local function publishEvent(name, ...)
     if name and name ~= "" then sys.publish(name, ...) end
 end
-local function clearRecordTimer()
+
+local function clearRecTmr()
     if session.timerId then
         sys.timerStop(session.timerId)
         session.timerId = nil
     end
 end
 
-local function endRecordingSession(reason, opts)
-    opts = type(opts) == "table" and opts or {}
-    clearRecordTimer()
+local function endRcrdSssn(reason, opts)
+    opts = utils.optTable(opts)
+    clearRecTmr()
     local uploadMode = session.uploadMode
     local quality = session.quality
     local wasRecording = session.recording == true
     if wasRecording or opts.force then
         session.recording = false
         session.last_stop_reason = reason
-        clearEffectiveMediaAction()
+        clrEffMedia()
         local ck = STOP_CNT[reason]
         if ck then
             statBump(ck)
@@ -314,46 +364,48 @@ local function endRecordingSession(reason, opts)
     return wasRecording, uploadMode, quality
 end
 
-function canPublishStopMqtt()
+function canStopMqtt()
     return session.stop_mqtt_published ~= true
 end
-function markStopMqttPublished()
+
+function markStMqtt()
     session.stop_mqtt_published = true
 end
-function requestT3xStopRecord(reason)
+
+function reqT3xStopRec(reason)
     if not session.recording then return false end
-    clearRecordTimer()
+    clearRecTmr()
     session.last_stop_reason = reason
     local E = _G.APP_EVENTS or {}
     publishEvent(E.PIR_REQUEST_T3X_STOP or "pir_request_t3x_stop",
         reason, session.uploadMode, session.quality)
     return true
 end
-function clearEffectiveMediaAction()
-    effectiveMediaAction = nil
+
+function clrEffMedia()
+    effcMdActn = nil
 end
-function getEffectiveMediaAction()
-    return effectiveMediaAction
-end
-function publishStopRecording(reason)
+
+function pubStopRec(reason)
     if not session.recording then
         return false
     end
-    endRecordingSession(reason, { publish_stop = true })
+    endRcrdSssn(reason, { publish_stop = true })
     return true
 end
 
-function syncStopFromT3x(reason)
-    local _, uploadMode, quality = endRecordingSession(reason, {
+function syncStopT3x(reason)
+    local _, uploadMode, quality = endRcrdSssn(reason, {
         publish_stop = false,
         statTag = "stop_t3x_" .. tostring(reason),
         force = session.recording,
     })
     return uploadMode, quality
 end
-local function beginVideoSession(uploadMode, quality)
-    local policy = getRecordPolicy()
-    clearRecordTimer()
+
+local function bgnVdSssn(uploadMode, quality)
+    local policy = getRecPol()
+    clearRecTmr()
     session.recording = true
     session.uploadMode = uploadMode
     session.quality = quality
@@ -367,40 +419,46 @@ local function beginVideoSession(uploadMode, quality)
             session.uploadMode, session.quality)
     end, policy.maxDurationSec * 1000)
 end
-function applyEffectiveMediaAction(action)
-    local media = normalizePirMediaConfig({ action = action })
+
+function applEffMedia(action)
+    local media = normPirMCfg({ action = action })
     local A = PIR_MEDIA.ACTION
-    effectiveMediaAction = media.action
-    if effectiveMediaAction == A.VIDEO or effectiveMediaAction == A.BOTH then
+    effcMdActn = media.action
+    if effcMdActn == A.VIDEO or effcMdActn == A.BOTH then
         if not session.recording then
             local cfg = getMediaConfig()
-            beginVideoSession(cfg.uploadMode, cfg.quality)
+            bgnVdSssn(cfg.uploadMode, cfg.quality)
         end
     end
     local E = _G.APP_EVENTS or {}
-    publishEvent(E.PIR_MEDIA_EFFECTIVE or "pir_media_effective", effectiveMediaAction)
-    return effectiveMediaAction
+    publishEvent(E.PIR_MEDIA_EFFECTIVE or "pir_media_effective", effcMdActn)
+    return effcMdActn
 end
-function requestStartFromCloud(opts)
-    opts = type(opts) == "table" and opts or {}
-    local policy = getRecordPolicy()
+
+function reqStartCloud(opts)
+    opts = utils.optTable(opts)
+    local policy = getRecPol()
     if not policy.startOnCloud then
+        pirWarn("cloud_start_denied_policy")
         return false, "denied"
     end
     if suspended then
+        pirWarn("cloud_start_denied_suspended")
         return false, "suspended"
     end
     if session.recording then
+        pirWarn("cloud_start_denied_busy")
         return false, "busy"
     end
     local cur = getMediaConfig()
-    local media = normalizePirMediaConfig({
+    local media = normPirMCfg({
         action = opts.action or cur.action,
         uploadMode = opts.uploadMode or cur.uploadMode,
         quality = opts.quality or cur.quality,
     })
     local A = PIR_MEDIA.ACTION
     if media.action == A.DEVINFO then
+        pirWarn("cloud_start_denied_devinfo")
         return false, "devinfo"
     end
     if media.action == A.PHOTO then
@@ -413,34 +471,39 @@ function requestStartFromCloud(opts)
     end
     statBump("cnt_start_cloud")
     statLast("cloud_start")
-    publishActionEvents(media)
+    pirInfo("cloud_start", media.action, media.uploadMode, media.quality)
+    pubActEvents(media)
     return true, media
 end
-function requestStopFromCloud(opts)
-    opts = type(opts) == "table" and opts or {}
-    if not getRecordPolicy().stopOnCloud then
+
+function reqStopCloud(opts)
+    opts = utils.optTable(opts)
+    if not getRecPol().stopOnCloud then
+        pirWarn("cloud_stop_denied_policy")
         return false, "stop_on_cloud_denied"
     end
     if not session.recording then
+        pirWarn("cloud_stop_denied_not_recording")
         return false, "not_recording"
     end
     session.cloud_stop_message_id = opts.messageId
     local reason = PIR_MEDIA.STOP_REASON.DEVICE
-    requestT3xStopRecord(reason)
-    if not publishStopRecording(reason) then
+    reqT3xStopRec(reason)
+    if not pubStopRec(reason) then
         session.cloud_stop_message_id = nil
+        pirWarn("cloud_stop_failed")
         return false, "stop_failed"
     end
+    pirInfo("cloud_stop", tostring(opts.messageId or ""))
     return true
 end
-function requestStopManual()
-    return publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
-end
+
 function isRecording()
     return session.recording == true
 end
-function publishActionEvents(cfg)
-    local media = normalizePirMediaConfig(cfg)
+
+function pubActEvents(cfg)
+    local media = normPirMCfg(cfg)
     local E, A = _G.APP_EVENTS or {}, PIR_MEDIA.ACTION
     if media.action == A.DEVINFO then
         return media
@@ -450,133 +513,107 @@ function publishActionEvents(cfg)
     end
     if media.action == A.VIDEO or media.action == A.BOTH then
         statBump("cnt_biz_video")
-        beginVideoSession(media.uploadMode, media.quality)
+        bgnVdSssn(media.uploadMode, media.quality)
     end
     publishEvent(E.PIR_WAKE_T3X or "pir_wake_t3x",
         media.action, media.uploadMode, media.quality)
     return media
 end
+
 function setMediaConfig(cfg)
-    _G.pirMediaConfig = normalizePirMediaConfig(cfg)
+    _G.pirMediaConfig = normPirMCfg(cfg)
 end
+
 function getMediaConfig()
-    return normalizePirMediaConfig(_G.pirMediaConfig)
+    return normPirMCfg(_G.pirMediaConfig)
 end
+
 function setRecordPolicy(cfg)
     if type(cfg) ~= "table" then
-        return getRecordPolicy()
+        return getRecPol()
     end
-    local old = getRecordPolicy()
-    _G.pirRecordPolicy = normalizePirRecordPolicy({
+    local old = getRecPol()
+    _G.pirRecordPolicy = normPirRPol({
         maxDurationSec = cfg.maxDurationSec or cfg.videoMaxDurationSec or old.maxDurationSec,
         stopOnSecondPir = cfg.stopOnSecondPir ~= nil and cfg.stopOnSecondPir or old.stopOnSecondPir,
         stopOnCloud = cfg.stopOnCloud ~= nil and cfg.stopOnCloud or old.stopOnCloud,
     })
-    savePersistedConfig()
+    savePrss()
     return _G.pirRecordPolicy
 end
-function getRecordPolicyConfig()
-    return getRecordPolicy()
-end
+
 function start()
-    if handlerStarted then
+    if hndlStrt then
         return false
     end
     local E = _G.APP_EVENTS or {}
     sys.subscribe(E.PIR_HW_TRIGGERED, onPirTriggered)
-    handlerStarted = true
+    hndlStrt = true
+    pirInfo("start")
     return true
 end
+
 function suspend()
     suspended = true
     statLast("suspend")
+    pirWarn("suspend")
     if session.recording then
-        publishStopRecording(PIR_MEDIA.STOP_REASON.MANUAL)
+        pubStopRec(PIR_MEDIA.STOP_REASON.MANUAL)
     end
-    clearRecordTimer()
+    clearRecTmr()
     return true
 end
+
 function resume()
     suspended = false
+    pirInfo("resume")
     return true
 end
-function isSuspended()
-    return suspended == true
-end
-local function isRestLowPower()
-    if _G.FEATURE_CFG and _G.FEATURE_CFG.low_power == false then
-        return false
-    end
-    local rt = _G.APP_RUNTIME
-    return rt and tonumber(rt.low_power_mode) == 1
-end
-local function isBatteryDynamicRest()
-    local rt = _G.APP_RUNTIME
-    if rt and tonumber(rt.battery_dynamic_rest) == 1 then
-        return true
-    end
-    local ok, bg = pcall(require, "battery_guard")
-    if ok and type(bg) == "table" and bg.isBatteryDynamicRest then
-        return bg.isBatteryDynamicRest() == true
-    end
-    return false
-end
-local function isPirHighPriority()
-    local cfg = _G.PIR_CFG or {}
-    return cfg.high_priority ~= false
-end
-local function requestExitRestForPir()
-    local E = _G.APP_EVENTS or {}
-    local evt = E.POWER_EXIT_REST or "power_exit_rest"
-    if evt and evt ~= "" then
-        sys.publish(evt, "pir")
-    end
-end
-local function shouldIgnorePirTrigger()
+
+local function shldIgnrPir()
     if suspended then
         return "suspend"
     end
-    if isRestLowPower() then
-        if isBatteryDynamicRest() then
-            return nil
-        end
-        if isPirHighPriority() then
-            requestExitRestForPir()
-            return nil
-        end
-        return "rest"
+    if t31IsPwrdOn() then
+        return "t31_on"
+    end
+    local rp = loadMod("runtime_power")
+    if not (rp and rp.isPirWatch and rp.isPirWatch()) then
+        return "person_detect"
     end
     return nil
 end
-local function publishPirGpioEvent(pirStatus, media)
+
+local function pblsPirGpio(pirStatus, media)
     local E = _G.APP_EVENTS or {}
     publishEvent(E.GPIO_PIR_TRIGGERED, pirStatus,
         media.action, media.uploadMode, media.quality)
 end
 
-local function handlePirRetrigger(media)
+local function hndlPirRtrg(media)
     statBump("cnt_biz_retrigger")
     statLast("retrigger")
-    requestT3xStopRecord(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
-    publishPirGpioEvent("retrigger", media)
+    reqT3xStopRec(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
+    pblsPirGpio("retrigger", media)
 end
 
-local function handlePirDevinfo()
+local function hndlPirDvnf()
     local net = netMqttMod()
-    if net and net.refreshAndPublishDeviceIdentity then
-        net.refreshAndPublishDeviceIdentity(nil)
+    if net and net.refPubDeviceId then
+        net.refPubDeviceId(nil)
     end
 end
-
 local PIR_IGNORE_STATS = {
     suspend = { cnt = "cnt_biz_ignore_suspend", last = "ignore_suspend" },
     rest = { cnt = "cnt_biz_ignore_rest", last = "ignore_rest" },
+    person_detect = { cnt = "cnt_biz_ignore_person_detect", last = "ignore_person_detect" },
+    t31_on = { cnt = "cnt_biz_ignore_t31_on", last = "ignore_t31_on" },
 }
-
 function onPirTriggered()
-    clearEffectiveMediaAction()
-    local ignore = shouldIgnorePirTrigger()
+    clrEffMedia()
+    local ignore = shldIgnrPir()
     if ignore then
+        pirInfo("trigger_ignored", ignore)
         local st = PIR_IGNORE_STATS[ignore]
         if st then
             statBump(st.cnt)
@@ -584,22 +621,22 @@ function onPirTriggered()
         end
         return nil
     end
-
-    local media = normalizePirMediaConfig(_G.pirMediaConfig)
-    if session.recording and getRecordPolicy().stopOnSecondPir then
-        handlePirRetrigger(media)
+    local media = normPirMCfg(_G.pirMediaConfig)
+    if session.recording and getRecPol().stopOnSecondPir then
+        hndlPirRtrg(media)
         return nil
     end
-
     statBump("cnt_biz_detected")
     statLast("detected")
-    publishPirGpioEvent("detected", media)
+    pirInfo("trigger_detected")
+    pblsPirGpio("detected", media)
     if media.action == PIR_MEDIA.ACTION.DEVINFO then
-        handlePirDevinfo()
+        hndlPirDvnf()
         return media
     end
-    return publishActionEvents(media)
+    return pubActEvents(media)
 end
+
 function getState()
     return {
         suspended = suspended,
@@ -609,8 +646,8 @@ function getState()
         startedAt = session.startedAt,
         last_stop_reason = session.last_stop_reason,
         stop_mqtt_published = session.stop_mqtt_published,
-        recordPolicy = getRecordPolicy(),
-        mediaConfig = normalizePirMediaConfig(_G.pirMediaConfig),
+        recordPolicy = getRecPol(),
+        mediaConfig = normPirMCfg(_G.pirMediaConfig),
     }
 end
 return _M

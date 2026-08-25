@@ -1,4 +1,4 @@
--- v2: 合宙 IoT 风格项目 + 固件管理（在 schema.sql 之后执行或合并全新安装）
+-- v2: 项目 + 固件管理（在 schema.sql 之后执行或合并全新安装）
 
 CREATE TABLE IF NOT EXISTS ota_projects (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -43,4 +43,4 @@ CREATE TABLE IF NOT EXISTS firmware_device_assignments (
 
 -- 默认项目（780EHM_PJ main.lua PRODUCT_KEY）
 INSERT IGNORE INTO ota_projects (id, name, project_key, description)
-VALUES (1, '合宙标准模块', 'ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x', '780EHM_PJ PANSHI_CAT1');
+VALUES (1, '4G 标准模块', 'ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x', '780EHM_PJ CAT1 默认项目');

@@ -1,9 +1,14 @@
+-- ================================================================
+-- Filename : uart_bridge.lua
+-- Module   : 底层 UART 驱动：start/stop/write/sendString、行/原始 RX 回调，唯一硬件串口入口
+-- Arch     : doc/modules/LIB_UART_GPIO.md
+-- ================================================================
+
 require "sys"
 require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "uart_bridge"
 local CRLF = "\r\n"
 local drv = {
     started = false,
@@ -24,31 +29,19 @@ local stats = {
     last_tx_raw = nil,
     last_line = nil,
 }
-local function load_uart_cfg()
+local function loadUartCfg()
     local c = _G.UART_CFG
-    if type(c) ~= "table" then
-        return false
-    end
-    if c.id == nil then
-        return false
-    end
-    if c.baud == nil then
+    if type(c) ~= "table" or c.id == nil or c.baud == nil or c.rx_line_max == nil then
         return false
     end
     drv.uart_id = c.id
     drv.baud = c.baud
-    if c.line_protocol == false then
-        drv.line_protocol = false
-    else
-        drv.line_protocol = true
-    end
-    if c.rx_line_max == nil then
-        return false
-    end
+    drv.line_protocol = c.line_protocol ~= false
     drv.rx_line_max = c.rx_line_max
     return true
 end
-local function bind_handlers(options)
+
+local function bindHndl(options)
     handlers.on_raw = nil
     handlers.on_line = nil
     if type(options) ~= "table" then
@@ -61,6 +54,7 @@ local function bind_handlers(options)
         handlers.on_line = options.onLine
     end
 end
+
 local function write_raw(data)
     if not drv.started then
         return false
@@ -76,9 +70,11 @@ local function write_raw(data)
     stats.tx_bytes = stats.tx_bytes + #data
     return true
 end
+
 function write(data)
     return write_raw(data)
 end
+
 function sendString(text, with_crlf)
     if text == nil then
         return false
@@ -88,6 +84,7 @@ function sendString(text, with_crlf)
     end
     return write_raw(text)
 end
+
 local function emit_line(line)
     stats.last_line = line
     local cb = handlers.on_line
@@ -96,7 +93,8 @@ local function emit_line(line)
     end
     cb(line)
 end
-local function feed_line_buffer(chunk)
+
+local function feedLine(chunk)
     drv.rx_line_buf = drv.rx_line_buf .. chunk
     if #drv.rx_line_buf > drv.rx_line_max then
         drv.rx_line_buf = ""
@@ -112,6 +110,7 @@ local function feed_line_buffer(chunk)
         emit_line(line)
     end
 end
+
 local function on_rx_raw(data)
     stats.last_rx_raw = data
     stats.rx_bytes = stats.rx_bytes + #data
@@ -120,6 +119,7 @@ local function on_rx_raw(data)
         cb(data)
     end
 end
+
 local function on_uart_recv(id, len)
     local data = uart.read(id, len)
     if data == nil then
@@ -130,31 +130,29 @@ local function on_uart_recv(id, len)
     end
     on_rx_raw(data)
     if drv.line_protocol then
-        feed_line_buffer(data)
+        feedLine(data)
     end
 end
-function setOnRaw(fn)
-    handlers.on_raw = fn
-end
+
 function setOnLine(fn)
     handlers.on_line = fn
 end
+
 function start(options)
     if drv.started then
         return false
     end
-    if not load_uart_cfg() then
+    if not loadUartCfg() then
         return false
     end
-    bind_handlers(options)
+    bindHndl(options)
     drv.rx_line_buf = ""
     uart.setup(drv.uart_id, drv.baud, 8, 0, 0, 0)
     uart.on(drv.uart_id, "recv", on_uart_recv)
     drv.started = true
-    log.info(LOG_TAG, "module_on", drv.uart_id, drv.baud,
-        "lineProto", drv.line_protocol, "rxMax", drv.rx_line_max)
     return true
 end
+
 function stop()
     if not drv.started then
         return false
@@ -166,6 +164,7 @@ function stop()
     handlers.on_line = nil
     return true
 end
+
 function getState()
     return {
         started = drv.started,

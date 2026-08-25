@@ -1,16 +1,20 @@
+-- ================================================================
+-- Filename : host_event.lua
+-- Module   : T3x 待处理事件汇总：wake/pir/record/mqtt → has_event 供 HOSTIDLE 与 enterSleep 门禁
+-- Arch     : doc/modules/HOST_EVENT_PENDING.md
+-- ================================================================
+
 require "config"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-
-local LOG_TAG = "host_event"
 local TYPE_BIT = { wake = 1, pir = 2, record = 4, mqtt = 8 }
 local PIR_PENDING_LAST = {
     detected = true,
     retrigger = true,
     hw_accept = true,
 }
-
 local function cfg()
     return _G.HOST_EVT_CFG or {}
 end
@@ -24,10 +28,7 @@ function isEnabled()
 end
 
 local function typeEnabled(name)
-    local mask = tonumber(cfg().types_mask)
-    if mask == nil then
-        mask = 0x0F
-    end
+    local mask = tonumber(cfg().types_mask) or 0x0F
     local bit = TYPE_BIT[name] or 0
     return bit ~= 0 and (mask & bit) ~= 0
 end
@@ -58,7 +59,7 @@ local function emptySummary()
     }
 end
 
-local function resolvePendingWake(pirBody, wakeValid, wakeSid, wakeEvt)
+local function rslvPndn(pirBody, wakeValid, wakeSid, wakeEvt)
     if wakeValid then
         return true, wakeSid or 0, wakeEvt or 0
     end
@@ -102,7 +103,7 @@ local function collectPir(types, ctx)
     end
 end
 
-local function collectRecord(types, ctx)
+local function cllcRcrd(types, ctx)
     if not typeEnabled("record") or not ctx.pirBody then
         return
     end
@@ -123,8 +124,8 @@ local function collectMqtt(types, ctx)
     if tonumber(rt.online_status) ~= 1 or tonumber(rt.low_power_mode) == 1 then
         return
     end
-    local ok, net = pcall(require, "net_mqtt")
-    if not ok or not net or not net.hasPendingHostWork or not net.hasPendingHostWork() then
+    local net = loader.load("net_mqtt")
+    if not net or not net.hasPendingHostWork or not net.hasPendingHostWork() then
         return
     end
     types[#types + 1] = "mqtt"
@@ -137,8 +138,7 @@ function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
     if not isEnabled() then
         return emptySummary()
     end
-
-    local pendingWake, sid, evt = resolvePendingWake(pirBody, wakeValid, wakeSid, wakeEvt)
+    local pendingWake, sid, evt = rslvPndn(pirBody, wakeValid, wakeSid, wakeEvt)
     local types = {}
     local ctx = {
         pirBody = pirBody,
@@ -149,12 +149,10 @@ function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
         sid = 0,
         evt = -1,
     }
-
     collectWake(types, ctx)
     collectPir(types, ctx)
-    collectRecord(types, ctx)
+    cllcRcrd(types, ctx)
     collectMqtt(types, ctx)
-
     local has = #types > 0
     return {
         has_event = has and 1 or 0,
@@ -169,19 +167,6 @@ function hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
     return summarize(pirBody, wakeValid, wakeSid, wakeEvt).has_event == 1
 end
 
-function isDispatchable(sum)
-    if type(sum) ~= "table" or sum.has_event ~= 1 then
-        return false
-    end
-    if sum.pending == "record" and not (sum.types or ""):match("wake") then
-        return false
-    end
-    if sum.pending == "mqtt" and not (sum.types or ""):match("wake") then
-        return false
-    end
-    return true
-end
-
 function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
     if not isEnabled() or cfg().block_t3x_sleep_when_pending == false then
         return false
@@ -191,5 +176,4 @@ function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
     end
     return hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
 end
-
 return _M

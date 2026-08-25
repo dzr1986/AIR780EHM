@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IPC 升级 · 4G OTA</title>
+  <style>
+    :root {
+      --nav:#1b3a5f; --nav-hover:#24507f; --accent:#2b7de1; --ok:#1a9e54;
+      --danger:#d94a4a; --bg:#f4f6f8; --card:#fff; --text:#1f2d3d; --muted:#6b7c8f; --line:#e4e8ee;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+    a { color: var(--accent); text-decoration: none; }
+    .top { background: var(--nav); color: #fff; display: flex; align-items: center; gap: 8px; padding: 0 20px; height: 52px; }
+    .brand { font-weight: 700; margin-right: 16px; }
+    .nav-btn { background: none; border: 0; color: #d7e4f5; padding: 16px 12px; cursor: pointer; font-size: 14px; }
+    .nav-btn.active, .nav-btn:hover { color: #fff; background: var(--nav-hover); }
+    .wrap { max-width: 980px; margin: 20px auto; padding: 0 16px 40px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+    input, button { font: inherit; }
+    input[type=text], input[type=password] { width: 100%; padding: 8px 10px; border: 1px solid #cfd6de; border-radius: 6px; }
+    button { border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; background: var(--accent); color: #fff; }
+    button.ghost { background: #eef3f8; color: var(--nav); }
+    button.ok { background: var(--ok); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+    .token-bar { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .token-bar input { width: 280px; }
+    pre { background: #0f1720; color: #d7e4f5; padding: 12px; border-radius: 6px; overflow: auto; font-size: 12px; min-height: 180px; max-height: 360px; }
+    .kv { display: grid; grid-template-columns: 100px 1fr; gap: 6px 12px; font-size: 14px; }
+    .kv b { color: var(--muted); font-weight: 600; }
+    .ops { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .hidden { display: none !important; }
+    .st-ok { color: var(--ok); font-weight: 600; }
+    .st-fail { color: var(--danger); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">4G OTA</div>
+    <button class="nav-btn" onclick="location.href='/admin.html'">模组 OTA</button>
+    <button class="nav-btn active">IPC 升级</button>
+  </div>
+  <div class="wrap">
+    <div class="card token-bar">
+      <div>
+        <label>Admin Token</label>
+        <input id="token" type="password" value="ota-7f3a9c2e4b18d6a0e5c1" placeholder="管理令牌">
+      </div>
+      <button onclick="boot()">登录 / 刷新</button>
+      <span id="loginHint" class="muted">登录后可上传 IPC 文件并下发升级</span>
+    </div>
+
+    <div id="app" class="hidden">
+      <div class="card">
+        <h1>设备状态</h1>
+        <div class="kv" id="deviceKv"></div>
+      </div>
+      <div class="card">
+        <h1>上传并升级</h1>
+        <p class="muted">登录后选择 IPC 文件，服务器打成 ipc.tar + ipc.json，FileUrl 为 :8008/downloads/ipc.tar</p>
+        <div class="grid2">
+          <div>
+            <label>版本</label>
+            <input id="version" type="text" value="1.0.40">
+          </div>
+          <div>
+            <label>设备 ID</label>
+            <input id="deviceId" type="text" value="T31-X86-DEMO">
+          </div>
+        </div>
+        <label>IPC 文件</label>
+        <input id="file" type="file">
+        <div class="ops">
+          <button onclick="run(doUpload)">1. 上传并打包</button>
+          <button onclick="run(doUpgrade)">2. 下发 ipc_upgrade</button>
+          <button class="ok" onclick="run(doLoop)">一键闭环</button>
+          <button class="ghost" onclick="run(doPull)">拉取到本地</button>
+        </div>
+        <p class="muted" id="pkgHint">尚未上传</p>
+      </div>
+      <div class="card">
+        <h1>日志</h1>
+        <pre id="log"></pre>
+      </div>
+    </div>
+  </div>
+<script>
+const TOKEN_KEY = 'luat-ota-admin-token';
+let lastPkg = null;
+let busy = false;
+
+function token() { return document.getElementById('token').value.trim(); }
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+  el.textContent += line;
+  el.scrollTop = el.scrollHeight;
+}
+function api(path, opts = {}) {
+  const headers = { 'X-Admin-Token': token(), ...(opts.headers || {}) };
+  return fetch('/admin/api/ipc' + path, { ...opts, headers }).then(async r => {
+    const text = await r.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+    if (!r.ok) throw new Error((data.message || data.error || text || r.status).toString());
+    return data;
+  });
+}
+function setBusy(v) {
+  busy = v;
+  document.querySelectorAll('#app button').forEach(b => b.disabled = v);
+}
+
+async function boot() {
+  try {
+    if (token()) localStorage.setItem(TOKEN_KEY, token());
+    const st = await api('/status');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('loginHint').textContent = '已登录';
+    document.getElementById('loginHint').className = 'st-ok';
+    renderDevice(st);
+    log('登录成功 ' + JSON.stringify({ url: st.url, device: st.device && st.device.version }));
+  } catch (e) {
+    document.getElementById('app').classList.add('hidden');
+    document.getElementById('loginHint').textContent = '登录失败: ' + e.message;
+    document.getElementById('loginHint').className = 'st-fail';
+  }
+}
+
+function renderDevice(st) {
+  const d = st.device || {};
+  document.getElementById('deviceKv').innerHTML =
+    '<b>设备</b><span>' + (d.deviceId || '-') + '</span>' +
+    '<b>版本</b><span>' + (d.version || '-') + '</span>' +
+    '<b>状态</b><span>' + (d.state || st.deviceError || '-') + '</span>' +
+    '<b>FileUrl</b><span><a href="' + st.url + '" target="_blank">' + st.url + '</a></span>';
+}
+
+async function doUpload() {
+  const file = document.getElementById('file').files[0];
+  if (!file) { alert('请先选择 IPC 文件'); return; }
+  const ver = document.getElementById('version').value.trim();
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('version', ver);
+  log('上传 ' + file.name + ' version=' + ver);
+  const pkg = await api('/upload', { method: 'POST', body: fd });
+  lastPkg = pkg;
+  document.getElementById('pkgHint').textContent = '已上传 ipc.tar  ' + pkg.size + ' 字节  md5=' + pkg.md5;
+  log('上传成功 ' + JSON.stringify(pkg));
+  return pkg;
+}
+
+async function doUpgrade(pkg) {
+  pkg = pkg || lastPkg;
+  if (!pkg || !pkg.url) throw new Error('请先上传');
+  const payload = {
+    version: document.getElementById('version').value.trim(),
+    deviceId: document.getElementById('deviceId').value.trim(),
+    url: pkg.url,
+    md5: pkg.md5
+  };
+  log('下发 ipc_upgrade ' + JSON.stringify(payload));
+  const acc = await api('/upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const sid = acc.sessionId;
+  log('已受理 sessionId=' + sid);
+  let task = {};
+  for (let i = 0; i < 40; i++) {
+    task = await api('/tasks/' + sid);
+    log('  stage=' + task.stage + '  ' + (task.message || ''));
+    if (task.stage === 'success' || task.stage === 'failed') break;
+    await new Promise(r => setTimeout(r, 400));
+  }
+  const st = await api('/status');
+  renderDevice(st);
+  const ver = document.getElementById('version').value.trim();
+  const ok = task.stage === 'success' && st.device && st.device.version === ver;
+  log('设备版本=' + (st.device && st.device.version) + '  ' + (ok ? 'PASS' : 'FAIL'));
+  if (!ok) throw new Error('ipc_upgrade 闭环未通过');
+  return task;
+}
+
+async function doPull() {
+  const names = ['ipc.tar', 'ipc.json'];
+  for (const name of names) {
+    const r = await fetch('/admin/api/ipc/file/' + name, { headers: { 'X-Admin-Token': token() } });
+    if (!r.ok) throw new Error('拉取 ' + name + ' 失败 ' + r.status);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    log('已拉取到本地下载目录 ' + name + '  ' + blob.size + ' 字节');
+  }
+}
+
+async function doLoop() {
+  const pkg = await doUpload();
+  await doUpgrade(pkg);
+  await doPull();
+  log('一键闭环完成');
+}
+
+async function run(fn) {
+  if (busy) return;
+  setBusy(true);
+  try { await fn(); }
+  catch (e) { log('失败: ' + e.message); alert(e.message); }
+  finally { setBusy(false); }
+}
+
+document.getElementById('token').addEventListener('keydown', e => { if (e.key === 'Enter') boot(); });
+const saved = localStorage.getItem(TOKEN_KEY);
+if (saved) document.getElementById('token').value = saved;
+if (document.getElementById('token').value.trim()) boot();
+</script>
+</body>
+</html>

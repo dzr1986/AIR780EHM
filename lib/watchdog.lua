@@ -1,8 +1,13 @@
+-- ================================================================
+-- Filename : watchdog.lua
+-- Module   : 硬件看门狗：WDT 初始化与定时喂狗，异常死机自动复位
+-- Arch     : doc/modules/LIB_RUNTIME_UTILS.md
+-- ================================================================
+
 require "sys"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "air780_wdt"
 local started = false
 local feedTimerId = nil
 local config = {
@@ -19,6 +24,7 @@ local function isModuleBsp()
         or bsp:find("718") ~= nil
         or bsp:find("EC618") ~= nil
 end
+
 local function mergeConfig(opts)
     if type(opts) ~= "table" then
         return config
@@ -30,6 +36,7 @@ local function mergeConfig(opts)
     if opts.feed_interval then config.feed_interval_ms = opts.feed_interval end
     return config
 end
+
 local function feedOnce()
     if wdt and wdt.feed then
         wdt.feed()
@@ -37,21 +44,19 @@ local function feedOnce()
     end
     return false
 end
+
 function start(opts)
     if started then
         return true
     end
     mergeConfig(opts or _G.WDT_CFG)
     if config.enabled == false then
-        log.info(LOG_TAG, "disabled")
         return false
     end
     if not wdt or not wdt.init then
-        log.warn(LOG_TAG, "no_wdt_api")
         return false
     end
     if not isModuleBsp() then
-        log.warn(LOG_TAG, "no_bsp_wdt", rtos.bsp and rtos.bsp() or "?")
         return false
     end
     local timeout = tonumber(config.timeout_ms) or 9000
@@ -64,17 +69,16 @@ function start(opts)
     feedOnce()
     feedTimerId = sys.timerLoopStart(feedOnce, interval)
     started = true
-    log.info(LOG_TAG, "module_on",
-        "bsp", rtos.bsp and rtos.bsp() or "?",
-        "timeout", timeout, "feed", interval)
     return true
 end
+
 function feed()
     if started then
         return feedOnce()
     end
     return false
 end
+
 function stop()
     if feedTimerId then
         sys.timerStop(feedTimerId)
@@ -83,6 +87,7 @@ function stop()
     started = false
     return true
 end
+
 function getState()
     return {
         started = started,
@@ -93,6 +98,7 @@ function getState()
         has_wdt_api = wdt and wdt.init ~= nil,
     }
 end
+
 function getConfig()
     return config
 end

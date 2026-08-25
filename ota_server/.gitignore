@@ -9,3 +9,15 @@ deploy/nginx/certs/*.key
 firmware/*.bin
 !firmware/manifest.json
 !firmware/.gitkeep
+ipc_upgrade/files/*
+!ipc_upgrade/files/.gitkeep
+ipc_upgrade/slot/*
+!ipc_upgrade/slot/.gitkeep
+ipc_upgrade/_pack_out/
+tools/ipc/*
+!tools/ipc/.gitkeep
+tools/build/
+tools/dist/
+tools/__pycache__/
+tools/.pyi_tmp/
+tools/*.spec

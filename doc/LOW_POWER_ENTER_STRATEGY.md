@@ -1,5 +1,7 @@
 # 低功耗进入策略：电量 20% vs T3x 空闲 HOSTIDLE（30s 轮询）
 
+> **已取代（2026-08-17）**：HOSTIDLE 不再看电量 20%，只看 `workmode=pir_watch`。见 **[WORK_MODE_PERSON_DETECT_PIR.md](WORK_MODE_PERSON_DETECT_PIR.md)**。下文为历史对照。
+
 > **结论**：**不矛盾**，是两条独立通路；默认 **`battery`** 策略下，一直录像（>20%）会 **拒绝** 30s 轮询触发的 HOSTIDLE 断电。  
 > **关联**：[WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) · [T3X_HOSTEVT_SLEEP.md](T3X_HOSTEVT_SLEEP.md) · [cat1_hostevt_idle_poll_config.md](../../ipc_device_gb28181/docs/cat1_hostevt_idle_poll_config.md)
 

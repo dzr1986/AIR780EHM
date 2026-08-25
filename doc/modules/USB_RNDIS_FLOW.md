@@ -53,7 +53,7 @@ flowchart TD
 
 | 条件 | 说明 |
 |------|------|
-| `RNDIS_CFG.refresh_on_ip` | 非 false |
+| `RNDIS_CFG.refresh_on_ip` | **false**（默认关；true 会 flymode 打断蜂窝） |
 | `refresh_only_usb` | 默认 true：须 USB 主机插入 |
 | 未在 `refreshing` / 未 `ipReadyRefreshed` | 去重 |
 
@@ -78,6 +78,7 @@ flowchart TD
 | 键 | 默认 | 说明 |
 |----|------|------|
 | `refresh_only_usb` | true | 仅 USB 插入时 refresh |
+| `refresh_on_ip` | **false** | boot 后 flymode 再 refresh（会 IP_LOSE，默认关） |
 | `refresh_on_ip_ready` | false | 每个 IP_READY 再 refresh（调试用） |
 
 ---

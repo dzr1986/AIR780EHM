@@ -54,10 +54,22 @@ public class OtaAuditService {
     }
 
     public List<OtaAuditRecord> recent(int limit) {
+        return recent(limit, null);
+    }
+
+    public List<OtaAuditRecord> recent(int limit, String imei) {
         int max = Math.max(1, Math.min(limit, MAX_MEMORY));
         List<OtaAuditRecord> list = new ArrayList<>();
         int count = 0;
         for (OtaAuditRecord r : recent) {
+            if (imei != null && !imei.isBlank()) {
+                String needle = imei.trim();
+                boolean hit = (r.imei() != null && r.imei().contains(needle))
+                        || (r.deviceId() != null && r.deviceId().contains(needle));
+                if (!hit) {
+                    continue;
+                }
+            }
             list.add(r);
             if (++count >= max) {
                 break;

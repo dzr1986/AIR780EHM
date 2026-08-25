@@ -175,8 +175,8 @@ app subscribe:
 
 | 下行 | 处理 |
 |------|------|
-| 2001 | 唤醒查询 → 1001 |
-| 2002 | 低功耗 enter/exit |
+| 2001 | MQTT 探活（不上电）→ 1001 |
+| 2002 | 断 T31 enter / 上电 T31 exit |
 | 2003 | 状态/间隔 → `low_power_interval_sec` → 1003 |
 | 2004 | 电源/OTA/reboot/off → 1004 |
 | 2005 | SIM → 1005 |

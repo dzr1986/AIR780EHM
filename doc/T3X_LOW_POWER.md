@@ -1,7 +1,8 @@
 # T3x 低功耗可配置产品能力
 
 > **双端对齐**：T3x 用 `build/config.mk` 宏管**编译能力**，4G 用 `FEATURE_CFG.low_power` 管**运行策略**。两处开关注释同名，改产品能力时**两边一起改**。  
-> **MQTT / TCP / rest 分工**：[CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](./CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)
+> **MQTT / TCP / rest 分工**：[CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](./CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)  
+> **2002 先停 IPC 再断电（时序）**：[MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md)
 
 ---
 
@@ -138,8 +139,9 @@ flowchart TD
     C --> D[setLowPowerMode 1]
     D --> E[t3x_ctrl.enterSleep]
     E --> F{graceful_ipc?}
-    F -->|是| G[AT+IPCPOWEROFF]
-    G --> H[GPIO22 断电]
+    F -->|是| G[AT+IPCPOWEROFF 分级停 IPC]
+    G --> G1{+IPCPOWEROFF:OK?}
+    G1 -->|是 / 超时兜底| H[GPIO22 断电]
     F -->|否| H
     D --> I[MQTT publishRest 1002]
 
@@ -170,7 +172,7 @@ flowchart TD
 |------|----------|------|--------|
 | 事件 | **1002** | 进入 rest | `doEnterLowPowerBody` 且 MQTT 已连；或 **conack 时已在 rest**（`source=reconnect`） |
 | 状态 | **1003** | 当前设备态，`lowPowerMode=rest\|normal` | 周期 `low_power_interval_sec`（初值 **30s**）/ 电量变化 / 2003 / **rest 下 conack 补一条** |
-| 事件 | **1001** | 唤醒 | **仅常电**且 MQTT conack / 2001 / PIR `uploadMode=auto`（rest 禁发） |
+| 事件 | **1001** | 探活/上线（主题 `wakeup`） | **仅常电** conack / **2001 探活**（rest 下 2001 仍发，**不上电**）/ PIR `uploadMode=auto`（rest 禁发） |
 
 **1002 示例**（向后兼容，新增字段）：
 
@@ -294,7 +296,7 @@ flowchart TD
 |------|------|
 | **1003.lowPowerMode** | **主**：判断设备当前是否在 rest |
 | **1002** | **辅**：记录进 rest 时刻与 `reason`；`source=reconnect` 为补发 |
-| **1001** | 仅常电 conack / 2001 / PIR auto；**rest 禁发**（含 PIR `uploadMode=auto`） |
+| **1001** | 常电 conack / **2001 探活（rest 下仍发，不上电）** / PIR auto（非 rest） |
 
 代码位置：`user/net_mqtt.lua`（`publishConnectUplink` / `publishRest` / `publishStatus`）、`user/app.lua`（`doEnterLowPowerBody` 写 `last_rest_reason`）。
 

@@ -1,9 +1,14 @@
+-- ================================================================
+-- Filename : vbat.lua
+-- Module   : 电池 ADC 采样：定时采样 + trim/EMA 滤波 + 百分比/mV/耗电率输出
+-- Arch     : doc/modules/VBAT_FILTER.md
+-- ================================================================
+
 require "sys"
 require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "battery_adc"
 local BUILD_TAG = "v4-filter"
 local taskStarted = false
 local voltageMv, percent, consumptionRate = 0, 0, 0
@@ -12,19 +17,24 @@ local filteredMv, stablePercent
 local function getCfg()
     return _G.BATTERY_CFG or {}
 end
+
 local function getAdcCfg()
     return getCfg().adc or {}
 end
+
 local function getCellCfg()
     return getCfg().cell or {}
 end
+
 local function getFilterCfg()
     return getCfg().filter or {}
 end
-local function sampleIntervalMs()
+
+local function smplIntrMs()
     return getCfg().sample_interval_ms or (10 * 1000)
 end
-local function resolveMvScale()
+
+local function rslvMvScl()
     local adcCfg = getAdcCfg()
     local scale
     local s = tonumber(adcCfg.mv_scale)
@@ -50,10 +60,8 @@ local function resolveMvScale()
     end
     return scale
 end
-local function pinToCellMv(pinMv, scale)
-    return math.floor(pinMv * scale + 0.5)
-end
-local function percentFromCellMv(cellMv)
+
+local function prcnFrom(cellMv)
     local vmax = tonumber(getCellCfg().v_max_mv) or 4200
     local vmin = tonumber(getCellCfg().v_min_mv) or 3000
     if cellMv >= vmax then
@@ -69,6 +77,7 @@ local function percentFromCellMv(cellMv)
     end
     return math.floor(p)
 end
+
 local function trimmedMean(samples)
     local drop = tonumber(getFilterCfg().trim_drop) or 2
     local n = #samples
@@ -90,6 +99,7 @@ local function trimmedMean(samples)
     end
     return math.floor(sum / c + 0.5)
 end
+
 local function smoothCellMv(rawCellMv)
     local fc = getFilterCfg()
     local alpha = tonumber(fc.ema_alpha)
@@ -113,13 +123,11 @@ local function smoothCellMv(rawCellMv)
     filteredMv = target
     return filteredMv
 end
-local function smoothPercent(cellMv, rawPct)
+
+local function smthPrcn(cellMv, rawPct)
     local fc = getFilterCfg()
     local vmax = tonumber(getCellCfg().v_max_mv) or 4200
-    local hystHigh = tonumber(fc.percent_hyst_high_mv)
-    if hystHigh == nil then
-        hystHigh = vmax - 80
-    end
+    local hystHigh = tonumber(fc.percent_hyst_high_mv) or (vmax - 80)
     local maxStep = tonumber(fc.percent_max_step) or 2
     local pct = rawPct
     if stablePercent == nil then
@@ -128,7 +136,7 @@ local function smoothPercent(cellMv, rawPct)
     end
     if stablePercent >= 100 then
         if cellMv < hystHigh then
-            pct = percentFromCellMv(cellMv)
+            pct = prcnFrom(cellMv)
         else
             pct = 100
         end
@@ -153,7 +161,8 @@ local function smoothPercent(cellMv, rawPct)
     stablePercent = pct
     return pct
 end
-local function updateConsumptionRate(currentPercent)
+
+local function updtCnsm(currentPercent)
     local rate = 0
     local now = os.time()
     if lastPercent and lastReadTime then
@@ -167,7 +176,8 @@ local function updateConsumptionRate(currentPercent)
     lastReadTime = now
     return rate
 end
-local function exportGlobals(pct, cellMv, rate)
+
+local function exprGlbl(pct, cellMv, rate)
     local rt = _G.APP_RUNTIME
     if not rt then
         return
@@ -176,14 +186,13 @@ local function exportGlobals(pct, cellMv, rate)
     rt.battery_mv = cellMv
     rt.battery_consumption_rate = tostring(rate or 0)
 end
+
 local function getChannel()
-    local c = getAdcCfg().channel
-    if c == nil then
-        c = 1
-    end
+    local c = getAdcCfg().channel or 1
     return c
 end
-local function applyAdcRange(ad)
+
+local function applAdcRng(ad)
     if not ad or not ad.setRange then
         return
     end
@@ -195,6 +204,7 @@ local function applyAdcRange(ad)
         ad.setRange(range)
     end
 end
+
 local function readPinOnce(ad, channel)
     if ad.read then
         local _, mv = ad.read(channel)
@@ -210,12 +220,12 @@ local function readPinOnce(ad, channel)
     end
     return nil
 end
-local function readPinMillivolts(ad, channel)
+
+local function readPinMllv(ad, channel)
     local fc = getFilterCfg()
     local count = tonumber(fc.sample_count) or 11
     local spacing = tonumber(fc.sample_spacing_ms) or 20
     local samples = {}
-    local i
     for i = 1, count do
         local mv = readPinOnce(ad, channel)
         if mv ~= nil then
@@ -230,31 +240,36 @@ local function readPinMillivolts(ad, channel)
     end
     return trimmedMean(samples)
 end
+
 local function batteryTask()
     if not adc or not adc.open then
         return
     end
     local channel = getChannel()
-    applyAdcRange(adc)
+    applAdcRng(adc)
     adc.open(channel)
-    local scale = resolveMvScale()
-    log.info(LOG_TAG, BUILD_TAG, "channel", channel, "scale", string.format("%.4f", scale))
+    local scale = rslvMvScl()
     while true do
-        local pinMv = readPinMillivolts(adc, channel)
+        local pinMv = readPinMllv(adc, channel)
         if pinMv then
-            local rawMv = pinToCellMv(pinMv, scale)
+            local rawMv = math.floor(pinMv * scale + 0.5)
             local cellMv = smoothCellMv(rawMv)
-            local rawPct = percentFromCellMv(cellMv)
-            local pct = smoothPercent(cellMv, rawPct)
+            local vmax = tonumber(getCellCfg().v_max_mv) or 4200
+            if cellMv > vmax then
+                cellMv = vmax
+            end
+            local rawPct = prcnFrom(cellMv)
+            local pct = smthPrcn(cellMv, rawPct)
             voltageMv = cellMv
             percent = pct
-            consumptionRate = updateConsumptionRate(percent)
-            exportGlobals(percent, voltageMv, consumptionRate)
-            sys.publish("BATTERY_UPDATE", percent, voltageMv, consumptionRate)
+            consumptionRate = updtCnsm(percent)
+            exprGlbl(percent, voltageMv, consumptionRate)
+            sys.publish(APP_EVENTS.BATTERY_UPDATE, percent, voltageMv, consumptionRate)
         end
-        sys.wait(sampleIntervalMs())
+        sys.wait(smplIntrMs())
     end
 end
+
 function start()
     if taskStarted then
         return false
@@ -263,22 +278,18 @@ function start()
     sys.taskInit(batteryTask)
     return true
 end
-function getVoltage()
-    return voltageMv
-end
+
 function getPercent()
     return percent
 end
-function getConsumptionRate()
-    return consumptionRate
-end
+
 function getState()
     return {
         started = taskStarted,
         build = BUILD_TAG,
         config = getCfg(),
-        sample_ms = sampleIntervalMs(),
-        mv_scale = resolveMvScale(),
+        sample_ms = smplIntrMs(),
+        mv_scale = rslvMvScl(),
         voltage = voltageMv,
         percent = percent,
         consumptionRate = consumptionRate,

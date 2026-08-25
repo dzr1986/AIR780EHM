@@ -1,4 +1,11 @@
+-- ================================================================
+-- Filename : usb_rndis.lua
+-- Module   : USB 网卡 tethering：RNDIS 枚举、IP_READY 刷新、网卡数据链路维持
+-- Arch     : doc/modules/USB_RNDIS_FLOW.md
+-- ================================================================
+
 require "sys"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -7,8 +14,8 @@ local RNDIS_USB_ETHERNET_MODE = 3
 local FLYMODE_WAIT_MS = 1000
 local IP_READY_WAIT_MS = 300000
 local taskStarted = false
-local ipReadyHooked = false
-local ipReadyRefreshed = false
+local ipRdyHkd = false
+local ipRdyRfrs = false
 local bootStable = false
 local refreshing = false
 local EVT_NET_STABLE = "RNDIS_NET_STABLE"
@@ -19,34 +26,27 @@ local runtime = {
     last_error = nil,
     configured_at = nil,
 }
-local function publishBootStable()
+local function cfg()
+    return _G.RNDIS_CFG or {}
+end
+
+local function pubBootStab()
     if bootStable then
         return
     end
     bootStable = true
     sys.publish(EVT_NET_STABLE, true)
 end
+
 function isRefreshing()
     return refreshing == true
 end
-function isBootStable()
-    return bootStable == true
-end
-function waitForNetStable(timeoutMs)
-    if bootStable then
-        return true
-    end
-    timeoutMs = tonumber(timeoutMs) or 120000
-    local ok = sys.waitUntil(EVT_NET_STABLE, timeoutMs)
-    if ok or bootStable then
-        return true
-    end
-    return false
-end
+
 local function mobileReady()
     return mobile and mobile.flymode and mobile.config and mobile.CONF_USB_ETHERNET ~= nil
 end
-local function readUsbEthernetMode()
+
+local function readUsbEthe()
     if not mobileReady() then
         return nil
     end
@@ -56,6 +56,7 @@ local function readUsbEthernetMode()
     end
     return nil
 end
+
 local function readFlymode()
     if not mobile or not mobile.flymode then
         return nil
@@ -66,7 +67,8 @@ local function readFlymode()
     end
     return nil
 end
-local function readCellularIp()
+
+local function readCellIp()
     if not socket or not socket.localIP then
         return nil
     end
@@ -76,7 +78,8 @@ local function readCellularIp()
     end
     return nil
 end
-local function readMobileStatus()
+
+local function readMblStts()
     if not mobile or not mobile.status then
         return nil
     end
@@ -86,39 +89,43 @@ local function readMobileStatus()
     end
     return nil
 end
-local function usbHostPresent()
+
+local function usbHostPrsn()
     local rt = _G.APP_RUNTIME
     if rt and tonumber(rt.usb_inserted) == 1 then
         return true
     end
-    local ok, up = pcall(require, "usb_policy")
-    if ok and type(up) == "table" and up.isUsbInserted then
-        return up.isUsbInserted() == true
+    local rp = loader.load("runtime_power")
+    if rp and rp.isUsbInserted then
+        return rp.isUsbInserted() == true
     end
     return false
 end
-local function refreshAllowed()
-    local cfg = _G.RNDIS_CFG or {}
-    if cfg.refresh_on_ip == false then
+
+local function rfrsAllw()
+    local c = cfg()
+    if c.refresh_on_ip == false then
         return false
     end
-    if cfg.refresh_only_usb ~= false and not usbHostPresent() then
+    if c.refresh_only_usb ~= false and not usbHostPrsn() then
         return false
     end
     return true
 end
-local function waitCellularReady()
-    local ip = readCellularIp()
+
+local function waitClllRdy()
+    local ip = readCellIp()
     if ip then
         return true, ip
     end
     local ipOk = sys.waitUntil("IP_READY", IP_READY_WAIT_MS)
-    ip = readCellularIp()
+    ip = readCellIp()
     if ipOk and ip then
         return true, ip
     end
     return false, ip
 end
+
 local function applyPmUsb()
     if not pm then
         return
@@ -130,14 +137,24 @@ local function applyPmUsb()
         pm.power(pm.USB, true)
     end
 end
-local function rndisOpenCore()
+
+local function rndsOpen(force)
+    -- 已是目标模式则不再进出飞行模式，避免二次 IP_LOSE
+    if not force then
+        local mode = readUsbEthe()
+        if mode == RNDIS_USB_ETHERNET_MODE then
+            applyPmUsb()
+            return
+        end
+    end
     mobile.flymode(0, true)
     sys.wait(FLYMODE_WAIT_MS)
     mobile.config(mobile.CONF_USB_ETHERNET, RNDIS_USB_ETHERNET_MODE)
     mobile.flymode(0, false)
     applyPmUsb()
 end
-local function rndisCloseCore(pauseMs)
+
+local function rndsClsCore(pauseMs)
     mobile.flymode(0, true)
     sys.wait(FLYMODE_WAIT_MS)
     mobile.config(mobile.CONF_USB_ETHERNET, 0)
@@ -145,42 +162,40 @@ local function rndisCloseCore(pauseMs)
         sys.wait(pauseMs)
     end
 end
-local function refreshAfterCellularIp()
-    if not mobileReady() or ipReadyRefreshed or refreshing then
+
+local function refAfteCell()
+    if not mobileReady() or ipRdyRfrs or refreshing then
         return false
     end
-    if not refreshAllowed() then
+    if not rfrsAllw() then
         return false
     end
-    local ip = readCellularIp()
+    local ip = readCellIp()
     if not ip then
         return false
     end
-    ipReadyRefreshed = true
+    ipRdyRfrs = true
     refreshing = true
     sys.publish(EVT_REFRESH_BEGIN)
-    mobile.flymode(0, true)
-    sys.wait(FLYMODE_WAIT_MS)
-    mobile.config(mobile.CONF_USB_ETHERNET, 0)
-    sys.wait(500)
-    mobile.config(mobile.CONF_USB_ETHERNET, RNDIS_USB_ETHERNET_MODE)
-    mobile.flymode(0, false)
-    applyPmUsb()
+    rndsClsCore(500)
+    rndsOpen(true)
+    -- flymode 后须等蜂窝 IP 回来，避免上层立刻起 MQTT 撞 IP_LOSE
+    waitClllRdy()
     refreshing = false
     sys.publish(EVT_REFRESH_END)
-    log.info(LOG_TAG, "refresh_done", readCellularIp() or "--")
     if not bootStable then
-        publishBootStable()
+        pubBootStab()
     end
     return true
 end
-local function hookIpReadyForRndis()
-    if ipReadyHooked then
+
+local function hookIpRdy()
+    if ipRdyHkd then
         return
     end
-    ipReadyHooked = true
-    local cfg = _G.RNDIS_CFG or {}
-    if cfg.refresh_on_ip_ready ~= true then
+    ipRdyHkd = true
+    local c = cfg()
+    if c.refresh_on_ip_ready ~= true then
         return
     end
     if not sys or not sys.subscribe then
@@ -190,93 +205,73 @@ local function hookIpReadyForRndis()
         if runtime.status ~= "enabled" or not bootStable or refreshing then
             return
         end
-        if not refreshAllowed() or ipReadyRefreshed then
+        if not rfrsAllw() or ipRdyRfrs then
             return
         end
         sys.taskInit(function()
             sys.wait(1500)
-            if refreshing or ipReadyRefreshed then
+            if refreshing or ipRdyRfrs then
                 return
             end
-            refreshAfterCellularIp()
+            refAfteCell()
         end)
     end)
 end
-local function markRndisEnabled()
+
+local function markRnds()
     runtime.status = "enabled"
     runtime.configured_at = os.time()
-    ipReadyRefreshed = false
-    hookIpReadyForRndis()
+    ipRdyRfrs = false
+    hookIpRdy()
 end
-local function cycleRndis(pauseMs, extraWait)
-    if not mobileReady() then
-        runtime.status = "unsupported"
-        runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
-        return false, runtime.last_error
-    end
-    sys.publish(EVT_REFRESH_BEGIN)
-    refreshing = true
-    rndisCloseCore(pauseMs)
-    rndisOpenCore()
-    markRndisEnabled()
-    if extraWait and extraWait > 0 then
-        sys.wait(extraWait)
-    end
-    ipReadyRefreshed = false
-    if not refreshAfterCellularIp() then
-        refreshing = false
-        sys.publish(EVT_REFRESH_END)
-    end
-    return true
-end
-local function finishBootOpen()
-    if refreshAllowed() then
-        log.info(LOG_TAG, "boot_wait_ip")
-        local ready, ip = waitCellularReady()
-        if ready and not ipReadyRefreshed then
-            log.info(LOG_TAG, "boot_refresh", ip or "--")
-            if not refreshAfterCellularIp() then
-                publishBootStable()
+
+local function fnshBoot()
+    -- 无论是否 refresh，flymode 后都先等蜂窝 IP，再宣告 stable
+    waitClllRdy()
+    if rfrsAllw() then
+        local ip = readCellIp()
+        if ip and not ipRdyRfrs then
+            if not refAfteCell() then
+                pubBootStab()
             end
         else
-            log.warn(LOG_TAG, "boot_skip_refresh", ready and 1 or 0, ip or "--")
-            publishBootStable()
+            pubBootStab()
         end
     else
-        log.info(LOG_TAG, "boot_no_usb_refresh")
-        publishBootStable()
+        pubBootStab()
     end
 end
+
 function open()
     taskStarted = true
     if not mobileReady() then
         runtime.status = "unsupported"
         runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
-        publishBootStable()
+        pubBootStab()
         return false, runtime.last_error
     end
-    local mode = readUsbEthernetMode()
+    local mode = readUsbEthe()
     if runtime.status == "enabled" and mode == RNDIS_USB_ETHERNET_MODE then
-        hookIpReadyForRndis()
+        hookIpRdy()
         if not bootStable then
-            finishBootOpen()
+            fnshBoot()
         end
         return true
     end
     runtime.status = "starting"
     runtime.last_error = nil
-    rndisOpenCore()
-    hookIpReadyForRndis()
+    rndsOpen(true)
+    hookIpRdy()
     runtime.status = "enabled"
     runtime.configured_at = os.time()
-    local ip = readCellularIp()
-    finishBootOpen()
+    fnshBoot()
     return true
 end
+
 function enable(opts)
     opts = type(opts) == "table" and opts or {}
     if opts.wait_ip_ready then
-        local ready, cellIp = waitCellularReady()
+        local ready = waitClllRdy()
         if not ready then
             runtime.status = "failed"
             runtime.last_error = "cellular IP not ready"
@@ -285,30 +280,38 @@ function enable(opts)
     end
     return open()
 end
+
 function disable()
     if not mobileReady() then
         runtime.status = "unsupported"
         return false, runtime.last_error
     end
-    rndisCloseCore(0)
+    rndsClsCore(0)
     mobile.flymode(0, false)
     runtime.status = "disabled"
-    ipReadyRefreshed = false
+    ipRdyRfrs = false
     return true
 end
+
 function stop()
     return disable()
 end
-function switch(opts)
-    opts = type(opts) == "table" and opts or {}
-    local off_ms = tonumber(opts.off_ms) or 800
-    local on_wait_ms = tonumber(opts.on_wait_ms) or 500
-    local ok, err = cycleRndis(off_ms, on_wait_ms)
-    if ok then
-        log.info(LOG_TAG, "switch_rndis", readCellularIp() or "--")
+
+local function softUsbReenum(pauseMs)
+    if not pm or not pm.power or not pm.USB then
+        return false
     end
-    return ok, err
+    local ms = tonumber(pauseMs) or 500
+    if ms < 100 then
+        ms = 100
+    end
+    pcall(pm.power, pm.USB, false)
+    sys.wait(ms)
+    pcall(pm.power, pm.USB, true)
+    applyPmUsb()
+    return true
 end
+
 function rebind(opts)
     opts = type(opts) == "table" and opts or {}
     local wait_ms = tonumber(opts.wait_ms) or 500
@@ -320,13 +323,31 @@ function rebind(opts)
         runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
         return false, runtime.last_error
     end
+    local hostUsb = _G.HOST_USB_CFG or {}
+    local softPreferred = hostUsb.usb_reset_soft_rebind ~= false and opts.force_flymode ~= true
+    local soft = softPreferred and opts.soft ~= false
     refreshing = true
-    ipReadyRefreshed = false
+    ipRdyRfrs = false
     sys.publish(EVT_REFRESH_BEGIN)
     local ok, err = pcall(function()
-        rndisCloseCore(wait_ms)
-        rndisOpenCore()
-        markRndisEnabled()
+        if soft then
+            -- 软重枚举：不断蜂窝，只复位 USB，避免 MQTT IP_LOSE
+            if not softUsbReenum(wait_ms) then
+                -- 软失败再硬切（仍可能断蜂窝）
+                rndsClsCore(wait_ms)
+                rndsOpen(true)
+                markRnds()
+                waitClllRdy()
+                soft = false
+            else
+                markRnds()
+            end
+        else
+            rndsClsCore(wait_ms)
+            rndsOpen(true)
+            markRnds()
+            waitClllRdy()
+        end
     end)
     refreshing = false
     sys.publish(EVT_REFRESH_END)
@@ -335,24 +356,10 @@ function rebind(opts)
         log.error(LOG_TAG, "rebind_fail", runtime.last_error)
         return false, runtime.last_error
     end
-    log.info(LOG_TAG, "rebind_ok", readCellularIp() or "--")
+    log.info(LOG_TAG, soft and "rebind_soft_ok" or "rebind_flymode_ok")
     return true
 end
-function enableAsync(opts)
-    sys.taskInit(function()
-        local ok, err
-        if type(opts) == "table" and opts.wait_ip_ready then
-            ok, err = enable(opts)
-        else
-            ok, err = open()
-        end
-        if not ok then
-            runtime.status = "failed"
-            runtime.last_error = err or "enable failed"
-        end
-    end)
-    return true
-end
+
 function start()
     if taskStarted then
         return false
@@ -361,24 +368,42 @@ function start()
     sys.taskInit(open)
     return true
 end
+
 function isStarted()
     return taskStarted
 end
+
+function isBootStable()
+    return bootStable == true
+end
+
+function waitForNetStable(timeoutMs)
+    if bootStable then
+        return true
+    end
+    local ms = tonumber(timeoutMs) or IP_READY_WAIT_MS
+    if ms < 1000 then
+        ms = 1000
+    end
+    return sys.waitUntil(EVT_NET_STABLE, ms) == true or bootStable == true
+end
+
 function isEnabled()
-    local mode = readUsbEthernetMode()
+    local mode = readUsbEthe()
     if mode ~= nil then
         return mode == RNDIS_USB_ETHERNET_MODE
     end
     return runtime.status == "enabled"
 end
+
 function getStatus()
-    local mode = readUsbEthernetMode()
+    local mode = readUsbEthe()
     local enabled = (mode == RNDIS_USB_ETHERNET_MODE)
     if mode == nil and runtime.status == "enabled" then
         enabled = true
         mode = RNDIS_USB_ETHERNET_MODE
     end
-    local ip = readCellularIp()
+    local ip = readCellIp()
     return {
         status = runtime.status,
         started = taskStarted,
@@ -387,12 +412,12 @@ function getStatus()
         rndis_mode = RNDIS_USB_ETHERNET_MODE,
         ip = ip,
         cell_ip = ip,
-        mobile_status = readMobileStatus(),
+        mobile_status = readMblStts(),
         csq = mobile and mobile.csq and mobile.csq() or nil,
         flymode = readFlymode(),
         last_error = runtime.last_error,
         configured_at = runtime.configured_at,
-        ip_ready_refreshed = ipReadyRefreshed,
+        ip_ready_refreshed = ipRdyRfrs,
         boot_stable = bootStable,
         refreshing = refreshing,
     }

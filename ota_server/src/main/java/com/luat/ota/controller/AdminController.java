@@ -7,6 +7,7 @@ import com.luat.ota.service.FirmwareCatalogService;
 import com.luat.ota.service.FirmwareCatalogService.FirmwareFileInfo;
 import com.luat.ota.service.FirmwareRegistryService;
 import com.luat.ota.service.OtaAuditService;
+import com.luat.ota.util.LuatFilenameParser;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -127,9 +128,26 @@ public class AdminController {
         return result;
     }
 
+    @GetMapping("/firmware/parse-name")
+    public Map<String, Object> parseFirmwareName(@RequestParam String filename) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("filename", filename);
+        LuatFilenameParser.parse(filename).ifPresentOrElse(parsed -> {
+            body.put("parsed", true);
+            body.put("firmwareName", parsed.firmwareName());
+            body.put("version", parsed.version());
+            body.put("scriptVersion", parsed.scriptVersion());
+            body.put("coreVersion", parsed.coreVersion());
+        }, () -> body.put("parsed", false));
+        return body;
+    }
+
     @GetMapping("/logs")
-    public List<OtaAuditService.OtaAuditRecord> logs(@RequestParam(defaultValue = "100") int limit) {
-        return auditService.recent(limit);
+    public List<OtaAuditService.OtaAuditRecord> logs(
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(required = false) String imei
+    ) {
+        return auditService.recent(limit, imei);
     }
 
     @PostMapping("/manifest/reload")

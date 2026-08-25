@@ -17,7 +17,7 @@
 - **stream**：`0`=主码流，`1`=子码流
 - **scope**：缺省为视频；`"audio"` 表示音频
 - T31x **rest 休眠**时，4G 会先 **唤醒 T31x** 再发 UART AT
-- **仅码率**可热更新；改分辨率/帧率/编码类型等 → `needReboot=1` 并 T31x 自动重启
+- **码率 / 帧率 / RC 模式**走 IMP 热更新；改分辨率/编码器走进程内 `VideoRestart`。**不再** `netcam_reboot()`（见 [T31X_MQTT_PARAM_HOT_APPLY.md](T31X_MQTT_PARAM_HOT_APPLY.md)）
 
 与 **2010 PIR `quality`** 无关：`quality` 是 PIR 业务档位，不是 `syscfg.ini` 编码分辨率。
 

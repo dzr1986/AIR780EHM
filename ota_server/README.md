@@ -1,10 +1,10 @@
-# LuatOS 自建 OTA 服务器
+# 4G OTA 服务器
 
 面向 **780EHM_PJ**（Air780EHM + panshi MQTT）的远程固件升级服务端。
 
-> 固件侧对接见 [`doc/OTA_SERVER.md`](../doc/OTA_SERVER.md)；**完整流程**见 [`doc/OTA_FLOW.md`](../doc/OTA_FLOW.md)；协议见 [`doc/OTA_PROTOCOL.md`](../doc/OTA_PROTOCOL.md)。
+> 固件侧对接见 [`docs/OTA_SERVER.md`](docs/OTA_SERVER.md)；**系统流程图**见 [`docs/OTA_SYSTEM_FLOW.md`](docs/OTA_SYSTEM_FLOW.md)；**完整流程**见 [`docs/OTA_FLOW.md`](docs/OTA_FLOW.md)；协议见 [`docs/OTA_PROTOCOL.md`](docs/OTA_PROTOCOL.md)；FOTA 规则见 [`docs/OTA_FOTA.md`](docs/OTA_FOTA.md)；管理台见 [`docs/OTA_ADMIN.md`](docs/OTA_ADMIN.md)；**后台点升级**见 [`docs/OTA_CONSOLE_UPGRADE.md`](docs/OTA_CONSOLE_UPGRADE.md)；闭环测试见 [`docs/OTA_CLOSED_LOOP.md`](docs/OTA_CLOSED_LOOP.md)。
 
-基于合宙 **libfota2** HTTP 协议，提供：
+设备通过 HTTP GET 检查并下载差分包，服务端提供：
 
 - 差分包（dfota）按**源版本**匹配下发
 - **MySQL** 设备台账与 OTA 任务跟踪
@@ -38,14 +38,7 @@
 
 ## 1. 这是什么
 
-合宙模块远程升级（FOTA）有两种常见做法：
-
-| 方式 | 说明 |
-|------|------|
-| 合宙 IoT 平台 | 官方云，配置 `PRODUCT_KEY` 即可 |
-| **自建 HTTP 服务器（本项目）** | 自己托管差分包，完全可控 |
-
-本服务器实现的是第二种。模块里的 `libfota2` 用 **HTTP GET** 向服务器询问是否有新版本：
+4G 模组远程升级（FOTA）由本服务托管差分包并完成匹配下发。设备用 **HTTP GET** 询问是否有新版本：
 
 - **有升级**：服务器返回 **HTTP 200**，响应体为 `.bin` 差分包二进制
 - **无升级**：服务器返回 **HTTP 状态码 ≥ 300**（默认 404）
@@ -136,7 +129,7 @@ Luat 远程升级使用 **差分包**：
 | `imei` | 模块 IMEI | `862323084068124` |
 | `firmware_name` | `PROJECT_LuatOS-SoC_BSP` | `PANSHI_CAT1_LuatOS-SoC_Air780EHM` |
 | `version` | 当前 IoT 版本 | `2034.001.002` |
-| `project_key` | 合宙 key（自建可忽略） | — |
+| `project_key` | 项目 Key | `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x` |
 
 ### 3.4 目标版本优先级
 
@@ -154,15 +147,15 @@ application.yml → luat.ota.latest-version
 
 ## 4. 与 780EHM_PJ 固件的关系
 
-**固件 lua 不要改。** 现有 `lib/fota.lua` 已兼容：MQTT 2004 载荷里带 `url` 就走自建 HTTP，不带则走合宙 IoT。
+**固件 lua 不要改。** 现有 `lib/fota.lua` 已兼容：MQTT 2004 载荷里带 `url` 就走本服务 HTTP。
 
-详见 [`doc/OTA_SERVER.md`](../doc/OTA_SERVER.md)。
+详见 [`docs/OTA_SERVER.md`](docs/OTA_SERVER.md)。
 
 ### 4.1 当前固件默认行为
 
 | 配置 | 位置 | 当前值 |
 |------|------|--------|
-| OTA 模式 | `user/config.lua` → `FOTA_CFG.server_mode` | `"iot"`（合宙云） |
+| OTA 模式 | `user/config.lua` → `FOTA_CFG.server_mode` | `"iot"`（由 2004 的 `url` 决定实际拉包地址） |
 | MQTT Broker | `user/config.lua` → `MQTT_CFG` | `112.86.146.218:2123` |
 | 项目名 | `user/main.lua` → `PROJECT` | `PANSHI_CAT1` |
 
@@ -190,7 +183,7 @@ application.yml → luat.ota.latest-version
 
 在 MQTT 平台向 `/panshi/device/{IMEI}/` 手动 Publish 上述 JSON（见 [doc/MQTT_DOWNLINK.md](../doc/MQTT_DOWNLINK.md) §6.6），效果相同。
 
-> `AT+OTA` 未带 url 时仍走合宙 IoT；自建 OTA 请用方式 A/B 通过 MQTT 下发带 `url` 的 2004。
+> `AT+OTA` 未带 url 时不会打到本服务；请用方式 A/B 通过 MQTT 下发带 `url` 的 2004。
 
 ### 4.3 设备上行（服务器会订阅）
 
@@ -444,21 +437,24 @@ curl -v "http://127.0.0.1:8080/luat/update?imei=862323084068124&version=2034.001
 
 地址：`https://你的域名/admin.html`（本地：`http://127.0.0.1:8080/admin.html`）
 
+逐步操作见 **[docs/OTA_ADMIN.md](docs/OTA_ADMIN.md)**，点选升级见 **[docs/OTA_CONSOLE_UPGRADE.md](docs/OTA_CONSOLE_UPGRADE.md)**，闭环测试见 **[docs/OTA_CLOSED_LOOP.md](docs/OTA_CLOSED_LOOP.md)**。
+
 ### 10.1 首次使用
 
-1. 在顶部输入 **Admin Token**（与 `luat.ota.admin-token` 一致）
-2. 点击 **刷新全部**
-3. 确认「MQTT 桥接」中 `connected: true`（若已启用 MQTT）
+1. 输入 **Admin Token**（与 `luat.ota.admin-token` 一致）
+2. 点 **登录 / 刷新**
+3. 默认已有项目「4G 标准模块」，Key 与 `main.lua` `PRODUCT_KEY` 相同
 
 ### 10.2 常用操作
 
 | 操作 | 步骤 |
 |------|------|
-| 上传差分包 | 选择 `.bin` → 填源/目标版本 → 上传 |
-| 单台升级 | 「MQTT 触发 OTA」→ 填 IMEI、目标版本 → 下发 |
-| 批量升级 | 同上，点「批量升级落后设备」（升级所有 current < target 的设备） |
-| 查看进度 | 「OTA 任务」表格 + 「设备表」中的 ota_status |
-| 查看 HTTP 日志 | 「最近 HTTP OTA 检查日志」 |
+| 新建项目 | 我的项目 → 新建项目（Key 可留空自动生成） |
+| 创建固件 | 进入固件列表 → 选 `.bin`（Luatools 文件名会自动识别固件名/版本）→ 勾选升级全部或填 IMEI |
+| 指定设备 | 固件行「指定设备」；或「升级全部」 |
+| 禁止升级 | 设备列表搜 IMEI → 禁止升级；循环升级前先解除禁止 |
+| 单台升级 | 「固件升级」填 IMEI + 目标版本 → 下发 MQTT 2004 |
+| 升级日志 | 「我的任务」按 IMEI 搜索；HTTP 检查在「调试日志」 |
 
 ---
 
@@ -565,7 +561,7 @@ curl -X POST "https://ota.yourcompany.com/admin/api/ota/trigger/outdated" \
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/site/firmware_upgrade` | 与合宙 IoT 路径兼容，libfota2 推荐 |
+| GET | `/api/site/firmware_upgrade` | 设备拉包（推荐） |
 | GET | `/luat/update` | 社区文档常用路径 |
 | GET | `/firmware/{filename}` | 直链下载（MQTT 下发 `full_url:1` 时用） |
 | GET | `/health` | 健康检查，返回 `ok` |
@@ -575,18 +571,22 @@ curl -X POST "https://ota.yourcompany.com/admin/api/ota/trigger/outdated" \
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/admin/api/status` | 服务概览 |
+| GET/POST/PUT/DELETE | `/admin/api/projects` | 项目列表/新建/编辑/删除 |
+| GET | `/admin/api/firmware/parse-name` | 按 Luatools 文件名识别固件名/版本 |
 | GET | `/admin/api/manifest` | 读取 manifest |
 | PUT | `/admin/api/manifest` | 保存 manifest |
 | POST | `/admin/api/firmware/upload` | 上传差分包（multipart） |
 | GET | `/admin/api/firmware` | 列出 `.bin` 文件 |
-| GET | `/admin/api/devices` | 设备列表 |
+| GET/POST | `/admin/api/firmware-packages` | 固件库 |
+| GET | `/admin/api/devices?imei=&projectKey=` | 设备列表（可搜 IMEI） |
+| PUT | `/admin/api/devices/{imei}/ota-enabled` | 禁止/允许升级 |
 | POST | `/admin/api/devices` | 新增/更新设备 |
 | DELETE | `/admin/api/devices/{imei}` | 删除设备 |
 | POST | `/admin/api/ota/trigger` | MQTT 触发 OTA |
 | POST | `/admin/api/ota/trigger/outdated` | 批量升级落后设备 |
-| GET | `/admin/api/ota/tasks` | OTA 任务列表 |
+| GET | `/admin/api/ota/tasks?imei=&status=&page=&size=` | OTA 任务分页 |
 | GET | `/admin/api/mqtt/status` | MQTT 连接状态 |
-| GET | `/admin/api/logs?limit=100` | HTTP OTA 检查日志 |
+| GET | `/admin/api/logs?imei=&limit=100` | HTTP OTA 检查日志 |
 
 ---
 
@@ -668,6 +668,7 @@ docker compose exec mysql mysql -uluat -pluat123 luat_ota \
 ```
 ota_server/
 ├── README.md                 ← 本文档
+├── docs/                     ← OTA 流程 / 协议 / 管理台对照
 ├── pom.xml
 ├── docker-compose.yml        ← MySQL + OTA + Nginx 编排
 ├── Dockerfile
@@ -694,7 +695,7 @@ ota_server/
 
 | 资料 | 链接 |
 |------|------|
-| 合宙第三方 OTA 官方文档 | https://docs.openluat.com/air780e/luatos/app/base/fotathird/ |
-| libfota2 API | https://wiki.luatos.org/api/libs/libfota2.html |
+| 模组 HTTP OTA 参考 | https://docs.openluat.com/air780e/luatos/app/base/fotathird/ |
+| 模组 fota API | https://wiki.luatos.org/api/libs/libfota2.html |
 | 780EHM_PJ MQTT 下行 OTA | [doc/MQTT_DOWNLINK.md](../doc/MQTT_DOWNLINK.md) §6.3 / §6.6 |
 | 780EHM_PJ MQTT 协议总览 | [doc/MQTT_PROTOCOL.md](../doc/MQTT_PROTOCOL.md) |

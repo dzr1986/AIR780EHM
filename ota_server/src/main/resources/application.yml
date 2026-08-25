@@ -7,7 +7,7 @@ spring:
       max-file-size: 32MB
       max-request-size: 32MB
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/luat_ota?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    url: jdbc:mysql://127.0.0.1:3306/luat_ota?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
     username: luat
     password: luat123
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -32,6 +32,9 @@ luat:
     allowed-imeis: []
     firmware-map:
       PANSHI_CAT1_LuatOS-SoC_Air780EHM: dfota_final.bin
+    ipc-file-dir: ./ipc_upgrade/files
+    ipc-demo-base: http://127.0.0.1:8010
+    ipc-public-download-base: http://43.136.55.143:8008
   mqtt:
     enabled: false
     host: "112.86.146.218"

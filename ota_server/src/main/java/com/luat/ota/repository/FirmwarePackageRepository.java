@@ -6,12 +6,21 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface FirmwarePackageRepository extends JpaRepository<FirmwarePackage, Long> {
 
     List<FirmwarePackage> findByFirmwareNameOrderByCreatedAtDesc(String firmwareName);
 
     List<FirmwarePackage> findAllByOrderByCreatedAtDesc();
+
+    List<FirmwarePackage> findByProjectIdOrderByCreatedAtDesc(Long projectId);
+
+    long countByProjectId(Long projectId);
+
+    boolean existsByFirmwareName(String firmwareName);
+
+    Optional<FirmwarePackage> findFirstByFileName(String fileName);
 
     @Query("""
             SELECT fp FROM FirmwarePackage fp

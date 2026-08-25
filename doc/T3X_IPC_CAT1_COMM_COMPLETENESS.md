@@ -255,13 +255,13 @@ sequenceDiagram
 
 ```bash
 # T3x 侧（syscfg 打开 uart_log 后）
-./tests/cat1_record_sleep_log_check.sh /tmp/cat1_uart.log
+./tests/cat1_record_sleep_log_check.sh /tmp/ipc/cat1_uart.log
 
 # T3x + 4G 串口日志合并
-./tests/cat1_record_sleep_log_check.sh /tmp/cat1_uart.log /path/to/4g_uart.log
+./tests/cat1_record_sleep_log_check.sh /tmp/ipc/cat1_uart.log /path/to/4g_uart.log
 
 # 严格：窗内必须有 block sleep 或 HOSTIDLE BUSY
-./tests/cat1_record_sleep_log_check.sh --strict /tmp/cat1_uart.log
+./tests/cat1_record_sleep_log_check.sh --strict /tmp/ipc/cat1_uart.log
 ```
 
 **退出码**：`0` 通过，`1` 失败，`2` 用法错误。

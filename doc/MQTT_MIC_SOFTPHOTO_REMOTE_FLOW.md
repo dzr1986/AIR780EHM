@@ -1,8 +1,10 @@
 # MQTT 远程配置：麦克风 AI / 软光敏 / 音频编码（Cat.1 → UART → IPC）
 
-> **协议总表**：[MQTT_PROTOCOL.md](../../780EHM_PJ/doc/MQTT_PROTOCOL.md)（`/mnt/share/doc/`）  
-> **Lua 真源**：`/mnt/share/user/net_mqtt.lua` · `host_uart.lua`（镜像：`docs/4g_lua/user/`）  
-> **IPC 真源**：`app/host/host_at.c` · `app/host/host_remote.c` · `app/cfg_ini/sysconfig.c` · `media_plat/t31x/audio_interface.c`
+> **现网对本机 IMEI**：**`862323084068124`**（另一台样机 `…8314` 勿混用主题）  
+> **协议总表**：[MQTT_PROTOCOL.md](MQTT_PROTOCOL.md)  
+> **Lua 真源**：`user/net_mqtt.lua` · `user/host_uart.lua`  
+> **IPC 真源**：`app/host/host_at.c` · `app/host/host_remote.c` · `app/cfg_ini/sysconfig.c` · `media_plat/t31x/audio_interface.c`  
+> **软光敏（T31 状态机，非 MQTT）**：来回切 / 开灯仍黑白 / 日夜紫闪，见 [T31X_SOFTPHOTO_REPEAT_SWITCH.md](T31X_SOFTPHOTO_REPEAT_SWITCH.md)
 
 ```text
 平台 MQTT  /panshi/device/{IMEI}/
@@ -19,7 +21,7 @@
 
 | 业务 | MQTT 下行/上行 | UART AT | syscfg 键 | 运行时 |
 |------|----------------|---------|-----------|--------|
-| **视频/音频编码 + 扬声器** | 2020/1020 · 2021/1021 | `AT+VENC*` · `AT+AUDIO*` | `[cameraN] audio_*` · `audio_out_volume/gain` | 改码率可热更新；改采样/编码需 reboot |
+| **视频/音频编码 + 扬声器** | 2020/1020 · 2021/1021 | `AT+VENC*` · `AT+AUDIO*` | `[cameraN] audio_*` · `audio_out_volume/gain` | 码率/帧率/RC 热更新；改分辨率走进程内 VideoRestart，**不杀 ipc**（见 [T31X_MQTT_PARAM_HOT_APPLY.md](T31X_MQTT_PARAM_HOT_APPLY.md)） |
 | **麦克风 AI 音量/增益** | **2028/1028 · 2029/1029** | **`AT+MIC?` · `AT+MICSET=`** | **`cameraN:audio_in_volume/gain`** · legacy `[audio_in] volume/gain` | AI 已初始化则 `IMP_AI_SetVol/SetGain` 热更新 |
 | **软光敏 IRCUT** | **2030/1030 · 2031/1031** | **`AT+SOFTPHOTO?` · `AT+SOFTPHOTOSET=`** | **`[soft_photosensitive]`** 8 字段 | 写内存 + ini，检测线程下轮生效 |
 
@@ -137,7 +139,7 @@ gain=28
 ## 6. 联调示例
 
 ```bash
-IMEI=862323084068314
+IMEI=862323084068124
 
 # 查麦克风
 mosquitto_pub -h <broker> -t "/panshi/device/${IMEI}/" \

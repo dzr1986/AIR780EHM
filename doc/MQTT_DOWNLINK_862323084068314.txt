@@ -9,7 +9,7 @@
   详细说明         : doc/MQTT_PROTOCOL.md / doc/MQTT_DOWNLINK.md
                      doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md（帧率/录像/人形）
                      doc/MQTT_MIC_SOFTPHOTO_REMOTE_FLOW.md（麦克风/软光敏 2028-2031）
-  文档版本         : 2026-06-27
+  文档版本         : 2026-07-01
 
 ================================================================================
 一、连接与主题（MQTTX / MQTT.fx / 平台侧）
@@ -49,6 +49,7 @@
   /panshi/app/862323084068314/sim      → 1005 SIM 信息
   /panshi/app/862323084068314/identity → 1006 设备标识（IMEI + GB28181）
   /panshi/app/862323084068314/tfcard   → 1007 TF/SD 卡状态
+  /panshi/app/862323084068314/tfcard_format → 1009 TF/SD 卡格式化结果
   /panshi/app/862323084068314/version  → 1008 固件版本（2008 查询）
   /panshi/app/862323084068314/pir      → 1010 PIR 检测状态
   /panshi/app/862323084068314/encode  → 1020 编码查询 / 1021 编码设置应答
@@ -68,14 +69,15 @@
 
   下行      含义（平台→设备）              上行      上行主题
   ------    --------------------------    ------    ----------
-  2001      唤醒查询                      1001      wakeup
-  2002      低功耗 进入/退出               1002      rest（仅 enter 成功后）
+  2001      MQTT探活（不上电、不改功耗）    1001      wakeup（历史主题名，语义是探活）
+  2002      断T31 enter / 上电T31 exit    1004+1002  event / rest
   2003      状态查询 / 配置 interval(GETCFG)  1003      status
   2004      重启 / 关机 / OTA / 白光灯 WLED   1004      event
   2005      SIM 卡信息查询                 1005      sim
   2006      IMEI + GB28181 标识查询         1006      identity
   2007      TF/SD 卡状态查询               1007      tfcard
   2008      固件版本查询（仅 4G）           1008      version
+  2009      TF/SD 卡格式化                 1009      tfcard_format
   2010      PIR 策略配置 / 状态查询         1010      pir
   2011      平台停录（TF 卡）               1011      event
   2012      平台开录（TF 卡）               1012      event
@@ -109,15 +111,16 @@
 ================================================================================
 
 ------------------------------------------------------------------------------
-3.1  2001 — 唤醒查询  →  1001
+3.1  2001 — MQTT探活（不上电）  →  1001
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   应答 : 下行 2001 立即发 1001（载荷同 conack 常电 1001）
+  注意 : 不是唤醒。不断/上 T31，不进/出 rest。上电用 2002 exit，进低功耗用 2002 enter。
 
-  【1001 触发对照 — conack 自动 ≠ 2001 查询】
+  【1001 触发对照 — conack 自动 ≠ 2001 探活】
   conack 常电     → 主动 1001
   conack rest     → 不发 1001，发 1002+1003
-  2001 查询(rest) → 仍应答 1001（不代表已出 rest；看 1003.lowPowerMode）
+  2001 探活(rest) → 仍应答 1001（不代表已出 rest；看 1003.lowPowerMode）
   PIR auto(rest)  → 不发 1001
 
 【下行 — 发布到 /panshi/device/862323084068314/】
@@ -136,17 +139,18 @@
 }
 
 ------------------------------------------------------------------------------
-3.2  2002 — 低功耗控制  →  1002（进入时）
+3.2  2002 — 断T31 / 上电T31  →  1004 + 1002
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
-  应答 : 进入低功耗成功后发 1002；退出不发 1002
-  说明 : 业务低功耗仅 T3x 断电，模组保持 Cat.1/MQTT（不断网）
+  应答 : enter/exit 都先发 1004（rest_enter / rest_exit），随后 1002
+  说明 : 业务低功耗仅 T31 断电，模组保持 Cat.1/MQTT（不断网）
+         2002 enter：先停 IPC 再断 T31。2002 exit：给 T31 上电。不要用 2001 当上电。
 
-【进入低功耗 — 任选一种】
+【断T31、进入低功耗 — 任选一种】
 {"dataType":"2002","lowPowerMode":"enter"}
 {"dataType":"2002","action":1}
 
-【退出低功耗 — 任选一种】
+【T31上电、退出低功耗 — 任选一种】
 {"dataType":"2002","lowPowerMode":"exit"}
 {"dataType":"2002","action":0}
 
@@ -588,6 +592,39 @@
 }
 
   firmwareVersion : 与 2004 OTA version、1004.currentVersion 一致（合宙 IoT 版）
+
+------------------------------------------------------------------------------
+3.7b  2009 — TF/SD 卡格式化  →  1009
+------------------------------------------------------------------------------
+  方向 : 平台 → 设备
+  应答 : 1009（主题 tfcard_format）；成功且 reboot=0 可自动补发 1007
+  说明 : 先停录再格式化（AT+RECORDCTRL=0,tfcard_format → AT+TFFORMAT）
+
+【下行】
+{"dataType":"2009","action":"format","messageId":"fmt-001","reboot":0}
+
+【字段】
+  action     string  是  固定 "format"
+  messageId  string  否  原样回传到 1009
+  reboot     0/1     否  0=不重启  1=格式化成功后 T3x 重启（缺省走配置）
+
+【上行 — 主题 tfcard_format】
+{
+  "deviceNo": "862323084068314",
+  "dataType": "1009",
+  "ret": 0,
+  "message": "ok",
+  "reboot": 0,
+  "messageId": "fmt-001",
+  "time": "2026-06-23 14:30:00"
+}
+
+  message 常见值 : ok | disabled | busy | timeout | no_uart | t3x_unavailable
+  自动补发 1007 : publish_status_after=true 且 reboot=0 时，完成后再发 tfcard 容量
+
+【串口等价】
+  Cat.1→T3xx: AT+RECORDCTRL=0,tfcard_format
+  Cat.1→T3xx: AT+TFFORMAT=1,reboot=0|1
 
 ------------------------------------------------------------------------------
 3.8  2010 — PIR 策略 / 状态查询  →  1010
@@ -1055,12 +1092,13 @@
   5. 在订阅窗口按 dataType 核对上行
 
 【推荐测试顺序】
-  ① 2001 → 收 1001（rest 下亦应答；同时 1003.lowPowerMode 可能仍为 rest）
+  ① 2001 探活 → 收 1001（不上电；rest 下亦应答；同时 1003.lowPowerMode 可能仍为 rest）
   ② 2003 → 收 1003
   ③ 2005 → 收 1005
   ④ 2006 → 收 1006（identity）
   ⑤ 2007 → 收 1007（tfcard）
   ⑤a 2008 → 收 1008（version，秒回）
+  ⑤b 2009 action=format → 收 1009（tfcard_format；reboot=0 且配置允许时随后再收 1007）
   ⑥ 2010 配置 → 人体触发 → 收 1010（常电 auto 时可能 1001；rest 无 PIR/无 1001）
   ⑦ 2010 query → 收 1010 pirStatus=query（rest 下仍可用；硬件 PIR 在 rest 无 1010）
   ⑧ 2004 reboot → 收 1004 reply=1（设备将重启）
@@ -1094,6 +1132,7 @@
   发布 SIM(1005)        → 2005 应答
   发布设备标识(1006)    → 2006 应答 / T3x 就绪自动
   发布 TF 卡(1007)      → 2007 应答
+  发布 TF 格式化(1009)   → 2009 应答
   发布 PIR 检测(1010)   → PIR 上报
   pub 1020 / pub 1021   → 编码查询/设置应答
   pub 1024 / pub 1025   → 帧率查询/设置应答
@@ -1128,11 +1167,12 @@
   其它常见上行日志（非周期）:
   | 日志 | 对应上行 |
   |------|----------|
-  | 发布唤醒(1001): .../wakeup     | 常电 conack 或 2001 查询（rest conack 不发） |
+  | 发布唤醒(1001): .../wakeup     | 常电 conack 或 2001 探活（不上电；rest conack 不发） |
   | 发布控制回复(1004): reboot ... | 2004 reboot/off/ota 受理 |
   | 发布 SIM(1005): .../sim        | 2005 查询 |
   | 发布设备标识(1006): .../identity | 2006 查询 / 自动上报 |
   | 发布 TF 卡(1007): .../tfcard   | 2007 查询 |
+  | 发布 TF 格式化(1009): .../tfcard_format | 2009 格式化 |
   | 发布版本(1008): .../version    | 2008 查询 |
   | pub 1024 / pub 1025            | 2024/2025 帧率 |
   | pub 1026 / pub 1027            | 2026/2027 人形 |
@@ -1141,6 +1181,7 @@
   2024/2025 帧率     : AT+FRAMERATE? / AT+FRAMERATE=0,0,20
   2012/2011 直连录   : AT+RECORDCTRL=1,90 / AT+RECORDCTRL=0,cloud（T3x 在线时）
   2026/2027 人形     : AT+PERSONDET? / AT+PERSONDET=1
+  2009 TF 格式化     : AT+RECORDCTRL=0,tfcard_format ; AT+TFFORMAT=1,reboot=0|1
   2028/2029 麦克风   : AT+MIC? / AT+MICSET=0,60,28
   2030/2031 软光敏   : AT+SOFTPHOTO? / AT+SOFTPHOTOSET=...
   2022/2023 录像时长 : AT+RECORDTIME? / AT+RECORDTIME=10
@@ -1154,7 +1195,7 @@
 六、仅上行（无对应下行 200x）
 ================================================================================
 
-  1001  常电 conack / 2001（含 rest）/ PIR auto（非 rest）
+  1001  常电 conack / 2001 探活（含 rest，不上电）/ PIR auto（非 rest）
   1002  进 rest 事件（2002 enter / USB 拔出 / 低电量等；含 reason、source）
   1003  2003 应答 + low_power_interval_sec 周期（初值 30s）
   1010  PIR 硬件边沿（另可用 2010 query 主动查）

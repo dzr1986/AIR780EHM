@@ -1,6 +1,6 @@
 # MQTT 低电量关机与状态上报流程
 
-Cat.1 在 **电量 ≤5% 且未插 USB** 时排程整机关机。2026-06 起：**关机前先尽量连上 MQTT，上报 1004 + 1003，再执行关机音与 `pm.shutdown()`**。
+Cat.1 在 **电芯电压 ≤3.4V（`shutdown_mv=3400`）且未插 USB** 时排程整机关机；无有效 mV 时回退 **电量 ≤5%**。关机前先尽量连上 MQTT，上报 1004 + 1003，再执行关机音与 `pm.shutdown()`。
 
 相关背景：[LOW_BATTERY_AND_LOW_POWER.md](./LOW_BATTERY_AND_LOW_POWER.md)、[BOOT_SHUTDOWN_SOUND.md](./BOOT_SHUTDOWN_SOUND.md)。
 
@@ -12,7 +12,7 @@ Cat.1 在 **电量 ≤5% 且未插 USB** 时排程整机关机。2026-06 起：*
 |------|------|
 | >20% | 常电；拒绝 HOSTIDLE |
 | 5%～20% | T31 可 HOSTIDLE；4G 仍 normal；PIR 唤醒后 30s 内拒 HOSTIDLE |
-| ≤5% | 挂起 PIR + 4G rest（1002）+ 延时关机（默认 3s） |
+| ≤3.4V（或无 mV 时 ≤5%） | 挂起 PIR + 4G rest（1002）+ 延时关机（默认 3s） |
 
 `hybrid` 策略另含 ≤`t3x_rest_percent` 进 4G rest。配置真源：`user/config.lua` → `BATTERY_CFG.guard`。模块逻辑见 [LUA_MODULES.md](LUA_MODULES.md)。
 
@@ -163,7 +163,10 @@ Topic 前缀：`/panshi/app/{deviceNo}/`
 
 | 键 | 默认 | 说明 |
 |----|------|------|
-| `shutdown_percent` | 5 | ≤此值排程关机 |
+| `shutdown_mv` | 3400 | 电芯 ≤3.4V 排程关机（优先） |
+| `shutdown_recover_mv` | 3500 | >3.5V 取消已排程关机 |
+| `shutdown_mv_confirm_count` | 2 | 连续采样次数 |
+| `shutdown_percent` | 5 | 无有效 mV 时回退 |
 | `shutdown_delay_ms` | 3000 | 进 rest 后多久触发 `on_power_off` |
 | `shutdown_mqtt_wait_ms` | 8000 | 关机前等待 MQTT 连接上限 |
 | `shutdown_mqtt_grace_ms` | 800 | 1004/1003 发出后留空 |

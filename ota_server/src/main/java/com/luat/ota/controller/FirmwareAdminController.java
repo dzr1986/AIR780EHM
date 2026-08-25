@@ -2,6 +2,7 @@ package com.luat.ota.controller;
 
 import com.luat.ota.entity.FirmwarePackage;
 import com.luat.ota.entity.OtaProject;
+import com.luat.ota.service.DeviceService;
 import com.luat.ota.service.FirmwareRegistryService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -14,20 +15,29 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 合宙 IoT 风格：项目 + 固件 CRUD（对应 iot.openluat.com 我的项目/我的固件） */
+/** 项目与固件管理接口。 */
 @RestController
 @RequestMapping("/admin/api")
 public class FirmwareAdminController {
 
     private final FirmwareRegistryService registry;
+    private final DeviceService deviceService;
 
-    public FirmwareAdminController(FirmwareRegistryService registry) {
+    public FirmwareAdminController(FirmwareRegistryService registry, DeviceService deviceService) {
         this.registry = registry;
+        this.deviceService = deviceService;
     }
 
     @GetMapping("/projects")
-    public List<OtaProject> listProjects() {
-        return registry.listProjects();
+    public List<Map<String, Object>> listProjects() {
+        return registry.listProjectViews().stream().map(this::withDeviceCount).toList();
+    }
+
+    @GetMapping("/projects/{id}")
+    public ResponseEntity<Map<String, Object>> getProject(@PathVariable Long id) {
+        return registry.findProject(id)
+                .map(p -> ResponseEntity.ok(withDeviceCount(registry.toProjectView(p))))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PostMapping("/projects")
@@ -35,9 +45,25 @@ public class FirmwareAdminController {
         return registry.saveProject(project);
     }
 
+    @PutMapping("/projects/{id}")
+    public Map<String, Object> updateProject(@PathVariable Long id, @RequestBody OtaProject project) {
+        return withDeviceCount(registry.toProjectView(registry.updateProject(id, project)));
+    }
+
+    @DeleteMapping("/projects/{id}")
+    public ResponseEntity<Void> deleteProject(@PathVariable Long id) {
+        registry.deleteProject(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/firmware-packages")
-    public List<Map<String, Object>> listPackages() {
-        return registry.listFirmware().stream().map(this::toView).toList();
+    public List<Map<String, Object>> listPackages(@RequestParam(required = false) Long projectId) {
+        List<FirmwarePackage> list = projectId == null
+                ? registry.listFirmware()
+                : registry.listFirmware().stream()
+                .filter(p -> projectId.equals(p.getProjectId()))
+                .toList();
+        return list.stream().map(this::toView).toList();
     }
 
     @GetMapping("/firmware-packages/{id}")
@@ -50,8 +76,8 @@ public class FirmwareAdminController {
     @PostMapping(value = "/firmware-packages/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> uploadPackage(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("firmwareName") String firmwareName,
-            @RequestParam("version") String version,
+            @RequestParam(value = "firmwareName", required = false) String firmwareName,
+            @RequestParam(value = "version", required = false) String version,
             @RequestParam(value = "sourceVersion", required = false) String sourceVersion,
             @RequestParam(value = "coreVersion", defaultValue = "0") String coreVersion,
             @RequestParam(value = "projectId", required = false) Long projectId,
@@ -144,6 +170,12 @@ public class FirmwareAdminController {
         m.put("assignedImeis", registry.listAssignedImeis(p.getId()));
         m.put("downloadUrl", "/firmware/" + p.getFileName());
         return m;
+    }
+
+    private Map<String, Object> withDeviceCount(Map<String, Object> view) {
+        Object key = view.get("projectKey");
+        view.put("deviceCount", key == null ? 0 : deviceService.countByProjectKey(String.valueOf(key)));
+        return view;
     }
 
     private static List<String> parseImeis(String raw) {

@@ -1,37 +1,38 @@
+-- ================================================================
+-- Filename : sound_prompt.lua
+-- Module   : 提示音：冷启动/关机 AT+PLAYSOUND、等 +SOUNDACK
+-- Arch     : doc/modules/SOUND_PROMPT_FLOW.md
+-- ================================================================
+
 require "sys"
 require "config"
+local utils = require "utils"
+local cfgm = require "config_manager"
+local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local LOG_TAG = "sound_prompt"
 local ACK_EVENT = "SOUND_PROMPT_ACK"
 local uart_bridge
-local t3xModule
-local coldBootPlayed = false
-local bootColdTaskStarted = false
-local function cfg()
-    return _G.SOUND_CFG or {}
-end
+local coldBoot = false
+local bootCold = false
 local function enabled()
-    if cfg().enabled == false then
+    if cfgm.get("SOUND_CFG").enabled == false then
         return false
     end
-    local flags = _G.MODULE_FLAGS
-    if flags and flags.sound_prompt == false then
+    if not loader.enabled("sound_prompt") then
         return false
     end
     return true
 end
-local function isBurnActive()
-    return _G.T3X_BURN_MODE_ACTIVE
-end
+
 function shouldPlay(scene)
-    if not enabled() or isBurnActive() then
+    if not enabled() or _G.T3X_BURN_MODE_ACTIVE then
         return false
     end
-    local c = cfg()
+    local c = cfgm.get("SOUND_CFG")
     if scene == "boot_cold" then
-        return c.boot_on_cold_start ~= false and not coldBootPlayed
+        return c.boot_on_cold_start ~= false and not coldBoot
     elseif scene == "boot_wake" then
         return c.boot_on_wake == true
     elseif scene == "shutdown_user" then
@@ -43,51 +44,29 @@ function shouldPlay(scene)
     end
     return false
 end
+
 local function getUart()
     if uart_bridge then
         return uart_bridge
     end
     uart_bridge = _G.uart_bridge
     if not uart_bridge then
-        local ok, mod = pcall(require, "uart_bridge")
-        if ok then
-            uart_bridge = mod
-        end
+        uart_bridge = loader.load("uart_bridge")
     end
     return uart_bridge
 end
-local ipcMod
 local function t3xOn(extra)
-    if ipcMod == nil then
-        local ok, m = pcall(require, "t3x_ctrl")
-        ipcMod = ok and m or false
-    end
-    if not ipcMod or not ipcMod.ensurePowered then
-        return false
-    end
-    return ipcMod.ensurePowered("sound_prompt", extra or {
-        t3x_power_wait_ms = tonumber(cfg().t3x_power_wait_ms) or 800,
+    return utils.t3xOn("sound_prompt", extra, {
+        t3x_power_wait_ms = tonumber(cfgm.get("SOUND_CFG").t3x_power_wait_ms) or 800,
     })
 end
+
 local function waitSoundAck(name, timeoutMs)
-    local deadline = (mcu and mcu.ticks and mcu.ticks() or 0) + timeoutMs
-    while true do
-        local remain = timeoutMs
-        if mcu and mcu.ticks then
-            remain = deadline - mcu.ticks()
-            if remain <= 0 then
-                return false
-            end
-        end
-        local got, ackName = sys.waitUntil(ACK_EVENT, remain)
-        if got and (ackName == name or ackName == nil) then
-            return true
-        end
-        if not mcu or not mcu.ticks then
-            return false
-        end
-    end
+    return utils.waitT3xCmdAck(ACK_EVENT, timeoutMs, function(ackName)
+        return ackName == name or ackName == nil
+    end)
 end
+
 function playBlocking(name, scene)
     if not name or name == "" then
         return false
@@ -103,40 +82,42 @@ function playBlocking(name, scene)
         return false
     end
     t3xOn()
-    local timeoutMs = tonumber(cfg().play_timeout_ms) or 2500
+    local timeoutMs = tonumber(cfgm.get("SOUND_CFG").play_timeout_ms) or 2500
     if scene == "boot_cold" then
-        coldBootPlayed = true
+        coldBoot = true
     end
     ub.sendString("AT+PLAYSOUND=" .. name, true)
     local ok = waitSoundAck(name, timeoutMs)
     return ok
 end
+
 function onSoundAck(name)
     if name and name ~= "" then
         sys.publish(ACK_EVENT, name)
     end
 end
+
 function onAppStarted()
-    if bootColdTaskStarted or not shouldPlay("boot_cold") then
+    if bootCold or not shouldPlay("boot_cold") then
         return
     end
-    bootColdTaskStarted = true
+    bootCold = true
     sys.taskInit(function()
         local ipcCfg = _G.HOST_IPC_CFG or {}
-        local timeoutMs = tonumber(cfg().boot_wait_host_ms)
-            or tonumber(cfg().boot_delay_ms)
+        local timeoutMs = tonumber(cfgm.get("SOUND_CFG").boot_wait_host_ms)
+            or tonumber(cfgm.get("SOUND_CFG").boot_delay_ms)
             or 60000
         if ipcCfg.enabled ~= false and ipcCfg.boot_sound_wait_ready ~= false then
-            local okIpc, ipc = pcall(require, "t3x_ctrl")
-            if okIpc and ipc and ipc.powerOnWaitReady then
-                if not ipc.powerOnWaitReady({
+            local ipc = loader.load("t3x_ctrl")
+            if ipc and ipc.pwrOnReady then
+                if not ipc.pwrOnReady({
                     ready_timeout_ms = timeoutMs,
                     poll_ms = ipcCfg.ready_poll_ms,
                 }) then
                     return
                 end
             else
-                local evt = (_G.APP_EVENTS and _G.APP_EVENTS.HOST_UART_FIRST_AT) or "host_uart_first_at"
+                local evt = utils.appEvent("HOST_UART_FIRST_AT", "host_uart_first_at")
                 if not sys.waitUntil(evt, timeoutMs) then
                     return
                 end
@@ -145,6 +126,7 @@ function onAppStarted()
         playBlocking("boot", "boot_cold")
     end)
 end
+
 function onWakeFromLowPower()
     if not shouldPlay("boot_wake") then
         return
@@ -153,6 +135,7 @@ function onWakeFromLowPower()
         playBlocking("boot", "boot_wake")
     end)
 end
+
 function playShutdownThen(reason, callback)
     reason = reason or "user"
     local scene = "shutdown_user"
@@ -170,10 +153,8 @@ function playShutdownThen(reason, callback)
         end
     end)
 end
+
 function start(opts)
-    if type(opts) == "table" and opts.t3x then
-        t3xModule = opts.t3x
-    end
     return true
 end
 return _M

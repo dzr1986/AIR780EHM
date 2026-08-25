@@ -1,0 +1,11 @@
+.git
+.specstory
+.idea
+.vscode
+target
+logs
+*.md
+*.iml
+deploy/nginx/certs/*.pem
+deploy/nginx/certs/*.key
+firmware/*.bin

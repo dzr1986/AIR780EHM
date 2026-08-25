@@ -1,3 +1,9 @@
+-- ================================================================
+-- Filename : device_id.lua
+-- Module   : 设备标识：IMEI 获取 + 显示用 deviceNo 生成
+-- Arch     : doc/modules/LIB_RUNTIME_UTILS.md
+-- ================================================================
+
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -16,9 +22,11 @@ function getImei()
     end
     return nil
 end
+
 function getDeviceId()
     return getImei() or "unknown_device"
 end
+
 function getDisplayId()
     return getImei() or "unknown"
 end
