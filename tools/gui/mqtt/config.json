@@ -6,7 +6,7 @@
   "password": "fptop1.com2025@#$&",
   "client_id": "platform-test-001",
   "keepalive": 60,
-  "device_imei": "862323084068124",
+  "device_imei": "862323084068231",
   "qos": 1,
   "reply_timeout_sec": 12
 }

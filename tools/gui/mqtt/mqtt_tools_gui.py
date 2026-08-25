@@ -460,9 +460,9 @@ class MqttGui(tk.Tk):
         self._build_publish()
         self._build_protocol()
         self._build_manual()
+        self._build_auto()
         self._build_ota()
         self._build_playback()
-        self._build_auto()
         self._build_log()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -666,12 +666,44 @@ class MqttGui(tk.Tk):
         self.man_tree.bind("<<TreeviewSelect>>", lambda _e: self._manual_fill())
         split.add(left, minsize=480)
         right = tk.Frame(split, bg=BG)
-        tk.Label(right, text="发送 JSON（可改字段后发送）", bg=BG).pack(anchor="w")
-        self.man_txt = tk.Text(right, font=("Consolas", 11), wrap=tk.NONE, height=16, undo=True)
-        self.man_txt.pack(fill=tk.BOTH, expand=True, pady=4)
+        vsplit = tk.PanedWindow(right, orient=tk.VERTICAL, sashwidth=6, bg="#c8c8c8")
+        vsplit.pack(fill=tk.BOTH, expand=True)
+
+        sendf = tk.Frame(vsplit, bg=BG)
+        tk.Label(sendf, text="发送 JSON（可改字段后发送）", bg=BG).pack(anchor="w")
+        self.man_hint = tk.Label(
+            sendf, text="", bg=BG, fg="#666", anchor="w", justify=tk.LEFT, wraplength=520,
+        )
+        self.man_hint.pack(fill=tk.X)
+        self.man_txt = tk.Text(sendf, font=("Consolas", 11), wrap=tk.NONE, height=10, undo=True)
+        self.man_txt.pack(fill=tk.BOTH, expand=True, pady=(4, 2))
         self._bind_text_menu(self.man_txt)
-        self.man_result = tk.Label(right, text="", bg=BG, fg="#333", anchor="w", justify=tk.LEFT, wraplength=520)
-        self.man_result.pack(fill=tk.X)
+        vsplit.add(sendf, minsize=140)
+
+        recvf = tk.Frame(vsplit, bg=BG)
+        tk.Label(recvf, text="返回信息", bg=BG).pack(anchor="w")
+        self.man_status = tk.Label(
+            recvf, text="尚未发送", bg="#f4f4f4", fg="#333",
+            anchor="w", justify=tk.LEFT, wraplength=560, padx=6, pady=4,
+        )
+        self.man_status.pack(fill=tk.X, pady=(2, 4))
+        reply_box = tk.Frame(recvf, bg=BG)
+        reply_box.pack(fill=tk.BOTH, expand=True)
+        self.man_reply = tk.Text(
+            reply_box, font=("Consolas", 10), wrap=tk.WORD, height=10,
+            bg="#f7f7f7", fg="#222", undo=True,
+        )
+        reply_sb = ttk.Scrollbar(reply_box, orient=tk.VERTICAL, command=self.man_reply.yview)
+        self.man_reply.configure(yscrollcommand=reply_sb.set)
+        self.man_reply.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        reply_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self._bind_text_menu(self.man_reply, readonly=True)
+        self.man_result = self.man_status  # 兼容旧引用
+        recvf.bind(
+            "<Configure>",
+            lambda e: self.man_status.configure(wraplength=max(240, e.width - 16)),
+        )
+        vsplit.add(recvf, minsize=160)
         split.add(right, minsize=400)
 
     def _select_tab(self, name: str | None):
@@ -686,6 +718,11 @@ class MqttGui(tk.Tk):
             "play": "回放下载",
             "回放": "回放下载",
             "回放下载": "回放下载",
+            "auto": "自动测试",
+            "autotest": "自动测试",
+            "自动测试": "自动测试",
+            "manual": "手动测试",
+            "手动测试": "手动测试",
         }
         want = aliases.get(key, key)
         try:
@@ -1691,7 +1728,10 @@ class MqttGui(tk.Tk):
         )
         if note:
             text += f"\n说明：{note}"
-        self.man_result.configure(text=text)
+        if hasattr(self, "man_hint"):
+            self.man_hint.configure(text=text)
+        else:
+            self.man_result.configure(text=text)
 
     def _manual_send(self):
         item = self._selected_command()
@@ -1706,7 +1746,16 @@ class MqttGui(tk.Tk):
         if danger and not self.allow_danger.get():
             if not messagebox.askyesno("危险命令", f"确认发送 {payload.get('dataType')}？可能重启/关机/格式化/改录像。"):
                 return
-        self._send_payload(payload, expect=(item or {}).get("expect"), timeout_hint=item)
+        self._set_manual_reply("等待上行…", None, pending=True)
+        expect = (item or {}).get("expect")
+        body = self._send_payload(payload, expect=expect, timeout_hint=item)
+        if body is None:
+            self._set_manual_reply("未发送", None, ok=False)
+        elif not expect:
+            self._set_manual_reply(
+                f"已发送 {payload.get('dataType')}（无期望上行）",
+                payload, ok=True,
+            )
 
     def connect(self):
         if self.connected:
@@ -1977,15 +2026,42 @@ class MqttGui(tk.Tk):
                         f"  CSQ={got.get('csq')} RSRP={got.get('rsrp')} "
                         f"RSSI={got.get('rssi')} RSRQ={got.get('rsrq')} SNR={got.get('snr')}"
                     )
-                self.man_result.configure(
-                    text=f"OK  {sent.get('dataType')} → {got.get('dataType')}  messageId={got.get('messageId', mid)}{extra}"
+                summary = (
+                    f"OK  {sent.get('dataType')} → {got.get('dataType')}  "
+                    f"messageId={got.get('messageId', mid)}{extra}"
                 )
+                self._set_manual_reply(summary, got, ok=True)
             else:
-                self.man_result.configure(
-                    text=f"TIMEOUT  未收到 {expect}（T3x 未就绪时属预期）  messageId={mid}"
+                self._set_manual_reply(
+                    f"TIMEOUT  未收到 {expect}（T3x 未就绪时属预期）  messageId={mid}",
+                    None, ok=False,
                 )
 
         self.ui(done)
+
+    def _set_manual_reply(self, summary: str, payload: dict | None, ok: bool | None = None, pending: bool = False):
+        color = "#333"
+        if pending:
+            color = "#8a4b08"
+        elif ok is True:
+            color = "#1a7f37"
+        elif ok is False:
+            color = "#c01c28"
+        if hasattr(self, "man_status"):
+            self.man_status.configure(text=summary, fg=color)
+        elif hasattr(self, "man_result"):
+            self.man_result.configure(text=summary)
+        if not hasattr(self, "man_reply"):
+            return
+        self.man_reply.configure(state=tk.NORMAL)
+        self.man_reply.delete("1.0", tk.END)
+        if payload is not None:
+            self.man_reply.insert("1.0", _pretty(payload))
+        elif pending:
+            self.man_reply.insert("1.0", "等待设备上行…")
+        else:
+            self.man_reply.insert("1.0", summary)
+        self.man_reply.configure(state=tk.DISABLED)
 
     def _wait_reply(self, expect, after_n: int, timeout: float, message_id: str | None = None) -> dict | None:
         expects = []

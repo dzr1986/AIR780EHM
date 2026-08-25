@@ -88,6 +88,7 @@
 | [T31X_MQTT_PARAM_HOT_APPLY.md](T31X_MQTT_PARAM_HOT_APPLY.md) | **MQTT 设参动态生效**：2020–2031（不含 2013）不重启 `t31x_ipc` 进程 |
 | [T31X_SOFTPHOTO_REPEAT_SWITCH.md](T31X_SOFTPHOTO_REPEAT_SWITCH.md) | **软光敏**：重复切换、开灯仍黑白、日→夜品红闪；ISP/IRCUT 顺序 |
 | [T31X_ETH0_DHCP_SLOW_BOOT.md](T31X_ETH0_DHCP_SLOW_BOOT.md) | **重启后 eth0 有、IP 慢**：RNDIS DHCP Discover 停发 + 30s 重试 |
+| [CAT1_USB_RNDIS_CFG_CRASH_FLASH.md](CAT1_USB_RNDIS_CFG_CRASH_FLASH.md) | **开机无网**：COM10 查 `usb_rndis cfg` 崩溃 → 修代码 → `flash-script` 烧录验收 |
 | [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T3x `AT+MQTTCFG` 下发 4G MQTT |
 | [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX |
@@ -110,6 +111,7 @@
 | 文档 | 说明 |
 |------|------|
 | [CAT1_FLASH_TOOL.md](CAT1_FLASH_TOOL.md) | **Cat.1 USB 烧录**：图形界面 / 命令行，对齐 Luatools 下载脚本、下载底层和脚本 |
+| [CAT1_USB_RNDIS_CFG_CRASH_FLASH.md](CAT1_USB_RNDIS_CFG_CRASH_FLASH.md) | **RNDIS cfg 崩溃实机流程**：COM10 排查 → 修复 → `flash-script`（勿用 mqtt_tools_gui 烧录） |
 | [RELEASE_v1.2.md](RELEASE_v1.2.md) | v1.2 发布/备份说明 |
 | [T3X_NAMING.md](T3X_NAMING.md) | T3x 命名约定 |
 | [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md) | 旧 T31 文档重定向表 |
