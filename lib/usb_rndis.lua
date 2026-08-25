@@ -104,10 +104,10 @@ end
 
 local function rfrsAllw()
     local c = cfg()
-    if cfg.refresh_on_ip == false then
+    if c.refresh_on_ip == false then
         return false
     end
-    if cfg.refresh_only_usb ~= false and not usbHostPrsn() then
+    if c.refresh_only_usb ~= false and not usbHostPrsn() then
         return false
     end
     return true
@@ -138,7 +138,15 @@ local function applyPmUsb()
     end
 end
 
-local function rndsOpen()
+local function rndsOpen(force)
+    -- 已是目标模式则不再进出飞行模式，避免二次 IP_LOSE
+    if not force then
+        local mode = readUsbEthe()
+        if mode == RNDIS_USB_ETHERNET_MODE then
+            applyPmUsb()
+            return
+        end
+    end
     mobile.flymode(0, true)
     sys.wait(FLYMODE_WAIT_MS)
     mobile.config(mobile.CONF_USB_ETHERNET, RNDIS_USB_ETHERNET_MODE)
@@ -170,7 +178,9 @@ local function refAfteCell()
     refreshing = true
     sys.publish(EVT_REFRESH_BEGIN)
     rndsClsCore(500)
-    rndsOpen()
+    rndsOpen(true)
+    -- flymode 后须等蜂窝 IP 回来，避免上层立刻起 MQTT 撞 IP_LOSE
+    waitClllRdy()
     refreshing = false
     sys.publish(EVT_REFRESH_END)
     if not bootStable then
@@ -185,7 +195,7 @@ local function hookIpRdy()
     end
     ipRdyHkd = true
     local c = cfg()
-    if cfg.refresh_on_ip_ready ~= true then
+    if c.refresh_on_ip_ready ~= true then
         return
     end
     if not sys or not sys.subscribe then
@@ -216,9 +226,11 @@ local function markRnds()
 end
 
 local function fnshBoot()
+    -- 无论是否 refresh，flymode 后都先等蜂窝 IP，再宣告 stable
+    waitClllRdy()
     if rfrsAllw() then
-        local ready = waitClllRdy()
-        if ready and not ipRdyRfrs then
+        local ip = readCellIp()
+        if ip and not ipRdyRfrs then
             if not refAfteCell() then
                 pubBootStab()
             end
@@ -248,7 +260,7 @@ function open()
     end
     runtime.status = "starting"
     runtime.last_error = nil
-    rndsOpen()
+    rndsOpen(true)
     hookIpRdy()
     runtime.status = "enabled"
     runtime.configured_at = os.time()
@@ -285,6 +297,21 @@ function stop()
     return disable()
 end
 
+local function softUsbReenum(pauseMs)
+    if not pm or not pm.power or not pm.USB then
+        return false
+    end
+    local ms = tonumber(pauseMs) or 500
+    if ms < 100 then
+        ms = 100
+    end
+    pcall(pm.power, pm.USB, false)
+    sys.wait(ms)
+    pcall(pm.power, pm.USB, true)
+    applyPmUsb()
+    return true
+end
+
 function rebind(opts)
     opts = type(opts) == "table" and opts or {}
     local wait_ms = tonumber(opts.wait_ms) or 500
@@ -296,13 +323,31 @@ function rebind(opts)
         runtime.last_error = "mobile/CONF_USB_ETHERNET unavailable"
         return false, runtime.last_error
     end
+    local hostUsb = _G.HOST_USB_CFG or {}
+    local softPreferred = hostUsb.usb_reset_soft_rebind ~= false and opts.force_flymode ~= true
+    local soft = softPreferred and opts.soft ~= false
     refreshing = true
     ipRdyRfrs = false
     sys.publish(EVT_REFRESH_BEGIN)
     local ok, err = pcall(function()
-        rndsClsCore(wait_ms)
-        rndsOpen()
-        markRnds()
+        if soft then
+            -- 软重枚举：不断蜂窝，只复位 USB，避免 MQTT IP_LOSE
+            if not softUsbReenum(wait_ms) then
+                -- 软失败再硬切（仍可能断蜂窝）
+                rndsClsCore(wait_ms)
+                rndsOpen(true)
+                markRnds()
+                waitClllRdy()
+                soft = false
+            else
+                markRnds()
+            end
+        else
+            rndsClsCore(wait_ms)
+            rndsOpen(true)
+            markRnds()
+            waitClllRdy()
+        end
     end)
     refreshing = false
     sys.publish(EVT_REFRESH_END)
@@ -311,6 +356,7 @@ function rebind(opts)
         log.error(LOG_TAG, "rebind_fail", runtime.last_error)
         return false, runtime.last_error
     end
+    log.info(LOG_TAG, soft and "rebind_soft_ok" or "rebind_flymode_ok")
     return true
 end
 
@@ -325,6 +371,21 @@ end
 
 function isStarted()
     return taskStarted
+end
+
+function isBootStable()
+    return bootStable == true
+end
+
+function waitForNetStable(timeoutMs)
+    if bootStable then
+        return true
+    end
+    local ms = tonumber(timeoutMs) or IP_READY_WAIT_MS
+    if ms < 1000 then
+        ms = 1000
+    end
+    return sys.waitUntil(EVT_NET_STABLE, ms) == true or bootStable == true
 end
 
 function isEnabled()
