@@ -812,6 +812,9 @@ def collect_script_files(include_core: bool = False, compress: bool = True) -> l
                 continue
             seen.add(name)
             raw = path.read_bytes()
+            # 空资源只占 LuaDB 头，且运行时 vfs 会报 not found，不必打进脚本区
+            if path.suffix.lower() == ".json" and len(raw.strip()) == 0:
+                continue
             if compress and path.suffix.lower() == ".lua":
                 raw = _compress_lua_bytes(raw)
             files.append((name, raw))
