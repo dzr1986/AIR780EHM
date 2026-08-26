@@ -214,8 +214,13 @@ local function uartTxnRele()
     end
 end
 
-local function ok_tail()
-    return CRLF .. "OK" .. CRLF
+-- 应答尾常量化：ok_tail 处于所有 AT 应答热路径，避免每次重新拼接分配
+local ok_tail
+do
+    local RSP_OK = CRLF .. "OK" .. CRLF
+    ok_tail = function()
+        return RSP_OK
+    end
 end
 
 local function rsp_only(tag, body)
@@ -373,11 +378,18 @@ local function uart_at_ack(_cmd)
     return ok_tail()
 end
 
+-- 固定 key 的匹配 pattern 缓存：HOSTEVT/PIRSTAT 热路径避免反复拼 pattern
+local pirFldPtn = {}
 local function pirFldStr(pirBody, key, default)
     if not pirBody or pirBody == "" then
         return default
     end
-    return pirBody:match(key .. "=([^,]+)") or default
+    local p = pirFldPtn[key]
+    if not p then
+        p = key .. "=([^,]+)"
+        pirFldPtn[key] = p
+    end
+    return pirBody:match(p) or default
 end
 
 local function pirFldInt(pirBody, key, default)
@@ -3770,12 +3782,12 @@ function notify_host(sid, evt)
     if not t3xModule then
         t3xModule = require "t3x_ctrl"
     end
-    if t3xModule.getState and t3xModule.ensureNormalPowerOn then
-        if not t3xModule.getState().powered_on
-            or t3xModule.getState().in_boot_mode then
+    local t3xSt = t3xModule.getState and t3xModule.getState()
+    if t3xSt and t3xModule.ensureNormalPowerOn then
+        if not t3xSt.powered_on or t3xSt.in_boot_mode then
             t3xModule.ensureNormalPowerOn("notify_host")
         end
-    elseif t3xModule.getState and not t3xModule.getState().powered_on and t3xModule.powerOn then
+    elseif t3xSt and not t3xSt.powered_on and t3xModule.powerOn then
         t3xModule.powerOn()
     end
     mod_call("battery_guard", "markT3xWoken")

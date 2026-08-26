@@ -113,22 +113,37 @@ local HOST_DL_NEEDS_T3X = {
     [DT.DL_UPLOAD_VIDEO] = true,
 }
 local DOWNLINK_HANDLERS
+-- deviceId 与 topic 前缀缓存：每次上行都重复 loader.load + 拼串，IMEI 取到后不再变化
+local devIdCch, pubTpcCch, subTpcCch
 local function getDeviceId()
+    if devIdCch then return devIdCch end
     local did = loader.load("device_id")
     if did and did.getDeviceId then
-        return did.getDeviceId()
+        local v = did.getDeviceId()
+        if v and v ~= "" and v ~= "unknown_device" then
+            devIdCch = v
+        end
+        return v or "unknown_device"
     end
     return "unknown_device"
 end
 
-local function getPubTopic() return "/panshi/app/" .. getDeviceId() .. "/" end
+local function getPubTopic()
+    if pubTpcCch then return pubTpcCch end
+    local t = "/panshi/app/" .. getDeviceId() .. "/"
+    if devIdCch then pubTpcCch = t end
+    return t
+end
 
 local function mqttConnEvt()
     return (_G.APP_EVENTS or {}).MQTT_CONNECTED or "mqtt_connected"
 end
 
 local function getSubTpc()
-    return "/panshi/device/" .. getDeviceId() .. "/#"
+    if subTpcCch then return subTpcCch end
+    local t = "/panshi/device/" .. getDeviceId() .. "/#"
+    if devIdCch then subTpcCch = t end
+    return t
 end
 
 local function sbscDwnl(client)

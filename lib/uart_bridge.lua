@@ -22,12 +22,10 @@ local handlers = {
     on_raw = nil,
     on_line = nil,
 }
+-- 只留字节计数；不常驻收发原文（单块最大可达 rx_line_max=4KB，白占 RAM 且无消费方）
 local stats = {
     rx_bytes = 0,
     tx_bytes = 0,
-    last_rx_raw = nil,
-    last_tx_raw = nil,
-    last_line = nil,
 }
 local function loadUartCfg()
     local c = _G.UART_CFG
@@ -66,7 +64,6 @@ local function write_raw(data)
         return false
     end
     uart.write(drv.uart_id, data)
-    stats.last_tx_raw = data
     stats.tx_bytes = stats.tx_bytes + #data
     return true
 end
@@ -86,7 +83,6 @@ function sendString(text, with_crlf)
 end
 
 local function emit_line(line)
-    stats.last_line = line
     local cb = handlers.on_line
     if cb == nil then
         return
@@ -112,7 +108,6 @@ local function feedLine(chunk)
 end
 
 local function on_rx_raw(data)
-    stats.last_rx_raw = data
     stats.rx_bytes = stats.rx_bytes + #data
     local cb = handlers.on_raw
     if cb ~= nil then
@@ -173,9 +168,6 @@ function getState()
         lineProtocol = drv.line_protocol,
         rx_line_max = drv.rx_line_max,
         rx_pending = #drv.rx_line_buf,
-        last_rx_raw = stats.last_rx_raw,
-        last_tx_raw = stats.last_tx_raw,
-        last_line = stats.last_line,
         rx_bytes = stats.rx_bytes,
         tx_bytes = stats.tx_bytes,
     }
