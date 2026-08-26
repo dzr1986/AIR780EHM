@@ -12,7 +12,6 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 
 local cache = {}
-local startedList = {}
 
 -- 安全 require（带缓存）；失败或返回非 table 时得 nil，不重复尝试
 function load(name)
@@ -39,7 +38,7 @@ function opt(flag, name)
     return load(name or flag)
 end
 
--- 安全调用生命周期方法（默认 "start"），成功 start 的模块登记供 stopAll
+-- 安全调用生命周期方法（默认 "start"）
 function start(mod, fn, opts)
     fn = fn or "start"
     if type(mod) == "string" then
@@ -49,21 +48,7 @@ function start(mod, fn, opts)
         return false
     end
     local ok, ret = pcall(mod[fn], opts)
-    if ok and ret ~= false and fn == "start" then
-        startedList[#startedList + 1] = mod
-    end
     return ok and ret ~= false
-end
-
--- 逆序停止所有已登记模块（模块有 stop() 才调用）
-function stopAll()
-    for i = #startedList, 1, -1 do
-        local mod = startedList[i]
-        if type(mod.stop) == "function" then
-            pcall(mod.stop)
-        end
-        startedList[i] = nil
-    end
 end
 
 return _M

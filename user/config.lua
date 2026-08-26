@@ -71,8 +71,6 @@ _G.APP_META = {
     log_enabled = false,
     heartbeat_log_interval_ms = 60000, -- heartbeat_status 打印间隔
     device_model = "awake_normal",
-    cmd_ext = "",
-    deep_rest_ms = 10 * 60 * 1000,
 }
 _G.APP_STACK = {
     mqtt = "net_mqtt",
@@ -120,16 +118,13 @@ _G.T3X_BURN_CFG = {
     min_battery_percent = 5,
     require_battery_valid = true,
     allow_repeat_enter_boot = true,
-    debug_checks = false,
     burn_check_retry_count = 2,
     burn_check_retry_interval_ms = 800,
     stop_mqtt = true,
     stop_uart = true,
     stop_rndis = true,
     suspend_pir = true,
-    stop_heartbeat = true,
     turn_off_led = true,
-    publish_rest_before_stop = true,
 }
 
 -- ===== GPIO 输入引脚：pwr/boot/coproc/usb_det/chg_state/pir_det/misc 7 路 =====
@@ -179,14 +174,6 @@ _G.GPIO_IN = {
         net_name = "PIR_MCU_DET",
         pull = "pulldown",
         trigger_mode = "rising",
-        debounce_ms = 50,
-        active_level = 1,
-    },
-    misc_pullup = {
-        pin = 7,
-        net_name = "GPIO_INPUT_PULLUP",
-        pull = "pullup",
-        trigger_mode = "both",
         debounce_ms = 50,
         active_level = 1,
     },
@@ -523,7 +510,6 @@ _G.MQTT_CFG = {
     min_connect_interval_sec = 8,     -- 业务侧主动 connect 最小间隔
     ip_lose_cooldown_sec = 5,         -- IP_LOSE 后冷却，避免刚恢复就 connect=-1
     ip_ready_settle_ms = 2000,        -- IP_READY 后再等承载稳定
-    debug_uplink = true,
 }
 -- FOTA 拉包地址唯一来源（其它 lua 禁止硬编码；经 resFotaUrl 读取）
 local FOTA_URL_PANSHI = "http://112.86.146.219:18080/api/site/firmware_upgrade?"
@@ -628,8 +614,6 @@ _G.APP_EVENTS = {
     PIR_MEDIA_EFFECTIVE = "pir_media_effective",
     PIR_REQUEST_T3X_STOP = "pir_request_t3x_stop",
     T3X_SNAPSHOT_DONE = "t3x_snapshot_done",
-    PIR_TAKE_PHOTO = "pir_take_photo",
-    PIR_RECORD_VIDEO = "pir_record_video",
     PIR_STOP_RECORDING = "pir_stop_recording",
     T3X_RECORD_ACTIVE = "t3x_record_active",
     T3X_RECORD_STOP = "t3x_record_stop",
@@ -637,9 +621,7 @@ _G.APP_EVENTS = {
     T3X_PERSON_CNT = "t3x_person_cnt",
     PIR_TIMER_EXPIRED = "pir_timer_expired",
     BATTERY_UPDATE = "BATTERY_UPDATE",
-    UART_RX_RAW = "uart_rx_raw",
     UART_RX_STRING = "uart_rx_string",
-    UART_RX_HEX = "uart_rx_hex",
     HOST_UART_FIRST_AT = "host_uart_first_at",
     HOST_NET_ID_P2P = "host_net_id_p2p",
     HOST_NET_ID_GB28181 = "host_net_id_gb28181",

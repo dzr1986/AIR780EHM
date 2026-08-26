@@ -17,16 +17,6 @@ function pull(pull_name)
     return ({ pullup = 1, pulldown = 2 })[pull_name] or 1
 end
 
-function in_pin(name)
-    local e = _G.GPIO_IN and _G.GPIO_IN[name]
-    return e and e.pin
-end
-
-function out_pin(name)
-    local e = _G.GPIO_OUT and _G.GPIO_OUT[name]
-    return e and e.pin
-end
-
 function setup_input(pin, callback, opts)
     if not pin or not callback then
         return false
@@ -70,12 +60,4 @@ function setup_output(entry)
     return gpio.setup(entry.pin, level)
 end
 
-function set_output(entry, on)
-    if not entry or not entry.pin then
-        return false
-    end
-    local level = on and (entry.on_level or 1) or (entry.init_level or 0)
-    gpio.set(entry.pin, level)
-    return true
-end
 return _M

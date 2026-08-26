@@ -373,8 +373,6 @@ local function stpUartBrdg()
                     local lpw = require "low_power_wakeup"
                     lpw.closeTcpChannel(sid)
                 end,
-                on_plain_line = function(line)
-                end,
             })
         end
     end
@@ -933,19 +931,15 @@ local function setupGpio()
     })
 end
 
-local function strtOpti(mod, fn)
-    loader.start(mod, fn)
-end
-
 local function strtBckg()
     if loader.enabled("battery") then
-        strtOpti(batAdc, "start")
+        loader.start(batAdc, "start")
     end
     if loader.enabled("charge") then
-        strtOpti(usbCharge, "start")
+        loader.start(usbCharge, "start")
     end
     if loader.enabled("sntp") then
-        strtOpti(time_sync, "startSntp")
+        loader.start(time_sync, "startSntp")
     end
 end
 

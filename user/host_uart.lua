@@ -3759,10 +3759,6 @@ function pushUsbIdleSt(inserted)
     return wrt3XNtf(cfg.t3x_usb_ursp or "+CAT1:USB,%d", inserted)
 end
 
-function isUsbInserted()
-    return isUsbInse()
-end
-
 function pushNetLedSt(online)
     local cfg = _G.LED_CFG or {}
     if cfg.notify_t3x_net_led ~= true then
