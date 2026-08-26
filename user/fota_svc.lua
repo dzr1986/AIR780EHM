@@ -230,7 +230,12 @@ local function autoOta(data)
         end
         rqstLibFota(opts, wrapped_cb)
         local timeoutMs = tonumber(config.callback_timeout_ms) or 320000
-        sys.wait(timeoutMs)
+        -- 分片轮询：回调完成即退出，不再固定空等整个超时窗口
+        local waited = 0
+        while not done and waited < timeoutMs do
+            sys.wait(1000)
+            waited = waited + 1000
+        end
         if not done then
             busy = false
             if log and log.warn then log.warn(L, "ota_callback_timeout", "timeout=" .. tostring(timeoutMs)) end

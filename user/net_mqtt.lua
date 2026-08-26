@@ -161,7 +161,8 @@ local function pubAppEvt(eventKey, ...)
 end
 
 local function escJson(s)
-    return tostring(s or ""):gsub('"', '\\"')
+    -- 反斜杠必须一并转义，否则路径/错误信息类字段会破坏 JSON
+    return (tostring(s or ""):gsub('[\\"]', { ['\\'] = '\\\\', ['"'] = '\\"' }))
 end
 
 local function msgIdPart(messageId)
@@ -532,13 +533,13 @@ local function hndlDwnlnk1(data)
             ok = hu.rstUsbRcvry()
         end
         publishStatus({
-            messageId = data.messageId or "",
+            messageId = data.messageId or data.msgId or "",
             configRet = ok and 0 or -1,
             configMsg = ok and "usb_recovery_reset" or "usb_recovery_reset_fail",
         })
         return
     end
-    local messageId = data.messageId or ""
+    local messageId = data.messageId or data.msgId or ""
     local configRet = 0
     local configMsg = "ok"
     if data.interval ~= nil then
@@ -556,7 +557,7 @@ end
 
 local function makeDwnl(data)
     local action = data.action
-    local messageId = data.messageId or ""
+    local messageId = data.messageId or data.msgId or ""
     return function(ret, msg, act, extraFields)
         local extra = { messageId = messageId }
         if type(extraFields) == "table" then
@@ -1223,7 +1224,7 @@ end
 -- @param data 云端下行 JSON decode 后的表
 -- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk6(data)
-    local messageId = data.messageId or ""
+    local messageId = data.messageId or data.msgId or ""
     sys.taskInit(function()
         local pirRec = pir_ctrl.isRecording and pir_ctrl.isRecording()
         if pirRec then
@@ -2050,6 +2051,10 @@ local function mqttTask()
         sys.wait(settleMs)
     end
     mqttClient = mqtt.create(cellAdp, mcfg.host, mcfg.port, mcfg.ssl)
+    if not mqttClient then
+        mqttError("mqtt_create_failed", tostring(mcfg.host), tostring(mcfg.port))
+        return
+    end
     mqttClient:auth(clientId, mcfg.username, mcfg.password)
     local autoMs = tonumber(mcfg.autoreconn_ms) or 10000
     if autoMs < 3000 then
@@ -2080,7 +2085,10 @@ local function mqttTask()
     end
     mqttInfo("mqtt_connecting", mcfg.host, tonumber(mcfg.port) or 1883, clientId,
         cellAdp ~= nil and tostring(cellAdp) or "default")
-    sys.subscribe("IP_READY", function(adapter)
+    -- restart() 会重跑本 task；先退订上一轮的 IP 钩子，避免订阅累积导致重连事件多路放大
+    if state.ip_ready_hdl then sys.unsubscribe("IP_READY", state.ip_ready_hdl) end
+    if state.ip_lose_hdl then sys.unsubscribe("IP_LOSE", state.ip_lose_hdl) end
+    state.ip_ready_hdl = function(adapter)
         if cellAdp ~= nil and adapter ~= nil and adapter ~= cellAdp then
             return
         end
@@ -2091,8 +2099,8 @@ local function mqttTask()
                 tryMqttConnect("ip_ready")
             end)
         end
-    end)
-    sys.subscribe("IP_LOSE", function(adapter)
+    end
+    state.ip_lose_hdl = function(adapter)
         if cellAdp ~= nil and adapter ~= nil and adapter ~= cellAdp then
             return
         end
@@ -2106,7 +2114,9 @@ local function mqttTask()
             pcall(function() mqttClient:disconnect() end)
         end
         pushNetLed(false)
-    end)
+    end
+    sys.subscribe("IP_READY", state.ip_ready_hdl)
+    sys.subscribe("IP_LOSE", state.ip_lose_hdl)
     mqttClient:on(function(client, event, data, payload)
         if event == "conack" then
             mqttInfo("mqtt_conack", getSubTpc())
@@ -2748,14 +2758,17 @@ function start(options)
             end)
         end)
     end
-    local usbRecEvt = (_G.APP_EVENTS or {}).MQTT_USB_RECOVERY_CHANGED or "mqtt_usb_recovery_changed"
-    sys.subscribe(usbRecEvt, function()
-        if isConnected then
-            sys.taskInit(function()
-                publishStatus()
-            end)
-        end
-    end)
+    if not state.usb_rec_subd then
+        state.usb_rec_subd = true
+        local usbRecEvt = (_G.APP_EVENTS or {}).MQTT_USB_RECOVERY_CHANGED or "mqtt_usb_recovery_changed"
+        sys.subscribe(usbRecEvt, function()
+            if isConnected then
+                sys.taskInit(function()
+                    publishStatus()
+                end)
+            end
+        end)
+    end
     bootstrapNetwork()
     sys.taskInit(mqttTask)
     started = true
@@ -2766,19 +2779,20 @@ function stop()
     if not started and not mqttClient then
         return false
     end
+    local canWait = utils.inSysTask()
     if isConnected and mqttClient and publishRest and tonumber(rt.low_power_mode) == 1 then
         pcall(publishRest, {
             reason = rt.last_rest_reason or "unknown",
             source = "reconnect",
         })
-        sys.wait(300)
+        if canWait then sys.wait(300) end
     end
     if mqttClient then
         pcall(function()
             mqttClient:autoreconn(false)
         end)
         sys.publish("mqtt_pub", "close", "", 0)
-        sys.wait(500)
+        if canWait then sys.wait(500) end
         pcall(function()
             mqttClient:close()
         end)

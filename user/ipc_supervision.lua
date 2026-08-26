@@ -6,6 +6,7 @@
 
 require "sys"
 local loader = require "module_loader"
+local utils = require "utils"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -111,7 +112,8 @@ function refCloudB1003(timeoutMs, force)
     if not hu then
         return false
     end
-    if not coroutine.running() then
+    -- Lua 5.3 主调度里 coroutine.running() 非 nil，须用 inSysTask 判断能否 sys.wait
+    if not utils.inSysTask() then
         mrgHostCache()
         return false
     end

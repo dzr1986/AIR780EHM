@@ -2384,7 +2384,11 @@ function uart_at_cmd(cmd)
         return RSP_ERROR
     end
     state.last_command = cmd
-    cmd = cmd:gsub("%?$", "")
+    -- 仅在查询形式（含 ?）未注册时才剥除尾部 ?；
+    -- 否则 AT+USBRESET? 会被剥成 AT+USBRESET 误执行真正的 USB 复位
+    if not AT_EXACT[cmd] then
+        cmd = cmd:gsub("%?$", "")
+    end
     if hooks.on_at_ext then
         local extRsp = hooks.on_at_ext(cmd)
         if extRsp then

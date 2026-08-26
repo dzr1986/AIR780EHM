@@ -247,14 +247,13 @@ function entBootMode()
     t3xWarn("enter_bootmode")
     -- 烧录上电必须用 aplPwrLeve，禁止走 powerOn/ensureNormalPowerOn（会清 BOOT/OTA）
     aplPwrLeve(false)
+    -- 单定时器串行：先置 BOOT/OTA 脚位再上电，避免两个同延时定时器顺序不定导致先上电
     sys.timerStart(function()
         t3XBootMode(bootModeLvl)
         t3xOtaPin(otaModeLevel)
         crrnBootLvl = bootModeLvl
         crrnOtaLvl = otaModeLevel
         isInBootMode = true
-    end, bootDelay)
-    sys.timerStart(function()
         aplPwrLeve(true)
     end, bootDelay)
     lastAction = "enterBootMode"
