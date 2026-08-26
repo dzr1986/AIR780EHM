@@ -16,7 +16,6 @@ local logFuncs = utils.crtLogFns("time_sync")
 local tsInfo = logFuncs.info
 local tsWarn = logFuncs.warn
 local ACK_EVENT = "TIME_SYNC_ACK"
-local uart_bridge
 local lastPshd = 0
 local function enabled()
     if cfgm.get("TIME_SYNC_CFG").enabled == false then
@@ -35,14 +34,7 @@ function isTimeValid(t)
 end
 
 local function getUart()
-    if uart_bridge then
-        return uart_bridge
-    end
-    uart_bridge = _G.uart_bridge
-    if not uart_bridge then
-        uart_bridge = loader.load("uart_bridge")
-    end
-    return uart_bridge
+    return utils.getUartBridge()
 end
 
 local function getHostUart()

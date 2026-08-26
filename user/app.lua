@@ -220,7 +220,6 @@ local function onEntLowPwr(reason)
     doEntrLow(reason)
 end
 
--- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
 local function onExtLowPwr(reason)
     reason = reason or "unknown"
     local rp = rtPwrMod()
@@ -341,9 +340,7 @@ local function stpUartBrdg()
         if loader.enabled("t3x_app") then
             host_uart.start({
                 t3x = t3xModule,
-                -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
                 on_enter_low_power = function() onEntLowPwr("at") end,
-                -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
                 on_exit_low_power = function() onExtLowPwr("at") end,
                 on_reboot = onReboot,
                 on_power_off = function()
@@ -393,7 +390,6 @@ local function entRestIf(source)
     if loader.enabled("battery_guard") and type(bttrGrd) == "table" then
         bttrGrd.onUsbRm()
     elseif _G.APP_RUNTIME.low_power_mode == 0 then
-        -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
         onEntLowPwr("usb_remove")
     end
 end
@@ -402,7 +398,6 @@ local function extRestIf(source)
     if loader.enabled("battery_guard") and type(bttrGrd) == "table" then
         bttrGrd.onUsbIns({ source = source })
     else
-        -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
         onExtLowPwr("usb_insert")
     end
 end
@@ -853,7 +848,6 @@ local function bldSystEvnt()
             if not isLowPwrOn() then
                 return
             end
-            -- ===== 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002 ===== )
             onEntLowPwr("mqtt_2002")
         end },
         { E.POWER_EXIT_REST, function()

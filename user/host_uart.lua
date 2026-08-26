@@ -164,9 +164,6 @@ local function waitHostQt(timeoutMs)
     return true
 end
 
--- @desc AT 命令分发处理：uartTxnAcqu
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartTxnAcqu(timeoutMs)
     timeoutMs = tonumber(timeoutMs) or 8000
     local me = coroutine.running()
@@ -198,9 +195,6 @@ local function uartTxnAcqu(timeoutMs)
     return true
 end
 
--- @desc AT 命令分发处理：uartTxnRele
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartTxnRele()
     local me = coroutine.running()
     if uartTxnOwnr ~= me then
@@ -371,9 +365,6 @@ local function echoRxHexIf(data)
     hooks.uart_write(CRLF .. "+RXHEX:" .. encode_hex(data) .. CRLF)
 end
 
--- @desc AT 命令分发处理：uart_at_ack
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_at_ack(_cmd)
     return ok_tail()
 end
@@ -451,16 +442,10 @@ function buildHostEvtBody()
     return bldPirWake(true)
 end
 
--- @desc AT 命令分发处理：uart_hostevt_query
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartHstvQry(_cmd)
     return rsp_body("HOSTEVT", bldPirWake(true))
 end
 
--- @desc AT 命令分发处理：uart_hostevt_clr
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartHstvClr(_cmd)
     state.pending_valid = false
     state.pending_evt = -1
@@ -468,9 +453,6 @@ local function uartHstvClr(_cmd)
     return rsp_body("HOSTEVTCLR", "OK")
 end
 
--- @desc AT 命令分发处理：uart_time_query
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartTimeQry(_cmd)
     local minTs = (_G.TIME_SYNC_CFG and _G.TIME_SYNC_CFG.min_valid_unix) or utils.MIN_VALID_UNIX
     local t = os.time()
@@ -484,9 +466,6 @@ function getDeviceImei()
     return mod_call("device_id", "getImei")
 end
 
--- @desc AT 命令分发处理：uart_imei
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_imei(_cmd)
     local imei = getDeviceImei()
     if not imei then
@@ -524,9 +503,6 @@ local function prsGb28181(body)
     return nil
 end
 
--- @desc AT 命令分发处理：uart_p2pcfg
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_p2pcfg(cmd)
     local uid, product = cmd:match("^AT%+P2PCFG=([^,]+),([^,]+)$")
     if not uid or not product then
@@ -544,9 +520,6 @@ local function uart_p2pcfg(cmd)
     )
 end
 
--- @desc AT 命令分发处理：uart_gb28181cfg
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartGb28181(cmd)
     local body = cmd:match("^AT%+GB28181CFG=(.+)$")
     local device_id, password, imei = prsGb28181(body)
@@ -588,9 +561,6 @@ local function scheGb28Ref()
     end)
 end
 
--- @desc AT 命令分发处理：uart_ipcinfo_query
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartIpcnQry(_cmd)
     local imei = getDeviceImei() or ""
     local gb28181Id = state.host_gb28181_id or ""
@@ -615,9 +585,6 @@ local function uartIpcnQry(_cmd)
     return rsp_body("IPCINFO", body)
 end
 
--- @desc AT 命令分发处理：uart_mqttpub
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_mqttpub(cmd)
     local suffix, body = cmd:match("^AT%+MQTTPUB=([^;]+);(.+)$")
     if not suffix or not body or body == "" then
@@ -661,9 +628,6 @@ local function prsMqttBody(body)
     }
 end
 
--- @desc AT 命令分发处理：uart_mqttcfg
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_mqttcfg(cmd)
     local cfg = prsMqttBody(cmd:match("^AT%+MQTTCFG=(.+)$"))
     if not cfg then
@@ -675,9 +639,6 @@ local function uart_mqttcfg(cmd)
     return rsp_line("mqtt_config_uart", true) .. ok_tail()
 end
 
--- @desc AT 命令分发处理：uart_servcreate
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartSrvcrt(cmd)
     local lpw = loader.load("low_power_wakeup")
     if lpw and lpw.allowTcpChannel and not lpw.allowTcpChannel() then
@@ -694,9 +655,6 @@ local function uartSrvcrt(cmd)
     return rsp_fmt("SERVCREATE", "%d,OK", ch.sid)
 end
 
--- @desc AT 命令分发处理：uart_servclose
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartSrvc(cmd)
     local sid = tonumber(cmd:match("^AT%+SERVCLOSE=(%d+)$"))
     if not sid then
@@ -716,9 +674,6 @@ local function uartSrvc(cmd)
     return rsp_fmt("SERVCLOSE", "%d", sid)
 end
 
--- @desc AT 命令分发处理：uart_getcfg
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_getcfg(_cmd)
     local s = getCnfgSnps()
     return rsp_fmt(
@@ -729,16 +684,10 @@ local function uart_getcfg(_cmd)
     )
 end
 
--- @desc AT 命令分发处理：uart_pirstat_query
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartPrstQry(_cmd)
     return rsp_body("PIRSTAT", bldPirWake(false))
 end
 
--- @desc AT 命令分发处理：uart_hostidle
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartHstd(cmd)
     local fc = _G.FEATURE_CFG
     if fc and fc.host_evt == false then
@@ -794,9 +743,6 @@ local function uartHstd(cmd)
     return nil
 end
 
--- @desc AT 命令分发处理：uart_pirclr
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_pirclr(_cmd)
     local pir = loader.load("pir_ctrl")
     if pir and pir.resetCounters then
@@ -806,9 +752,6 @@ local function uart_pirclr(_cmd)
     return rsp_line("PIRCLR", false)
 end
 
--- @desc AT 命令分发处理：uart_record_notify
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartRcrd(cmd)
     local arg = cmd:match("^AT%+RECORD=(.+)$")
     if not arg or arg == "" then
@@ -845,9 +788,6 @@ local function uartRcrd(cmd)
     return rsp_fmt("RECORD", "0,reason=%s", reason)
 end
 
--- @desc AT 命令分发处理：uart_person_cnt_notify
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartPrsnCnt(cmd)
     local cnt = cmd:match("^AT%+PERSONCNT=(%d+)$")
     if not cnt then
@@ -859,9 +799,6 @@ local function uartPrsnCnt(cmd)
     return rsp_fmt("PERSONCNT", "ok,count=%d", n)
 end
 
--- @desc AT 命令分发处理：uart_pir_media_notify
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartPirMd(cmd)
     local action = cmd:match("^AT%+PIRMEDIA=(.+)$")
     if not action or action == "" then
@@ -871,9 +808,6 @@ local function uartPirMd(cmd)
     return rsp_fmt("PIRMEDIA", "ok,action=%s", action)
 end
 
--- @desc AT 命令分发处理：uart_ipc_alert_notify
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartIpcAlrt(cmd)
     local code, detail = cmd:match("^AT%+IPCALERT=([^,]+),?(.*)$")
     if not code or code == "" then
@@ -884,9 +818,6 @@ local function uartIpcAlrt(cmd)
     return rsp_fmt("IPCALERT", "OK,code=%s", code)
 end
 
--- @desc AT 命令分发处理：uart_uploadneed_notify
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartUpld(cmd)
     local arg = cmd:match("^AT%+UPLOADNEED=(.+)$")
     if not arg or arg == "" then
@@ -907,9 +838,6 @@ local function uartUpld(cmd)
     return rsp_fmt("UPLOADNEED", "ok,need=%d", need)
 end
 
--- @desc AT 命令分发处理：uart_uploadresult_notify
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartUpldrs(cmd)
     local arg = cmd:match("^AT%+UPLOADRESULT=(.+)$")
     if not arg or arg == "" then
@@ -1000,9 +928,6 @@ function uart_tfcard_notify(cmd)
     return rspLineOk("TFCARD")
 end
 
--- @desc AT 命令分发处理：uart_snapshot_notify
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartSnps(cmd)
     local path = cmd:match("^AT%+SNAPSHOT=(.+)$")
     if not path or path == "" then
@@ -1012,9 +937,6 @@ local function uartSnps(cmd)
     return rsp_fmt("SNAPSHOT", "ok,path=%s", path)
 end
 
--- @desc AT 命令分发处理：uart_record_query
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartRcrdQry(_cmd)
     local rec = 0
     if mod_call("pir_ctrl", "isRecording") then
@@ -1024,16 +946,10 @@ local function uartRcrdQry(_cmd)
         rec, state.t3x_last_reason or "idle", state.t3x_rec_active or 0)
 end
 
--- @desc AT 命令分发处理：uart_ati
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_ati(_cmd)
     return rsp_fmt("CGMR", "%s", getCnfgSnps().version)
 end
 
--- @desc AT 命令分发处理：uart_ril
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_ril(cmd)
     local n = tonumber(cmd:match("^AT%+RIL=(%d+)$"))
     if n == nil then
@@ -1043,9 +959,6 @@ local function uart_ril(cmd)
     return rsp_fmt("RIL_PERSONCNT", "%d", n)
 end
 
--- @desc AT 命令分发处理：uart_sendstr
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_sendstr(cmd)
     local text = cmd:match("^AT%+SENDSTR=(.+)$")
     local ok = false
@@ -1055,9 +968,6 @@ local function uart_sendstr(cmd)
     return rsp_line("SEND", ok)
 end
 
--- @desc AT 命令分发处理：uart_sendhex
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_sendhex(cmd)
     local hex = cmd:match("^AT%+SENDHEX=(.+)$")
     local ok = false
@@ -1067,9 +977,6 @@ local function uart_sendhex(cmd)
     return rsp_line("SEND", ok)
 end
 
--- @desc AT 命令分发处理：uart_lowpower
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartLwpw(cmd)
     local fc = _G.FEATURE_CFG
     if fc and fc.low_power == false then
@@ -1096,26 +1003,17 @@ local function uartLwpw(cmd)
     return nil
 end
 
--- @desc AT 命令分发处理：uart_timer_action
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartTmrActn(hook)
     if hook then
         sys.timerStart(hook, 500)
     end
 end
 
--- @desc AT 命令分发处理：uart_reboot
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_reboot(_cmd)
     uartTmrActn(hooks.on_reboot)
     return rsp_line("REBOOT", true)
 end
 
--- @desc AT 命令分发处理：uart_poweroff
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartPwrf(_cmd)
     uartTmrActn(hooks.on_power_off)
     return rsp_line("POWEROFF", true)
@@ -1250,9 +1148,6 @@ function setWled(on, opts)
     return wled_set(on, opts)
 end
 
--- @desc AT 命令分发处理：uart_wled
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_wled(cmd)
     if cmd == "AT+WLED?" or cmd == "AT+WLEDEN?" then
         return rsp_fmt("WLED", "%d", wled_get())
@@ -1376,9 +1271,6 @@ local function usbRcvrRun(tag, cfg, do_fn)
     end)
 end
 
--- @desc AT 命令分发处理：uart_usbreset
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartUsbr(cmd)
     local cfg = host_usb_cfg()
     if cmd == "AT+USBRESET?" then
@@ -1444,9 +1336,6 @@ local function uartUsbr(cmd)
     return rsp_body("USBRESET", "OK")
 end
 
--- @desc AT 命令分发处理：uart_usbrecovery
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartUsbrcv(cmd)
     local state, count = cmd:match("^AT%+USBRECOVERY=([^,]+),(%d+)$")
     if not state then
@@ -1499,9 +1388,6 @@ function rstUsbRcvry()
     return true
 end
 
--- @desc AT 命令分发处理：uart_rndis
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_rndis(cmd)
     local usb_rndis = loader.load("usb_rndis")
     if not usb_rndis then
@@ -1540,9 +1426,6 @@ local function uart_rndis(cmd)
     return RSP_ERROR
 end
 
--- @desc AT 命令分发处理：uart_ota
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_ota(_cmd)
     if hooks.on_ota then
         hooks.on_ota()
@@ -1554,9 +1437,6 @@ local function uart_ota(_cmd)
     return rsp_only("OTA", "STARTING")
 end
 
--- @desc AT 命令分发处理：uart_setcfg
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uart_setcfg(cmd)
     local key, val = cmd:match("^AT%+SETCFG=([^,]+),(.+)$")
     if not key or not val then
@@ -1586,9 +1466,6 @@ local function uart_setcfg(cmd)
     return rsp_line("SETCFG", false)
 end
 
--- @desc AT 命令分发处理：uart_hex_line
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartHexLine(line)
     local hex = line:match("^[Hh][Ee][Xx]:(.*)$")
     if not hex or not hooks.uart_write then
@@ -1602,9 +1479,6 @@ local function uartHexLine(line)
     return rsp_line("HEX", true)
 end
 
--- @desc AT 命令分发处理：uart_str_line
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartStrLine(line)
     local text = line:match("^[Ss][Tt][Rr]:(.*)$")
     local ok = false
@@ -1614,9 +1488,6 @@ local function uartStrLine(line)
     return rsp_line("STR", ok)
 end
 
--- @desc AT 命令分发处理：uartCmdEntr
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartCmdEntr(keys, prefix, handler)
     if prefix then
         return { match = "prefix", prefix = prefix, handler = handler }
@@ -1685,9 +1556,6 @@ local LINE_HANDLERS = {
     HEX = uartHexLine,
     STR = uartStrLine,
 }
--- @desc AT 命令分发处理：uart_dispatch_at
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartDsptAt(cmd)
     local exact = AT_EXACT[cmd]
     if exact then
@@ -2973,9 +2841,6 @@ function getCachedHostTfCard()
     return state.host_tf_card
 end
 
--- @desc AT 命令分发处理：uartRcvryCfg
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function uartRcvryCfg()
     local c = ipc_cfg()
     local r = c.uart_recovery
@@ -2992,9 +2857,6 @@ local function uartRcvryCfg()
     }
 end
 
--- @desc AT 命令分发处理：uart_recovery_enabled
--- @param cmd AT 命令字符串（已去除首尾空格）
--- @return 写入 UART 的应答字符串，或 nil 直接 +OK
 local function rstUrtRcvr()
     state.ipc_uart_miss_streak = 0
 end

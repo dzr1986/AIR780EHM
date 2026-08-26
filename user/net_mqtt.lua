@@ -175,10 +175,7 @@ local function pubAppEvt(eventKey, ...)
     end
 end
 
-local function escJson(s)
-    -- 反斜杠必须一并转义，否则路径/错误信息类字段会破坏 JSON
-    return (tostring(s or ""):gsub('[\\"]', { ['\\'] = '\\\\', ['"'] = '\\"' }))
-end
+local escJson = utils.escJson
 
 local function msgIdPart(messageId)
     if messageId and messageId ~= "" then
@@ -490,9 +487,6 @@ local function stpBttrStts()
     end)
 end
 
--- @desc MQTT 下行分发：handleDownlink2001（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnl(data)
     publishWakeup()
 end
@@ -520,9 +514,6 @@ local function usbBlck4G()
     return (_G.APP_RUNTIME and tonumber(_G.APP_RUNTIME.power_status) == 1) or false
 end
 
--- @desc MQTT 下行分发：handleDownlink2002（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk(data)
     local mode = rslv2002(data)
     local messageId = data.messageId or data.msgId or ""
@@ -537,9 +528,6 @@ local function hndlDwnlnk(data)
     end
 end
 
--- @desc MQTT 下行分发：handleDownlink2003（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk1(data)
     if data.usbRecoveryReset == 1 or data.action == "usbRecoveryReset" then
         local hu = getHostUart()
@@ -695,9 +683,6 @@ local DL2004_ACTIONS = {
         runWledQry(reply)
     end,
 }
--- @desc MQTT 下行分发：handleDownlink2004（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk2(data)
     data.action = nrml2004(data.action)
     local reply = makeDwnl(data)
@@ -719,9 +704,6 @@ local function hndlDwnlnk2(data)
     reply(-1, "unknown_action", data.action or "")
 end
 
--- @desc MQTT 下行分发：handleDownlink2005（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk3(data)
     publishSimInfo()
 end
@@ -1061,9 +1043,6 @@ local function runTfCard(messageId, reboot)
     end
 end
 
--- @desc MQTT 下行分发：handleDownlink2009（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk4(data)
     local action = data.action or "format"
     if action ~= "format" then
@@ -1135,9 +1114,6 @@ local function is2010Query(data)
     return act == "query" or act == "status"
 end
 
--- @desc MQTT 下行分发：handleDownlink2010（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk5(data)
     local messageId = downMessId(data)
     if is2010Query(data) then
@@ -1235,9 +1211,6 @@ local function stop3XRcrd(hu, messageId)
     return ok, detail
 end
 
--- @desc MQTT 下行分发：handleDownlink2011（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk6(data)
     local messageId = data.messageId or data.msgId or ""
     sys.taskInit(function()
@@ -1272,9 +1245,6 @@ local function hndlDwnlnk6(data)
     end)
 end
 
--- @desc MQTT 下行分发：handleDownlink2012（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk7(data)
     sys.taskInit(function()
         local messageId = downMessId(data)
@@ -1374,9 +1344,6 @@ local function rslvUpld(data)
     return startTs, endTs, maxSec
 end
 
--- @desc MQTT 下行分发：handleDownlink2013（dataType → 对应 handler）
--- @param data 云端下行 JSON decode 后的表
--- @return 无返回值，通过 publishUplink 发 10xx 上行
 local function hndlDwnlnk8(data)
     sys.taskInit(function()
         local messageId = downMessId(data)
@@ -2830,7 +2797,6 @@ end
 loadIvCfg()
 ipc_sup.bind({
     publish_uplink = pblsUpln,
-    esc_json = escJson,
     dt_ul_control = DT.UL_CONTROL,
     publish_t3x_record_stop = pubT3xStop,
 })

@@ -60,12 +60,7 @@ local function pblsUpln(opts)
     end
 end
 
-local function escJson(s)
-    if _deps.esc_json then
-        return _deps.esc_json(s)
-    end
-    return tostring(s or "")
-end
+local escJson = utils.escJson
 
 local function pubT3xStop(reason, uploadMode, quality)
     if _deps.publish_t3x_record_stop then

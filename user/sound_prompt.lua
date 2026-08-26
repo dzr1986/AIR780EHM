@@ -13,7 +13,6 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 local ACK_EVENT = "SOUND_PROMPT_ACK"
-local uart_bridge
 local coldBoot = false
 local bootCold = false
 local function enabled()
@@ -46,14 +45,7 @@ function shouldPlay(scene)
 end
 
 local function getUart()
-    if uart_bridge then
-        return uart_bridge
-    end
-    uart_bridge = _G.uart_bridge
-    if not uart_bridge then
-        uart_bridge = loader.load("uart_bridge")
-    end
-    return uart_bridge
+    return utils.getUartBridge()
 end
 local function t3xOn(extra)
     return utils.t3xOn("sound_prompt", extra, {

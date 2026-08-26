@@ -24,6 +24,11 @@ function escKv(v)
     return (tostring(v or ""):gsub(",", "_"):gsub("=", "_"))
 end
 
+-- JSON 字符串字段转义：反斜杠与双引号
+function escJson(s)
+    return (tostring(s or ""):gsub('[\\"]', { ['\\'] = '\\\\', ['"'] = '\\"' }))
+end
+
 -- 表兜底：非表返回空表
 function optTable(x)
     return type(x) == "table" and x or {}
@@ -140,6 +145,14 @@ function getHostUart()
         end
     end
     return hostUartMod or nil
+end
+
+local uartBrdgMod
+function getUartBridge()
+    if uartBrdgMod == nil then
+        uartBrdgMod = _G.uart_bridge or loader.load("uart_bridge") or false
+    end
+    return uartBrdgMod or nil
 end
 
 return _M
