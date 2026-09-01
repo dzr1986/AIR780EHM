@@ -71,19 +71,17 @@
 |------|------|
 | 单 MQTT 入口 | 仅 `net_mqtt.lua`；`APP_STACK.mqtt = "net_mqtt"` |
 | 单串口入口 | 仅 `uart_bridge.lua` → `_G.uart_bridge` |
-| 配置分层 | `config.lua` 硬件；`app_config.lua` 开关/事件；`key_config.lua` 按键；`pir_ctrl` PIR 策略 |
+| 配置分层 | `config.lua` 单文件：硬件引脚 / `*_CFG` / `MODULE_FLAGS` / `APP_EVENTS` / `KEY_CONFIG`（原 `app_config.lua`、`key_config.lua` 已并入） |
 | 硬件/业务分层 | PIR：`pir_ctrl`（冷却+中断）→ `pir_ctrl`（会话）→ `app`（联动 net/t3x_ctrl） |
 | 事件驱动 | 按键/PIR/MQTT/电源多数走 `sys.publish` + `app` 订阅 |
-| lib 不反向依赖 user | `pir_ctrl` 只发 `APP_EVENTS` 字符串，不 require user |
+| 依赖方向 | lib 允许依赖 `user/config.lua`（基础层）；禁止依赖 user 业务模块（历史遗留 `host_event` 懒加载 `net_mqtt` 待治理，见 [OPTIMIZATION_PLAN.md §5 阶段 2](OPTIMIZATION_PLAN.md)） |
 
 ### 2.3 文件职责表
 
 | 文件 | 职责 | require / 注入 |
 |------|------|----------------|
-| `main.lua` | 入口；EC618 关 PWK；cellular/rndis/MQTT 引导；`sys.run()` | config, app_config, key_config, app, peripheral, net_mqtt, t3x_ctrl |
-| `config.lua` | 硬件引脚、PIR/电池、MQTT 等 | 无 |
-| `app_config.lua` | `MODULE_FLAGS`、`APP_EVENTS` | config |
-| `key_config.lua` | `KEY_CONFIG` | config |
+| `main.lua` | 入口；EC618 关 PWK；cellular/rndis/MQTT 引导；`sys.run()` | config, module_loader（+静态扫描锚点） |
+| `config.lua` | 单文件配置真源：硬件引脚、PIR/电池、MQTT、`MODULE_FLAGS`、`APP_EVENTS`、`KEY_CONFIG` | 无业务依赖 |
 | `app.lua` | 启动顺序、事件订阅、低功耗、PMD、`bootMqtt` | uart_bridge, pir_ctrl, battery_guard, host_uart + optMod(vbat, usb_charge, …) |
 | `host_uart.lua` | T3x AT 解析与转发 | uart_bridge, config；懒加载 net_tcp 等 |
 | `net_mqtt.lua` | MQTT 任务、下行路由、上行发布 | config, pir_ctrl；运行时 host_uart |
@@ -110,8 +108,8 @@ APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 
 ```text
 main.lua
-  require config, app_config, key_config
-  cellular_bootstrap / rndis / net_mqtt.bootstrapNetwork()
+  require config
+  cellular_bootstrap / rndis / net_mqtt.bootstrapNet()
   app.start(peripheral, net_mqtt, t3x_ctrl)
   sys.run()
 ```
@@ -120,7 +118,7 @@ main.lua
 
 ### 3.2 `app.start()` 顺序（与源码一致）
 
-> 真源：`user/app.lua` 1106–1157；表格式见 [CODE_DOC_AUDIT.md §3](CODE_DOC_AUDIT.md#3-appstart-真源顺序维护时请同步三份总览文档)。
+> 真源：`user/app.lua` 997–1052（`function start(gpio, net, t3x_ctrl)`）；表格式见 [CODE_DOC_AUDIT.md §3](CODE_DOC_AUDIT.md#3-appstart-真源顺序维护时请同步三份总览文档)。
 
 | 顺序 | 条件 | 动作 |
 |------|------|------|
@@ -138,7 +136,7 @@ main.lua
 | 12 | `pmd_runtime` | PMD USB 插拔 |
 | 13 | flags | `startBackgroundServices()`：vbat / usb_charge / time_sync / mobile_info |
 | 14 | `rndis` | `setupRndis()` |
-| 15 | `mqtt` | `bootstrapNetwork()`（与 `main.lua` 双调用，幂等） |
+| 15 | `mqtt` | `bootstrapNet()`（与 `main.lua` 双调用，幂等） |
 | 16 | 始终 | **`bootMqtt()`**（异步等 `net_ready`） |
 | 17 | `fota` | `setupFota()` |
 | 18 | 始终 | 10s 心跳 |
@@ -152,14 +150,14 @@ bootMqtt (sys.taskInit)
       → net.start() → mqttTask (sys.taskInit)
           → wait net_ready (90s)  ← 与 bootMqtt 二次等待，通常立即返回
           → mqtt.create / connect
-          → conack → subscribe + publishConnectUplink()
-          → low_power_interval_sec（初值 30s）循环 publishStatus(1003)
+          → conack → subscribe + pubConnectUplink()
+          → low_power_interval_sec（初值 30s）循环 pubStatus(1003)
 ```
 
 | 场景 | 行为 |
 |------|------|
 | 上电 | `bootMqtt` 驱动 MQTT，与 USB 无关 |
-| USB 拔出 | `onEnterLowPower` + `publishRest`；MQTT **不断开** |
+| USB 拔出 | `onEnterLowPower` + `pubRest`；MQTT **不断开** |
 | USB 插入 | `onExitLowPower` → `t3x_ctrl.wake()` |
 | USB 拔出且 MQTT 未起 | `startMqtt()` 兜底（少见） |
 
@@ -167,7 +165,7 @@ bootMqtt (sys.taskInit)
 
 | 层级 | 实现 | 说明 |
 |------|------|------|
-| **业务低功耗** | `app.onEnterLowPower` | `APP_RUNTIME.low_power_mode=1`、`t3x_ctrl.enterSleep()`、`publishRest` |
+| **业务低功耗** | `app.onEnterLowPower` | `APP_RUNTIME.low_power_mode=1`、`t3x_ctrl.enterSleep()`、`pubRest` |
 | **t3x_ctrl.enterSleep** | 内部调用 **`pm.hibernate()`** | 会挂起 Lua 协程，属模组休眠 API，不仅是“标记 t3x 睡眠” |
 | **t3x_ctrl.enterDeepSleep** | `uart_bridge.stop` + **`pm.deepSleep()`** | 当前主路径 **未调用** |
 | **模组 WORK_MODE** | 未接 | `archive/powerMode.lua` 未启用 |
@@ -186,12 +184,12 @@ GPIO30 上升沿 (pir_ctrl)
   → pir_ctrl.onPirTriggered
       若录像中且 stopOnSecondPir → PIR_STOP_RECORDING(pir_retrigger)
       否则 → GPIO_PIR_TRIGGERED(1010 detected)
-             → publishActionEvents → PIR_WAKE_T3X ×1
+             → pubActEvents → PIR_WAKE_T3X ×1
                  video/both → beginVideoSession
-  → app: uploadMode=auto → publishWakeup(1001) + requestT3xWake()
+  → app: uploadMode=auto → pubWakeup(1001) + requestT3xWake()
   → T3x: media_dispatch（both 同周期先拍后录）
   → AT+RECORD=1/0 → T3X_RECORD_* → MQTT 1010/1011 source=t3x
-  → PIR_STOP_RECORDING → publishPirRecordStop(source=4g) + requestT3xWake(pir_stop)
+  → PIR_STOP_RECORDING → pubPirStop(source=4g) + requestT3xWake(pir_stop)
 ```
 
 `requestT3xWake`：经 `t3x_policy`/`t3x_ctrl` GPIO 脉冲唤醒 T3x；停录无专用 UART 帧，靠 `AT+PIRSTAT`/`AT+RECORD` 同步。
@@ -287,7 +285,7 @@ peripheral 中断（pwrkey / bootkey / ready）
 | `2005` | SIM 查询 → 1005 |
 | 任意 | 再发 `MQTT_SERVER_DATA` |
 
-上行：`publishConnectUplink`（rest→1002+1003 / 常电→1001）、`publishRest`(1002)、`publishStatus`(1003/30s 初值)、`publishPirRecordStop`(1011)、`publishEncodeReply`(1021/1020)。
+上行：`pubConnectUplink`（rest→1002+1003 / 常电→1001）、`pubRest`(1002)、`pubStatus`(1003/30s 初值)、`pubPirStop`(1011)、`publishEncodeReply`(1021/1020)。
 
 主题：`/panshi/app/{imei}/` 发布，`/panshi/device/{imei}/` 订阅；clientId = IMEI。
 

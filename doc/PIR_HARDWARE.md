@@ -94,7 +94,7 @@ flowchart TB
 | 硬件 | `pir_ctrl.lua` | GPIO30 中断、防抖、冷却，发布 `PIR_HW_TRIGGERED` |
 | 聚合 | `peripheral.lua` | `pir.start()` |
 | 业务 | `pir_ctrl.lua` | 拍照/录像策略、录像定时、二次触发停录 |
-| 编排 | `app.lua` | 订阅事件 → `publishWakeup`、T3x 唤醒、`publishPirDetect` |
+| 编排 | `app.lua` | 订阅事件 → `pubWakeup`、T3x 唤醒、`pubPirDetect` |
 | 云端 | `net_mqtt.lua` | 下行 2010/2011，上行 1010/1011 |
 
 ---
@@ -173,7 +173,7 @@ flowchart TD
     D --> E{正在录像且 stopOnSecondPir?}
     E -->|是| F[PIR_STOP_RECORDING pir_retrigger]
     E -->|否| G[GPIO_PIR_TRIGGERED]
-    G --> H[publishActionEvents]
+    G --> H[pubActEvents]
     H --> I{video/both?}
     I -->|是| K[beginVideoSession + 定时器]
     I -->|否 photo| J
@@ -184,7 +184,7 @@ flowchart TD
 
 | 事件 | 动作 |
 |------|------|
-| `GPIO_PIR_TRIGGERED` | `net.publishPirDetect()` → 上行 **1010** `detected` |
+| `GPIO_PIR_TRIGGERED` | `net.pubPirDetect()` → 上行 **1010** `detected` |
 | `PIR_WAKE_T3X` | `uploadMode=auto` 时 **1001** + `requestT3xWake()`（photo/video/both 各仅一次） |
 | `T3X_RECORD_ACTIVE` | **1010** `t3x_active`（T3x `AT+RECORD=1`） |
 | `T3X_RECORD_STOP` | **1011** `source=t3x` |

@@ -40,7 +40,7 @@
 | 模块 | USB 插入时行为 |
 |------|----------------|
 | `battery_guard.evaluate()` | 检测到 USB 后 **直接 return**，不执行 ≤10% / ≤15% 等阈值判断 |
-| `battery_guard.onUsbInserted()` | 清除 `rest_by_battery`；必要时 `on_exit_low_power("usb_insert")` **拉起 T3x** |
+| `battery_guard.onUsbInserted()` | 清除 `rest_by_battery`；必要时 `onExitLowPower("usb_insert")` **拉起 T3x** |
 | `t3x_policy.mayPowerT3x()` | `isUsbInserted()` 为真 → **一律 return true**（低电也不拦） |
 
 文档 [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) 一句话：
@@ -58,7 +58,7 @@
 | 配置键 | 默认 | 动作 |
 |--------|------|------|
 | `t3x_rest_percent` | **≤10%** | `enterBatteryRest` → `onEnterLowPower("battery")` → 断 T3x GPIO22 + MQTT 1002 |
-| `recover_rest_percent` | **>18%** | 若曾因电量进 rest → `exitBatteryRest` → `on_exit_low_power("battery_recover")` → **拉起 T3x** |
+| `recover_rest_percent` | **>18%** | 若曾因电量进 rest → `exitBatteryRest` → `onExitLowPower("battery_recover")` → **拉起 T3x** |
 | `pir_suspend_percent` | ≤15% | 仅 `suspendPir()`，**不断** T3x |
 | `pir_resume_percent` | >20% | `resumePir()` |
 | `shutdown_percent` | ≤5% | rest + 约 3s 后 `pm.shutdown()` |
@@ -125,7 +125,7 @@ sequenceDiagram
 
     Note over ADC,T3x: 初始 ≤10%，已在 rest
     ADC->>BG: 19%（静置/轻载后电压回升）
-    BG->>App: exitBatteryRest → on_exit_low_power(battery_recover)
+    BG->>App: exitBatteryRest → onExitLowPower(battery_recover)
     App->>T3x: requestT3xWake(force_wake) 上电
     Note over T3x: 启动浪涌 + 运行电流
     ADC->>BG: 9%～12%（带载压降）
@@ -202,7 +202,7 @@ sequenceDiagram
 |------|------|----------|
 | 电量分级 | `user/battery_guard.lua` | `evaluate` / `onUsbInserted` / `onUsbRemoved` |
 | T3x 门禁 | `lib/t3x_policy.lua` | `mayPowerT3x` / `bootPowerOn` / `requestT3xWake` |
-| USB 拔插 | `user/app.lua` | `applyUsbInsertState` → `exitRestIfNeededAfterUsbInsert` / `enterRestIfNeededAfterUsbRemove` |
+| USB 拔插 | `user/app.lua` | `applyUsbPower` → `exitRestIfNeededAfterUsbInsert` / `enterRestIfNeededAfterUsbRemove` |
 | 进/出 rest | `user/app.lua` | `onEnterLowPower` / `onExitLowPower` |
 | T3x 引脚 | `user/t3x_ctrl.lua` | `powerOn` / `enterSleep` |
 

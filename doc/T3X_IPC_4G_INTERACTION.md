@@ -52,7 +52,7 @@ sequenceDiagram
     T->>G: AT+SERVCREATE / AT+MQTTCFG
     T->>G: AT+GETCFG
     par 并行
-        A->>A: bootstrapNetwork / MQTT
+        A->>A: bootstrapNet / MQTT
         A->>A: initPowerStatus
     end
 ```
@@ -81,8 +81,8 @@ sequenceDiagram
     P->>C: 有效触发（非 rest/suspend）
     C->>C: beginVideoSession → recording=1
     C->>A: PIR_WAKE_T3X
-    A->>A: publishWakeup(1001)
-    A->>G: TIMESET? + notify_host → GPIO 脉冲
+    A->>A: pubWakeup(1001)
+    A->>G: TIMESET? + ntfHost → GPIO 脉冲
     G->>G: set_pending_wake(sid,evt)
 
     T->>G: AT+HOSTEVT?（pending=wake）
@@ -139,7 +139,7 @@ sequenceDiagram
     Note over A: USB 拔出 / 电量≤10% / boot_no_usb / MQTT 2002
     A->>A: onEnterLowPower → low_power_mode=1
     A->>G: enterSleep（门禁 has_event）
-    A->>A: publishRest(1002)
+    A->>A: pubRest(1002)
     G->>G: IPCPOWEROFF? → GPIO22 断电
 
     Note over T: T3x 仍运行则空闲轮询
@@ -159,7 +159,7 @@ sequenceDiagram
 | 平台 2002 | `mqtt_2002` | — |
 | MQTT 重连 | — | 1002+1003（不发 1001） |
 
-**rest 下 PIR**：`pir_ctrl` 忽略触发，`cnt_biz_ignore_rest++`，不 `notify_host`。
+**rest 下 PIR**：`pir_ctrl` 忽略触发，`cnt_biz_ignore_rest++`，不 `ntfHost`。
 
 ### 5.1 USB 插入 ↔ 低功耗互斥（780EHM_PJ，已实现）
 
@@ -224,7 +224,7 @@ GPIO27 **USB 插入**时，4G 与 T3x **互斥**低功耗指令（详见 [T3X_US
 | v1.4 | record 不误 dispatch | 录像会话只 block 休眠，空闲轮询不停录 |
 | v1.4 | boot_no_usb | 无 USB 即 rest，不依赖 `MODULE_FLAGS.charge` |
 | **v1.5** | **HOSTEVT media 字段** | `recording/action/max_sec/last_stop`；`media_ops` 主读 HOSTEVT |
-| **v1.5** | **MQTT pending** | `hasPendingHostWork` + 2006/2007 队列；`types_mask=0x0F` |
+| **v1.5** | **MQTT pending** | `hasHostQueue` + 2006/2007 队列；`types_mask=0x0F` |
 | **v1.5** | **+CAT1:MQTT** | T3x 驱动 NET_STAT_LED（`notify_t3x_net_led`） |
 | **v1.5** | **2011 云端停录** | `requestT3xStopRecord` 唤醒 T3x 同步停录 |
 

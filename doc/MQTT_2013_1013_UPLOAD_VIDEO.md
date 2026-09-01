@@ -1,6 +1,6 @@
 # MQTT 2013 ↔ 1013：需要上传视频（信令，不传文件）
 
-> **代码**：Cat.1 `user/net_mqtt.lua` `handleDownlink2013` / `resolveUploadWindow` · `user/host_uart.lua` `requestUploadVideo`  
+> **代码**：Cat.1 `user/net_mqtt.lua` `dispatchDl2013` / `resolveUploadWindow` · `user/host_uart.lua` `requestUploadVideo`  
 > **T31**：`AT+UPLOADVIDEO` → `clip_extract_window` → `clip_upload_request`（HTTP type=2 回放 / type=1 侦测）  
 > **T31 完整协议 + 流程日志**：[MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md](MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md)  
 > **闭环（下发/开始/进度/完成）**：[MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md)  

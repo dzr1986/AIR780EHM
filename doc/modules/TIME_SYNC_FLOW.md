@@ -12,7 +12,7 @@
 | 路径 | 行为 |
 |------|------|
 | **SNTP** | Cat.1 对公网 NTP → `os.time()` 有效后推 T3x |
-| **唤醒前对时** | `pushBeforeNotify`：先 `AT+TIMESET` 再 `notify_host` |
+| **唤醒前对时** | `pushBeforeNotify`：先 `AT+TIMESET` 再 `ntfHost` |
 | **唤醒后对时** | `onT3xWake`（可选，`sync_on_wake`） |
 
 `MODULE_FLAGS.time_sync=false` 或 `TIME_SYNC_CFG.enabled=false` 时全模块短路。
@@ -27,11 +27,11 @@ flowchart TD
     A --> P[pushToHostAsync force=true]
     W[requestT3xWake] --> B[pushBeforeNotifyAsync]
     B --> POL{t3x_policy.mayPowerT3x?}
-    POL -->|否| N[仅 notify_host]
+    POL -->|否| N[仅 ntfHost]
     POL -->|是| T[t3xOn ensurePowered]
     T --> TS[AT+TIMESET=unix]
     TS --> ACK{+TIMESETACK?}
-    ACK -->|是| NH[notify_host sid,evt]
+    ACK -->|是| NH[ntfHost sid,evt]
     ACK -->|否| NH
 ```
 
@@ -58,9 +58,9 @@ flowchart TD
 | 条件 | 行为 |
 |------|------|
 | `t3x_policy` 拒绝 `time_sync_notify` | 直接返回，不 notify |
-| `sync_before_wake=false` | 仅 `notify_host` |
+| `sync_before_wake=false` | 仅 `ntfHost` |
 | 时间有效且 `t3xOn()` 成功 | `pushToHost(false)` 后对时 |
-| 最后 | `host_uart.notify_host(sid, evt)` |
+| 最后 | `host_uart.ntfHost(sid, evt)` |
 
 **注意**：`app.onExitLowPower` **不再**单独调 `time_sync.onT3xWake`，避免与 `requestT3xWake` 重复脉冲。
 

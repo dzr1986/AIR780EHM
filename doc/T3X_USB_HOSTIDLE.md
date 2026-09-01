@@ -33,7 +33,7 @@ sequenceDiagram
 
     U->>G: 插入
     G->>G: exitRestIfNeeded / 不进 rest
-    G->>H: push_usb_host_idle_state(1)
+    G->>H: pushUsbIdle(1)
     H->>T: +CAT1:USB,1
     Note over T: g_cat1_usb_inserted=1，跳过 HOSTIDLE 轮询
 
@@ -41,7 +41,7 @@ sequenceDiagram
     H->>T: +HOSTIDLE:USB
 
     U->>G: 拔出
-    G->>H: push_usb_host_idle_state(0)
+    G->>H: pushUsbIdle(0)
     H->>T: +CAT1:USB,0
     G->>G: onUsbRemoved → evaluate（仅 ≤20% 进 rest）
     Note over T: has_event=0 且 ≤20% 时可 AT+HOSTIDLE=1
@@ -62,7 +62,7 @@ sequenceDiagram
 
 **推送时机**：
 
-1. `applyUsbInsertState` 拔插瞬间  
+1. `applyUsbPower` 拔插瞬间  
 2. T3x 首条 AT（`APP_HOST_UART_FIRST_AT`）后同步当前 USB 态（冷启动插 USB 场景）  
 3. 冷启动延迟 `boot_notify_delay_ms` 补发
 
@@ -109,10 +109,10 @@ _G.HOST_USB_CFG = {
 | 文件 | 函数 | 职责 |
 |------|------|------|
 | `app.lua` | `enterRestIfNeededAfterUsbRemove` | 拔 USB：**仅** `battery_guard.onUsbRemoved()`，**无**无条件 `usb_remove` |
-| `app.lua` | `applyUsbInsertState` | GPIO27/PMD 拔插写 `power_status` |
+| `app.lua` | `applyUsbPower` | GPIO27/PMD 拔插写 `power_status` |
 | `battery_guard.lua` | `onUsbRemoved` / `tryExitMismatchedRest` | 拔座重算电量；>20% 误进 rest 立即纠正 |
 | `app.lua` | `onEnterLowPower` | USB=1 时直接 return，不进 rest |
-| `host_uart.lua` | `push_usb_host_idle_state` | 发 `+CAT1:USB,n` |
+| `host_uart.lua` | `pushUsbIdle` | 发 `+CAT1:USB,n` |
 | `host_uart.lua` | `uart_hostidle` | `HOSTIDLE:USB` / `HOSTIDLE?` 扩展字段 |
 | `host_uart.lua` | `uart_lowpower` | `LOWPOWER:USB` |
 | `host_uart.lua` | `uart_usbreset` | `AT+USBRESET` → `usb_rndis.rebind`（**不** `requestT3xWake`） |

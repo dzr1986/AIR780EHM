@@ -156,7 +156,7 @@ IPC 通过 **`AT+GETCFG` 的 `battery=`** 判断是否 >20%（`app/cat1/host_eve
 
 | 文件 | 作用 |
 |------|------|
-| `user/battery_guard.lua` | 20% 进/出 rest、连续确认、最短停留、`shouldAllowHostIdleSleep` |
+| `user/battery_guard.lua` | 20% 进/出 rest、连续确认、最短停留、`shdHostSleep` |
 | `user/config.lua` | 阈值与防徘徊参数 |
 | `user/pir_ctrl.lua` | 电量动态 rest 下 **不** ignore PIR |
 | `lib/t3x_policy.lua` | rest 下允许 PIR 唤醒；boot ≤20% 不上电 |
@@ -204,7 +204,7 @@ IPC 通过 **`AT+GETCFG` 的 `battery=`** 判断是否 >20%（`app/cat1/host_eve
 
 ```mermaid
 flowchart TD
-    A[GPIO27 拔出] --> B[applyUsbInsertState]
+    A[GPIO27 拔出] --> B[applyUsbPower]
     B --> C[+CAT1:USB,0 → T3x]
     C --> D{RNDIS 调试开?}
     D -->|是| Z[不进 rest]

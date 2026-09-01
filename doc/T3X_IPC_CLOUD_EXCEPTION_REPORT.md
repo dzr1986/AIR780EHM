@@ -124,7 +124,7 @@ flowchart LR
 ```text
 T3x 停录/通知失败
   → IPC：IPCALERT / AT+RECORD=0 / 重试
-  → 4G：publishIpcAlert → syncStopFromT3x + 1011
+  → 4G：pubIpcAlert → syncStopFromT3x + 1011
   → 周期：1003 后 reconcileHostRecordSession（AT+RECORD?）
   → 仍不一致：查 uart_notify_fail / dispatch_failed 事件
 ```
@@ -276,7 +276,7 @@ if (strcmp(g_last_reason, "no_person") == 0) {
 | 优先级 | 异常                                 | 修复措施 |
 | --- | ---------------------------------- | -------- |
 | P0  | `AT+RECORD/SNAPSHOT/PIRMEDIA` 发送失败 | IPC `ipc_supervision_uart` 3 次重试；失败 `IPCALERT uart_notify_fail`；**待发队列** + runtime flush |
-| P0  | `no_person` 不发 RECORD=0            | IPC `IPCALERT no_person` → 4G `publishIpcAlert` 清会话 + 1011 |
+| P0  | `no_person` 不发 RECORD=0            | IPC `IPCALERT no_person` → 4G `pubIpcAlert` 清会话 + 1011 |
 | P1  | HOSTEVT/PIRSTAT 读失败                | `media_ops` 3 次重试；仍失败 `hostevt_read_fail` |
 | P1  | media_dispatch 失败 pending 未清       | `ipc_supervision_dispatch` 2 次重试 + `dispatch_failed`；pending 保留供下次唤醒 |
 | P1  | Cat.1 模块 init 失败                   | `IPCSTAT` 扩展 `cat1Link`；Cat.1 未运行时 **1003** `ipcReady=0` |
@@ -320,7 +320,7 @@ if (strcmp(g_last_reason, "no_person") == 0) {
 
 | 优先级 | 异常                  | 修复措施 |
 | --- | ------------------- | -------- |
-| P1  | RECORDCTRL 开录失败     | T3x `IPCALERT recordctrl_fail`；4G 2012 失败后 `publishIpcAlert` |
+| P1  | RECORDCTRL 开录失败     | T3x `IPCALERT recordctrl_fail`；4G 2012 失败后 `pubIpcAlert` |
 | P2  | 帧率/码率 ini 写成功运行时未生效 | **1025/1021** 增加 `runtimeApply`（`SetFramerate` / `SetVideoBitrate` 结果） |
 | P2  | IPCPOWEROFF:BUSY    | T3x `IPCALERT ipcpoweroff_busy` → **1004** ipc_alert |
 | P2  | WLED 1004 先 ack 后执行 | 仍为 gap；WLED 走 4G 本地状态 + UART 转发（未改 ack 时序） |
@@ -410,7 +410,7 @@ if (strcmp(g_last_reason, "no_person") == 0) {
 
 ### 6.3 事件型（1004 ipc_alert）
 
-T3x `AT+IPCALERT=code[,detail]` → Cat.1 `publishIpcAlert` → **1004** `action=ipc_alert`。
+T3x `AT+IPCALERT=code[,detail]` → Cat.1 `pubIpcAlert` → **1004** `action=ipc_alert`。
 
 示例见 §5 事件码列表；部分码额外发 **1011** 并清 4G 录像会话。
 

@@ -2,7 +2,13 @@
 
 ## 术语（命名约定）
 
-**完整说明**：[T3X_NAMING.md](T3X_NAMING.md)（`t3x`/`T3x`/`T3X` 协处理器系列命名）。旧 **T31** 文档名见 [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md)（根目录桩已删除）。
+| 文档 | 说明 |
+|------|------|
+| [CAT1_API_NAMING.md](CAT1_API_NAMING.md) | **Lua API 真源**（134：`pub*`/`dl*`/`ntf*`/`host_uart`/`net_mqtt` 导出与别名） |
+| [T3X_NAMING.md](T3X_NAMING.md) | 协处理器系列写法（`t3x` / `T3x` / `T3X`，与 API 驼峰无关） |
+| [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md) | 旧 T31 文档名迁移 |
+
+**同步脚本**：`python tools/sync_doc_naming.py`（批量刷新 `doc/` 内 API 引用）。
 
 ## 索引
 
@@ -10,12 +16,17 @@
 
 | 文档 | 说明 |
 |------|------|
+| [OPTIMIZATION_PLAN.md](OPTIMIZATION_PLAN.md) | **逻辑架构优化计划**：阶段 0–3 已落地；阶段 4 冻结 |
+| [USER_LIB_OPTIMIZATION_NEXT.md](USER_LIB_OPTIMIZATION_NEXT.md) | **068 之后计划**：074 拆分残留收口 |
+| [USER_LIB_OPTIMIZATION_PLAN_20260830.md](USER_LIB_OPTIMIZATION_PLAN_20260830.md) | **050–068 已做记录**：访问器、事件表、去包装 |
+| [CODE_SIZE_OPTIMIZATION.md](CODE_SIZE_OPTIMIZATION.md) | **体积/表驱动瘦身记录**（不减功能；量产约 342KB/512KB） |
 | [CONFIG.md](CONFIG.md) | **配置索引**：`GPIO_IN`/`GPIO_OUT`、**§Air780 GPIO 编号对照**、`config.mk` 宏对照 |
 | [CODE_DOC_AUDIT.md](CODE_DOC_AUDIT.md) | **代码↔文档核验流程**、`app.start` 真源顺序、修订记录 |
 | [PROJECT_DOC.md](PROJECT_DOC.md) | 模块职责、业务流程、调试 |
 | [CALL_GRAPH.md](CALL_GRAPH.md) | 启动顺序、require、事件流 |
 | [CODE_ANALYSIS.md](CODE_ANALYSIS.md) | 架构与风险 |
 | [LUA_MODULES.md](LUA_MODULES.md) | **30 个 Lua 模块逻辑分析**（职责/流程/依赖） |
+| [CAT1_API_NAMING.md](CAT1_API_NAMING.md) | **Lua API 命名真源**（135，无兼容别名） |
 | [CAT1_MODULE_FRAMEWORK.md](CAT1_MODULE_FRAMEWORK.md) | **模块框架**：`module_loader`/`config_manager`、生命周期/日志/事件约定 |
 | [modules/README.md](modules/README.md) | **模块专题**（AT / MQTT / PIR / 电量 / T3x 唤醒） |
 | [TIME_SYNC.md](TIME_SYNC.md) | SNTP + `AT+TIMESET` 时间同步 |
@@ -25,7 +36,7 @@
 | 文档 | 说明 |
 |------|------|
 | [T3X_CAT1_GPIO.md](T3X_CAT1_GPIO.md) | 原理图级引脚；**§1.1 固件 GPIO 全表** |
-| [KEY_GPIO.md](KEY_GPIO.md) | 按键 / `key_config.lua` |
+| [KEY_GPIO.md](KEY_GPIO.md) | 按键 / `config.lua` 的 `KEY_CONFIG` |
 | [T3X_BURN_MODE.md](T3X_BURN_MODE.md) | **GPIO28 长按 → T3x 烧录**（电量/关停条件） |
 | [LED_INDICATORS.md](LED_INDICATORS.md) | **指示灯专篇**：充电板灯 + 模组红蓝灯 |
 | [PIR_HARDWARE.md](PIR_HARDWARE.md) | PIR 硬件与流程 |
@@ -118,7 +129,7 @@
 
 ---
 
-**代码真源**：[`../user/config.lua`](../user/config.lua)、[`../user/app_config.lua`](../user/app_config.lua)、[`../user/key_config.lua`](../user/key_config.lua)、[`../user/main.lua`](../user/main.lua)（`PRODUCT_KEY`）。
+**代码真源**：[`../user/config.lua`](../user/config.lua)（硬件/开关/事件/按键单文件）、[`../user/main.lua`](../user/main.lua)（`PRODUCT_KEY`）。
 
 **模块命名**（与 `user/*.lua` 一致）：`t3x_ctrl`、`t3x_policy`、`pir_ctrl`、`host_uart`、`vbat`；`require` 使用 snake_case。
 

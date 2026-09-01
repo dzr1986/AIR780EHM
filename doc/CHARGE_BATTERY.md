@@ -123,7 +123,7 @@ flowchart TB
 | `user/battery_guard.lua` | 未插 USB 时按 `BATTERY_CFG.guard` 分级保护 |
 | `user/app.lua` | 订阅事件、更新 `APP_RUNTIME.power_status`、触发 MQTT、低功耗与 USB 关系 |
 | `user/led_ctrl.lua` | GPIO20/21 电量图案（读 `BATTERY_CFG.led`） |
-| `user/net_mqtt.lua` | `publishStatus()` → 上行 **1003** |
+| `user/net_mqtt.lua` | `pubStatus()` → 上行 **1003** |
 
 ### 4.2 模块开关（`app_config.lua` → `MODULE_FLAGS`）
 
@@ -169,7 +169,7 @@ sequenceDiagram
     APP->>CHG: charge.start() 注册 GPIO27/17 中断
     CHG->>CHG: 读当前 USB/CHG 并 publish 一次
     APP->>APP: initPowerStatus() → APP_RUNTIME.power_status
-    APP->>NET: bootstrapNetwork / bootMqtt
+    APP->>NET: bootstrapNet / bootMqtt
     BAT->>BAT: adc.open(1) 循环采样
     NET->>NET: 每 BATTERY_CFG.mqtt_report_interval_sec 发 1003
 ```
@@ -180,7 +180,7 @@ sequenceDiagram
 2. `setupGpio()` — 启动 `led_ctrl`（读后续更新的 `APP_RUNTIME.battery_percent`）
 3. `startBackgroundServices()` — `vbat.start()`（`MODULE_FLAGS.battery`）+ `usb_charge.start()`
 4. `initPowerStatus()` — 读 `charge.isUsbInserted()` 设置 `APP_RUNTIME.power_status`
-5. MQTT 联网后，`net_mqtt.lua` 定时 `publishStatus()`，并在 USB/充电状态变化时由 `app` 额外触发
+5. MQTT 联网后，`net_mqtt.lua` 定时 `pubStatus()`，并在 USB/充电状态变化时由 `app` 额外触发
 
 ---
 
@@ -196,8 +196,8 @@ sequenceDiagram
 
 | 事件 | 动作 |
 |------|------|
-| USB **插入** (`inserted=1`) | `applyUsbInsertState(true)` → `APP_RUNTIME.power_status=1`，`onExitLowPower()`，发布 `GPIO_VBUS_CHANGED` |
-| USB **插入** 且 MQTT 已连 | 延迟 **2s** 调用 `net.publishStatus()`（便于服务器看到 `usbInserted`） |
+| USB **插入** (`inserted=1`) | `applyUsbPower(true)` → `APP_RUNTIME.power_status=1`，`onExitLowPower()`，发布 `GPIO_VBUS_CHANGED` |
+| USB **插入** 且 MQTT 已连 | 延迟 **2s** 调用 `net.pubStatus()`（便于服务器看到 `usbInserted`） |
 | USB **拔出** (`inserted=0`) | `APP_RUNTIME.power_status=0`；若未在低功耗则 `onEnterLowPower()`；必要时 `startMqtt()` |
 
 ```mermaid
@@ -231,7 +231,7 @@ stateDiagram-v2
 ### 7.3 `app.lua` 对充电状态变化的处理
 
 - 打日志：充电中 / 充满或未充
-- 若 MQTT 在线：立即 `publishStatus()`（`usbInserted` 仍为 USB 插入状态；`remainPower` 来自最近一次 ADC）
+- 若 MQTT 在线：立即 `pubStatus()`（`usbInserted` 仍为 USB 插入状态；`remainPower` 来自最近一次 ADC）
 
 ---
 
@@ -287,7 +287,7 @@ flowchart LR
 
 ## 9. MQTT 上报
 
-### 9.1 上行 1003（`net.publishStatus`）
+### 9.1 上行 1003（`net.pubStatus`）
 
 主题：`/panshi/app/{imei}/status`（以工程 `net_mqtt.lua` 为准）
 
@@ -334,7 +334,7 @@ ADC 每 **10s** 更新一次 `APP_RUNTIME.battery_percent`；MQTT 60s 上报的�
 
 | 事件名（`APP_EVENTS`） | 发布者 | 参数 | 订阅者（主要） |
 |------------------------|--------|------|----------------|
-| `GPIO_USB_DET_CHANGED` | usb_charge.lua | `1` 插入 / `0` 拔出 | app → `applyUsbInsertState`、MQTT |
+| `GPIO_USB_DET_CHANGED` | usb_charge.lua | `1` 插入 / `0` 拔出 | app → `applyUsbPower`、MQTT |
 | `GPIO_CHG_STATE_CHANGED` | usb_charge.lua | `1` 充电中 / `0` 否 | app 日志、MQTT |
 | `GPIO_VBUS_CHANGED` | app | `power_status` | 日志等 |
 | `BATTERY_UPDATE` | vbat.lua | `percent, mV, rate` | app 日志；battery_guard / led_ctrl 读 `APP_RUNTIME.battery_percent` |

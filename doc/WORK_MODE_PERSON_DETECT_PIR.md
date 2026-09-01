@@ -71,7 +71,7 @@ Host AT 不在 COM7 上。T31 UART1 的 TX/RX 落在 **`/tmp/ipc/cat1_uart.log`*
 | `HOSTIDLE=1` | **BUSY** | 空闲且过了最短常电 → **OK**，再断 T31 |
 | 1003 / GETCFG | `workMode=person_detect` | `workMode=pir_watch` |
 
-进 ②：`handleDownlink2002` enter → `POWER_ENTER_REST` → `onEnterLowPower("mqtt_2002")` → 置 `work_mode=pir_watch` → `AT+IPCPOWEROFF`（T31 分级停录像/人形/GB28181/网卡）→ `+IPCPOWEROFF:OK` → GPIO22=0。  
+进 ②：`dispatchDl2002` enter → `POWER_ENTER_REST` → `onEnterLowPower("mqtt_2002")` → 置 `work_mode=pir_watch` → `AT+IPCPOWEROFF`（T31 分级停录像/人形/GB28181/网卡）→ `+IPCPOWEROFF:OK` → GPIO22=0。  
 USB 插入仍拒绝 2002 enter（`usb_block`）。
 
 出 ②：2002 exit → `onExitLowPower` → `work_mode=person_detect` → 强制唤醒 T31。
@@ -169,13 +169,13 @@ pir_ctrl.startHw 仍注册 GPIO30
 onPirTriggered → t31 在电 → ignore t31_on（不 MQTT、不唤醒）
   否则 shouldIgnorePirTrigger → person_detect → return
 T31 IVS → AT+PERSONCNT（有人、30s 限流；Cat.1 不转 MQTT 1010）
-T31 AT+HOSTIDLE=1 → battery_guard.shouldAllowHostIdleSleep=false → BUSY
+T31 AT+HOSTIDLE=1 → battery_guard.shdHostSleep=false → BUSY
 ```
 
 ### 5.2 2002 enter → ②
 
 ```
-net_mqtt.handleDownlink2002 enter
+net_mqtt.dispatchDl2002 enter
   → 1004 rest_enter
   → POWER_ENTER_REST
   → runtime_power.setWorkMode("pir_watch")

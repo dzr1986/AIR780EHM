@@ -1,7 +1,39 @@
 # net_mqtt 下行分发
 
-> **代码真源**：[`user/net_mqtt.lua`](../../user/net_mqtt.lua)  
+> **代码真源**：[`user/net_mqtt.lua`](../../user/net_mqtt.lua)（`mqttTask` 连接循环、`start`/`stop`、`notifyPowerOff`）  
+> **topic/deviceNo / 连接外围**：[`user/mqtt_conn.lua`](../../user/mqtt_conn.lua)（topic/cfg/bootstrap/adapter/snap）  
+> **下行分发 + 钩子**：[`user/net_mqtt_dispatch.lua`](../../user/net_mqtt_dispatch.lua)  
+> **2001–2013**：[`user/net_mqtt_downlink.lua`](../../user/net_mqtt_downlink.lua)（含 2006 identity 内联）  
+> **子模块**：[`net_mqtt_downlink_ctrl.lua`](../../user/net_mqtt_downlink_ctrl.lua)（2004）、[`net_mqtt_downlink_tf.lua`](../../user/net_mqtt_downlink_tf.lua)（2007/2009）、[`net_mqtt_downlink_upload.lua`](../../user/net_mqtt_downlink_upload.lua)（2013）、[`net_mqtt_downlink_pir.lua`](../../user/net_mqtt_downlink_pir.lua)（2010–2012）  
+> **100x 上行**：[`user/mqtt_uplink.lua`](../../user/mqtt_uplink.lua)（`bind(ctx)`，先于 downlink；含 status/rest/1008）  
+> **1003 interval**：[`user/mqtt_uplink.lua`](../../user/mqtt_uplink.lua)（周期上报/持久化/电量订阅，与 100x 上行同文件 `bind`）  
+> **上行子模块**：[`mqtt_uplink_pir.lua`](../../user/mqtt_uplink_pir.lua)（1010–1012）、[`mqtt_uplink_upload.lua`](../../user/mqtt_uplink_upload.lua)（1013）  
+> **2020–2031 表**：[`user/net_mqtt_host_proto.lua`](../../user/net_mqtt_host_proto.lua)  
 > **协议**：[MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) · **联调**：[MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md)
+
+对外 API 仍挂在 `net_mqtt`（`app` / `host_uart` / `t3x_ctrl` 只 `require "net_mqtt"`）。子模块不 `require "net_mqtt"`。`notifyPowerOff` 留在主文件。
+
+**`mqttTask` 命名**：`IP_READY`/`IP_LOSE` 订阅回调参数须用 `ipAdapter`（LuatOS 传入的网卡 id），勿命名为 `adapter`——会与 `require("net_mqtt_adapter").bind` 返回的模块表 shadow，导致 `pushNetLed` 等在 IP 丢失时误调。
+
+静态回归：`python tools/debug/_protocol_regression_check.py`
+
+---
+
+## 1.1 200x → 源文件速查
+
+| dataType | 域 | 主要文件 |
+|----------|-----|----------|
+| 2001 | 唤醒 | `net_mqtt_downlink.lua` → `pubWakeup` |
+| 2002 | rest 进/出 | `net_mqtt_downlink.lua` → `dlRest` |
+| 2003 | 1003 周期 / USB recovery | `net_mqtt_downlink.lua` → `dlStatus` |
+| 2004 | OTA/控制 | `net_mqtt_downlink_ctrl.lua` |
+| 2005 | SIM 信息 | `net_mqtt_downlink.lua` |
+| 2006 | 设备 ID | `net_mqtt_downlink.lua`（内联 identity） |
+| 2007 / 2009 | TF 卡 / 格式化 | `net_mqtt_downlink_tf.lua` |
+| 2010 / 2011 / 2012 | PIR 配置/启停 | `net_mqtt_downlink_pir.lua` |
+| 2013 | 视频上传 | `net_mqtt_downlink_upload.lua` |
+| 2020 / 2021 | 编码 query/set | `net_mqtt_host_proto.lua` |
+| 2022–2031 | query/set 工厂 | `net_mqtt_host_proto.lua` + `hu_ipc_hostq.lua` |
 
 ---
 
@@ -12,7 +44,7 @@ MQTT subscribe /panshi/device/{imei}/
   → handleServerMessage(topic, payload)
   → json.decode → normalizeDataType(data)
   → DOWNLINK_HANDLERS[dataType](data)
-  → publishAppEvent("MQTT_SERVER_DATA", ...)
+  → pubAppEvent("MQTT_SERVER_DATA", ...)
 ```
 
 未知 `dataType` 打 `unknown_data_type` 日志，不崩溃。
@@ -23,23 +55,23 @@ MQTT subscribe /panshi/device/{imei}/
 
 | dataType | Handler | 上行 | 需 T3x 在线 |
 |----------|---------|------|-------------|
-| 2001 | `handleDownlink2001` | 1001 探活应答（主题 wakeup） | 否 |
-| 2002 | `handleDownlink2002` | 1004 rest_enter/exit + 1002 | 否 |
-| 2003 | `handleDownlink2003` | 1003 status | 否 |
-| 2004 | `handleDownlink2004` | 1004 event | 部分（wled） |
-| 2005 | `handleDownlink2005` | 1005 sim | 否 |
-| 2006 | `handleDownlink2006` | 1006 identity | **是** |
-| 2007 | `handleDownlink2007` | 1007 tfcard | **是** |
-| 2008 | `handleDownlink2008` | 1008 version | 否 |
-| 2009 | `handleDownlink2009` | 1009 tfcard format | **是** |
-| 2010 | `handleDownlink2010` | 1010 pir | 否 |
-| 2011 | `handleDownlink2011` | 1011 stop | 可选 |
-| 2012 | `handleDownlink2012` | 1012 start | 可选 |
-| 2020 | `handleDownlink2020` | 1020 encode query | **是** |
-| 2021 | `handleDownlink2021` | 1021 encode set | **是** |
+| 2001 | `dispatchDl2001` | 1001 探活应答（主题 wakeup） | 否 |
+| 2002 | `dispatchDl2002` | 1004 rest_enter/exit + 1002 | 否 |
+| 2003 | `dispatchDl2003` | 1003 status | 否 |
+| 2004 | `dispatchDl2004` | 1004 event | 部分（wled） |
+| 2005 | `dispatchDl2005` | 1005 sim | 否 |
+| 2006 | `dispatchDl2006` | 1006 identity | **是** |
+| 2007 | `dispatchDl2007` | 1007 tfcard | **是** |
+| 2008 | `dispatchDl2008` | 1008 version | 否 |
+| 2009 | `dispatchDl2009` | 1009 tfcard format | **是** |
+| 2010 | `dispatchDl2010` | 1010 pir | 否 |
+| 2011 | `dispatchDl2011` | 1011 stop | 可选 |
+| 2012 | `dispatchDl2012` | 1012 start | 可选 |
+| 2020 | `dispatchDl2020` | 1020 encode query | **是** |
+| 2021 | `dispatchDl2021` | 1021 encode set | **是** |
 | 2022–2031 | `HOST_UART_QUERY_SET_SPECS` | 1022–1031 | **是** |
 
-「需 T3x 在线」项走 `handleHostDownlink`：休眠时入 `pendingHostQueue`，唤醒后 `drainPendingHostWork`。
+「需 T3x 在线」项走 `handleHostDownlink`：休眠时入 `pendingHostQueue`，唤醒后 `drainHostQueue`。
 
 ---
 
@@ -115,19 +147,19 @@ makeHostQuerySetHandler(spec)
 
 **2003 status**
 
-- 无 `interval`：立即 `publishStatus`
-- 有 `interval`：`setStatusIntervalSec` 后回 1003
+- 无 `interval`：立即 `pubStatus`
+- 有 `interval`：`setStatIvSec` 后回 1003
 - `usbRecoveryReset`：调 `host_uart.resetUsbRecoveryFromCloud`
 
 ---
 
 ## 6. 编码下行（2020/2021）
 
-单独 handler `handleDownlinkEncode`（非 query/set 工厂）：
+单独 handler `dispatchDlEncode`（非 query/set 工厂）：
 
 - query → `host_uart.queryHostEncode` → 1020
 - set → `setHostVideoEncode` / `setHostAudioEncode` → 1021
-- `runtimeApply==0` 时可 `publishIpcAlert("encode_runtime_fail")`
+- `runtimeApply==0` 时可 `pubIpcAlert("encode_runtime_fail")`
 
 ---
 

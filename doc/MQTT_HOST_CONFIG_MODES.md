@@ -17,9 +17,9 @@ T3x Linux 与 Air780 4G 之间通过 UART `AT+MQTTCFG` 下发 MQTT Broker 参数
 
 | 阶段 | 4G | T3x |
 |------|-----|-----|
-| 上电 | 蜂窝入网（`bootMqtt` 只 `bootstrapNetwork`） | 读 `client.ini [mqtt]` |
+| 上电 | 蜂窝入网（`bootMqtt` 只 `bootstrapNet`） | 读 `client.ini [mqtt]` |
 | 初始化完成 | **不连 MQTT**，`_G.MQTT_CFG = nil` | `bootstrap` 发 `AT+MQTTCFG` |
-| 收到 MQTTCFG | `setMqttConfig` → `startMqtt` | — |
+| 收到 MQTTCFG | `setMqttCfg` → `startMqtt` | — |
 
 ### config.lua 示例
 
@@ -58,7 +58,7 @@ _G.MQTT_CFG = nil
 |------|-----|-----|
 | 上电 | `MQTT_CFG` 默认 Broker → `bootMqtt` → `startMqtt` **自动连接** | 读 `client.ini [mqtt]`（建议与 4G 默认一致） |
 | T3x 就绪后 | 可继续用默认连接 | `bootstrap` 发 `AT+MQTTCFG` |
-| 收到 MQTTCFG | `setMqttConfig` 覆盖 `_G.MQTT_CFG`；已连则 **`net.restart()`** 重连 | 改 Broker 时只改 `client.ini` |
+| 收到 MQTTCFG | `setMqttCfg` 覆盖 `_G.MQTT_CFG`；已连则 **`net.restart()`** 重连 | 改 Broker 时只改 `client.ini` |
 
 ### config.lua 示例
 
@@ -76,7 +76,7 @@ _G.MQTT_CFG = {
 ### app.lua 要点
 
 - `bootMqtt`：不等待 T3x，蜂窝就绪即 `startMqtt`
-- `on_mqtt_cfg`：`setMqttConfig` + 已启动则 `restart()`，未启动则 `startMqtt()`
+- `on_mqtt_cfg`：`setMqttCfg` + 已启动则 `restart()`，未启动则 `startMqtt()`
 
 ### 优点
 
@@ -110,7 +110,7 @@ AT+MQTTCFG=<host>;<port>;<ssl>;<username>;<password>;<client_id>
 ```text
 host_uart (uart_mqttcfg)
   → app.on_mqtt_cfg
-  → net.setMqttConfig(cfg)
+  → net.setMqttCfg(cfg)
   → net.restart() 或 startMqtt()
 ```
 

@@ -22,11 +22,11 @@
 
 ```mermaid
 flowchart LR
-    HW[UART 硬件 recv] --> RAW[on_rx_raw]
+    HW[UART 硬件 recv] --> RAW[onRxRaw]
     RAW --> CB1[handlers.on_raw]
     RAW --> LINE[feed_line_buffer]
     LINE --> CB2[handlers.on_line]
-    CB1 --> HU[host_uart.on_rx_raw]
+    CB1 --> HU[host_uart.onRxRaw]
     TX[sendString/write] --> HW
 ```
 
@@ -53,14 +53,14 @@ flowchart LR
 ### 2.3 app 集成
 
 ```text
-uart_bridge.start({ onRaw = host_uart.on_rx_raw })
+uart_bridge.start({ onRaw = host_uart.onRxRaw })
   → _G.uart_bridge = uart_bridge
   → host_uart.start({ t3x, hooks... })
 ```
 
 T3x 烧录模式可 `uart_bridge.stop()` 释放串口给烧录工具。
 
-**注意**：当前 `app.setupUartBridge` 仅注册 `onRaw`；行协议拆行在 `uart_bridge` 内部完成，但 `on_line` 未接 `host_uart`（`host_uart` 自行在 `on_rx_raw` 内按行解析）。
+**注意**：当前 `app.setupUartBridge` 仅注册 `onRaw`；行协议拆行在 `uart_bridge` 内部完成，但 `on_line` 未接 `host_uart`（`host_uart` 自行在 `onRxRaw` 内按行解析）。
 
 ---
 
@@ -72,22 +72,22 @@ T3x 烧录模式可 `uart_bridge.stop()` 释放串口给烧录工具。
 
 | 函数 | 说明 |
 |------|------|
-| `trigger_mode("rising"\|"falling"\|"both")` | → 0 / 1 / 2 |
+| `triggerMode("rising"\|"falling"\|"both")` | → 0 / 1 / 2（别名 `trigger_mode`） |
 | `pull("pullup"\|"pulldown")` | → 1 / 2 |
 | `in_pin(name)` / `out_pin(name)` | 读 `GPIO_IN/OUT[name].pin` |
 
 ### 3.2 输入
 
-`setup_input(pin, callback, opts)`：
+`setupInput(pin, callback, opts)`（别名 `setupInput`）：
 
-- `pull` / `trigger_mode` / `debounce_ms`
+- `pull` / `trigger_mode` / `debounce_ms`（配置键仍为 snake_case）
 - 可选 `gpio.debounce(pin, ms)`
 
-`setup_input_entry(entry, callback)`：从 `GPIO_IN` 条目（含 `usb_det`、`pwr_key`、`pir_det` 等）一键配置。
+`setupInputEntry(entry, callback)`（别名 `setupInputEntry`）：从 `GPIO_IN` 条目一键配置。
 
 ### 3.3 输出
 
-`setup_output(entry)`：按 `init_level` 初始化，返回 `gpio.set` 闭包。
+`setupOutput(entry)`（别名 `setupOutput`）：按 `init_level` 初始化，返回 `gpio.set` 闭包。
 
 `set_output(entry, on)`：按 `on_level` / `init_level` 设电平。
 

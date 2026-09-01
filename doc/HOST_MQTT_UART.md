@@ -44,7 +44,7 @@ mqtt_client_id=
 ## 4G 侧流程
 
 1. `host_uart` 解析 `AT+MQTTCFG` → `on_mqtt_cfg`
-2. `app` → `net.setMqttConfig` + `net.restart()`（已运行）或 `startMqtt()`
+2. `app` → `net.setMqttCfg` + `net.restart()`（已运行）或 `startMqtt()`
 3. `net.mqttTask` 使用更新后的 `_G.MQTT_CFG` 连接
 
 4G 上电使用 `config.lua` 的 `MQTT_CFG` **自动连接**；T3x 在 `client.ini [mqtt]` 维护参数，`bootstrap` 或异常恢复时发 `AT+MQTTCFG` **覆盖** `_G.MQTT_CFG` 并 `net.restart()` 重连新 Broker。

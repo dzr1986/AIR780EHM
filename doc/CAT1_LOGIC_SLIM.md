@@ -85,7 +85,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 
 #### 体构建
 
-`build_hostevt_body` 与 `build_pirstat_body` 均调用 `pir_ctrl.buildAtBody` + `host_event.summarize`，仅扩展字段名不同。
+`build_hostevt_body` 与 `build_pirstat_body` 均调用 `pir_ctrl.bldAtBodyy` + `host_event.summarize`，仅扩展字段名不同。
 
 **建议**：`buildPirWakeBody(extFields)` 统一内核。
 
@@ -114,10 +114,10 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 
 | 类型 | 位置 | 建议 |
 |------|------|------|
-| 上行 JSON 手工拼接 | `publishStatus`、`publishSimInfo`、`publishPirDetect` 等 | 表驱动：`UP_PUBLISH[cmd] = { build = fn }` |
-| 下行需 T3x | `handleDownlink2006/2007` + `handleHostDownlink` | 已部分统一，可扩展到更多 200x |
+| 上行 JSON 手工拼接 | `pubStatus`、`pubSimInfo`、`pubPirDetect` 等 | 表驱动：`UP_PUBLISH[cmd] = { build = fn }` |
+| 下行需 T3x | `dispatchDl2006/2007` + `handleHostDownlink` | 已部分统一，可扩展到更多 200x |
 | USB rest | `usbBlocks4gRest` | 委托 `usb_policy.mayEnterRest()` |
-| bootstrap | `main` + `app.bootMqtt` + `bootstrapNetwork` | 理清单次启动链，避免重复 `wait net_ready` |
+| bootstrap | `main` + `app.bootMqtt` + `bootstrapNet` | 理清单次启动链，避免重复 `wait net_ready` |
 
 ---
 
@@ -243,7 +243,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 - [ ] **T3x 查询**：GB28181、TF、RECORD、IPC、编码（2021/2020）
 - [ ] **T3x 电源**：`IPCPOWEROFF`、USBRESET、`+CAT1:USB`
 - [ ] **提示音**（若 `sound_prompt=true`）：冷启动 boot、用户关机 shutdown
-- [ ] **蜂窝**：`bootstrapNetwork`、2005 SIM、联通 APN
+- [ ] **蜂窝**：`bootstrapNet`、2005 SIM、联通 APN
 
 详细场景见 [CAT1_SLIMMING_FLOW.md §6](./CAT1_SLIMMING_FLOW.md)。
 
@@ -267,7 +267,7 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 2026-06-10 | 初版：`cat1_slim_logic` 分支逻辑精简规划 |
 | 2026-06-10 | **已落地阶段 0 + 阶段 1**：`t3x_ctrl` 去重 `pulseUsbDebugEn`；`peripheral` 修 `led_ctrl`；`archive/slim/README` 修正 `net_tcp` 路径；`host_uart` 新增 `run_host_query`、`build_pir_wake_context`、`setHostEncode` |
 | 2026-06-10 | **已落地阶段 2**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t3x_ctrl.ensurePowered` |
-| 2026-06-10 | **已落地阶段 3**：`publishUplink`、`debug_checks`、`subscribePirMqttBridge` |
+| 2026-06-10 | **已落地阶段 3**：`pubUplink`、`debug_checks`、`subscribePirMqttBridge` |
 | 2026-06-10 | **已落地阶段 4**：`withRndisReopen`、`led_dual` 归档、`cellInfoRefreshWanted` |
 
 ---
@@ -284,10 +284,12 @@ busy 锁 → ensure_t3x_for_host_query → bootWait → sendString → waitUntil
 | 1 | `setHostEncode` 合并 video/audio | `user/host_uart.lua` |
 
 | 2 | `lib/usb_policy.lua` USB/rest 门禁单点 | `lib/usb_policy.lua`，`app`/`net_mqtt`/`host_uart` |
+
+> **更正（2026-08-29）**：`lib/usb_policy.lua` 当前已不在 lib/ 中——USB/rest 门禁职责现分布于 `usb_charge.lua`（`blocksHostIdle`/`blocks4gRest`）、`t3x_policy.lua`（上电门禁）、`runtime_power.lua`（`isUsbInserted`）。如需恢复单点，见 [OPTIMIZATION_PLAN.md §5 阶段 2](OPTIMIZATION_PLAN.md)。
 | 2 | `lib/device_id.lua` IMEI 单点 | `lib/device_id.lua`，`app`/`net_mqtt`/`host_uart` |
 | 2 | `t3x_ctrl.ensurePowered(tag)` | `t3x_ctrl.lua`，`sound_prompt`/`time_sync`/`host_uart` |
 
-| 3 | `formatUplink` / `publishUplink` 上行表驱动 | `user/net_mqtt.lua` |
+| 3 | `formatUplink` / `pubUplink` 上行表驱动 | `user/net_mqtt.lua` |
 | 3 | `T3X_BURN_CFG.debug_checks` 烧录明细日志 | `user/config.lua`、`user/app.lua` |
 | 3 | PIR/MQTT 桥接表驱动 + `wakeT3xForPir` | `user/app.lua` |
 

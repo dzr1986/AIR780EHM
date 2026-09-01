@@ -114,12 +114,12 @@ sequenceDiagram
 
     U->>G: 插入
     G->>G: onExitLowPower(usb_insert)
-    G->>H: push_usb_host_idle_state(1)
+    G->>H: pushUsbIdle(1)
     H->>T: +CAT1:USB,1
     Note over T: 停止 HOSTIDLE 轮询
 
     U->>G: 拔出
-    G->>H: push_usb_host_idle_state(0)
+    G->>H: pushUsbIdle(0)
     H->>T: +CAT1:USB,0
     G->>G: onUsbRemoved → evaluate（仅 ≤20% 进 rest）
     Note over T: has_event=0 且 ≤20% 时可 HOSTIDLE=1
@@ -143,12 +143,12 @@ flowchart TD
     G --> G1{+IPCPOWEROFF:OK?}
     G1 -->|是 / 超时兜底| H[GPIO22 断电]
     F -->|否| H
-    D --> I[MQTT publishRest 1002]
+    D --> I[MQTT pubRest 1002]
 
     J[触发退出 rest] --> K[onExitLowPower]
     K --> L[setLowPowerMode 0]
     L --> M[requestT3xWake force_wake]
-    M --> N[GPIO 唤醒 / notify_host]
+    M --> N[GPIO 唤醒 / ntfHost]
 ```
 
 ### 进 rest 触发源（统一入口）
@@ -192,7 +192,7 @@ flowchart TD
 ### MQTT conack 首条上行（1001 / 1002+1003）
 
 **`conack`**：MQTT **连接成功**时（含冷启动首次连上、断线自动重连）。  
-实现：`net_mqtt.lua` → `publishConnectUplink()`，在 `mqttClient:on("conack")` 里调用。
+实现：`net_mqtt.lua` → `pubConnectUplink()`，在 `mqttClient:on("conack")` 里调用。
 
 **`1002+1003` 不是一条报文**：是连上后**连续发两条**上行（两个 topic、两种 dataType）。
 
@@ -212,10 +212,10 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[MQTT conack 连接成功] --> B{APP_RUNTIME.low_power_mode}
-    B -->|1 rest| C[publishRest source=reconnect]
-    C --> D[publishStatus]
+    B -->|1 rest| C[pubRest source=reconnect]
+    C --> D[pubStatus]
     D --> E[后台收到 1002 + 1003]
-    B -->|0 常电| F[publishWakeup 1001]
+    B -->|0 常电| F[pubWakeup 1001]
     F --> G[后台收到 1001]
 ```
 
@@ -226,7 +226,7 @@ flowchart TD
 
 **为何 rest 不发 1001？** 旧逻辑 conack 固定发 1001，rest 重连时后台会误以为「已唤醒」，与 T3x 实际断电矛盾。
 
-**PIR 与 1001**：`pir_ctrl` 在 rest（`low_power_mode=1`）下忽略硬件 PIR（`ignore_rest`）；`app.onPirMediaAction` 亦在 rest 时跳过 `publishWakeup`，即使将来放开 rest 下 PIR 业务，**仍不发 1001**。rest 期间云端以 **1003.lowPowerMode=rest** 判态，勿依赖 1001。
+**PIR 与 1001**：`pir_ctrl` 在 rest（`low_power_mode=1`）下忽略硬件 PIR（`ignore_rest`）；`app.onPirMediaAction` 亦在 rest 时跳过 `pubWakeup`，即使将来放开 rest 下 PIR 业务，**仍不发 1001**。rest 期间云端以 **1003.lowPowerMode=rest** 判态，勿依赖 1001。
 
 #### 为何 rest 时要发 1002？
 
@@ -240,10 +240,10 @@ flowchart TD
    → low_power_mode=1，T3x enterSleep 断电
 
 ② 此时 MQTT 尚未连接
-   doEnterLowPowerBody 里 publishRest 发不出去（isConnected=false）
+   doEnterLowPowerBody 里 pubRest 发不出去（isConnected=false）
 
 ③ 蜂窝就绪 → MQTT conack
-   publishConnectUplink 发现 low_power_mode=1
+   pubConnectUplink 发现 low_power_mode=1
    → 补发 1002（reason 取自 APP_RUNTIME.last_rest_reason，如 boot_no_usb）
    → source=reconnect 表示「连接时补报」，非刚触发进 rest
 ```
@@ -298,7 +298,7 @@ flowchart TD
 | **1002** | **辅**：记录进 rest 时刻与 `reason`；`source=reconnect` 为补发 |
 | **1001** | 常电 conack / **2001 探活（rest 下仍发，不上电）** / PIR auto（非 rest） |
 
-代码位置：`user/net_mqtt.lua`（`publishConnectUplink` / `publishRest` / `publishStatus`）、`user/app.lua`（`doEnterLowPowerBody` 写 `last_rest_reason`）。
+代码位置：`user/net_mqtt.lua`（`pubConnectUplink` / `pubRest` / `pubStatus`）、`user/app.lua`（`doEnterLowPowerBody` 写 `last_rest_reason`）。
 
 ### PIR 两道关（产品分层，非重复实现）
 
@@ -307,7 +307,7 @@ flowchart TD
 | suspend | 电量 ≤15% / 烧录 | 停 PIR 业务，T3x **可能仍上电** | `cnt_biz_ignore_suspend` |
 | rest | `low_power_mode=1` | 丢弃 PIR，**不** `requestT3xWake`、**不** MQTT 1001 | `cnt_biz_ignore_rest` |
 
-`app.onPirMediaAction` 在 rest 时亦跳过 `publishWakeup`（防御竞态；实现见 `user/app.lua`）。
+`app.onPirMediaAction` 在 rest 时亦跳过 `pubWakeup`（防御竞态；实现见 `user/app.lua`）。
 
 电量 ≤10% 时两者可能同时生效（先命中 suspend）；USB 拔座进 rest 时通常只命中 rest。
 
@@ -331,7 +331,7 @@ flowchart TD
 | `pir_ctrl` | `onPirTriggered` 忽略，计数 `cnt_biz_ignore_rest` |
 | `t3x_policy` | `mayPowerT3x` 拒绝非 `force_wake` 唤醒 |
 | `t3x_policy` | `shouldWakeOnMqttOffline` 返回 false |
-| MQTT | `publishRest` 1002，`low_power_mode=rest` |
+| MQTT | `pubRest` 1002，`low_power_mode=rest` |
 | `net_tcp` | 关闭数据通道 |
 
 ---

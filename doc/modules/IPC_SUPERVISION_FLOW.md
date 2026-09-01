@@ -14,7 +14,7 @@
 | **上行** | T3x `AT+IPCALERT` → 1004 `action=ipc_alert` |
 | **副作用** | 补丁 1003 缓存、可选 1011、录像对账、IPCSTAT 刷新 |
 
-`net_mqtt` 在加载后通过 `ipc_supervision.bind(deps)` 注入 `publish_uplink`、`esc_json`、`publish_t3x_record_stop` 等，避免循环依赖。
+`net_mqtt` 在加载后通过 `ipc_supervision.bind(deps)` 注入 `pubUplink`、`esc_json`、`pubT3xStop` 等，避免循环依赖。
 
 ---
 
@@ -22,7 +22,7 @@
 
 ```mermaid
 flowchart TD
-    A[onAlert / publishAlert] --> P[patchCloudStatFromAlert]
+    A[pubAlert / publishAlert] --> P[patchCloudStatFromAlert]
     P --> U[1004 ipc_alert 上行]
     U --> M{shouldMap1011?}
     M -->|是| S[syncStopFromT3x → 1011]
@@ -35,7 +35,7 @@ flowchart TD
 
 入口：
 
-- `host_uart` 解析 `AT+IPCALERT` → `sys.publish(T3X_IPC_ALERT)` → `app` → `ipc_supervision.onAlert`
+- `host_uart` 解析 `AT+IPCALERT` → `sys.publish(T3X_IPC_ALERT)` → `app` → `ipc_supervision.pubAlert`
 - 直接调用 `publishAlert`（测试或内部）
 
 ---
@@ -75,7 +75,7 @@ flowchart TD
 `ipc_alert_contract.shouldMap1011(code)` 为真时：
 
 1. `pir_ctrl.syncStopFromT3x(alertCode)` 同步 4G 会话
-2. `publish_t3x_record_stop` → 1011（`source=t3x`）
+2. `pubT3xStop` → 1011（`source=t3x`）
 
 典型码：`snapshot_failed`、`no_person`、`time_sync_fail`、`recordctrl_fail` 等（见契约表）。
 
@@ -124,9 +124,9 @@ canReconcileRecord:
 
 | dep | 用途 |
 |-----|------|
-| `publish_uplink` | 1004 上行 |
+| `pubUplink` | 1004 上行 |
 | `esc_json` | alert 字段转义 |
-| `publish_t3x_record_stop` | 1011 |
-| `dt_ul_control` / `nc` | dataType 与连接检查 |
+| `pubT3xStop` | 1011 |
+| `dtUlControl` / `nc` | dataType 与连接检查 |
 
 未 bind 时 `publishAlert` 打 `unbound` 并返回。

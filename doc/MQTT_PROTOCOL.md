@@ -117,7 +117,7 @@
   → 4G 发现 T3x 未就绪
   → 命令入 pendingHostQueue（入队）
   → GPIO 唤醒 T3x
-  → T3x 首条 AT 就绪 → drainPendingHostWork 执行队列
+  → T3x 首条 AT 就绪 → drainHostQueue 执行队列
   → UART 查询（含超时等待）
   → 发布 1006 或 1007（常需数秒～十数秒）
 ```
@@ -956,7 +956,7 @@ T3x **未就绪**时入队唤醒（同 2028–2029）。
 | `time`         | 上报时间                                                 |
 
 
-`**reason` 常见取值**（`net_mqtt.publishRest` / `app.onEnterLowPower`）：
+`**reason` 常见取值**（`net_mqtt.pubRest` / `app.onEnterLowPower`）：
 
 
 | reason        | 含义                                                                |
@@ -975,8 +975,8 @@ T3x **未就绪**时入队唤醒（同 2028–2029）。
 
 | source      | 场景                                              |
 | ----------- | ----------------------------------------------- |
-| `enter`     | MQTT 已连，进 rest 当场 `publishRest`                 |
-| `reconnect` | 已在 rest，MQTT conack 时 `publishConnectUplink` 补发 |
+| `enter`     | MQTT 已连，进 rest 当场 `pubRest`                 |
+| `reconnect` | 已在 rest，MQTT conack 时 `pubConnectUplink` 补发 |
 
 
 conack 补报示例：
@@ -1175,7 +1175,7 @@ conack 补报示例：
 | 项   | 值                            |
 | --- | ---------------------------- |
 | 主题  | `/panshi/app/{deviceNo}/pir` |
-| 函数  | `net.publishPirDetect()`     |
+| 函数  | `net.pubPirDetect()`     |
 | 触发  | PIR 硬件触发；下行 **2010** `query` |
 
 
@@ -1422,29 +1422,29 @@ conack 补报示例：
 
 | 下行   | 处理函数                 | 上行函数                                        |
 | ---- | -------------------- | ------------------------------------------- |
-| 2001 | `handleDownlink2001` | `publishWakeup`                             |
-| 2002 | `handleDownlink2002` | `publishRest`（app 触发）                       |
-| 2003 | `handleDownlink2003` | `publishStatus`                             |
-| 2004 | `handleDownlink2004` | `publishControlReply` / `publishOtaStatus`  |
-| 2005 | `handleDownlink2005` | `publishSimInfo`                            |
-| 2006 | `handleDownlink2006` | `publishDeviceIdentity`                     |
-| 2007 | `handleDownlink2007` | `publishTfCardStatus`                       |
-| 2010 | `handleDownlink2010` | `publishPirDetect`                          |
-| 2011 | `handleDownlink2011` | `publishPirRecordStop`                      |
-| 2012 | `handleDownlink2012` | `publishPirRecordStart` + `recordCtrlStart` |
-| 2013 | `handleDownlink2013` | `publishUploadVideoReply` + `requestUploadVideo` |
-| 2021 | `handleDownlink2021` | `publishEncodeReply` → 1021                 |
-| 2020 | `handleDownlink2020` | `publishEncodeReply` → 1020                 |
-| 2022 | `handleDownlink2022` | `publishRecordTimeReply` → 1022             |
-| 2023 | `handleDownlink2023` | `publishRecordTimeReply` → 1023             |
-| 2024 | `handleDownlink2024` | `publishFramerateReply` → 1024              |
-| 2025 | `handleDownlink2025` | `publishFramerateReply` → 1025              |
-| 2026 | `handleDownlink2026` | `publishPersonDetectReply` → 1026           |
-| 2027 | `handleDownlink2027` | `publishPersonDetectReply` → 1027           |
-| 2028 | `handleDownlink2028` | `publishMicReply` → 1028                    |
-| 2029 | `handleDownlink2029` | `publishMicReply` → 1029                    |
-| 2030 | `handleDownlink2030` | `publishSoftPhotoReply` → 1030              |
-| 2031 | `handleDownlink2031` | `publishSoftPhotoReply` → 1031              |
+| 2001 | `dispatchDl2001` | `pubWakeup`                             |
+| 2002 | `dispatchDl2002` | `pubRest`（app 触发）                       |
+| 2003 | `dispatchDl2003` | `pubStatus`                             |
+| 2004 | `dispatchDl2004` | `publishControlReply` / `pubOtaStatus`  |
+| 2005 | `dispatchDl2005` | `pubSimInfo`                            |
+| 2006 | `dispatchDl2006` | `pubDeviceIdentity`                     |
+| 2007 | `dispatchDl2007` | `pubTfCardStatus`                       |
+| 2010 | `dispatchDl2010` | `pubPirDetect`                          |
+| 2011 | `dispatchDl2011` | `pubPirStop`                      |
+| 2012 | `dispatchDl2012` | `pubPirStart` + `recordCtrlStart` |
+| 2013 | `dispatchDl2013` | `publishUploadVideoReply` + `requestUploadVideo` |
+| 2021 | `dispatchDl2021` | `publishEncodeReply` → 1021                 |
+| 2020 | `dispatchDl2020` | `publishEncodeReply` → 1020                 |
+| 2022 | `dispatchDl2022` | `publishRecordTimeReply` → 1022             |
+| 2023 | `dispatchDl2023` | `publishRecordTimeReply` → 1023             |
+| 2024 | `dispatchDl2024` | `publishFramerateReply` → 1024              |
+| 2025 | `dispatchDl2025` | `publishFramerateReply` → 1025              |
+| 2026 | `dispatchDl2026` | `publishPersonDetectReply` → 1026           |
+| 2027 | `dispatchDl2027` | `publishPersonDetectReply` → 1027           |
+| 2028 | `dispatchDl2028` | `publishMicReply` → 1028                    |
+| 2029 | `dispatchDl2029` | `publishMicReply` → 1029                    |
+| 2030 | `dispatchDl2030` | `publishSoftPhotoReply` → 1030              |
+| 2031 | `dispatchDl2031` | `publishSoftPhotoReply` → 1031              |
 
 
 UART / IPC 实现：`user/host_uart.lua`（`queryHostMic` / `setHostMic` / `queryHostSoftPhoto` / `setHostSoftPhoto`）；T3x：`app/host/host_at.c` · `app/host/host_remote.c` · `app/cfg_ini/sysconfig.c`。

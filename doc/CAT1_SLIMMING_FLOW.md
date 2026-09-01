@@ -9,7 +9,7 @@
 
 | 约束 | 说明 |
 |------|------|
-| Flash / Lua 空间 | `luatos.json` 使用 `only_luac_code=True`；`user/` + `lib/` 源码约 **416KB** |
+| Flash / Lua 空间 | 脚本区 **512KB**；`user/` + `lib/` 源码约 **450KB**，量产压缩 LuaDB 约 **342KB** |
 | 低功耗 | rest 下 T31x 断电，**4G 须独自维持 MQTT**；不宜再叠第二套长连接或大循环任务 |
 | 双芯片分工 | 编码、GB28181、录像在 **T31x**；4G 做 **蜂窝 + MQTT + UART 编排** |
 
@@ -113,7 +113,7 @@ local RNDIS_ENABLE = 0
 
 **IPC**：`[cat1_mqtt] enable=0`，4G 用 `config.lua` 的 `MQTT_CFG` 上电即连。
 
-**4G**：T31x 若仍发同参 `AT+MQTTCFG`，`net_mqtt.isSameMqttConfig()` + `app.on_mqtt_cfg` **跳过重连**。
+**4G**：T31x 若仍发同参 `AT+MQTTCFG`，`net_mqtt.sameMqttCfg()` + `app.on_mqtt_cfg` **跳过重连**。
 
 ---
 
@@ -149,7 +149,7 @@ local RNDIS_ENABLE = 0
 main.lua
   → config / app_config / key_config
   → cellular_bootstrap（若 cellular≠false）
-  → net.bootstrapNetwork + app.start()
+  → net.bootstrapNet + app.start()
        → optMod：关掉的模块不 require
        → host_uart.start
        → bootMqtt（常电 MQTT）
@@ -292,7 +292,7 @@ enable=0
 | 模块开关 | `user/app_config.lua` | — |
 | 懒加载 | `user/app.lua` `optMod` | — |
 | MQTT 精简 | `user/net_mqtt.lua` | `syscfg.ini` |
-| MQTTCFG 去重 | `user/net_mqtt.lua` `isSameMqttConfig` | — |
+| MQTTCFG 去重 | `user/net_mqtt.lua` `sameMqttCfg` | — |
 | 编码远程 | `user/host_uart.lua` | `app/cat1/encode_remote.c` |
 | 低功耗策略 | `user/config.lua` `LOW_POWER_CFG` | `docs/cat1_lowpower_mqtt_tcp_strategy.md` |
 

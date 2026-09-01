@@ -2,7 +2,7 @@
 
 > **用途**：联调 / Code Review 时按 `alertCode` 反查 T3x 触发点与 Cat.1 MQTT 出口  
 > **工程路径**：IPC 仓库 `ipc_device_gb28181/`；Cat.1 真源 `/mnt/share/user/`（镜像 `docs/4g_lua/user/`）  
-> **行号基准**：2026-06-26 工作区快照；改代码后请以 `rg IPC_ALERT_` / `publishIpcAlert` 复核  
+> **行号基准**：2026-06-26 工作区快照；改代码后请以 `rg IPC_ALERT_` / `pubIpcAlert` 复核  
 > **关联**：[T3X_IPC_CAT1_SUPERVISION.md](./T3X_IPC_CAT1_SUPERVISION.md) · [T3X_IPC_EXCEPTION_MQTT_UPLINK.md](./T3X_IPC_EXCEPTION_MQTT_UPLINK.md)
 
 ---
@@ -19,7 +19,7 @@
 | 命令注册 | `user/host_uart.lua` | 1210 | `AT+IPCALERT=` 表项 |
 | 事件发布 | `user/host_uart.lua` | 667 | `sys.publish(T3X_IPC_ALERT, code, detail)` |
 | 事件名 | `user/app_config.lua` | 60 | `T3X_IPC_ALERT = "t3x_ipc_alert"` |
-| app 订阅 | `user/app.lua` | 669–672 | → `net_mqtt.publishIpcAlert` |
+| app 订阅 | `user/app.lua` | 669–672 | → `net_mqtt.pubIpcAlert` |
 | MQTT 1004 | `user/net_mqtt.lua` | 1785–1798 | `action=ipc_alert` |
 | map1011 | `user/net_mqtt.lua` | 1799–1815 | 部分码追加 **1011** `source=t3x` |
 | 对账触发 | `user/net_mqtt.lua` | 1817–1819 | `uart_notify_fail` 等 → `scheduleRecordReconcile` |
@@ -57,7 +57,7 @@ AT+IPCALERT=<alertCode>[,<detail>]
 | **time_sync_fail** | L16 | `api.c:530` apply<br>`uart_host_cmd.c:745` TIMESET | `apply` / `timeset` | `settimeofday` 失败（TIME? 同步或 TIMESET） | **是** | 1004 + 1011 |
 | **time_invalid** | L17 | `api.c:515` uart<br>`api.c:520` no_time<br>`api.c:526` not_ready | `uart` / `no_time` / `cat1_not_ready` | `AT+TIME?` 失败/无效/未就绪 | 否 | 仅 1004 |
 | **usb_recovery_fail** | L18 | `cat1_usb_reenum.c:183` | `exhausted` | USB 恢复 3 次用尽（`mark_exhausted`） | 否 | 1004 + 对账；并行 **1003** `usbRecovery=exhausted` |
-| **recordctrl_fail** | L19 | `cloud_remote_ctrl.c:204` start<br>`cloud_remote_ctrl.c:219` stop<br>**Lua** `net_mqtt.lua:930` | `start` / `stop` / rmsg | `AT+RECORDCTRL` 开停录失败；2012 直连失败 | **是** | T3x 路径 1004+1011；4G 路径仅 `publishIpcAlert` |
+| **recordctrl_fail** | L19 | `cloud_remote_ctrl.c:204` start<br>`cloud_remote_ctrl.c:219` stop<br>**Lua** `net_mqtt.lua:930` | `start` / `stop` / rmsg | `AT+RECORDCTRL` 开停录失败；2012 直连失败 | **是** | T3x 路径 1004+1011；4G 路径仅 `pubIpcAlert` |
 | **ipcpoweroff_busy** | L20 | `uart_host_cmd.c:699` off=1<br>`uart_host_cmd.c:711` off=0 | NULL | `ipc_power_off_request` 返回忙 | 否 | 仅 1004 |
 
 ### 2.1 Cat.1 本地 alertCode（不经 T3x `AT+IPCALERT`）
@@ -81,7 +81,7 @@ AT+IPCALERT=<alertCode>[,<detail>]
 | `time_sync_fail` | `time_sync_fail` | 同上 |
 | `recordctrl_fail` | `recordctrl_fail` | 同上 |
 
-**1011 发布实现**：`net_mqtt.lua:2023–2030` `publishT3xRecordStop` → `publishPirRecordStop` L1987–2019。
+**1011 发布实现**：`net_mqtt.lua:2023–2030` `publishT3xRecordStop` → `pubPirStop` L1987–2019。
 
 **不经 IPCALERT、直接 1011 的录像 reason**（`record_notify.c` → `AT+RECORD=0` → `host_uart.lua:604–628` → `T3X_RECORD_STOP`）：  
 `disk_full` · `time_sync` · `not_inited` · `no_record` · `open_failed` · `no_iframe` · `no_stream` · `failed` · `done` · `timer` · `cloud` · `pir_retrigger` · `allday_wait_person` 等 — 见 [T3X_RECORD_MQTT_FLOW.md](./T3X_RECORD_MQTT_FLOW.md)。
@@ -126,7 +126,7 @@ AT+IPCALERT=<alertCode>[,<detail>]
 
 ```bash
 rg 'IPC_ALERT_|ipc_cloud_alert\(' app/cat1 main.c app/network
-rg 'publishIpcAlert|map1011' docs/4g_lua/user/net_mqtt.lua
+rg 'pubIpcAlert|map1011' docs/4g_lua/user/net_mqtt.lua
 rg 'IPCALERT|uart_ipc_alert' docs/4g_lua/user/host_uart.lua
 ```
 

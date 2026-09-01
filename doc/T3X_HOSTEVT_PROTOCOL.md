@@ -16,8 +16,8 @@
 | 层级 | 模块 | 职责 |
 |------|------|------|
 | **lib 驱动** | `lib/uart_bridge.lua` | 仅 UART 收发、行拆包；参数读 `config.UART_CFG` |
-| **user 串口** | `user/host_uart.lua` | AT/HEX/STR 协议、挂 uart_bridge、`notify_host()` GPIO 唤醒 |
-| **user 应用** | `user/app.lua` | 启动 `host_uart`、PIR/MQTT 离线等调用 `notify_host` |
+| **user 串口** | `user/host_uart.lua` | AT/HEX/STR 协议、挂 uart_bridge、`ntfHost()` GPIO 唤醒 |
+| **user 应用** | `user/app.lua` | 启动 `host_uart`、PIR/MQTT 离线等调用 `ntfHost` |
 | **user 硬件** | `user/t3x_ctrl.lua` | GPIO22 供电、GPIO29 脉冲（无 AT 逻辑） |
 
 | 功能 | T3x `t3x_linux` |
@@ -73,5 +73,5 @@ UART 硬件 → uart_bridge（驱动，UART_CFG）
 ```lua
 local host_uart = require "host_uart"
 -- app.start 内已 host_uart.start({ t3x = t3x_ctrl })
-host_uart.notify_host(1, host_uart.EVT.SERVER_DATA)
+host_uart.ntfHost(1, host_uart.EVT.SERVER_DATA)
 ```

@@ -102,7 +102,7 @@ Topic：`/panshi/app/{deviceNo}/`
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
-| MQTT | `net_mqtt.lua` | `handleDownlink2009` → `runTfCardFormat` → `publishTfFormatResult` |
+| MQTT | `net_mqtt.lua` | `dispatchDl2009` → `runTfCardFormat` → `pubTfFormatResult` |
 | UART | `host_uart.lua` | `formatHostTfCard()`、`try_tfformat_line()` |
 | 配置 | `config.lua` | `HOST_TFCARD_FORMAT_CFG` |
 | PIR | `pir_ctrl.lua` | 格式化前 `suspend()`，完成后 `resume()`（未 reboot） |

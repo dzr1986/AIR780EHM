@@ -66,7 +66,7 @@ flowchart TB
 
 - `user/t3x_ctrl.lua`：`powerOn()` / `powerOff()` / `enterSleep()` / `wake()`
 - `user/app.lua`：`onEnterLowPower` / `onExitLowPower` / `onPowerOff`
-- `user/host_uart.lua`：`notify_host(sid, evt)` → GPIO29 脉冲 + `AT+HOSTEVT?`
+- `user/host_uart.lua`：`ntfHost(sid, evt)` → GPIO29 脉冲 + `AT+HOSTEVT?`
 
 **问题**：`enterSleep()` 与 `onPowerOff()` 均未在断电前通知 T3x 播放，音频会被硬切断。
 
@@ -150,7 +150,7 @@ T3x → 4G: \r\n+SOUNDACK:shutdown\r\nOK\r\n   （可选）
 |-----|------|------|
 | 0 | 业务数据 | 现有 |
 | 1～3 | TCP/MQTT 异常 | 现有 |
-| **4** | 播开机提示 | 4G `notify_host(sid, 4)` |
+| **4** | 播开机提示 | 4G `ntfHost(sid, 4)` |
 | **5** | 播关机提示 | 播完 T3x 可主动断电准备（仍建议 4G 等 ACK） |
 
 T3x `runtime_worker` 收到后调 `media_play_prompt()`，与 [MEDIA_OPS.md](../t3x_linux/MEDIA_OPS.md) 扩展一致。
@@ -213,7 +213,7 @@ end
 
 local function onEnterLowPower()
     playShutdownIfNeeded()  -- 仅当配置开启
-    -- 原有：setLowPowerMode、enterSleep、publishRest...
+    -- 原有：setLowPowerMode、enterSleep、pubRest...
 end
 
 local function onPowerOff()
@@ -300,7 +300,7 @@ T3x 启动阶段可能连续发多条 AT（如 `AT`、`AT+GETCFG?` 等）。固�
 
 | 层级 | 位置 | 机制 |
 |------|------|------|
-| 1 | `user/host_uart.lua` → `notify_host_first_at()` | `state.host_at_ready` 为 true 后，后续 AT **不再发布** `HOST_UART_FIRST_AT` 事件 |
+| 1 | `user/host_uart.lua` → `onFirstHostAt()` | `state.host_at_ready` 为 true 后，后续 AT **不再发布** `HOST_UART_FIRST_AT` 事件 |
 | 2 | `user/sound_prompt.lua` → `onAppStarted()` | `bootColdTaskStarted` 保证只创建 **一个** 等待/播放任务 |
 | 3 | `user/sound_prompt.lua` → `playBlocking()` | 下发 `AT+PLAYSOUND=boot` **之前** 置 `coldBootPlayed=true`，防止极端重入 |
 

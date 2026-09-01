@@ -103,7 +103,7 @@ T3x 发 `AT+RECORD?` 到 4G 模块时，4G `host_uart.lua` 返回 **4G 侧会话
 | `both` | `beginVideoSession` + `PIR_WAKE_T3X` ×1 | **×1** | **先 snapshot 再 record_start**（同周期） |
 | `devinfo` | 无唤醒 | — | `client_report_devinfo`（4G 本地 MQTT） |
 
-事件：`pir_ctrl.publishActionEvents` 只发布 **`APP_PIR_WAKE_T3X`**（不再分 `PIR_TAKE_PHOTO` + `PIR_RECORD_VIDEO` 两次唤醒）。
+事件：`pir_ctrl.pubActEvents` 只发布 **`APP_PIR_WAKE_T3X`**（不再分 `PIR_TAKE_PHOTO` + `PIR_RECORD_VIDEO` 两次唤醒）。
 
 ---
 

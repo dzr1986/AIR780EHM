@@ -23,7 +23,7 @@ flowchart TD
     R -->|是| O[usb_rndis.open async]
     O --> W[waitCellularReady / refresh]
     W --> S[RNDIS_NET_STABLE]
-    S --> N[net_mqtt.bootstrapNetwork]
+    S --> N[net_mqtt.bootstrapNet]
     R -->|否| N
 ```
 

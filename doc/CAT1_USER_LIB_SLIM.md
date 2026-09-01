@@ -1,27 +1,29 @@
 # Cat.1 user / lib 精简速查（门球低功耗）
 
 > **完整流程文档**：[CAT1_SLIMMING_FLOW.md](./CAT1_SLIMMING_FLOW.md)（推荐先看）  
-> 发布用 `luatos.json` → `only_luac_code=True`。  
-> **脚本区上限约 384KB**（Air780EHM）：`MODULE_FLAGS=false` **不减烧录体积**，须做等价桩文件与裁剪（本页已合并原 `archive/slim/README.md` 内容）。  
-> **原则**：T3x 能做的放 T3x（编码 2021/2020、GB28181、录像）；4G 只做 MQTT + UART 编排。
+> **下一刀计划**：[USER_LIB_OPTIMIZATION_PLAN_20260830.md](./USER_LIB_OPTIMIZATION_PLAN_20260830.md)  
+> 发布用 `luatos.json` → `only_luac_code=True`，或 `cat1_flash.py flash-script`。  
+> **脚本区上限 512KB**（Air780EHM）：量产压缩包约 342KB。`MODULE_FLAGS=false` **不减烧录体积**，须做等价桩文件与裁剪。  
+> **原则**：T3x 能做的放 T3x（编码 2021/2020、GB28181、录像）；4G 只做 MQTT + UART 编排。  
+> **配置真源**：单文件 `user/config.lua`（已无独立 `app_config.lua` / `key_config.lua`）。
 
 ---
 
 ## 1. 体积大户（不宜删，可关功能）
 
-| 文件 | 约 | 说明 |
-|------|-----|------|
-| `user/host_uart.lua` | 56K | AT 中枢；已大量 `pcall(require)` 懒加载 net_tcp/pir_ctrl |
-| `user/net_mqtt.lua` | 44K | MQTT 协议全集 |
-| `user/app.lua` | 40K | 编排核心 |
-| `user/pir_ctrl.lua` | 16K | PIR 会话 |
-| `lib/cellular_bootstrap.lua` | 16K | 蜂窝/APN（联通等） |
+| 文件 | 约（源码 2026-08-30） | 说明 |
+|------|----------------------|------|
+| `user/host_uart.lua` | 113KB / 3673 行 | AT 中枢；`host_query` / `host_set` 表驱动 |
+| `user/net_mqtt.lua` | 91KB / 2812 行 | MQTT 协议全集 |
+| `user/app.lua` | 36KB / 1126 行 | 编排核心 |
+| `user/pir_ctrl.lua` | 20KB / 683 行 | PIR 会话 |
+| `lib/cellular_bootstrap.lua` | 11KB / 445 行 | 蜂窝/APN |
 
 删文件收益小、风险大；**用 `MODULE_FLAGS` 关运行时**更合适。
 
 ---
 
-## 2. 门球推荐开关（`app_config.lua` + `config.lua`）
+## 2. 门球推荐开关（`user/config.lua`）
 
 | 开关 / 配置 | 门球建议 | 关掉后 |
 |-------------|----------|--------|
@@ -33,11 +35,11 @@
 | `sntp` | 建议 true | 与 `time_sync` 配合给 T3x 授时 |
 | `pmd_runtime` | **false** | USB 策略走 `usb_charge` 即可 |
 
-> **`app_config.lua` 无 `net_tcp` 字段**；TCP 由 `lib/low_power_wakeup.lua` 按 `LOW_POWER_WAKEUP_CFG.mode` 控制。
+> **`MODULE_FLAGS` 无 `net_tcp` 字段**；TCP 由 `lib/low_power_wakeup.lua` 按 `LOW_POWER_WAKEUP_CFG.mode` 控制。
 
 已在 `app.lua` 对 `battery/charge/mobile_info/fota/rndis/sntp/sound_prompt/time_sync` 做 **flag=false 时不 require**（仅省 RAM/启动，**不省 flash**）。
 
-### 2.1 脚本区 384KB 瘦身（已并入文档）
+### 2.1 脚本区 512KB 瘦身（已并入文档）
 
 | 处理 | 约省 | 说明 |
 |------|------|------|
@@ -79,9 +81,9 @@ local RNDIS_ENABLE = 0
 ### 4.2 不需要开机音
 
 ```lua
--- app_config.lua
+-- user/config.lua MODULE_FLAGS
 sound_prompt = false,
--- config.lua SOUND_CFG
+-- SOUND_CFG
 boot_on_cold_start = false,
 ```
 
@@ -104,11 +106,11 @@ boot_on_cold_start = false,
 
 ```text
 main.lua
-  → config / app_config / key_config
+  → user/config.lua（FEATURE_CFG / *_CFG / MODULE_FLAGS / APP_EVENTS / KEY_CONFIG）
   → cellular_bootstrap（若 cellular≠false）
   → app.start(peripheral, net_mqtt, t3x_ctrl)
-       → optMod：flag=false 的模块不 require
-       → host_uart.start（内部 pcall net_tcp / pir_ctrl / host_event）
+       → module_loader.opt：flag=false 的模块不 require
+       → host_uart.start（内部懒加载 net_tcp / pir_ctrl / host_event）
        → bootMqtt
 ```
 

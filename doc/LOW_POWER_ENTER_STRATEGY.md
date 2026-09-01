@@ -100,7 +100,7 @@ runtime_worker 每 hostevt_idle_poll_ms（默认 30s）:
 +HOSTIDLE:BUSY
 ```
 
-实现：`user/host_uart.lua` → `battery_guard.shouldAllowHostIdleSleep()`。
+实现：`user/host_uart.lua` → `battery_guard.shdHostSleep()`。
 
 ### 3.4 日志关键字
 
@@ -171,7 +171,7 @@ T3x: 保持上电，继续全天录像
 
 ```text
 T3x 每 30s: HOSTEVT? → 无事件 → HOSTIDLE=1
-4G: shouldAllowHostIdleSleep() == true
+4G: shdHostSleep() == true
 4G → T3x: +HOSTIDLE:OK → enterSleep(host_idle)
 T3x 断电；PIR 触发 → 4G 唤醒 → 录像 → 再 HOSTIDLE
 ```

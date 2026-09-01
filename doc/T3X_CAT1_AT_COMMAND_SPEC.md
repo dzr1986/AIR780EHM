@@ -38,7 +38,7 @@ client.ini
 | 命令 | 配置节 | 分隔符 | 成功响应 | 4G 行为 |
 |------|--------|--------|----------|---------|
 | **`AT+SERVCREATE=…`** | `[channel]` | **逗号 `,`**（10 段） | `+SERVCREATE:<sid>,OK` `OK` | `net_tcp.applyChannel`：TCP 连接、登录、心跳、wake_hex→GPIO |
-| **`AT+MQTTCFG=…`** | `[mqtt]` | **分号 `;`**（6 段） | `+MQTTCFG:OK` `OK` | `net.setMqttConfig` + 重启 MQTT |
+| **`AT+MQTTCFG=…`** | `[mqtt]` | **分号 `;`**（6 段） | `+MQTTCFG:OK` `OK` | `net.setMqttCfg` + 重启 MQTT |
 
 **bootstrap 顺序（固定）**：
 
@@ -175,7 +175,7 @@ OK
 client_push_mqtt_config(client);
 ```
 
-4G：`net.setMqttConfig` → 已连则 `restart()`。
+4G：`net.setMqttCfg` → 已连则 `restart()`。
 
 ---
 
@@ -242,7 +242,7 @@ sequenceDiagram
     C-->>T: +SERVCREATE:1,OK
     Note over C,TCP: 保存 channel，可扩展真连 TCP
     T->>C: AT+MQTTCFG (mqtt)
-    C->>M: setMqttConfig + start/restart
+    C->>M: setMqttCfg + start/restart
     C-->>T: +MQTTCFG:OK
     T->>C: AT+GETCFG?
 ```
@@ -267,12 +267,12 @@ sequenceDiagram
 |----------|-----|---------|---------|
 | `client_push_tcp_channel` | `AT+SERVCREATE` | `host_uart` → `net_tcp.applyChannel` | 起 TCP 任务：连 server_ip:port → 发 login_hex → 等 login_rsp_hex |
 | `client_close_service` | `AT+SERVCLOSE` | `net_tcp.closeChannel` | 断链、清 channel |
-| TCP 连不上 | — | `net_tcp` | `notify_host(sid, **1**)` |
-| 登录失败 | — | `net_tcp` | `notify_host(sid, **2**)` |
-| 登录超时 | — | `net_tcp` | `notify_host(sid, **3**)` |
-| 收到含 wake_hex 数据 | — | `net_tcp` | `notify_host(sid, **0**)` |
+| TCP 连不上 | — | `net_tcp` | `ntfHost(sid, **1**)` |
+| 登录失败 | — | `net_tcp` | `ntfHost(sid, **2**)` |
+| 登录超时 | — | `net_tcp` | `ntfHost(sid, **3**)` |
+| 收到含 wake_hex 数据 | — | `net_tcp` | `ntfHost(sid, **0**)` |
 | `client_push_mqtt_config` | `AT+MQTTCFG` | `app.on_mqtt_cfg` → `net` | 更新 Broker 并重连 MQTT |
-| MQTT 离线 | — | `app.onMqttOffline` | `notify_host(**, 2**)` |
+| MQTT 离线 | — | `app.onMqttOffline` | `ntfHost(**, 2**)` |
 | 唤醒后读原因 | `AT+HOSTEVT?` | `host_uart` pending | 返回 sid,evt |
 | 读 PIR | `AT+PIRSTAT?` | `pir_ctrl` | 计数与策略 |
 | 低功耗 | `AT+LOWPOWER=ENTER` | `app` | 停 MQTT 上报、**关闭 TCP** |

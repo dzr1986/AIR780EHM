@@ -35,7 +35,7 @@ flowchart TD
     BAT -->|是| DENY
 ```
 
-白名单 reason：`notify_host` · `pir_media` · `exit_low_power` · `pir_stop*` · `wled` 等。
+白名单 reason：`ntfHost` · `pir_media` · `exit_low_power` · `pir_stop*` · `wled` 等。
 
 配置：`T3X_POLICY_CFG.block_wake_below_percent=5`
 
@@ -45,8 +45,8 @@ flowchart TD
 
 ```
 mayPowerT3x 通过
-  → time_sync.pushBeforeNotifyAsync（默认：对时 + notify_host）
-  → host_uart.notify_host
+  → time_sync.pushBeforeNotifyAsync（默认：对时 + ntfHost）
+  → host_uart.ntfHost
        → powerOn（若未上电）
        → pulseMcuInt
   → 失败时 fallbackGpioWake（t3x_ctrl.wake）

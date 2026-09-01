@@ -32,7 +32,7 @@ MQTT **不传文件**。文件由 T31 HTTP 传到 `http://112.86.146.218:7003/ad
   └─ MQTT 2013  dataType=2013  videoType=2  beginTs/endTs  messageId=play-…
         │  主题 /panshi/device/{IMEI}/
         ▼
-Cat.1  handleDownlink2013
+Cat.1  dispatchDl2013
   └─ UART  AT+UPLOADVIDEO=1,2,<start>,<end>,<maxSec>,<messageId>
         │
         ▼

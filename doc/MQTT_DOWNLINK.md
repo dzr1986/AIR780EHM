@@ -998,7 +998,7 @@ Cat.1 只做 **UART ↔ MQTT**：把平台 2013 转成 `AT+UPLOADVIDEO`，把 T3
 与 **2012 开录 / 2011 停录** 独立；`2010.uploadMode` **不能**替代本命令。  
 MQTTX 单行抄录：[MQTT_DOWNLINK_862323084068124.txt](MQTT_DOWNLINK_862323084068124.txt) §3.9b
 
-Cat.1 代码：`user/net_mqtt.lua`（`handleDownlink2013` / `publishUploadVideoReply` / `publishUploadVideoNeed` / `publishUploadVideoProgress` / `publishUploadVideoComplete`）· `user/host_uart.lua`（`requestUploadVideo` / `uart_uploadneed_notify` / `uart_uploadprogress_notify` / `uart_uploadresult_notify`）。
+Cat.1 代码：`user/net_mqtt.lua`（`dispatchDl2013` / `publishUploadVideoReply` / `publishUploadVideoNeed` / `publishUploadVideoProgress` / `publishUploadVideoComplete`）· `user/host_uart.lua`（`requestUploadVideo` / `uart_uploadneed_notify` / `uart_uploadprogress_notify` / `uart_uploadresult_notify`）。
 
 所有 1013 由 `formatUplink` 包一层：`deviceNo` + `dataType` + 业务字段 + `time`（设备墙钟）。
 
@@ -1017,7 +1017,7 @@ Cat.1 代码：`user/net_mqtt.lua`（`handleDownlink2013` / `publishUploadVideoR
 ```text
 【回放】
 平台 2013
-  → Cat.1 handleDownlink2013
+  → Cat.1 dispatchDl2013
   → UART AT+UPLOADVIDEO=1,2,<unix>,<unix>,<maxSec>,<messageId>
   ← T31  +UPLOADVIDEO:OK,queued=1
   → MQTT 1013 reply=1 stage=queued          ← 开始（文件未到 7003）
@@ -1432,25 +1432,25 @@ AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=175
 
 | 下行 | 处理函数 | 上行函数 |
 |------|----------|----------|
-| 2001 | `handleDownlink2001` | `publishWakeup` |
-| 2002 | `handleDownlink2002` | `publishRest` |
-| 2003 | `handleDownlink2003` | `publishStatus` |
-| 2004 | `handleDownlink2004` | `publishControlReply` / `publishOtaStatus` |
-| 2005 | `handleDownlink2005` | `publishSimInfo` |
-| 2006 | `handleDownlink2006` | `publishDeviceIdentity` |
-| 2007 | `handleDownlink2007` | `publishTfCardStatus` |
-| 2010 | `handleDownlink2010` | `publishPirDetect` |
-| 2011 | `handleDownlink2011` | `publishPirRecordStop` |
-| 2012 | `handleDownlink2012` | `publishPirRecordStart` + `recordCtrlStart` |
-| 2013 | `handleDownlink2013` | `publishUploadVideoReply` + `requestUploadVideo` |
+| 2001 | `dispatchDl2001` | `pubWakeup` |
+| 2002 | `dispatchDl2002` | `pubRest` |
+| 2003 | `dispatchDl2003` | `pubStatus` |
+| 2004 | `dispatchDl2004` | `publishControlReply` / `pubOtaStatus` |
+| 2005 | `dispatchDl2005` | `pubSimInfo` |
+| 2006 | `dispatchDl2006` | `pubDeviceIdentity` |
+| 2007 | `dispatchDl2007` | `pubTfCardStatus` |
+| 2010 | `dispatchDl2010` | `pubPirDetect` |
+| 2011 | `dispatchDl2011` | `pubPirStop` |
+| 2012 | `dispatchDl2012` | `pubPirStart` + `recordCtrlStart` |
+| 2013 | `dispatchDl2013` | `publishUploadVideoReply` + `requestUploadVideo` |
 | （人形主动） | `uart_uploadneed_notify` | `publishUploadVideoNeed`（1013 queued + fileName） |
 | （上传进度） | `uart_uploadprogress_notify` | `publishUploadVideoProgress` |
 | （上传完成） | `uart_uploadresult_notify` | `publishUploadVideoComplete` |
-| 2021 | `handleDownlink2021` | `publishEncodeReply` → 1021 |
-| 2020 | `handleDownlink2020` | `publishEncodeReply` → 1020 |
-| 2022 | `handleDownlink2022` | `publishRecordTimeReply` → 1022 |
-| 2023 | `handleDownlink2023` | `publishRecordTimeReply` → 1023 |
-| 2024 | `handleDownlink2024` | `publishFramerateReply` → 1024 |
-| 2025 | `handleDownlink2025` | `publishFramerateReply` → 1025 |
-| 2026 | `handleDownlink2026` | `publishPersonDetectReply` → 1026 |
-| 2027 | `handleDownlink2027` | `publishPersonDetectReply` → 1027 |
+| 2021 | `dispatchDl2021` | `publishEncodeReply` → 1021 |
+| 2020 | `dispatchDl2020` | `publishEncodeReply` → 1020 |
+| 2022 | `dispatchDl2022` | `publishRecordTimeReply` → 1022 |
+| 2023 | `dispatchDl2023` | `publishRecordTimeReply` → 1023 |
+| 2024 | `dispatchDl2024` | `publishFramerateReply` → 1024 |
+| 2025 | `dispatchDl2025` | `publishFramerateReply` → 1025 |
+| 2026 | `dispatchDl2026` | `publishPersonDetectReply` → 1026 |
+| 2027 | `dispatchDl2027` | `publishPersonDetectReply` → 1027 |

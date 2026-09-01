@@ -25,7 +25,7 @@
 | **主链路（PIR 唤醒、录像/抓拍、低功耗休眠、Bootstrap、MQTT 状态上报）** | ✅ **完善** |
 | **HOSTEVT 休眠决策（四条 AT）** | ✅ **完善**（v1.3–v1.5） |
 | **媒体分发** | ✅ **v1.5** 优先 `HOSTEVT?` media 字段，PIRSTAT 仅回退 |
-| **MQTT 类 pending** | ✅ **v1.5** `hasPendingHostWork` + 下行队列 + `types_mask=0x0F` |
+| **MQTT 类 pending** | ✅ **v1.5** `hasHostQueue` + 下行队列 + `types_mask=0x0F` |
 | **`+CAT1:MQTT` 网络灯** | ✅ **v1.5** IPC `uart_host_cmd` + `gpio_net_stat_set_cat1_mqtt` |
 
 **一句话**：原「部分完善 / 待补」项已在 v1.5 落地；`AT+LOWPOWER` 仍由 4G 内部使用、T3x 走 `HOSTIDLE`（设计如此，非缺口）。
@@ -49,7 +49,7 @@ T3x: serial.c → api.c (T3x→4G) + uart_host_cmd.c (4G→T3x)
 |------|------|-------------|
 | T3x→4G | `serial_request` + `client_request` | `tx_lock` 仅保护写；等待应答时不持锁，避免 Host 行死锁 |
 | 4G→T3x | `uart_bridge.sendString` 发 AT；`host_process_line` 解析 T3x 应答 | 首条 AT 触发 `HOST_UART_FIRST_AT` / 开机铃 |
-| GPIO | `notify_host` → `set_pending_wake` + `pulseMcuInt` | T3x `gpio_wait_event` 后再 `AT+HOSTEVT?` 校验 |
+| GPIO | `ntfHost` → `set_pending_wake` + `pulseMcuInt` | T3x `gpio_wait_event` 后再 `AT+HOSTEVT?` 校验 |
 
 **代码真源**：
 
@@ -111,7 +111,7 @@ sequenceDiagram
     participant T as runtime/api
     participant M as media_ops
 
-    4G->>HU: TIMESET + notify_host (pending_wake)
+    4G->>HU: TIMESET + ntfHost (pending_wake)
     HU->>T: GPIO 脉冲
     T->>HU: AT+HOSTEVT? (pending=wake)
     T->>M: media_dispatch (读 HOSTEVT media 字段)
@@ -158,7 +158,7 @@ sequenceDiagram
 |------|-----|-----|
 | 握手 | `bootstrap_ping` 发 `AT` | `uart_at_cmd` 回 `OK` |
 | 开机铃 | 等 `AT+PLAYSOUND=boot` | 首条 AT 后可选下发 |
-| 防死锁 | `serial_notify_host_ack_for_at_ping` 补 `OK` | — |
+| 防死锁 | `serial_ntfHost_ack_for_at_ping` 补 `OK` | — |
 | 无 USB rest | — | `initPowerStatus` → `boot_no_usb`（v1.4，与 charge 模块无关） |
 
 ---
@@ -168,7 +168,7 @@ sequenceDiagram
 ### 5.1 ✅ 已完善
 
 1. **HOSTEVT 休眠 + 媒体**：`HOSTEVT?` 含 `recording/action/max_sec/last_stop`；T3x `media_dispatch` 主读 HOSTEVT。
-2. **MQTT pending**：`hasPendingHostWork()`（2006/2007 队列 + 云端停录）；`types_mask=0x0F`；T3x `pending=mqtt` 仅 block 休眠。
+2. **MQTT pending**：`hasHostQueue()`（2006/2007 队列 + 云端停录）；`types_mask=0x0F`；T3x `pending=mqtt` 仅 block 休眠。
 3. **`+CAT1:MQTT`**：`LED_CFG.notify_t3x_net_led=true` 时驱动 T3x NET_STAT_LED（Cat.1 MQTT 在线态覆盖）。
 4. **录像/抓拍/串口/Bootstrap**：同 v1.4。
 
@@ -177,7 +177,7 @@ sequenceDiagram
 | 侧 | 文件 | 变更 |
 |----|------|------|
 | 4G | `host_uart.lua` | `build_hostevt_body` 追加 media 字段；导出 `buildHostEvtBody()` |
-| 4G | `net_mqtt.lua` | `hasPendingHostWork`、下行队列、`drainPendingHostWork` |
+| 4G | `net_mqtt.lua` | `hasHostQueue`、下行队列、`drainHostQueue` |
 | 4G | `pir_ctrl.lua` | `requestStopFromCloud` → `requestT3xStopRecord`（唤醒 T3x 停录） |
 | 4G | `host_event.lua` | `isDispatchable` 跳过 mqtt |
 | 4G | `config.lua` | `types_mask=0x0F` |
@@ -220,9 +220,9 @@ sequenceDiagram
 |------|------|------|
 | AT 分发 | `user/host_uart.lua` | T3x 入站 AT、HOSTEVT/PIRSTAT/RECORD |
 | 事件汇总 | `lib/host_event.lua` | `summarize` / `isDispatchable` |
-| 唤醒脉冲 | `user/t3x_ctrl.lua` | `notify_host` / `enterSleep` |
+| 唤醒脉冲 | `user/t3x_ctrl.lua` | `ntfHost` / `enterSleep` |
 | PIR 策略 | `user/pir_ctrl.lua` | 录像会话、`syncStopFromT3x` |
-| MQTT pending | `user/net_mqtt.lua` | `hasPendingHostWork()` / 下行队列 |
+| MQTT pending | `user/net_mqtt.lua` | `hasHostQueue()` / 下行队列 |
 
 ### T3x
 

@@ -82,7 +82,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-    A[GPIO27 检测到插入] --> B[applyUsbInsertState 插入]
+    A[GPIO27 检测到插入] --> B[applyUsbPower 插入]
     B --> C[power_status = 1]
     C --> D[exitRestIfNeededAfterUsbInsert]
     D --> E{之前在 rest?}
@@ -100,7 +100,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GPIO27 检测到拔出] --> B[applyUsbInsertState 拔出]
+    A[GPIO27 检测到拔出] --> B[applyUsbPower 拔出]
     B --> C[power_status = 0 发 +CAT1:USB,0]
     C --> D{PC 开了 RNDIS?}
     D -->|是| E[不进 rest 仅日志]
@@ -148,7 +148,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[PIR / MQTT离线 / notify_host / TCP...] --> B{t3x_policy}
+    A[PIR / MQTT离线 / ntfHost / TCP...] --> B{t3x_policy}
     B --> C{烧录或 USB 插入?}
     C -->|是| OK[允许]
     C -->|否| D{force_wake?}
@@ -225,7 +225,7 @@ flowchart TD
 ③ 执行  t3x_policy + t3x_ctrl（能不能动 T3x）
 ```
 
-USB 函数：`applyUsbInsertState` → 拔出 `enterRestIfNeededAfterUsbRemove`（**无**无条件 `usb_remove`）/ 插入 `exitRestIfNeededAfterUsbInsert`。详见 [WORK_MODE §9](WORK_MODE_BATTERY_20PCT.md#9-usb-拔插与-rest仅电量-20)。
+USB 函数：`applyUsbPower` → 拔出 `enterRestIfNeededAfterUsbRemove`（**无**无条件 `usb_remove`）/ 插入 `exitRestIfNeededAfterUsbInsert`。详见 [WORK_MODE §9](WORK_MODE_BATTERY_20PCT.md#9-usb-拔插与-rest仅电量-20)。
 
 ---
 

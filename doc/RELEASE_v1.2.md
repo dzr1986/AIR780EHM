@@ -38,7 +38,7 @@ git tag -a v1.2 -m "v1.2 backup"
 
 ## v1.2 电量/T3x 修复（相对 v1_20260529 文档缺口）
 
-- rest / 低电（≤15%）下 MQTT 离线、`notify_host` 不再误唤醒 T3x
+- rest / 低电（≤15%）下 MQTT 离线、`ntfHost` 不再误唤醒 T3x
 - 启动先 `initPowerStatus`，低电无 USB 时 `bootPowerOn` 跳过上电
 - `recover_rest_percent=18`、`pir_resume_percent=20`
 

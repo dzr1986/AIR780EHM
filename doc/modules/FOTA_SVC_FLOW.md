@@ -13,10 +13,10 @@
 |----|------|
 | **输入** | 云端 MQTT 2004、内部事件 `DEVICE_OTA_REQUEST` |
 | **下载** | 自建 OTA HTTP（`FOTA_CFG`）或合宙 IoT / MQTT 下发的完整 `url` |
-| **上报** | `publishStatus` 回调 → `net_mqtt.publishOtaStatus`（1004 OTA 阶段） |
+| **上报** | `pubStatus` 回调 → `net_mqtt.pubOtaStatus`（1004 OTA 阶段） |
 | **完成** | 下载成功默认 `rtos.reboot()` |
 
-`MODULE_FLAGS.fota=false` 时不启动；`app.setupFota` 注入 `publishStatus`。
+`MODULE_FLAGS.fota=false` 时不启动；`app.setupFota` 注入 `pubStatus`。
 
 ---
 
@@ -173,7 +173,7 @@ flowchart TD
 
 | 函数 | 说明 |
 |------|------|
-| `start(options)` | 订阅 OTA 事件；注入 `publishStatus` |
+| `start(options)` | 订阅 OTA 事件；注入 `pubStatus` |
 | `request(data)` | 手动触发 `autoOta` |
 | `configure` / `getConfig` | 运行时配置 |
 | `getState()` | `busy`、`request_count`、`last_result`、`server`、`self_url` |

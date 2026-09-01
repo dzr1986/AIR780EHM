@@ -66,7 +66,7 @@
 | `pir_det` | 30 | **1** | 31 GPIO30 | PIR 触发为高 |
 | `misc_pullup` | 7 | 1 | 7 | 预留 |
 
-初始化由 `lib/gpio_util.lua` → `setup_input_entry()` 完成（非 `init_level` 驱动）。
+初始化由 `lib/gpio_util.lua` → `setupInputEntry()` 完成（非 `init_level` 驱动）。
 
 ---
 
@@ -221,7 +221,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `t3x_usb_ursp` | `+CAT1:USB,%d` | URSP 模板 |
 | `boot_notify_delay_ms` | 1500 | 冷启动后补发 USB 态（等 UART/T3x 就绪） |
 
-实现：`user/app.lua`（`applyUsbInsertState` / `notifyT3xUsbHostIdlePolicy`）、`user/host_uart.lua`（`push_usb_host_idle_state` / `uart_hostidle` / `uart_lowpower`）、`user/net_mqtt.lua`（2002 拦截）。
+实现：`user/app.lua`（`applyUsbPower` / `ntfT3xUsbIdle`）、`user/host_uart.lua`（`pushUsbIdle` / `uart_hostidle` / `uart_lowpower`）、`user/net_mqtt.lua`（2002 拦截）。
 
 ### `HOST_IPC_CFG` T3x 电源（`config.lua`）
 

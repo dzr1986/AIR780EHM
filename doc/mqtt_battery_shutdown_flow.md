@@ -30,12 +30,12 @@ sequenceDiagram
 
     ADC->>BG: evaluate(pct≤5%)
     BG->>BG: suspendPir()
-    BG->>App: on_enter_low_power("battery")
-    App->>MQTT: publishRest → 1002 enter
+    BG->>App: onEnterLowPower("battery")
+    App->>MQTT: pubRest → 1002 enter
     BG->>BG: scheduleShutdown(3000ms)
     Note over BG: shutdown_delay_ms 默认 3s<br/>插 USB 可取消定时器
 
-    BG->>App: on_power_off() → onPowerOff("battery")
+    BG->>App: onPowerOff() → onPowerOff("battery")
     App->>MQTT: notifyPowerOff("battery")
     alt MQTT 未连接
         MQTT->>MQTT: connect() + wait APP_MQTT_CONNECTED
@@ -145,7 +145,7 @@ Topic 前缀：`/panshi/app/{deviceNo}/`
 ```lua
 -- 1. 未连接则 mqttClient:connect() + waitUntil("APP_MQTT_CONNECTED", waitMs)
 -- 2. reason ~= "mqtt" 时 publishControlReply("off", 0, msg, {})
--- 3. publishStatus({ skip_ipc_stat_refresh = true })
+-- 3. pubStatus({ skipIpcStatRefresh = true })
 -- 4. sys.wait(graceMs)
 -- 5. callback() → 关机音 → pm.shutdown()
 ```
@@ -167,7 +167,7 @@ Topic 前缀：`/panshi/app/{deviceNo}/`
 | `shutdown_recover_mv` | 3500 | >3.5V 取消已排程关机 |
 | `shutdown_mv_confirm_count` | 2 | 连续采样次数 |
 | `shutdown_percent` | 5 | 无有效 mV 时回退 |
-| `shutdown_delay_ms` | 3000 | 进 rest 后多久触发 `on_power_off` |
+| `shutdown_delay_ms` | 3000 | 进 rest 后多久触发 `onPowerOff` |
 | `shutdown_mqtt_wait_ms` | 8000 | 关机前等待 MQTT 连接上限 |
 | `shutdown_mqtt_grace_ms` | 800 | 1004/1003 发出后留空 |
 | `ignore_when_usb_inserted` | true | 插 USB 时不评估低电关机 |

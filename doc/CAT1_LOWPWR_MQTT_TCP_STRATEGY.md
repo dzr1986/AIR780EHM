@@ -93,7 +93,7 @@ _G.LOW_POWER_CFG = {
 
 ## 5. MQTTCFG 去重（减负担）
 
-T3x bootstrap 可能发送与 `MQTT_CFG` 相同的 `AT+MQTTCFG`。4G 在 `app.lua` `on_mqtt_cfg` 中调用 `net_mqtt.isSameMqttConfig`：**参数不变则跳过重连**。
+T3x bootstrap 可能发送与 `MQTT_CFG` 相同的 `AT+MQTTCFG`。4G 在 `app.lua` `on_mqtt_cfg` 中调用 `net_mqtt.sameMqttCfg`：**参数不变则跳过重连**。
 
 ---
 

@@ -52,9 +52,9 @@ flowchart TD
 
 | 函数 | 用途 |
 |------|------|
-| `shouldAllowHostIdleSleep()` | 仅 `host_idle` 档返回 true |
-| `canAcceptHostIdleSleep()` | 唤醒后 `host_idle_min_awake_sec` 内返回 false |
-| `noteT3xAwakeForHostIdle()` | PIR/唤醒时记录时间戳 |
+| `shdHostSleep()` | 仅 `host_idle` 档返回 true |
+| `canHostSleep()` | 唤醒后 `host_idle_min_awake_sec` 内返回 false |
+| `ntfHostIdle()` | PIR/唤醒时记录时间戳 |
 
 调用方：`host_uart.uart_hostidle` → `+HOSTIDLE:BUSY` 或 `OK`
 
@@ -77,9 +77,9 @@ flowchart TD
 ```
 handleShutdownZone
   → suspendPir()
-  → enterBatteryRest() → hooks.on_enter_low_power("battery")
+  → enterBatteryRest() → hooks.onEnterLowPower("battery")
        → app.onEnterLowPower → MQTT 1002 + t3x enterSleep
-  → scheduleShutdown(3s) → hooks.on_power_off → notifyPowerOff → pm.shutdown
+  → scheduleShutdown(3s) → hooks.onPowerOff → notifyPowerOff → pm.shutdown
 ```
 
 插 USB 可取消定时器；`onPowerOff` 内再次检查 `isUsbInserted()`。
@@ -100,9 +100,9 @@ handleShutdownZone
 
 | hook | app 绑定 |
 |------|----------|
-| `on_enter_low_power` | `onEnterLowPower` |
-| `on_exit_low_power` | `onExitLowPower` |
-| `on_power_off` | `onPowerOff("battery")` |
+| `onEnterLowPower` | `onEnterLowPower` |
+| `onExitLowPower` | `onExitLowPower` |
+| `onPowerOff` | `onPowerOff("battery")` |
 | `wake_t3x` | `requestT3xWake("battery_usb", force)` |
 | `is_usb_inserted` | `usb_charge` / `power_status` |
 

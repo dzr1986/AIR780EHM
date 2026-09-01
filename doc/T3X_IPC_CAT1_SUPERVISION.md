@@ -40,7 +40,7 @@
 │    AT+RECORD?                    4G 对账 T3x 真实写盘        │
 ├─────────────────────────────────────────────────────────────┤
 │ ③ 上报层（Cat.1 Lua → MQTT）                                 │
-│    host_uart 解析 → ipc_supervision.onAlert → net_mqtt      │
+│    host_uart 解析 → ipc_supervision.pubAlert → net_mqtt      │
 │    → 1004 ipc_alert / 1011 / 1003 / 102x                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -106,8 +106,8 @@ sequenceDiagram
     Hub->>UART: AT+IPCALERT=code,detail
     UART->>HU: 上行 AT（T3x→4G）
     HU->>HU: uart_ipc_alert_notify
-    HU->>SUP: sys.publish(T3X_IPC_ALERT) → onAlert
-    SUP->>MQ: publishAlert → publishUplink
+    HU->>SUP: sys.publish(T3X_IPC_ALERT) → pubAlert
+    SUP->>MQ: publishAlert → pubUplink
     MQ->>BE: 1004 action=ipc_alert
     SUP->>HU: scheduleIpcCloudStatRefresh(force=true)
     opt map1011 含 code
@@ -126,7 +126,7 @@ sequenceDiagram
     participant BE as MQTT 后台
 
     MQ->>BE: 1003 status（含 ipcCloudStatFields 缓存）
-    Note over MQ: on_published 回调
+    Note over MQ: onPublished 回调
     MQ->>SUP: afterBatteryStatusPublished()
     SUP->>HU: scheduleIpcCloudStatRefresh(force=false)
     Note over HU: T3x idle 时跳过（省电）
@@ -205,11 +205,11 @@ MP4 写盘失败 / 正常停录
 
 | 文件（真源 `/mnt/share/user/`） | 角色 |
 | --- | --- |
-| `ipc_supervision.lua` | `publishAlert` / `onAlert` / `ipcCloudStatFields` / 对账与 IPCSTAT 调度 |
+| `ipc_supervision.lua` | `publishAlert` / `pubAlert` / `ipcCloudStatFields` / 对账与 IPCSTAT 调度 |
 | `ipc_alert_contract.lua` | alertCode + `map1011` / `reconcile` 策略表 |
 | `host_uart.lua` | 解析 `IPCALERT` / `IPCSTAT` / `RECORD`；`reconcileHostRecordSession()` |
-| `net_mqtt.lua` | MQTT 传输；`ipc_sup.bind()`；`publishIpcAlert` 薄封装 |
-| `app.lua` | `T3X_IPC_ALERT` → `ipc_supervision.onAlert()` |
+| `net_mqtt.lua` | MQTT 传输；`ipc_sup.bind()`；`pubIpcAlert` 薄封装 |
+| `app.lua` | `T3X_IPC_ALERT` → `ipc_supervision.pubAlert()` |
 | `vbat.lua` + `config.lua` | 电池 ADC；`mv_calibration` 实测校准 |
 
 IPC 仓库镜像：`docs/4g_lua/user/`（与 `/mnt/share/user/` 同步）
@@ -265,7 +265,7 @@ T3x `ipc_supervision_build_stat()` 填充，4G `AT+IPCSTAT?` 拉取后并入 **1
 
 **刷新节奏**：
 
-- 每帧 1003 `on_published` → `scheduleIpcCloudStatRefresh(false)`（T3x **idle** 时跳过，省电）
+- 每帧 1003 `onPublished` → `scheduleIpcCloudStatRefresh(false)`（T3x **idle** 时跳过，省电）
 - **1004 ipc_alert 后** → `scheduleIpcCloudStatRefresh(true)` 强制拉取
 
 ---

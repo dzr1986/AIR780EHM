@@ -1,9 +1,58 @@
 # Lua 模块专题文档
 
-> 总览：[LUA_MODULES.md](../LUA_MODULES.md) · 合并与实机回归：[PR_MERGE_REGRESSION.md](PR_MERGE_REGRESSION.md)  
+> 总览：[LUA_MODULES.md](../LUA_MODULES.md)（含 **§1.1 模块树**）· 拆分后治理：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](../USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)  
+> API 命名：[CAT1_API_NAMING.md](../CAT1_API_NAMING.md) · 合并与实机回归：[PR_MERGE_REGRESSION.md](PR_MERGE_REGRESSION.md)  
 > 协议真源：[MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) · [UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md)
 
 本目录按 **user 业务 / lib 策略与底层 / 协议分发** 三类索引，共 **17** 份专题 + 1 份合并回归清单。
+
+---
+
+## host_uart 子模块索引
+
+| 文件 | 职责 | 专题 |
+|------|------|------|
+| `host_uart.lua` | 锁、`SYS_EVT`、`processLine`、`start` | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) |
+| `hu_at.lua` | AT 表编译 | 同上 |
+| `hu_cmd.lua` | cmd 编排 | 同上 |
+| `hu_cmd_usb.lua` | USB 相关 AT | 同上 |
+| `hu_cmd_link.lua` | P2P/GB28181/MQTT/SERV | 同上 |
+| `hu_cmd_pir.lua` | HOSTEVT/PIRSTAT | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) |
+| `hu_cmd_t3x.lua` | RECORD/UPLOAD/IPCSTAT NOTIFY | 同上 |
+| `hu_cmd_wled.lua` | WLED | 同上 |
+| `hu_rx.lua` | URC 编排、`patchCloud`、注册表 | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) |
+| `hu_rx_dsl.lua` | URC 行匹配 DSL | 同上 |
+| `hu_rx_media.lua` | VENC/AUDIO/MIC/FRAMERATE URC | 同上 |
+| `hu_ipc.lua` | IPC 编排 | 同上 |
+| `hu_ipc_recovery.lua` | UART 恢复、`qryHostStat` | 同上 |
+| `hu_ipc_hostq.lua` | RECORD/MIC/SOFTPHOTO query/set | 同上 |
+| `hu_ipc_cloud.lua` | 云状态/GB28181 | 同上 |
+| `hu_ipc_power.lua` | IPC 上电/关机/ready | 同上 |
+| `hu_ipc_tffmt.lua` | TF format | 同上 |
+| `hu_ipc_encode.lua` | 编码参数 | 同上 |
+
+回归：`python tools/debug/_protocol_regression_check.py`（或单独跑 `_host_uart_regression_check.py`）
+
+---
+
+## net_mqtt 子模块索引
+
+| 文件 | 职责 | 专题 |
+|------|------|------|
+| `net_mqtt.lua` | `mqttTask`、`pubRaw`、`notifyPowerOff` | [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) |
+| `mqtt_conn.lua` | topic/cfg/bootstrap/adapter/snap | 同上 |
+| `mqtt_uplink.lua` | 100x 上行 + 1003 interval | 同上 |
+| `net_mqtt_dispatch.lua` | 下行 JSON 分发 + HOSTEVT/USB 钩子 | [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) |
+| `net_mqtt_downlink.lua` | 200x 编排（含 2006 identity） | [MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) |
+| `net_mqtt_downlink_pir.lua` | 2010–2012 PIR | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) |
+| `net_mqtt_downlink_ctrl.lua` | 2004/2003 等控制 | 同上 |
+| `net_mqtt_downlink_tf.lua` | TF 卡 | 同上 |
+| `net_mqtt_downlink_upload.lua` | 2013 上传 | 同上 |
+| `mqtt_uplink_pir.lua` | 1010/1011 | [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) |
+| `mqtt_uplink_upload.lua` | 1013 等 | 同上 |
+| `net_mqtt_host_proto.lua` | 2020–2031 | [MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) |
+
+回归：`python tools/debug/_protocol_regression_check.py`（或单独跑 `_net_mqtt_regression_check.py`）
 
 ---
 
@@ -43,7 +92,7 @@
 
 ## 协议与 AT/MQTT 分发
 
-面向云端下行与 T3x 串口协议，真源在 `user/host_uart.lua` / `user/net_mqtt.lua`：
+面向云端下行与 T3x 串口协议，真源在 `user/host_uart.lua`（+ at/cmd/ipc）/ `user/net_mqtt.lua`（+ downlink/uplink/`host_proto`）：
 
 | 专题 / 文档 | 说明 |
 |-------------|------|

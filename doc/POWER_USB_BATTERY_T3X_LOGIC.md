@@ -65,7 +65,7 @@ flowchart TB
 | **P1** | **USB 插入** `power_status==1` | `battery_guard` **整段跳过**；插入时 **wake T3xx**、恢复 PIR、取消 ≤5% 关机 |
 | **P2** | 未插 USB + **电量** | >20% 常电；5~20% HOSTIDLE；≤5% rest+关机 |
 | **P3** | **业务低功耗**（USB 拔出 / MQTT 2002 / AT） | `onEnterLowPower` → 断 T3x + 1002（与电量可叠加） |
-| **P4** | **业务唤醒**（PIR / MQTT 离线 / notify_host 等） | 可能 **上电+脉冲**（**当前未统一检查** ③/①，见 §6） |
+| **P4** | **业务唤醒**（PIR / MQTT 离线 / ntfHost 等） | 可能 **上电+脉冲**（**当前未统一检查** ③/①，见 §6） |
 
 **口诀**：**USB 插入 > 电量保护 > 一般低功耗标志；但「唤醒源」可能绕过前两条。**
 
@@ -78,7 +78,7 @@ flowchart TB
 ```text
 main.lua
   → cellular_bootstrap.start()     -- SIM/APN
-  → net.bootstrapNetwork()       -- 等 IP
+  → net.bootstrapNet()       -- 等 IP
   → app.start()
        → t3x_ctrl.start()
             → powerOn()           ★ ① 先给 T3x 上电（无条件）
@@ -144,7 +144,7 @@ main.lua
 | 0 | ≤15% | **暂停** | 常电 | 低电仍可联网上报 1003 |
 | 0 | ≤10% | 暂停 | 常电 + 1002 rest | T3x 断，模组不断网 |
 | 1 | 低电 | **恢复** | 常电 | 不因低电停 PIR |
-| 任意 | 任意 | — | MQTT 离线可 `notify_host` | **可能违背 rest**（见 §6） |
+| 任意 | 任意 | — | MQTT 离线可 `ntfHost` | **可能违背 rest**（见 §6） |
 
 ### 4.3 MQTT 1003 字段怎么读
 
@@ -163,13 +163,13 @@ main.lua
 | **`vbat`** | 采样 → `battery_percent` | T3x、USB、MQTT |
 | **`usb_charge`** | GPIO27 → 发布 `GPIO_USB_DET_CHANGED` | 电量、T3x |
 | **`battery_guard`** | 未插 USB 时按电量：PIR/休眠/关机 | 插 USB 后 **全部不评估** |
-| **`app.applyUsbInsertState`** | USB 边沿 → `power_status`、调 `battery_guard` 或 `onExitLowPower` | 电量阈值 |
+| **`app.applyUsbPower`** | USB 边沿 → `power_status`、调 `battery_guard` 或 `onExitLowPower` | 电量阈值 |
 | **`app.onEnterLowPower`** | `low_power_mode=1`、断 T3x、1002、关 TCP | 是否低电（任何来源都可触发） |
 | **`app.onExitLowPower`** | `low_power_mode=0`、wake T3x、恢复 TCP 等 | USB 必须插入（通常由 USB 路径调用） |
 | **`t3x_ctrl.start`** | **无条件 `powerOn`** | USB/电量 |
 | **`t3x_ctrl.enterSleep`** | GPIO22 断电 | `low_power_mode` 标志 |
 | **`t3x_ctrl.wake`** | 上电 + GPIO29 脉冲 | 低功耗/电量门禁 |
-| **`host_uart.notify_host`** | 若无电则 `powerOn` + 脉冲 | **未检查** rest/低电 |
+| **`host_uart.ntfHost`** | 若无电则 `powerOn` + 脉冲 | **未检查** rest/低电 |
 | **`net_mqtt` 2002** | 发布 `POWER_ENTER/EXIT_REST` | T3x 引脚 |
 
 ---
@@ -179,11 +179,11 @@ main.lua
 | # | 现象 | 原因 |
 |---|------|------|
 | 1 | 无 USB 上电 T3x 闪一下再灭 | `t3x_ctrl.start()` **总是** `powerOn`，`battery_guard` 晚 500ms 才断 |
-| 2 | `rest` 但 T3x 仍重启 | `onMqttOffline` / `notify_host` **不检查** `low_power_mode` 与低电 |
+| 2 | `rest` 但 T3x 仍重启 | `onMqttOffline` / `ntfHost` **不检查** `low_power_mode` 与低电 |
 | ~~3~~ | ~~`charge=true` 无 USB 不 `enterSleep`~~ | ✅ v1.4 已修：仅看 USB 插入，无 USB 即 `boot_no_usb` |
 | 4 | 电量 12% 边界抖 | `recover_rest_percent=12` 与 `t3x_rest_percent=10` 迟滞过窄 |
 | 5 | 插 USB 低电仍红闪 | 设计如此：灯看 ADC，保护看 USB |
-| 6 | USB 拔出 + 高电量也进 rest | `applyUsbInsertState(false)` 在 `low_power_mode==0` 时调 `onEnterLowPower`（与电量无关） |
+| 6 | USB 拔出 + 高电量也进 rest | `applyUsbPower(false)` 在 `low_power_mode==0` 时调 `onEnterLowPower`（与电量无关） |
 
 ---
 
@@ -196,7 +196,7 @@ main.lua
 | R1 | **未插 USB + 电量 ≤ X%**：禁止 T3x 上电/唤醒 | 统一门禁函数 `mayPowerT3x()` |
 | R2 | **插 USB**：允许 T3x（即使低电），便于充电/调试 | 保持 `battery_guard` USB 优先 |
 | R3 | **上电无 USB**：不要先亮 T3x 再灭 | `t3x_ctrl.start()` 改为按 R1 决定是否 `powerOn` |
-| R4 | **业务 rest**：MQTT 离线/PIR **不得** 拉起 T3x | `sendWakePulse` / `notify_host` 内检查 |
+| R4 | **业务 rest**：MQTT 离线/PIR **不得** 拉起 T3x | `sendWakePulse` / `ntfHost` 内检查 |
 | R5 | **电量恢复**：加大迟滞，如 ≤10% 休眠、≥20% 才恢复 | 改 `BATTERY_CFG.guard` |
 | R6 | **出厂默认**：无 USB 即 T3x 休眠 | ✅ v1.4 `initPowerStatus` 已实现 |
 
@@ -210,7 +210,7 @@ main.lua
 
 改造调用点：
   t3x_ctrl.start          → mayPowerT3x("boot")
-  host_uart.notify_host   → requestT3xWake
+  host_uart.ntfHost   → requestT3xWake
   onMqttOffline           → rest/低电时 no-op
   battery_guard           → 仅负责阈值，最终调 requestT3xSleep
   onEnterLowPower         → requestT3xSleep

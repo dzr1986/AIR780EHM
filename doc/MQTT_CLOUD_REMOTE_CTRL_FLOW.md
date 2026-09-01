@@ -83,7 +83,7 @@ T3x **不直连 MQTT**；平台只与 Cat.1 通信。
 }
 ```
 
-**4G 内部**：`handleDownlink2024` → `host_uart.queryHostFramerate()` → `AT+FRAMERATE?` 或 `AT+FRAMERATE?0,0`。
+**4G 内部**：`dispatchDl2024` → `host_uart.queryHostFramerate()` → `AT+FRAMERATE?` 或 `AT+FRAMERATE?0,0`。
 
 ### 3.2 下行 2025 — 设置
 
@@ -122,7 +122,7 @@ T3x **不直连 MQTT**；平台只与 Cat.1 通信。
 }
 ```
 
-**Cat.1 流程**（`net_mqtt.handleDownlink2012`）：
+**Cat.1 流程**（`net_mqtt.dispatchDl2012`）：
 
 ```text
 1. pir_ctrl.requestStartFromCloud()
@@ -296,7 +296,7 @@ sequenceDiagram
 | 录像媒体 | `user/pir_ctrl.lua` | `app/cat1/media_ops.c` |
 | IVS 人形 | — | `media_plat/t31x/video_interface.c` |
 
-**net_mqtt 处理器**：`handleDownlink2024/2025/2026/2027`；2011/2012 内嵌 `recordCtrlStop/Start`。
+**net_mqtt 处理器**：`dispatchDl2024/2025/2026/2027`；2011/2012 内嵌 `recordCtrlStop/Start`。
 
 **host_uart API**：`queryHostFramerate` · `setHostFramerate` · `recordCtrlStart` · `recordCtrlStop` · `requestUploadVideo` · `queryHostPersonDetect` · `setHostPersonDetect`。
 

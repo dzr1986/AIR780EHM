@@ -268,7 +268,7 @@
 
 ```text
 平台 Publish 2020/2021
-  → 4G net_mqtt.handleDownlink2020/2021
+  → 4G net_mqtt.dispatchDl2020/2021
   → host_uart.queryHostEncode / setHostVideoEncode / setHostAudioEncode
   → （rest 时 t3x_ctrl 上电 + 等 ready）
   → UART: AT+VENC? / AT+VENCSET= / AT+AUDIO? / AT+AUDIOSET=
@@ -342,7 +342,7 @@ OK
 
 | 层级 | 文件 |
 |------|------|
-| MQTT 下行/上行 | `user/net_mqtt.lua` `handleDownlink2021/2020` `publishEncodeReply` |
+| MQTT 下行/上行 | `user/net_mqtt.lua` `dispatchDl2021/2020` `publishEncodeReply` |
 | UART 代理 | `user/host_uart.lua` `queryHostEncode` `setHostVideoEncode` `setHostAudioEncode` |
 | T31x AT | `app/cat1/uart_host_cmd.c` |
 | T31x 逻辑 | `app/cat1/encode_remote.c` |

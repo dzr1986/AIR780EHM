@@ -56,7 +56,7 @@
 
 | 场景 | `USB_DEBUG_EN`（GPIO32） | `T3x_BOOT`（GPIO26） | 代码 / 说明 |
 |------|--------------------------|----------------------|-------------|
-| **4G 上电 / 正常运行** | **低（0）** | **低（0）** | `gpio_util.setup_output` 用 `init_level`；`t3x_ctrl.start()` 后不改 OTA 脚 |
+| **4G 上电 / 正常运行** | **低（0）** | **低（0）** | `gpio_util.setupOutput` 用 `init_level`；`t3x_ctrl.start()` 后不改 OTA 脚 |
 | **进入 T3x 烧录**（GPIO28 长按 → `enterBootMode`） | **高（1）** | **高（1）** | 断电 500ms 后 BOOT+OTA 置 `on_level`，再 `powerOn`（GPIO22） |
 | **退出烧录**（`coproc_ready` → `exitBootMode`） | **低（0）** | **低（0）** | 拉回 `init_level` |
 | **USB 恢复**（`AT+USBRESET`） | **高约 300ms → 低** | 不变 | `pulseUsbDebugEn()`，**不是**烧录模式 |

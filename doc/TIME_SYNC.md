@@ -71,7 +71,7 @@ sequenceDiagram
 | PIR/录像唤醒 `media_dispatch_wake_event` | T3x | 若 `time(NULL)` 无效，再拉一次 `AT+TIME?` |
 | `SNTP_SYNC_SUCCESS` | 4G | `time_sync.pushToHostAsync(true)` |
 | 退出低功耗 `onExitLowPower` | 4G | `time_sync.onT3xWake()` |
-| `sendWakePulse` → `notify_host` 前 | 4G | `time_sync.pushBeforeNotifyAsync()` |
+| `sendWakePulse` → `ntfHost` 前 | 4G | `time_sync.pushBeforeNotifyAsync()` |
 
 ---
 

@@ -244,7 +244,7 @@ T3x **不识别** 上节 2 中的 `SERVCREATE/MQTTCFG/GETCFG` 等（那些只在
 
 ### 3.2 GPIO 唤醒（非串口 AT）
 
-4G `notify_host(sid, evt)` → GPIO29 脉冲 → T3x 中断 → T3x 再发 **`AT+HOSTEVT?`** 读原因，处理后 **`AT+HOSTEVTCLR`**。
+4G `ntfHost(sid, evt)` → GPIO29 脉冲 → T3x 中断 → T3x 再发 **`AT+HOSTEVT?`** 读原因，处理后 **`AT+HOSTEVTCLR`**。
 
 | evt | 含义 |
 |-----|------|
@@ -343,7 +343,7 @@ Cat.1 → T3x: AT+PLAYSOUND=boot （可选，sound_prompt 冷启动）
 | WLED GPIO（T3x） | `cat1_host/wled.c` |
 | 对时 | `user/time_sync.lua` ↔ T3x `time_sync.c` |
 | 提示音 | `user/sound_prompt.lua` ↔ T3x `audio_prompt.c` |
-| 唤醒脉冲 | `user/host_uart.lua` → `notify_host` + `t3x_ctrl` |
+| 唤醒脉冲 | `user/host_uart.lua` → `ntfHost` + `t3x_ctrl` |
 
 ---
 

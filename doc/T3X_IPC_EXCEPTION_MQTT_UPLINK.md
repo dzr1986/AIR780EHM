@@ -151,7 +151,7 @@ IPC 异常
 
 ### 3.2 1004 IPC 告警（`/panshi/app/{imei}/event`）
 
-T3x `AT+IPCALERT=<alertCode>[,detail]` → Cat.1 `publishIpcAlert`。
+T3x `AT+IPCALERT=<alertCode>[,detail]` → Cat.1 `pubIpcAlert`。
 
 **载荷形态**（与 OTA/控制 reply 共用 dataType，靠字段区分）：
 

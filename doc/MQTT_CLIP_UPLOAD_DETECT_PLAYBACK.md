@@ -166,7 +166,7 @@ Cat.1 应答：`+UPLOADRESULT:ok,ret=0`
 
 ```text
 平台 MQTT 2013
-  → Cat.1 handleDownlink2013
+  → Cat.1 dispatchDl2013
   → 校验 T31 就绪；未就绪立即 1013 reply=1 ret=-1 message=t3x_not_ready
   → AT+UPLOADVIDEO=<need>,<type>,<start>,<end>,<maxSec>,<messageId>
   → T31 clip_upload_request(type=2) 入队

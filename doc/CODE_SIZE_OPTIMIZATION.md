@@ -7,12 +7,12 @@
 
 ## 1. 现状（main 基线）
 
-| 区域 | 约行数 | 说明 |
-|------|--------|------|
-| `user/host_uart.lua` | ~4096 | AT 解析、查询/设置、HOSTEVT、PIR/WLED |
-| `user/net_mqtt.lua` | ~2460 | 200x↓ / 100x↑、`HOST_UART_QUERY_SET_SPECS` 工厂 |
-| `user/app.lua` | ~1007 | 启动链与事件桥 |
-| `user/` + `lib/` 合计 | ~13600 | LuatTools `only_luac_code` 上限约 384KB |
+| 区域 | 约行数（2026-08-30） | 说明 |
+|------|---------------------|------|
+| `user/host_uart.lua` | 3673 | AT 解析、查询/设置、HOSTEVT、PIR/WLED |
+| `user/net_mqtt.lua` | 2812 | 200x↓ / 100x↑、`HOST_UART_QUERY_SET_SPECS` 工厂 |
+| `user/app.lua` | 1126 | 启动链与事件桥 |
+| `user/` + `lib/` 源码 | ~450KB / ~36 文件 | 脚本区上限 **512KB**；量产 `flash-script` 压缩约 **342KB** |
 
 逻辑精简主要省 **维护成本** 与 **少量 Flash**（删重复行才直接减体积）；SKU 级 Flash 裁剪见 `CAT1_LOGIC_SLIM.md` §6（`MODULE_FLAGS`）。
 
@@ -38,7 +38,7 @@
 - `prepare`：生成 AT 串
 - `parse_rsp`：解析 ACK 表
 - `boot_cfg`：与 `cfg` 分离（recordCtrl 沿用 identity 策略门 + record 启动等待）
-- `busy_key` 可选（不设则不加互斥）
+- `busyKey` 可选（不设则不加互斥）
 
 **预期**：`host_uart.lua` 较 main **净减约 50～60 行**（以 `wc -l` / `git diff --stat` 为准）。
 
@@ -50,13 +50,19 @@
 
 ---
 
+### 2.3 2026-08-30：USB 查询单点（阶段 5A）
+
+`app` / `host_uart` / `led_ctrl` / `net_mqtt` 的 USB/充电读路径改为 `runtime_power.isUsbInserted` / `isCharging`。阶段 5B 再收电量/在线/rest 读路径（`getBattery*` / `isOnline` / `setOnline`）。策略门禁仍在 `usb_charge.blocks*`。详见 [USER_LIB_OPTIMIZATION_PLAN_20260830.md](USER_LIB_OPTIMIZATION_PLAN_20260830.md)。
+
+---
+
 ## 3. 后续可选（收益递减）
 
 | 项 | 文件 | 风险 | 预估收益 |
 |----|------|------|----------|
 | `setHostEncode` 部分走 `host_set` | host_uart | 中（音频/视频分支复杂） | ~30 行 |
 | `formatHostTfCard` 长轮询保留独立 | host_uart | 低 | 不宜强行合并 |
-| `app.lua` 事件表驱动 | app | 低 | 可读性 ↑，行数略减 |
+| `app.lua` 事件表驱动 | app | 低 | **064 已做**：`EVNT_HNDL` |
 | `MODULE_FLAGS` SKU 裁剪 | 多文件 | 中 | Flash ↓，非本类优化 |
 
 ---

@@ -40,15 +40,15 @@ flowchart TD
 
 | 核对项 | 代码位置 | 对照文档 |
 |--------|----------|----------|
-| `main.lua` 入口 | `require`、RNDIS、cellular、`bootstrapNetwork` | `CALL_GRAPH.md` §1 |
+| `main.lua` 入口 | `require`、RNDIS、cellular、`bootstrapNet` | `CALL_GRAPH.md` §1 |
 | `app.start()` 逐步顺序 | `app.lua` `start()` 函数体 | `CALL_GRAPH.md` §1.1、`PROJECT_DOC.md` §1.3、`CODE_ANALYSIS.md` §3.2 |
-| MQTT 异步 | `bootMqtt` → `mqttTask` → `publishConnectUplink` | `T3X_LOW_POWER.md`、`CALL_GRAPH.md` §1.2 |
+| MQTT 异步 | `bootMqtt` → `mqttTask` → `pubConnectUplink` | `T3X_LOW_POWER.md`、`CALL_GRAPH.md` §1.2 |
 
 ### 1.3 协议层
 
 | 核对项 | 代码位置 | 对照文档 |
 |--------|----------|----------|
-| MQTT dataType | `net_mqtt.lua` `DT` 表 + `handleDownlink*` | `MQTT_PROTOCOL.md`、`CALL_GRAPH.md` §6 |
+| MQTT dataType | `net_mqtt.lua` `DT` 表 + `dispatchDl*` | `MQTT_PROTOCOL.md`、`CALL_GRAPH.md` §6 |
 | T3x 入站 AT | `host_uart.lua` `AT_CMD_TABLE` | `UART_AT_COMMANDS.md` |
 | 4G→T3x 主动 AT | `host_uart` 内 `uart_bridge.sendString` | `UART_AT_COMMANDS.md` §编码/IPC |
 | 串口底层 | `lib/uart_bridge.lua` 唯一 `uart.setup` | `UART_PROTOCOL.md` |
@@ -69,7 +69,7 @@ flowchart TD
 | 配置 / GPIO / 电量 | **高** | `CONFIG.md` 与 `config.lua` 一致 |
 | MQTT dataType | **高** | 2001–2007、2010–2021、2020 ↔ 1001–1007、1010–1021、1020 |
 | AT（T3x→4G 入站） | **高** | `UART_AT_COMMANDS.md` ↔ `AT_CMD_TABLE` |
-| conack / 1003 周期 | **高** | `publishConnectUplink()`；初值 `low_power_interval_sec=30` |
+| conack / 1003 周期 | **高** | `pubConnectUplink()`；初值 `low_power_interval_sec=30` |
 | Cat.1 精简 / TCP | **高** | `LOW_POWER_WAKEUP_CFG.mode`；无 `MODULE_FLAGS.net_tcp` |
 | **启动链顺序** | **曾偏低** | 已按 `app.lua` 1106–1157 修订总览文档 |
 | 模块职责表述 | **曾中** | `uart_bridge` vs `host_uart` 分工已澄清 |
@@ -96,7 +96,7 @@ flowchart TD
 | 12 | `pmd_runtime` | `setupPmd()` |
 | 13 | flags | `startBackgroundServices()`：`vbat` / `usb_charge` / `time_sync` / `mobile_info` |
 | 14 | `rndis` | `setupRndis()` |
-| 15 | `mqtt` | `net_mqtt.bootstrapNetwork()`（**`main.lua` 已调一次，此处幂等再调**） |
+| 15 | `mqtt` | `net_mqtt.bootstrapNet()`（**`main.lua` 已调一次，此处幂等再调**） |
 | 16 | 始终 | `bootMqtt()` → `startMqtt()` → `net.start()` |
 | 17 | `fota` | `setupFota()` |
 | 18 | 始终 | `startHeartbeat()`（10s） |
@@ -112,7 +112,7 @@ flowchart TD
 require config, app_config, key_config
 [MODULE_FLAGS.rndis]     sys.taskInit(usb_rndis.open)
 [MODULE_FLAGS.cellular]  cellular_bootstrap.start()
-[MODULE_FLAGS.mqtt]      net_mqtt.bootstrapNetwork()   ← 第一次
+[MODULE_FLAGS.mqtt]      net_mqtt.bootstrapNet()   ← 第一次
 app.start(peripheral, net_mqtt, t3x_ctrl)
 sys.run()
 ```
@@ -125,7 +125,7 @@ sys.run()
 |------|------|------|
 | `lib/uart_bridge.lua` | 唯一 `uart.setup`；`sendString`/`write`；`STR:`/`HEX:` 行协议 | 不解析 T3x 业务 AT |
 | `user/host_uart.lua` | T3x **入站** AT（`AT_CMD_TABLE`）；**出站** `AT+VENC`/`GB28181`/`IPCPOWEROFF` 等 | 不直接 `uart.setup` |
-| `user/net_mqtt.lua` | MQTT 上下行、`publishConnectUplink` | 不操作 UART |
+| `user/net_mqtt.lua` | MQTT 上下行、`pubConnectUplink` | 不操作 UART |
 | `user/app.lua` | 编排、`bootMqtt`、低功耗、事件订阅 | 不直接 `uart.setup` |
 
 ---

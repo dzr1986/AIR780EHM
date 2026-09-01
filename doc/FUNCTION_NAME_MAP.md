@@ -1,5 +1,11 @@
 # Lua 函数名缩写映射对照表
 
+> **⚠ 历史文档（2026-08-22）**：下文为早期 Flash 瘦身缩写实验记录，**部分短名已被 111–134 可读命名取代**。  
+> **当前 API 真源**：[CAT1_API_NAMING.md](CAT1_API_NAMING.md)（`001.000.134`：`pub*`/`dl*`/`ntf*` 等，保留必要别名）。  
+> 维护新文档时请只引用 **CAT1_API_NAMING**，勿再按本文「极短缩写」新增符号。
+
+---
+
 > **生成日期**：2026-08-22
 > **涉及文件**：34 个 `.lua`（user/ 17 + lib/ 17）
 > **替换条目**：122 条（0 冲突）
@@ -348,7 +354,7 @@
 
 | 类型 | 示例 | 不改原因 |
 |---|---|---|
-| hook 表字段名 | `on_enter_low_power`, `on_exit_low_power`, `on_power_off` | 跨模块回调约定，改动代价高 |
+| hook 表字段名 | ~~`on_enter_low_power`~~ → **136 起** `onEnterLowPower` 等 | 136 已 camelCase；见 `CAT1_API_NAMING.md` |
 | 全局配置表键 | `_G.APP_EVENTS`, `GPIO_IN`, `LOW_POWER_CFG` | 外部/固件层依赖 |
 | 字符串字面量 | MQTT topic, 密码, URL, 路径 | 线上协议数据，MD5 不变保证 |
 | 常量大蛇形 | `PUBLISH_WAKEUP`, `STOP_REASON.*`, `ACTION.*` | 枚举常量，非函数 |

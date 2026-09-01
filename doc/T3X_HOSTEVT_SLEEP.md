@@ -41,7 +41,7 @@
 | `max_sec` | int | 录像最长秒数 |
 | `last_stop` | string | 云端/定时停录请求（`none` / `cloud` / …） |
 
-media 字段与 `AT+PIRSTAT?` 中 `pir_ctrl.buildAtBody()` **同源**；T3x `media_dispatch_wake_event` **优先读 HOSTEVT**，失败回退 PIRSTAT。
+media 字段与 `AT+PIRSTAT?` 中 `pir_ctrl.bldAtBodyy()` **同源**；T3x `media_dispatch_wake_event` **优先读 HOSTEVT**，失败回退 PIRSTAT。
 
 无待处理：
 
@@ -77,15 +77,15 @@ T3x → 4G: AT+HOSTEVTPOLL=30000
 
 | 来源 | 行为 |
 |------|------|
-| `net_mqtt.hasPendingHostWork()` | 2006/2007 在 T3x 休眠时入队；云端 2011 停录待 T3x 同步 |
+| `net_mqtt.hasHostQueue()` | 2006/2007 在 T3x 休眠时入队；云端 2011 停录待 T3x 同步 |
 | `types_mask` bit3 | `config.lua` 默认 `0x0F` 含 mqtt |
-| T3x 空闲轮询 | `pending=mqtt` **仅 block 休眠**，不触发 `media_dispatch`（4G `drainPendingHostWork` 在 T3x 就绪后处理） |
+| T3x 空闲轮询 | `pending=mqtt` **仅 block 休眠**，不触发 `media_dispatch`（4G `drainHostQueue` 在 T3x 就绪后处理） |
 
 ### 1.2 `AT+HOSTEVTCLR` 清除范围
 
 | 清除对象 | 实现 | 说明 |
 |----------|------|------|
-| GPIO 唤醒 pending | `host_uart.clear_pending_wake()` | `notify_host()` 写入、尚未消费的 `sid/evt` |
+| GPIO 唤醒 pending | `host_uart.clear_pending_wake()` | `ntfHost()` 写入、尚未消费的 `sid/evt` |
 | PIR 可消费标记 | `pir_ctrl.clearConsumableMarkers()` | `last=none`、`last_ts=0` |
 | **不清除** | `cnt_*` 累加计数 | 与 `AT+PIRCLR` 区分；统计仍走 `AT+PIRSTAT?` |
 
@@ -95,7 +95,7 @@ T3x → 4G: AT+HOSTEVTPOLL=30000
 
 **4G 侧**（收到 `AT+HOSTIDLE=1` 时）：
 
-1. `battery_guard.shouldAllowHostIdleSleep()==false`（>20% 常电）→ `+HOSTIDLE:BUSY`
+1. `battery_guard.shdHostSleep()==false`（>20% 常电）→ `+HOSTIDLE:BUSY`
 2. 内部调用与 `AT+HOSTEVT?` 同源的 `build_hostevt_body()`
 3. `has_event=1` → `+HOSTIDLE:BUSY`（拒绝断电）
 4. `has_event=0` 且允许 → 异步 `t3x_ctrl.enterSleep({ reason="host_idle" })` → `+HOSTIDLE:OK`
@@ -130,7 +130,7 @@ USB 策略详见 [T3X_LOW_POWER.md §2.1](T3X_LOW_POWER.md)。
 
 ### 2.1 「精简」与「宽表」是什么意思？
 
-二者用**同一份底层数据**（`pir_ctrl.buildAtBody()` + `host_event.summarize()`），做成两种不同**宽度**的串口应答：
+二者用**同一份底层数据**（`pir_ctrl.bldAtBodyy()` + `host_event.summarize()`），做成两种不同**宽度**的串口应答：
 
 | 说法 | 对应 AT | 含义 |
 |------|---------|------|
@@ -140,7 +140,7 @@ USB 策略详见 [T3X_LOW_POWER.md §2.1](T3X_LOW_POWER.md)。
 因此 **`has_event`（HOSTEVT）与 `has_work`（PIRSTAT 末尾）结论一致**，不是两套状态机；宽表只是在同一份汇总结果上多贴了诊断数据。
 
 ```text
-pir_ctrl.buildAtBody()  +  getHostEvtPending()  +  host_event.summarize()
+pir_ctrl.bldAtBodyy()  +  getHostEvtPending()  +  host_event.summarize()
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼
@@ -246,10 +246,10 @@ has_work=1,work_types=wake,work_pending=wake,work_sid=1,work_evt=0 OK
 
 | 位 | 类型 | 判定来源 |
 |----|------|----------|
-| 0x01 | **wake** | `host_uart` pending（GPIO `notify_host` 后未 CLR） |
+| 0x01 | **wake** | `host_uart` pending（GPIO `ntfHost` 后未 CLR） |
 | 0x02 | **pir** | `last` ∈ `detected`/`retrigger`/`hw_accept` 且 `last_ts` 未过期（默认 120s） |
 | 0x04 | **record** | `recording=1` |
-| 0x08 | **mqtt** | `net_mqtt.hasPendingHostWork()`（`types_mask=0x0F` 已启用，v1.5） |
+| 0x08 | **mqtt** | `net_mqtt.hasHostQueue()`（`types_mask=0x0F` 已启用，v1.5） |
 
 ### 3.1 `record` 与空闲轮询（v1.4）
 
@@ -276,7 +276,7 @@ sequenceDiagram
     participant G as 4G host_uart
     participant T as T3x runtime
 
-    G->>G: notify_host(sid,evt) + GPIO29 脉冲
+    G->>G: ntfHost(sid,evt) + GPIO29 脉冲
     T->>T: PB27 下降沿
     T->>G: AT+HOSTEVT?
     G-->>T: has_event=1,pending=wake,types=wake,sid=1,evt=0
@@ -382,7 +382,7 @@ sequenceDiagram
 ## 8. 实机验证清单
 
 - [ ] `AT+HOSTEVT?` 返回 `has_event,pending,types,sid,evt` 五字段
-- [ ] GPIO `notify_host` 后 `has_event=1`、`pending=wake`
+- [ ] GPIO `ntfHost` 后 `has_event=1`、`pending=wake`
 - [ ] PIR 触发后 `types` 含 `pir`（`last` 在有效期内）
 - [ ] 业务处理完 `AT+HOSTEVTCLR` 后 `has_event=0`
 - [ ] 业务 dispatch **失败**时不发 CLR，下次轮询可重试

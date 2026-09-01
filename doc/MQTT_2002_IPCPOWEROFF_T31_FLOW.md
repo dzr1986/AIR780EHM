@@ -18,7 +18,7 @@
   │  Publish  /panshi/device/{IMEI}/
   │  {"dataType":"2002","lowPowerMode":"enter","messageId":"..."}
   ▼
-Cat.1 net_mqtt.handleDownlink2002
+Cat.1 net_mqtt.dispatchDl2002
   │  立刻 1004 rest_enter（reply=1, ret=0）  ← 平台不必干等封盘
   │  POWER_ENTER_REST
   ▼
@@ -143,7 +143,7 @@ STAGE 只表示进度，**不能**当成可以断电。唯有 `OK`（或 Cat.1 �
 
 | 步骤 | 文件 | 行为 |
 |------|------|------|
-| 解析 2002 | `user/net_mqtt.lua` `handleDownlink2002` | 立刻 1004；USB **不** `usb_block` |
+| 解析 2002 | `user/net_mqtt.lua` `dispatchDl2002` | 立刻 1004；USB **不** `usb_block` |
 | 切模式 | `user/app.lua` `doEnterLowPowerBody` | `pir_watch` + rest；协程里 `enterSleep` |
 | 休眠入口 | `user/t3x_ctrl.lua` `enterSleep` / `gracefulPowerOff` | **先** `hostIpcPowerOff`，**再** `powerOff()` |
 | 发 AT / 等 ACK | `user/host_uart.lua` `hostIpcPowerOff` | 等 `+IPCPOWEROFF:OK`；STAGE 只续等 |

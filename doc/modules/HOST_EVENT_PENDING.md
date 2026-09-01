@@ -23,10 +23,10 @@
 
 | 类型 | 位 | 数据来源 |
 |------|-----|----------|
-| `wake` | 1 | `host_uart` pending HOSTEVT（`notify_host` 未消费） |
-| `pir` | 2 | `pir_ctrl.buildAtBody()` 近期 PIR（`last` + `last_ts`） |
+| `wake` | 1 | `host_uart` pending HOSTEVT（`ntfHost` 未消费） |
+| `pir` | 2 | `pir_ctrl.bldAtBodyy()` 近期 PIR（`last` + `last_ts`） |
 | `record` | 4 | PIRSTAT `recording=1` |
-| `mqtt` | 8 | `net_mqtt.hasPendingHostWork()` |
+| `mqtt` | 8 | `net_mqtt.hasHostQueue()` |
 
 默认 `types_mask = 0x0F`（四类全开）。`FEATURE_CFG.host_evt=false` 或 `HOST_EVT_CFG.enabled=false` 时 `summarize` 返回空。
 
@@ -58,7 +58,7 @@ flowchart TD
 
 ### 3.4 mqtt
 
-条件：`online_status=1` 且 **非** `low_power_mode=1`，且 `net_mqtt.hasPendingHostWork()`：
+条件：`online_status=1` 且 **非** `low_power_mode=1`，且 `net_mqtt.hasHostQueue()`：
 
 - `pendingHostQueue` 非空（2006/2007/2009 等需 T3x 的下行）
 - 或 PIR `last_stop_reason=device` 且 1011 尚未上报
@@ -83,7 +83,7 @@ flowchart TD
 
 ```text
 build_pir_wake_context()
-  → pir_ctrl.buildAtBody()
+  → pir_ctrl.bldAtBodyy()
   → getHostEvtPending()
   → host_event.summarize(...)
   → 拼入 AT+HOSTEVT? / AT+PIRSTAT? 应答

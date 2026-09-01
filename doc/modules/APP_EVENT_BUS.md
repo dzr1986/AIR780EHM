@@ -14,7 +14,7 @@
 | lib 不反向依赖 user | `pir_ctrl` / `host_uart` 只 `sys.publish`，不 `require net_mqtt` |
 | 内部事件 | `BATTERY_UPDATE`、`net_ready`、`mqtt_pub` 等未列入 `APP_EVENTS` |
 
-订阅入口：`setupEventHandlers()` → `subscribeAll(buildSystemEventHandlers())` + `subscribeAll(buildPirMqttHandlers())`。
+订阅入口：`stpEvntHndl()` → `subscribeAll(EVNT_HNDL)`（系统事件 + PIR/T3x 桥一张表）。
 
 ---
 
@@ -31,8 +31,8 @@
 | `GPIO_PWRKEY_LONG` | `peripheral` | 关机（USB 插入宽限期内忽略） |
 | `GPIO_BOOTKEY_LONG` | `peripheral` | `tryEnterT3xBurnMode` |
 | `GPIO_COPROC_READY` | `peripheral` | 退出烧录、恢复 PIR/MQTT |
-| `GPIO_USB_DET_CHANGED` | `usb_charge` | `applyUsbInsertState` + 延迟 1003 |
-| `GPIO_CHG_STATE_CHANGED` | `usb_charge` | 充电状态变化 → `publishStatus` |
+| `GPIO_USB_DET_CHANGED` | `usb_charge` | `applyUsbPower` + 延迟 1003 |
+| `GPIO_CHG_STATE_CHANGED` | `usb_charge` | 充电状态变化 → `pubStatus` |
 | `GPIO_VBUS_CHANGED` | PMD、`initPowerStatus` | 电源状态同步 |
 | `BATTERY_UPDATE` | `vbat` | `battery_guard.onBatteryUpdate` |
 | `MQTT_OFFLINE` | `net_mqtt` | `onMqttOffline` → 可选 `requestT3xWake` |
@@ -43,17 +43,17 @@
 
 | 事件 | 发布方 | app → 下游 |
 |------|--------|------------|
-| `PIR_WAKE_T3X` | `pir_ctrl` | `wakeT3xForPir` + 可选 `publishWakeup` |
+| `PIR_WAKE_T3X` | `pir_ctrl` | `wakeT3xForPir` + 可选 `pubWakeup` |
 | `PIR_MEDIA_EFFECTIVE` | `pir_ctrl` | `publishPirToMqtt`（media_sync） |
 | `PIR_REQUEST_T3X_STOP` | `pir_ctrl` | `wakeT3xForPir("pir_stop_*")` |
 | `PIR_STOP_RECORDING` | `pir_ctrl` | 1011 / T3x 优先 + fallback 定时器 |
 | `PIR_TIMER_EXPIRED` | `pir_ctrl` | `publishStopRecording(timer)` |
 | `GPIO_PIR_TRIGGERED` | `pir_ctrl` | `publishPirToMqtt`（detected） |
-| `T3X_SNAPSHOT_DONE` | `host_uart` | `publishPirSnapshotDone` |
-| `T3X_RECORD_ACTIVE` | `host_uart` | `publishPirRecordActive` |
+| `T3X_SNAPSHOT_DONE` | `host_uart` | `pubSnapDone` |
+| `T3X_RECORD_ACTIVE` | `host_uart` | `pubRecActive` |
 | `T3X_RECORD_STOP` | `host_uart` | `publishT3xRecordStop` |
 | `T3X_PERSON_CNT` | `host_uart` | **不**转 MQTT（人数不上 1010） |
-| `T3X_IPC_ALERT` | `host_uart` | `ipc_supervision.onAlert` |
+| `T3X_IPC_ALERT` | `host_uart` | `ipc_supervision.pubAlert` |
 
 ---
 
@@ -61,16 +61,16 @@
 
 ```mermaid
 flowchart TD
-    P[PIR_WAKE_T3X 等] --> N[battery_guard.noteT3xAwakeForHostIdle]
+    P[PIR_WAKE_T3X 等] --> N[battery_guard.ntfHostIdle]
     N --> POL{t3x_policy?}
     POL -->|是| PW[policy.requestT3xWake]
     POL -->|否| TS{time_sync?}
     TS -->|是| PUSH[pushBeforeNotifyAsync]
-    TS -->|否| HU[host_uart.notify_host]
+    TS -->|否| HU[host_uart.ntfHost]
     POL -->|无 policy| GPIO[t3x_ctrl.pulseWakeup]
 ```
 
-`noteT3xAwakeForHostIdle`：5~20% 中间档 PIR 唤醒后 **30s** 内拒绝 HOSTIDLE（见 [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)）。
+`ntfHostIdle`：5~20% 中间档 PIR 唤醒后 **30s** 内拒绝 HOSTIDLE（见 [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)）。
 
 ---
 
@@ -80,7 +80,7 @@ flowchart TD
 
 1. `usb_policy.blocks4gRest()` 门禁  
 2. 可选低电提示音  
-3. `doEnterLowPowerBody`：`POWER_ENTERED_REST` → `t3x_ctrl.enterSleep` → `publishRest` → `low_power_wakeup.onEnterRest`
+3. `doEnterLowPowerBody`：`POWER_ENTERED_REST` → `t3x_ctrl.enterSleep` → `pubRest` → `low_power_wakeup.onEnterRest`
 
 ### 5.2 退出 rest（`onExitLowPower`）
 
@@ -89,11 +89,11 @@ flowchart TD
 3. `requestT3xWake`（**不再**重复 `time_sync.onT3xWake`）  
 4. `low_power_wakeup.onExitRest`
 
-### 5.3 USB 插入（`applyUsbInsertState`）
+### 5.3 USB 插入（`applyUsbPower`）
 
 - 更新 `APP_RUNTIME.power_status`  
 - `battery_guard.onUsbInserted` / 取消关机定时器  
-- `notifyT3xUsbHostIdlePolicy`  
+- `ntfT3xUsbIdle`  
 - 冷启动 `source=="boot"` 时跳过重复 `wake_t3x`
 
 ---

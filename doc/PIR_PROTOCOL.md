@@ -189,7 +189,7 @@ sequenceDiagram
     PIR->>CFG: PIR_HW_TRIGGERED → onPirTriggered()
     CFG->>CFG: beginVideoSession() 启动定时器
     CFG->>APP: PIR_WAKE_T3X（一次唤醒）
-    APP->>NET: publishWakeup() 若 uploadMode=auto 且非 rest
+    APP->>NET: pubWakeup() 若 uploadMode=auto 且非 rest
     APP->>APP: requestT3xWake(pir_media)
 ```
 
@@ -357,7 +357,7 @@ flowchart TD
 
 **方向**：设备 → 平台  
 
-**触发**：`app` 订阅到 `PIR_STOP_RECORDING` 后调用 `net.publishPirRecordStop()`  
+**触发**：`app` 订阅到 `PIR_STOP_RECORDING` 后调用 `net.pubPirStop()`  
 
 **主题**：`/panshi/app/{deviceNo}/event`  
 
@@ -395,10 +395,10 @@ flowchart TD
 | 会话/定时/停止发布 | `pir_ctrl.lua` | `beginVideoSession` / `publishStopRecording` |
 | 业务响应 | `app.lua` | `setupEventHandlers` 内 PIR 订阅 |
 | 平台 2010/2012/2011 | `net_mqtt.lua` | `setMediaConfig` / `setRecordPolicy` / `requestStartFromCloud` / `requestStopFromCloud` |
-| 上行 1012 | `net_mqtt.lua` | `publishPirRecordStart` |
-| 上行 1011 | `net_mqtt.lua` | `publishPirRecordStop` / `publishT3xRecordStop` |
-| 编码 2020/2021 | `net_mqtt.lua` + `host_uart.lua` | `handleDownlink2020/2021` → IPC `AT+VENC*` / `AT+AUDIO*` |
-| T3x 写盘确认 1010 | `net_mqtt.lua` | `publishPirRecordActive` |
+| 上行 1012 | `net_mqtt.lua` | `pubPirStart` |
+| 上行 1011 | `net_mqtt.lua` | `pubPirStop` / `publishT3xRecordStop` |
+| 编码 2020/2021 | `net_mqtt.lua` + `host_uart.lua` | `dispatchDl2020/2021` → IPC `AT+VENC*` / `AT+AUDIO*` |
+| T3x 写盘确认 1010 | `net_mqtt.lua` | `pubRecActive` |
 | T3x AT+RECORD | `host_uart.lua` | `uart_record_notify` → `APP_T3X_RECORD_*` |
 | 硬件触发 | `config.lua` | `PIR_CFG` |
 | 默认策略 | `pir_ctrl.lua` | `pirMediaConfig` / `pirRecordPolicy` |

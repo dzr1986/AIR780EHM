@@ -35,7 +35,7 @@ flowchart LR
     HU --> NET
     PIR --> RT
     HU --> RT
-    APP -->|notify_host GPIO29| API
+    APP -->|ntfHost GPIO29| API
 ```
 
 **分工原则**
@@ -113,7 +113,7 @@ T3x API：`client_get_runtime_config`、`client_query_host_evt`、`client_get_pi
 
 完整 4G→T3x 表见 [UART_AT_COMMANDS.md §3](UART_AT_COMMANDS.md#3-cat1--t3x4g-主动发t3x-答)。
 
-4G 调用 `host_uart.notify_host(sid, evt)` → GPIO29 低脉冲 → T3x `PB27` 下降沿。
+4G 调用 `host_uart.ntfHost(sid, evt)` → GPIO29 低脉冲 → T3x `PB27` 下降沿。
 
 ### 3.1 evt 定义（`host_uart.EVT`）
 
@@ -264,7 +264,7 @@ sequenceDiagram
     L->>C: PIR_HW_TRIGGERED
     C->>C: 策略/录像分支
     C->>A: GPIO_PIR_TRIGGERED
-    A->>H: notify_host(sid,0)
+    A->>H: ntfHost(sid,0)
     H->>T: GPIO29 脉冲
     T->>H: AT+HOSTEVT?
     H-->>T: +HOSTEVT:1,0
@@ -279,7 +279,7 @@ sequenceDiagram
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | AT 分发 | `user/host_uart.lua` | `AT+PIRSTAT?` / `AT+PIRCLR`、HOSTEVT pending 拼入 PIRSTAT |
-| 统计 | `pir_ctrl.lua` | 计数、`buildAtBody()` |
+| 统计 | `pir_ctrl.lua` | 计数、`bldAtBodyy()` |
 | 硬件 | `pir_ctrl.lua` | GPIO、冷却、`cnt_hw_*` |
 | 业务 | `user/pir_ctrl.lua` | 策略、录像、`cnt_biz_*` / `cnt_stop_*` |
 | T3x API | `t3x_linux/api.c` | `client_get_pir_stat()` |
@@ -292,7 +292,7 @@ sequenceDiagram
 仍仅走 **MQTT** 或 **本地事件**：
 
 - 云端下发 2010/2011 改配置/停录  
-- `publishWakeup` / 1010 / 1011 上报  
+- `pubWakeup` / 1010 / 1011 上报  
 - 电池 1003、FOTA 2004 等  
 
 若 T3x 需「远程改 PIR 冷却 3s→30s」，需扩展 `AT+SETCFG=pir_cooldown,<ms>`（当前未实现，仍改 `config.lua` 烧录）。

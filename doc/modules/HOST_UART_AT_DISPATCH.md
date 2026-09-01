@@ -1,7 +1,45 @@
 # host_uart AT 分发与上行应答
 
-> **代码真源**：[`user/host_uart.lua`](../../user/host_uart.lua)  
-> **协议对照**：[UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../UART_PROTOCOL.md)
+> **代码真源**：[`user/host_uart.lua`](../../user/host_uart.lua)（互斥、分发、RX 调度、start）  
+> **AT 表**：[`user/hu_at.lua`](../../user/hu_at.lua)  
+> **AT handler**：[`user/hu_cmd.lua`](../../user/hu_cmd.lua)（分发 + TIME/HOSTIDLE/OTA 等）  
+> **PIR/HOSTEVT**：[`user/hu_cmd_pir.lua`](../../user/hu_cmd_pir.lua)  
+> **T3x NOTIFY**：[`user/hu_cmd_t3x.lua`](../../user/hu_cmd_t3x.lua)（RECORD/UPLOAD/IPCSTAT 等）  
+> **链路/MQTT**：[`user/hu_cmd_link.lua`](../../user/hu_cmd_link.lua)（P2P/GB28181/MQTTPUB/SERV）  
+> **WLED**：[`user/hu_cmd_wled.lua`](../../user/hu_cmd_wled.lua)  
+> **USB/RNDIS**：[`user/hu_cmd_usb.lua`](../../user/hu_cmd_usb.lua)（USBRESET/RNDIS/RECOVERY）  
+> **URC/RX 行解析**：[`user/hu_rx.lua`](../../user/hu_rx.lua)（编排/注册表）+ [`hu_rx_dsl.lua`](../../user/hu_rx_dsl.lua) + [`hu_rx_media.lua`](../../user/hu_rx_media.lua)（encode URC）  
+> **IPC 核心**：[`user/hu_ipc.lua`](../../user/hu_ipc.lua)（hostQuery/hostSet + 编排）  
+> **IPC 云状态**：[`user/hu_ipc_cloud.lua`](../../user/hu_ipc_cloud.lua)  
+> **UART 恢复**：[`user/hu_ipc_recovery.lua`](../../user/hu_ipc_recovery.lua)  
+> **IPC 关机**：[`user/hu_ipc_power.lua`](../../user/hu_ipc_power.lua)  
+> **主机 query/set**：[`user/hu_ipc_hostq.lua`](../../user/hu_ipc_hostq.lua)（RECORD/MIC/SOFTPHOTO 等）  
+> **TF 格式化**：[`user/hu_ipc_tffmt.lua`](../../user/hu_ipc_tffmt.lua)  
+> **VENC/AUDIO 编码**：[`user/hu_ipc_encode.lua`](../../user/hu_ipc_encode.lua)  
+> **协议对照**：[UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../UART_PROTOCOL.md)  
+> **bind 头生成/校验**：`python tools/debug/_gen_bind_header.py --check-all` · spec：`tools/debug/bind_header_specs.json`
+
+---
+
+## 0. 子模块 bind 头约定
+
+`hu_cmd_*` / `hu_ipc_*` 在 `function bind(C[, H, …])` 开头只做 **ctx 字段快照** 或 **延迟 wrapper**，业务逻辑从第一个非 header 行开始。
+
+| 类型 | 写法 | 适用 |
+|------|------|------|
+| 快照 | `local state = C.state` | bind 前已存在于 ctx |
+| 合并 | `local state, E = C.state, C.E` | 热路径少行 |
+| 延迟 wrapper | `local function parseIpcStat(...) return C.parseIpcStat(...) end` | rx.bind 后才挂 ctx |
+| 注入 | `local qryHostStat = recovery.qryHostStat` | ipc 子模块顺序依赖 |
+| 直用 shared | `shared.defineSet{ ... }` | encode 等于工厂，不必再 local |
+
+新增/改子模块后：
+
+```bash
+python tools/debug/_gen_bind_header.py --emit hu_cmd_xxx.lua   # 看建议头
+python tools/debug/_gen_bind_header.py --check-all                    # 对照 spec
+python tools/debug/_protocol_regression_check.py
+```
 
 ---
 
@@ -9,7 +47,7 @@
 
 ```mermaid
 flowchart TD
-    RX[uart_bridge on_rx_raw] --> PROC[host_process_line]
+    RX[uart_bridge onRxRaw] --> PROC[host_process_line]
     PROC --> TRY{RX_LINE_HANDLER_REGISTRY}
     TRY -->|命中| ACK[专用 try_* 解析 / sys.publish]
     TRY -->|未命中| AT{以 AT 开头?}
@@ -22,6 +60,28 @@ flowchart TD
 ```
 
 **原则**：T3x 主动上报的 `+XXX:` 应答行 **优先** 走 `RX_LINE_HANDLER_REGISTRY`，避免被 AT 分发误解析。
+
+---
+
+### 2.0 AT/URC → 源文件速查
+
+| 域 | 文件 |
+|----|------|
+| AT 表编译 | `hu_at.lua` |
+| TIME/HOSTIDLE/GETCFG/OTA/REBOOT | `hu_cmd.lua` |
+| HOSTEVT/PIRSTAT/PIRCLR | `hu_cmd_pir.lua` |
+| RECORD/UPLOAD/IPCSTAT NOTIFY | `hu_cmd_t3x.lua` |
+| P2P/GB28181/MQTT/SERV | `hu_cmd_link.lua` |
+| WLED | `hu_cmd_wled.lua` |
+| USB/RNDIS/RECOVERY | `hu_cmd_usb.lua` |
+| URC `+XXX:` 行 | `hu_rx.lua` |
+| hostQuery/hostSet/IPC 编排 | `hu_ipc.lua` |
+| 云状态/GB28181 | `hu_ipc_cloud.lua` |
+| UART 恢复 | `hu_ipc_recovery.lua` |
+| IPC 上电/关机 | `hu_ipc_power.lua` |
+| RECORD/MIC/SOFTPHOTO query/set | `hu_ipc_hostq.lua` |
+| TF format | `hu_ipc_tffmt.lua` |
+| VENC/AUDIO 编码 | `hu_ipc_encode.lua` |
 
 ---
 
@@ -139,8 +199,8 @@ flowchart TD
 1. `FEATURE_CFG.host_evt` / `HOST_EVT_CFG.allow_host_idle_sleep`
 2. USB 插入 → `+HOSTIDLE:USB`
 3. `build_hostevt_body` 含 `has_event=1` → `BUSY`
-4. `battery_guard.shouldAllowHostIdleSleep()` → >20% 回 `BUSY`
-5. `battery_guard.canAcceptHostIdleSleep()` → PIR 唤醒 30s 内 `BUSY`
+4. `battery_guard.shdHostSleep()` → >20% 回 `BUSY`
+5. `battery_guard.canHostSleep()` → PIR 唤醒 30s 内 `BUSY`
 6. 通过 → `t3x_ctrl.enterSleep({ reason="host_idle" })` → `OK`
 
 ---

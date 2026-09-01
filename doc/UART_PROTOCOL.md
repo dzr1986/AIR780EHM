@@ -68,12 +68,12 @@ ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（hos
 
 | 命令 | 条件 | 响应 | 行为 |
 |------|------|------|------|
-| `AT+LOWPOWER=ENTER` | 未在低功耗 | `+LOWPOWER:ENTERING` | `on_enter_low_power` |
+| `AT+LOWPOWER=ENTER` | 未在低功耗 | `+LOWPOWER:ENTERING` | `onEnterLowPower` |
 | `AT+LOWPOWER=ENTER` | 其它 | `+LOWPOWER:BUSY` | 无动作 |
-| `AT+LOWPOWER=EXIT` | 已在低功耗 | `+LOWPOWER:WAKEUP` | `on_exit_low_power` |
+| `AT+LOWPOWER=EXIT` | 已在低功耗 | `+LOWPOWER:WAKEUP` | `onExitLowPower` |
 | `AT+LOWPOWER=EXIT` | 已唤醒 | `+LOWPOWER:ALREADY_AWAKE` | 无动作 |
 | `AT+REBOOT` | — | `+REBOOT:OK` | 约 500ms 后 `on_reboot` |
-| `AT+POWEROFF` | — | `+POWEROFF:OK` | 约 500ms 后 `on_power_off` |
+| `AT+POWEROFF` | — | `+POWEROFF:OK` | 约 500ms 后 `onPowerOff` |
 | `AT+OTA` / `AT+OTACHECK` | — | `+OTA:STARTING` | 发布 `DEVICE_OTA_REQUEST` |
 
 未识别的 AT：由 `host_uart.uart_at_cmd` 返回 `\r\nERROR\r\n`
@@ -126,7 +126,7 @@ T3x 侧 `cat1_host/uart_host_cmd.c` 解析。详表：[UART_AT_COMMANDS.md](UART
 
 | 回调 | 用途 |
 |------|------|
-| `onRaw` | 原始 RX；`host_uart.on_rx_raw` 内可做 hexrpt |
+| `onRaw` | 原始 RX；`host_uart.onRxRaw` 内可做 hexrpt |
 | `onLine` | 拆行后交给 `host_uart`（由 `host_uart.setOnLine` 挂载） |
 
 低功耗/重启/关机等经 `host_uart.start(opts)` 注入回调。

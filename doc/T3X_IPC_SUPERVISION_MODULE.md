@@ -66,9 +66,9 @@ flowchart LR
 | 文件 | 职责 |
 |------|------|
 | `ipc_alert_contract.lua` | alertCode 表 + `map1011` / `reconcile` 策略 |
-| `ipc_supervision.lua` | `publishAlert`、`onAlert`、`ipcCloudStatFields`、对账/刷新调度 |
-| `net_mqtt.lua` | MQTT 传输；`bind()` 注入上行依赖；`publishIpcAlert` 薄封装 |
-| `app.lua` | `E.T3X_IPC_ALERT` → `ipc_supervision.onAlert()` |
+| `ipc_supervision.lua` | `pubAlert`、`ipcCloudStatFields`、对账/刷新调度 |
+| `net_mqtt.lua` | MQTT 传输；`bind()` 注入上行依赖；`pubIpcAlert` 薄封装 |
+| `app.lua` | `E.T3X_IPC_ALERT` → `ipc_supervision.pubAlert()` |
 | `host_uart.lua` | UART 解析 `AT+IPCALERT`，发布 `T3X_IPC_ALERT` 事件（传输层） |
 
 ---
@@ -92,13 +92,13 @@ flowchart LR
 1. 业务检测失败 → `ipc_supervision_alert(client, IPC_ALERT_*, detail)`
 2. IPC 发 `AT+IPCALERT=<code>[,<detail>]`
 3. `host_uart.lua` 解析 → `sys.publish(T3X_IPC_ALERT, code, detail)`
-4. `app.lua` → `ipc_supervision.onAlert()`
+4. `app.lua` → `ipc_supervision.pubAlert()`
 5. `ipc_supervision.publishAlert()` → MQTT **1004** `action=ipc_alert`
 6. 按契约：部分码 → **1011** `publishT3xRecordStop`；部分码 → `scheduleRecordReconcile`
 
 ### 4.2 状态型（IPCSTAT → 1003）
 
-1. Cat.1 `queryHostIpcCloudStat` → `AT+IPCSTAT?`
+1. Cat.1 `qryIpcCloudStat` → `AT+IPCSTAT?`
 2. IPC `ipc_supervision_build_stat()` 填 8 字段
 3. `host_uart` 缓存 → `ipc_supervision.ipcCloudStatFields()` 拼入 **1003** 周期状态
 
@@ -133,7 +133,7 @@ ipc_supervision_build_stat(buf, sizeof(buf));
 
 ```lua
 local ipc_sup = require "ipc_supervision"
-ipc_sup.onAlert(code, detail)           -- 事件总线入口
+ipc_sup.pubAlert(code, detail)           -- 事件总线入口
 ipc_sup.publishAlert(code, detail)      -- 直接 MQTT（需已 bind）
 ipc_sup.ipcCloudStatFields()            -- 1003 扩展字段
 ```
@@ -142,11 +142,9 @@ ipc_sup.ipcCloudStatFields()            -- 1003 扩展字段
 
 ```lua
 ipc_sup.bind({
-    publish_uplink = publishUplink,
-    esc_json = escJson,
-    dt_ul_control = DT.UL_CONTROL,
-    nc = NC,
-    publish_t3x_record_stop = publishT3xRecordStop,
+    pubUplink = pubUplink,
+    dtUlControl = DT.UL_CONTROL,
+    pubT3xStop = pubT3xStop,
 })
 ```
 
@@ -160,7 +158,7 @@ ipc_sup.bind({
 | `ipc_cloud_report.h` 内宏定义 | `ipc_alert_contract.h` |
 | `record_notify.c` `uart_notify_request` | `ipc_supervision_uart.c` |
 | `runtime.c` / `host_event.c` 内联 dispatch 重试 | `ipc_supervision_dispatch.c` |
-| `net_mqtt.lua` `publishIpcAlert` 主体 | `ipc_supervision.lua` |
+| `net_mqtt.lua` `pubIpcAlert` 主体 | `ipc_supervision.lua` |
 | `net_mqtt.lua` `map1011` / reconcile 表 | `ipc_alert_contract.lua` |
 
 ---

@@ -45,9 +45,9 @@ flowchart TD
     RET -->|是| STOP[handlePirRetrigger → requestT3xStopRecord]
     RET -->|否| ACT{media.action}
     ACT -->|devinfo| DEV[refreshDeviceIdentity]
-    ACT -->|其它| PUB[publishActionEvents]
+    ACT -->|其它| PUB[pubActEvents]
     PUB --> WAKE[PIR_WAKE_T3X]
-    WAKE --> APP[app.wakeT3xForPir + noteT3xAwakeForHostIdle]
+    WAKE --> APP[app.wakeT3xForPir + ntfHostIdle]
 ```
 
 ### 3.1 忽略条件（`shouldIgnorePirTrigger`）
@@ -111,7 +111,7 @@ flowchart TD
 
 ---
 
-## 8. AT 对外（`buildAtBody` → `+PIRSTAT:`）
+## 8. AT 对外（`bldAtBodyy` → `+PIRSTAT:`）
 
 宽表字段：硬件统计 `cnt_*`、会话 `recording`、`has_work` 合成（经 `host_uart` / `host_event`）。
 

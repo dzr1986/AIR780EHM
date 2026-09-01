@@ -127,7 +127,7 @@ gain=28
 
 | 层级 | 文件 | 职责 |
 |------|------|------|
-| MQTT 下行 | `net_mqtt.lua` | `handleDownlink2028`–`2031`、`publishMicReply` / `publishSoftPhotoReply` |
+| MQTT 下行 | `net_mqtt.lua` | `dispatchDl2028`–`2031`、`publishMicReply` / `publishSoftPhotoReply` |
 | UART 桥 | `host_uart.lua` | `queryHostMic` / `setHostMic` / `queryHostSoftPhoto` / `setHostSoftPhoto` |
 | AT 分发 | `host_at.c` | `at_cmd_mic_query/set`、`at_cmd_softphoto_query/set` |
 | 业务落地 | `host_remote.c` | `remote_mic_*`、`remote_softphoto_*` |

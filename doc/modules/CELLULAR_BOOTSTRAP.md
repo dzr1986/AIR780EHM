@@ -2,7 +2,7 @@
 
 > **代码真源**：[`lib/cellular_bootstrap.lua`](../../lib/cellular_bootstrap.lua)  
 > **配置**：`CELLULAR_CFG`（[`config.lua`](../../user/config.lua)）  
-> **启动**：[`user/main.lua`](../../user/main.lua) · **MQTT**：[`net_mqtt.lua`](../../user/net_mqtt.lua) `bootstrapNetwork`
+> **启动**：[`user/main.lua`](../../user/main.lua) · **MQTT**：[`net_mqtt.lua`](../../user/net_mqtt.lua) `bootstrapNet`
 
 ---
 
@@ -26,11 +26,11 @@ cellular_bootstrap.start()
   → subscribe SIM_IND
   → mobile.setAuto(...)
   → task: waitSimInfo → applyApnForSim
-app.start → net_mqtt.bootstrapNetwork()
+app.start → net_mqtt.bootstrapNet()
   → 内部可调用 waitForNetwork()
 ```
 
-RNDIS 开启时：`usb_rndis.open()` 完成后再 `bootstrapNetwork`（见 [USB_RNDIS_FLOW.md](USB_RNDIS_FLOW.md)）。
+RNDIS 开启时：`usb_rndis.open()` 完成后再 `bootstrapNet`（见 [USB_RNDIS_FLOW.md](USB_RNDIS_FLOW.md)）。
 
 ---
 

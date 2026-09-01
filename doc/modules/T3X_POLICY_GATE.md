@@ -8,7 +8,7 @@
 
 ## 1. 模块职责
 
-集中判断 **T31 是否允许上电/脉冲唤醒**，并在通过后分发到 `time_sync` → `host_uart.notify_host` 或 GPIO fallback。
+集中判断 **T31 是否允许上电/脉冲唤醒**，并在通过后分发到 `time_sync` → `host_uart.ntfHost` 或 GPIO fallback。
 
 | 入口 | 函数 |
 |------|------|
@@ -53,7 +53,7 @@ flowchart TD
 | reason 模式 | 配置 |
 |-------------|------|
 | `wled` | `allow_wled_wake_in_rest`（默认 true） |
-| `notify_host` / `pir_media` / `exit_low_power` / `pir_stop*` | `allow_pir_wake_in_rest` |
+| `ntfHost` / `pir_media` / `exit_low_power` / `pir_stop*` | `allow_pir_wake_in_rest` |
 | 同上 + `battery_dynamic_rest` | `allow_pir_wake_in_battery_rest` |
 
 ### 2.3 电量门禁
@@ -70,7 +70,7 @@ flowchart TD
 mayPowerT3x 通过
   → MODULE_FLAGS.t3x_wakeup + t3x_app?
       是 → time_sync.pushBeforeNotifyAsync(sid, evt)  【优先】
-      否 → host_uart.notify_host
+      否 → host_uart.ntfHost
       均失败 → t3x_ctrl.wake()（GPIO29 脉冲，taskInit）
   → mqtt_offline 时记录 lastMqttOfflineWakeSec
 ```

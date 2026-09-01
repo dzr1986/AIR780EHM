@@ -43,7 +43,7 @@ T3x 配置 ──AT──► 4G 执行/保存
 ```text
   host_uart.lua     ← 解析 AT，拼应答
         │
-  app.lua           ← 编排：MQTT、烧录、notify_host
+  app.lua           ← 编排：MQTT、烧录、ntfHost
         │
   net / pir_ctrl    ← MQTT 会话；PIR 拍照/录像策略
         │
@@ -76,7 +76,7 @@ PIR 传感器 ──GPIO30──► pir_ctrl（冷却/烧录过滤）
                      pir_ctrl（cnt_* 计数）
                           │
               AT+PIRSTAT? ◄── T3x 查询
-              notify_host(evt=0) ──► T3x 唤醒做录像
+              ntfHost(evt=0) ──► T3x 唤醒做录像
 ```
 
 | T3x 关心 | 用什么查 |

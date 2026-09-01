@@ -36,9 +36,9 @@ flowchart TD
     IRQ[GPIO 边沿中断] --> U[updateUsb / updateChg]
     U --> P1[GPIO_USB_DET_CHANGED]
     U --> P2[GPIO_CHG_STATE_CHANGED]
-    P1 --> APP[app.applyUsbInsertState]
+    P1 --> APP[app.applyUsbPower]
     P2 --> LED[led_ctrl 刷新灯态]
-    P2 --> MQTT[可选 publishStatus]
+    P2 --> MQTT[可选 pubStatus]
 ```
 
 ### 3.1 USB 插入副作用
@@ -58,16 +58,16 @@ flowchart TD
 
 ---
 
-## 4. app 侧 USB 编排（`applyUsbInsertState`）
+## 4. app 侧 USB 编排（`applyUsbPower`）
 
 | 边沿 | 行为 |
 |------|------|
-| **插入** | `APP_RUNTIME.power_status=1` · `battery_guard.onUsbInserted` · 退出 rest · `notifyT3xUsbHostIdlePolicy(true)` · 取消 PWR 长按 |
-| **拔出** | `power_status=0` · `notifyT3xUsbHostIdlePolicy(false)` · `battery_guard.onUsbRemoved`（按电量重评估，高电量不进 rest） |
+| **插入** | `APP_RUNTIME.power_status=1` · `battery_guard.onUsbInserted` · 退出 rest · `ntfT3xUsbIdle(true)` · 取消 PWR 长按 |
+| **拔出** | `power_status=0` · `ntfT3xUsbIdle(false)` · `battery_guard.onUsbRemoved`（按电量重评估，高电量不进 rest） |
 
 冷启动 `source=="boot"`：由 `bootPowerOn` 负责 T31 上电，避免与 `exitRest` 重复唤醒（见 [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)）。
 
-**PMD 回退**：`MODULE_FLAGS.charge` 关闭时，`handlePmdMessage` 用模组充电消息驱动 `applyUsbInsertState`。
+**PMD 回退**：`MODULE_FLAGS.charge` 关闭时，`handlePmdMessage` 用模组充电消息驱动 `applyUsbPower`。
 
 ---
 
@@ -91,7 +91,7 @@ USB 插入 + block_4g_rest_when_usb
 
 ### 5.1 T3x 串口通知
 
-`HOST_USB_CFG.notify_t3x_usb_state`：`host_uart.push_usb_host_idle_state` 发 `+CAT1:USB,%d`，告知 T3x USB 期间勿 HOSTIDLE（见 [T3X_POWER_WAKEUP.md](T3X_POWER_WAKEUP.md)）。
+`HOST_USB_CFG.notify_t3x_usb_state`：`host_uart.pushUsbIdle` 发 `+CAT1:USB,%d`，告知 T3x USB 期间勿 HOSTIDLE（见 [T3X_POWER_WAKEUP.md](T3X_POWER_WAKEUP.md)）。
 
 ### 5.2 其它 HOST_USB_CFG
 

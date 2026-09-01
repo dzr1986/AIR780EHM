@@ -32,7 +32,7 @@
 | `app.bootMqtt` | 等 `waitForNetStable` 后再起 MQTT |
 | `net_mqtt` | 优先 `socket.LWIP_GP`；IP_LOSE 停自动重连+冷却；用 `MQTT_CFG.autoreconn_ms` |
 | `HOST_USB_CFG` | `usb_reset_soft_rebind=true`（只拨 USB 电源）；`usb_reset_boot_guard_sec=180` |
-| 版本上报 | `publishVersion` 字段名与 `cllcVrsn` 对齐（`scrpVrsn`） |
+| 版本上报 | `pubVersion` 字段名与 `cllcVrsn` 对齐（`scrpVrsn`） |
 
 **验收**：烧 `flash-script` → 设备上行 `1003`；下行 `2003`/`2008` 应答；`scriptVersion=001.000.048`。
 

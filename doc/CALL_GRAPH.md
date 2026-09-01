@@ -13,7 +13,7 @@ main.lua
   require config, app_config, key_config
   [cellular] cellular_bootstrap.start()
   [rndis]    sys.taskInit(usb_rndis.open)
-  [mqtt]     net_mqtt.bootstrapNetwork()
+  [mqtt]     net_mqtt.bootstrapNet()
   app.start(peripheral, net_mqtt, t3x_ctrl)
   sys.run()
 ```
@@ -38,7 +38,7 @@ main.lua
 | 12 | `pmd_runtime` | `setupPmd()` |
 | 13 | flags | `startBackgroundServices()`：`vbat` / `usb_charge` / `time_sync` / `mobile_info` |
 | 14 | `rndis` | `setupRndis()` |
-| 15 | `mqtt` | `net_mqtt.bootstrapNetwork()`（`main.lua` 已调，幂等） |
+| 15 | `mqtt` | `net_mqtt.bootstrapNet()`（`main.lua` 已调，幂等） |
 | 16 | 始终 | **`bootMqtt()`** → `startMqtt()` → `net.start()` |
 | 17 | `fota` | `setupFota()` |
 | 18 | 始终 | `startHeartbeat()`（10s） |
@@ -52,10 +52,38 @@ bootMqtt (task)
             └─ mqttTask (task)
                  ├─ wait net_ready
                  ├─ mqtt.create / connect / subscribe
-                 ├─ conack → publishConnectUplink()
+                 ├─ conack → pubConnectUplink()
                  │            rest → 1002+1003；常电 → 1001
-                 ├─ timer low_power_interval_sec（初值 30s）→ publishStatus(1003)
+                 ├─ timer low_power_interval_sec（初值 30s）→ pubStatus(1003)
                  └─ loop wait mqtt_pub
+```
+
+### 1.3 协议族 bind 链（维护时勿乱序）
+
+**host_uart**（`user/host_uart.lua`）
+
+```
+ctx 构造
+  → hu_cmd.bind(ctx)     usb → link → pir → t3x → wled
+  → hu_at.compile(cmd.at)
+  → hu_rx.bind(ctx)      dsl→media→URC tryHandlers
+  → hu_ipc.bind(ctx)     recovery → hostq → cloud(recovery,hostq) → power(recovery) → tffmt → encode
+```
+
+**net_mqtt**（`user/net_mqtt.lua`）
+
+```
+conn.bind → uplink.bind(ctx) → stat.bind
+  → downlink.bind(ctx)   identity 内联 + pir/ctrl/tf/upload + host_proto.register
+  → dispatch.bind        下行分发 + HOSTEVT/USB 钩子（原 hooks 合并）
+mqttTask 留主文件；子模块禁止 require "net_mqtt"
+```
+
+静态核对：
+
+```bash
+python tools/debug/_host_uart_regression_check.py
+python tools/debug/_net_mqtt_regression_check.py
 ```
 
 ---
@@ -108,16 +136,16 @@ pir_ctrl (GPIO30 rising, cooldown)
     → pir_ctrl.onPirTriggered
         录像中 + stopOnSecondPir → PIR_STOP_RECORDING(pir_retrigger)
         否则 → GPIO_PIR_TRIGGERED → MQTT 1010 detected
-             → publishActionEvents
+             → pubActEvents
                  video/both → beginVideoSession + timer
                  → PIR_WAKE_T3X ×1（both 不双唤醒）
     → app subscribe PIR_WAKE_T3X
-        uploadMode=auto → net.publishWakeup(1001) + requestT3xWake()
+        uploadMode=auto → net.pubWakeup(1001) + requestT3xWake()
     → host_uart AT+RECORD=1/0
         → T3X_RECORD_ACTIVE → 1010 t3x_active
         → T3X_RECORD_STOP → 1011 source=t3x
     → PIR_STOP_RECORDING / timer
-        → publishPirRecordStop(1011, source=4g) + requestT3xWake(pir_stop)
+        → pubPirStop(1011, source=4g) + requestT3xWake(pir_stop)
         （会话去重：stop_mqtt_published）
 ```
 
@@ -141,7 +169,7 @@ BATTERY_UPDATE (vbat)
 GPIO27 USB 拔出 (usb_charge)
   → battery_guard.onUsbRemoved()
   → onEnterLowPower (RNDIS 开时可能跳过)
-       → t3x_ctrl.enterSleep (modemHibernate=false), publishRest(1002)
+       → t3x_ctrl.enterSleep (modemHibernate=false), pubRest(1002)
 
 GPIO27 USB 插入
   → battery_guard.onUsbInserted() → onExitLowPower + wake T3x
@@ -189,15 +217,15 @@ app subscribe:
 
 | 上行 | 函数 |
 |------|------|
-| 1001 | `publishWakeup` |
-| 1002 | `publishRest` |
-| 1003 | `publishStatus`（`low_power_interval_sec`，初值 30s） |
-| 1004 | `publishOtaStatus` |
-| 1005 | `publishSimInfo` |
+| 1001 | `pubWakeup` |
+| 1002 | `pubRest` |
+| 1003 | `pubStatus`（`low_power_interval_sec`，初值 30s） |
+| 1004 | `pubOtaStatus` |
+| 1005 | `pubSimInfo` |
 | 1006 | `publishHostIdentity` |
-| 1007 | `publishTfCardInfo` |
+| 1007 | `pubTfCardInfo` |
 | 1010 | PIR 检测（`pir_ctrl` / host_uart） |
-| 1011 | `publishPirRecordStop` |
+| 1011 | `pubPirStop` |
 | 1021 / 1020 | `publishEncodeReply` → `encode` 主题 |
 
 主题与 JSON 字段 → **[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md)**。
