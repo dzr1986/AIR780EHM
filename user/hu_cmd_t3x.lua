@@ -14,18 +14,6 @@ function bind(C)
     local rspBody, rspFmt, rspLineOk = C.rspBody, C.rspFmt, C.rspLineOk
     local modCall = C.modCall
     local RSP_ERROR = C.RSP_ERROR
-    local function parseIpcStat(...)
-        return C.parseIpcStat(...)
-    end
-    local function parseTfCard(...)
-        return C.parseTfCard(...)
-    end
-    local function commitIpcStat(...)
-        return C.commitIpcStat(...)
-    end
-    local function patchCloud(...)
-        return C.patchCloud(...)
-    end
     local noteHostPush = C.noteHostPush
 
     local function ipcReadyFrom(st)
@@ -50,7 +38,7 @@ function bind(C)
             local reason = arg:match("reason=([^,]+)") or "active"
             state.t3x_rec_active = 1
             state.t3x_last_reason = reason
-            patchCloud({ recordingT3x = 1 })
+            C.patchCloud({ recordingT3x = 1 })
             -- 全天 overlay 不是开停录，不发 1012
             if reason == "allday_person" then
                 return rspBody("RECORD", "1,active=1")
@@ -67,7 +55,7 @@ function bind(C)
         end
         state.t3x_rec_active = 0
         state.t3x_last_reason = reason
-        patchCloud({ recordingT3x = 0 })
+        C.patchCloud({ recordingT3x = 0 })
         local uploadMode, quality = modCall("pir_ctrl", "syncStopT3x", reason)
         sys.publish(E.T3X_RECORD_STOP, reason, uploadMode, quality)
         return rspFmt("RECORD", "0,reason=%s", reason)
@@ -158,7 +146,7 @@ function bind(C)
             return RSP_ERROR
         end
         state.host_ipc_status = st
-        patchCloud({ ipcReady = ipcReadyFrom(st) })
+        C.patchCloud({ ipcReady = ipcReadyFrom(st) })
         sys.publish(SYS_EVT.IPCSTATUS_ACK, st)
         return rspFmt("IPCSTATUS", "OK,status=%s", st)
     end
@@ -169,11 +157,11 @@ function bind(C)
         if not body or body == "" then
             return RSP_ERROR
         end
-        local snap = parseIpcStat("+IPCSTAT:" .. body)
+        local snap = C.parseIpcStat("+IPCSTAT:" .. body)
         if not snap then
             return RSP_ERROR
         end
-        commitIpcStat(snap)
+        C.commitIpcStat(snap)
         return rspLineOk("IPCSTAT")
     end
 
@@ -183,12 +171,12 @@ function bind(C)
         if not body or body == "" then
             return RSP_ERROR
         end
-        local snap = parseTfCard("+TFCARD:" .. body)
+        local snap = C.parseTfCard("+TFCARD:" .. body)
         if not snap.parsed then
             return RSP_ERROR
         end
         state.host_tf_card = snap
-        patchCloud({ tfPresent = (tonumber(snap.present) or 0) == 1 and 1 or 0 })
+        C.patchCloud({ tfPresent = (tonumber(snap.present) or 0) == 1 and 1 or 0 })
         sys.publish(SYS_EVT.TFCARD_ACK, snap)
         return rspLineOk("TFCARD")
     end

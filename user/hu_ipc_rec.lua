@@ -17,9 +17,6 @@ function bind(C, H)
     local noopIdle = C.noopIdle
     local getCfg = H.getCfg
     local hostQuery = H.hostQuery
-    local function pushUsbIdle(...)
-        return C.pushUsbIdle(...)
-    end
 
     local TIMEOUT = {
         powerOffMs = 500,
@@ -84,7 +81,7 @@ function bind(C, H)
         sys.wait(rc.power_on_wait_ms)
         t3x.pulseMcuInt()
         if usbInserted() then
-            pushUsbIdle(true)
+            C.pushUsbIdle(true)
         end
         state.uart_recovery_last_sec = os.time()
         clearMissStreak()

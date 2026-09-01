@@ -5,10 +5,10 @@
     "parseTfCard",
     "commitIpcStat",
     "patchCloud",
+    "pushUsbIdle",
     "hostQuery",
     "hostSet",
-    "idCfg",
-    "pushUsbIdle"
+    "idCfg"
   ],
   "modules": {
     "hu_cmd_usb.lua": {
@@ -31,9 +31,9 @@
         "usbInserted",
         "t3xSecOff",
         "RSP_ERROR",
-        "LOG_TAG"
-      ],
-      "wrappers": ["pushUsbIdle"]
+        "LOG_TAG",
+        "pushUsbIdle"
+      ]
     },
     "hu_cmd_link.lua": {
       "bind_args": "C",
@@ -50,8 +50,7 @@
     "hu_cmd_t3x.lua": {
       "bind_args": "C",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush"],
-      "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud"]
+      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush", "parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud"]
     },
     "hu_cmd_wled.lua": {
       "bind_args": "C",
@@ -63,9 +62,8 @@
     "hu_ipc_rec.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle"],
-      "h": ["getCfg", "hostQuery"],
-      "wrappers": ["pushUsbIdle"]
+      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle", "pushUsbIdle"],
+      "h": ["getCfg", "hostQuery"]
     },
     "hu_ipc_hostq.lua": {
       "bind_args": "C, H",

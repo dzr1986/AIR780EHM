@@ -17,9 +17,6 @@ function bind(C)
     local hostUsbCfg, usbInserted = C.hostUsbCfg, C.usbInserted
     local t3xSecOff = C.t3xSecOff
     local RSP_ERROR, LOG_TAG = C.RSP_ERROR, C.LOG_TAG
-    local function pushUsbIdle(...)
-        return C.pushUsbIdle(...)
-    end
 
     local LIMITS = {
         bootGuardSec = 180,
@@ -114,7 +111,7 @@ function bind(C)
             end
             if ok and cfg.notify_t3x_usb_state ~= false and usbInserted() then
                 sys.wait(notify_ms)
-                pushUsbIdle(1)
+                C.pushUsbIdle(1)
             end
             usbRcvrGrd.busy = false
             usbRcvrGrd.last_sec = os.time()
