@@ -1,0 +1,16 @@
+---
+description: Cat.1 真源与硬约束（改 user/lib 时必守）
+alwaysApply: true
+---
+
+# 真源与硬约束
+
+- 只改仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`（旧副本）。
+- 不要合并、不要再拆 `app`。
+- `host_uart` 已拆：`host_uart.lua`（锁/分发/RX）+ `hu_at` + `hu_cmd` + `hu_ipc`；子模块 `hu_cmd_*` / `hu_ipc_*` / `hu_rx_*`（文件名 ≤24 字节）。不要把互斥锁/`SYS_EVT`/`state` 再拆出主文件。
+- `net_mqtt` 已拆：`net_mqtt.lua`（连接/topic/分发/`publishRaw`）+ `mqtt_downlink`（2001–2013）+ `mqtt_uplink`（100x）+ `mqtt_hproto`（2020–2031）。子模块经 `ctx` bind，不要 `require "net_mqtt"`。`notifyPowerOff` 留主文件（要用 `isConnected`/`mqttClient`）。新 200x handler 放 downlink，新 100x 发布放 uplink。
+- `APP_RUNTIME` 是嵌套表（`net`/`power`/`work`/`battery`/`cellular`/`usb`）；业务只走 `lib/runtime_power.lua` 访问器。
+- `host_uart.lua` 顶层 local ≤ 200；新 handler 放 `hu_cmd_*` / `hu_ipc_*`，经 `ctx` bind，不要往主文件堆顶层 local。
+- 常驻库直接调用；可关模块判 `nil`。`pcall` 只留给 `mobile` / `socket` / `pm` / `json`。
+- 量产烧录 `python tools/gui/flash/cat1_flash.py flash-script`，不要 Luatools debug99。
+- 有行为改动时升 `user/main.lua` 的 `VERSION`（`nnn.nnn.nnn`）。
