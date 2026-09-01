@@ -6,7 +6,7 @@
 
 PROJECT = "PANSHI_CAT1"
 -- ===== 第 1 段：VERSION 格式校验 & 全局 OTA 版本函数 =====
-VERSION = "001.000.049"
+VERSION = "001.000.145"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function valBuildVer(ver)
@@ -83,11 +83,17 @@ require "config"
 local loader = require "module_loader"
 -- Luatools 静态扫描锚点：以下模块仅经 loader.load 动态加载，需静态 require 才会被打包；永不执行
 if _G.__LUATOOLS_SCAN_ANCHOR__ then
-    require "cellular_bootstrap"
+    require "cell_boot"
     require "device_id"
     require "fota_svc"
     require "host_event"
+    require "hu_at"
+    require "hu_cmd"
+    require "hu_ipc"
     require "libfota2"
+    require "mqtt_downlink"
+    require "mqtt_hproto"
+    require "mqtt_uplink"
     require "net_tcp"
     require "runtime_power"
     require "sound_prompt"
@@ -100,7 +106,7 @@ if _G.__LUATOOLS_SCAN_ANCHOR__ then
     require "vbat"
 end
 if _G.FEATURE_CFG then
-    loader.load("low_power_wakeup")
+    loader.load("lp_wakeup")
 end
 local app = require "app"
 local peripheral = require "peripheral"
@@ -114,27 +120,27 @@ if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
 end
 do
     local usb_vuart = loader.load("usb_vuart")
-    if usb_vuart and usb_vuart.start then
+    if usb_vuart then
         usb_vuart.start()
     end
 end
 if loader.enabled("cellular") then
-    local cellular = loader.load("cellular_bootstrap")
-    if cellular and cellular.start then
+    local cellular = loader.load("cell_boot")
+    if cellular then
         cellular.start()
     end
 end
 
 local function strtNetw()
     -- ===== 第 4 段：MQTT 网络引导 + app.start 编排子系统（battery/uart/pir/mqtt/t3x）=====
-    if loader.enabled("mqtt") and net.bootstrapNetwork then
-        net.bootstrapNetwork()
+    if loader.enabled("mqtt") then
+        net.bootstrapNet()
     end
 end
 if loader.enabled("rndis") then
     -- ===== 第 3 段：蜂窝 SIM/APN 引导 + 可选 USB RNDIS 异步 open =====
     local usb_rndis = loader.load("usb_rndis")
-    if usb_rndis and usb_rndis.open then
+    if usb_rndis then
         sys.taskInit(function()
             usb_rndis.open()
             strtNetw()

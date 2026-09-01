@@ -8,8 +8,9 @@ require "sys"
 require "config"
 
 local loader = require "module_loader"
+local rntmPwr = require "runtime_power"
 local gpio_util = require "gpio_util"
-local cfgman = require "config_manager"
+local cfgm = require "config_manager"
 local _M = { _VERSION = "1.2.0" }
 module(..., package.seeall)
 
@@ -26,14 +27,21 @@ local LED_CONFIG = {
 
 local bluePin, redPinRaw
 local started = false
+local running = false
 local lastPattern = ""
+local evtRefs = {}
 
-local function applyConfigs()
-    local fromLed = _G.LED_CFG or {}
+local REFRESH_EVENT_KEYS = {
+    "MQTT_CONNECTED", "MQTT_OFFLINE", "BATTERY_UPDATE",
+    "GPIO_USB_DET_CHANGED", "GPIO_CHG_STATE_CHANGED",
+}
+
+local function applyCfg()
+    local fromLed = cfgm.get("LED_CFG")
     if type(fromLed.startup) == "table" then
-        cfgman.merge(LED_CONFIG.startup, fromLed.startup)
+        cfgm.merge(LED_CONFIG.startup, fromLed.startup)
     end
-    cfgman.merge(LED_CONFIG, fromLed, {
+    cfgm.merge(LED_CONFIG, fromLed, {
         "low_percent", "low_blink_ms", "low_blinks_per_round",
         "offline_blink_ms", "ok_hold_ms", "check_network", "unknown_hold_ms",
         "suppress_low_when_charging",
@@ -41,13 +49,13 @@ local function applyConfigs()
     if type(fromLed.network) == "table" and fromLed.network.enabled == false then
         LED_CONFIG.check_network = false
     end
-    local batLed = (_G.BATTERY_CFG or {}).led
+    local batLed = cfgm.get("BATTERY_CFG").led
     if batLed and batLed.medium_threshold and not LED_CONFIG.low_percent then
         LED_CONFIG.low_percent = batLed.medium_threshold
     end
 end
 
-applyConfigs()
+applyCfg()
 
 local function setBlue(on)
     if bluePin then bluePin(on == 1 and 1 or 0) end
@@ -60,53 +68,27 @@ local function blinkBlue(light, dark)
     sys.wait(dark or 0)
 end
 
-local function readChrg()
-    local rt = _G.APP_RUNTIME or {}
-    local usb, charging = false, false
-    if loader.enabled("charge") then
-        local uc = loader.load("usb_charge")
-        if uc then
-            if uc.isUsbInserted then usb = uc.isUsbInserted() and true or false end
-            if uc.isCharging then charging = uc.isCharging() == 1 end
-        end
-    end
-    if not usb and rt.power_status == 1 then usb = true end
-    return usb, charging
-end
-
-local function rntmSnps()
-    local rt = _G.APP_RUNTIME or {}
-    local usb, charging = readChrg()
+local function runtimeSnapshot()
     return {
-        battery_percent = rt.battery_percent,
-        online_status = rt.online_status,
+        battery_percent = rntmPwr.getBatteryPercent(),
+        online_status = rntmPwr.isOnline() and 1 or 0,
         mqtt_enabled = loader.enabled("mqtt"),
-        usb_inserted = usb,
-        charging = charging,
+        usb_inserted = rntmPwr.isUsbInserted(),
+        charging = rntmPwr.isCharging(),
     }
 end
 
-local function cycleCfg()
-    return {
-        low_percent = LED_CONFIG.low_percent or 20,
-        low_blink_ms = LED_CONFIG.low_blink_ms,
-        low_blinks_per_round = LED_CONFIG.low_blinks_per_round,
-        offline_blink_ms = LED_CONFIG.offline_blink_ms,
-        ok_hold_ms = LED_CONFIG.ok_hold_ms,
-        check_network = LED_CONFIG.check_network,
-        unknown_hold_ms = LED_CONFIG.unknown_hold_ms,
-        suppress_low_when_charging = LED_CONFIG.suppress_low_when_charging,
-    }
+local function chargingActive(st, cfg)
+    return cfg.suppress_low_when_charging ~= false
+        and st.usb_inserted
+        and (st.charging == 1 or st.charging == true)
 end
 
 local function runOneCycle(st, cfg)
-    st = type(st) == "table" and st or {}
-    cfg = type(cfg) == "table" and cfg or {}
     local pct = tonumber(st.battery_percent)
     local online = st.online_status == 1
     local mqttOn = st.mqtt_enabled ~= false
-    local chrgActv = cfg.suppress_low_when_charging ~= false
-        and st.usb_inserted and (st.charging == 1 or st.charging == true)
+    local chrgActv = chargingActive(st, cfg)
     setBlue(0)
     if pct ~= nil and pct <= (tonumber(cfg.low_percent) or 20) and not chrgActv then
         local n = tonumber(cfg.low_blinks_per_round) or 6
@@ -136,55 +118,76 @@ local function ledTask()
             local n = tonumber(s.blinks) or 2
             for _ = 1, n do blinkBlue(s.light_ms or 400, s.dark_ms or 400) end
         end
-        while true do
-            local pattern = runOneCycle(rntmSnps(), cycleCfg())
-            if pattern ~= lastPattern then
-                lastPattern = pattern
-            end
+        while running do
+            lastPattern = runOneCycle(runtimeSnapshot(), LED_CONFIG)
         end
     end)
 end
 
-local function stpEvntRfrs()
+local function setupBlue(gout, pinNum)
+    local entry = gout.bat_stat_led
+    local raw
+    if entry and entry.pin ~= nil and entry.pin == pinNum then
+        raw = gpio_util.setupOutput(entry)
+        local onLvl = entry.on_level ~= nil and entry.on_level or 0
+        local offLvl = entry.init_level ~= nil and entry.init_level or 1
+        bluePin = function(logical)
+            raw((logical == 1 or logical == true) and onLvl or offLvl)
+        end
+        return
+    end
+    raw = gpio.setup(pinNum, 1)
+    bluePin = function(logical) raw(logical == 1 and 0 or 1) end
+end
+
+local function startEvtRefresh()
     local E = _G.APP_EVENTS
     if not E then return end
-
     local function bump(_) lastPattern = "" end
-    sys.subscribe(E.MQTT_CONNECTED, bump)
-    sys.subscribe(E.MQTT_OFFLINE, bump)
-    sys.subscribe(E.BATTERY_UPDATE or "BATTERY_UPDATE", bump)
-    if E.GPIO_USB_DET_CHANGED then sys.subscribe(E.GPIO_USB_DET_CHANGED, bump) end
-    if E.GPIO_CHG_STATE_CHANGED then sys.subscribe(E.GPIO_CHG_STATE_CHANGED, bump) end
+    for i = 1, #REFRESH_EVENT_KEYS do
+        local key = REFRESH_EVENT_KEYS[i]
+        local name = E[key] or (key == "BATTERY_UPDATE" and "BATTERY_UPDATE" or nil)
+        if name then
+            evtRefs[#evtRefs + 1] = { name, bump }
+            sys.subscribe(name, bump)
+        end
+    end
+end
+
+local function stopEvtRefresh()
+    for i = 1, #evtRefs do
+        sys.unsubscribe(evtRefs[i][1], evtRefs[i][2])
+    end
+    evtRefs = {}
 end
 
 function _M.start(cfg)
-    if started then return false end
+    if started then return true end
     if cfg then for k, v in pairs(cfg) do LED_CONFIG[k] = v end end
-    applyConfigs()
-    local gout = _G.GPIO_OUT or {}
+    applyCfg()
+    local gout = cfgm.get("GPIO_OUT")
     local pinNum = LED_CONFIG.bluePin or 21
-    local e = gout.bat_stat_led
-    local raw
-    if e and e.pin == pinNum then
-        raw = gpio_util.setup_output(e)
-        bluePin = function(logical)
-            raw((logical == 1 or logical == true) and (e.on_level or 0) or (e.init_level or 1))
-        end
-    else
-        raw = gpio.setup(pinNum, 1)
-        bluePin = function(logical) raw(logical == 1 and 0 or 1) end
-    end
+    setupBlue(gout, pinNum)
     local re = gout.led_red
-    if re and re.enabled ~= false and re.pin then
-        redPinRaw = gpio_util.setup_output(re)
+    if re and re.enabled ~= false and re.pin ~= nil then
+        redPinRaw = gpio_util.setupOutput(re)
     end
-    if not bluePin then
-        return false
-    end
+    if not bluePin then return false end
     setBlue(0)
-    stpEvntRfrs()
+    stopEvtRefresh()
+    startEvtRefresh()
+    running = true
     ledTask()
     started = true
+    return true
+end
+
+function _M.stop()
+    if not started then return true end
+    started = false
+    running = false
+    stopEvtRefresh()
+    setBlue(0)
     return true
 end
 

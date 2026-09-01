@@ -7,334 +7,257 @@
 require "sys"
 require "config"
 local utils = require "utils"
-local loader = require "module_loader"
 local gpio_util = require "gpio_util"
+local loader = require "module_loader"
+local cfgm = require "config_manager"
+local t3xPolicy = require "t3x_policy"
+local hostEvt = require "host_event"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local logFuncs = utils.crtLogFns("t3x_ctrl")
+
+local logFuncs = utils.mkLogFns("t3x_ctrl")
 local t3xInfo = logFuncs.info
 local t3xWarn = logFuncs.warn
 local t3xError = logFuncs.error
-local function ipcInTask()
-    return utils.inSysTask() == true
-end
+
+local started = false
 local isPoweredOn = false
-local crrnPwrLvl = nil
+local currentPowerLevel = nil
 local isInBootMode = false
-local crrnBootLvl = nil
-local crrnOtaLvl = nil
+local currentBootLevel = nil
+local currentOtaLevel = nil
 local t3xPowerPin = nil
 local t3xMcuIntPin = nil
-local t3XBootMode = nil
+local t3xBootPin = nil
 local t3xOtaPin = nil
 local lastAction = nil
-local pulseLowMs = 120
-local bootDelay = 500
-local powerOnLevel = 1
-local pwrOffLvl = 0
-local bootModeLvl = 1
-local otaModeLevel = 1
+local BOOT_DELAY_MS = 500
+local sleepInProgress = false
+
 local state = {
     power_state = "off",
     last_wake_reason = nil,
     rest_enter_time = nil,
 }
-local slpInPrgr = false
-local function loadMod(name)
-    return utils.lazyRequire(name)
+
+local function gpioEntries()
+    local g = cfgm.get("GPIO_OUT")
+    return g.t3x_pwr_wake, g.t3x_mcu_int, g.t3x_boot, g.t3x_ota
 end
 
-local function t3xPolicyMod()
-    return loadMod("t3x_policy")
-end
-
-local function hostUartMod()
-    return loadMod("host_uart")
-end
-
-local function hostEventMod()
-    return loadMod("host_event")
-end
-
-local function getEntries()
-    local gout = _G.GPIO_OUT or {}
-    return gout.t3x_pwr_wake, gout.t3x_mcu_int, gout.t3x_boot, gout.t3x_ota
-end
-
-local function getMcuInt(entry_int)
-    local cfg = _G.HOST_WAKE_CFG or {}
-    local idle = cfg.idle_level
-    if idle == nil then
-        idle = entry_int and entry_int.init_level or 1
-    end
-    local active = cfg.pulse_level
-    if active == nil then
-        active = entry_int and entry_int.on_level or 0
-    end
-    return idle, active
-end
-
-local function rfrsLvls()
-    local entry_pwr, _, entry_boot, entry_ota = getEntries()
-    powerOnLevel = entry_pwr and entry_pwr.on_level or 1
-    pwrOffLvl = entry_pwr and entry_pwr.init_level or 0
-    bootModeLvl = entry_boot and entry_boot.on_level or 1
-    otaModeLevel = entry_ota and entry_ota.on_level or 1
+local function levelOf(entry, key, default)
+    if entry and entry[key] ~= nil then return entry[key] end
+    return default
 end
 
 local function setOutIfNeed(entry, pinRef)
-    if entry and entry.pin and not pinRef then
-        return gpio_util.setup_output(entry)
+    if entry and entry.pin ~= nil and not pinRef then
+        return gpio_util.setupOutput(entry)
     end
     return pinRef
 end
 
-local function ensurePins()
-    rfrsLvls()
-    local entry_pwr, entry_int, entry_boot, entry_ota = getEntries()
+local function ensPins()
+    local entry_pwr, entry_int, entry_boot, entry_ota = gpioEntries()
     t3xPowerPin = setOutIfNeed(entry_pwr, t3xPowerPin)
     t3xMcuIntPin = setOutIfNeed(entry_int, t3xMcuIntPin)
-    t3XBootMode = setOutIfNeed(entry_boot, t3XBootMode)
+    t3xBootPin = setOutIfNeed(entry_boot, t3xBootPin)
     t3xOtaPin = setOutIfNeed(entry_ota, t3xOtaPin)
     return entry_pwr, entry_int, entry_boot, entry_ota
 end
 
-local function ensureNormalRunPins()
-    ensurePins()
-    local _, _, entry_boot, entry_ota = getEntries()
-    local bootOff = (entry_boot and entry_boot.init_level) or 0
-    local otaOff = (entry_ota and entry_ota.init_level) or 0
-    local dirty = isInBootMode == true
-    if t3XBootMode then
-        if crrnBootLvl == nil or crrnBootLvl ~= bootOff then
-            dirty = dirty or (crrnBootLvl == bootModeLvl)
-            t3XBootMode(bootOff)
-            crrnBootLvl = bootOff
-        end
+local function driveBootOta(bootLvl, otaLvl)
+    if t3xBootPin then
+        t3xBootPin(bootLvl)
+        currentBootLevel = bootLvl
     end
     if t3xOtaPin then
-        if crrnOtaLvl == nil or crrnOtaLvl ~= otaOff then
-            dirty = dirty or (crrnOtaLvl == otaModeLevel)
-            t3xOtaPin(otaOff)
-            crrnOtaLvl = otaOff
-        end
+        t3xOtaPin(otaLvl)
+        currentOtaLevel = otaLvl
     end
-    isInBootMode = false
-    return dirty
 end
 
-local function aplPwrLeve(on)
-    ensurePins()
+local function ensRunPins()
+    local _, _, entry_boot, entry_ota = ensPins()
+    driveBootOta(levelOf(entry_boot, "init_level", 0), levelOf(entry_ota, "init_level", 0))
+    isInBootMode = false
+end
+
+local function applyPwrLvl(on)
+    local entry_pwr = ensPins()
     if not t3xPowerPin then
         t3xError("power_pin_missing")
         return false
     end
-    local level = on and powerOnLevel or pwrOffLvl
-    if on and isPoweredOn and crrnPwrLvl == level then
-        return true
-    end
+    local level = on and levelOf(entry_pwr, "on_level", 1) or levelOf(entry_pwr, "init_level", 0)
+    if on and isPoweredOn and currentPowerLevel == level then return true end
     t3xPowerPin(level)
-    crrnPwrLvl = level
+    currentPowerLevel = level
     isPoweredOn = on
     t3xInfo("power", on and "on" or "off", level)
     state.power_state = on and "on" or "off"
     lastAction = on and "powerOn" or "powerOff"
     if on then
         local bg = loader.load("battery_guard")
-        if bg and bg.markT3xWoken then
-            bg.markT3xWoken()
-        end
+        if bg then bg.markT3xWoken() end
     end
     return true
 end
 
 function start()
-    ensurePins()
-    -- 启动即强制 BOOT/OTA 为正常运行电平，避免上电进烧录
-    ensureNormalRunPins()
+    if started then return true end
+    started = true
+    ensRunPins()
     t3xInfo("start")
-    local policy = t3xPolicyMod()
-    if type(policy) == "table" and policy.bootPowerOn then
-        policy.bootPowerOn(_M)
-    else
-        powerOn()
-    end
+    t3xPolicy.bootPowerOn(_M)
     return true
 end
 
 function waitSleepIdle(timeoutMs)
-    if not slpInPrgr then
-        return true
-    end
-    if not ipcInTask() then
-        return false
-    end
+    if not sleepInProgress then return true end
+    if not utils.inSysTask() then return false end
     timeoutMs = tonumber(timeoutMs) or 20000
     local elapsed = 0
     local step = 50
-    while slpInPrgr and elapsed < timeoutMs do
+    while sleepInProgress and elapsed < timeoutMs do
         sys.wait(step)
         elapsed = elapsed + step
     end
-    return not slpInPrgr
+    return not sleepInProgress
 end
 
-local function waitBfrWake()
-    waitSleepIdle(20000)
-end
-
--- 正常业务上电：先保证不在烧录脚位，必要时断电再上电
-function ensureNormalPowerOn(tag)
+function ensNormalPwrOn(tag)
     local function doIt()
-        waitBfrWake()
-        local wasBurn = isInBootMode == true
-            or crrnBootLvl == bootModeLvl
-            or crrnOtaLvl == otaModeLevel
-        ensureNormalRunPins()
+        waitSleepIdle(20000)
+        local _, _, entry_boot, entry_ota = gpioEntries()
+        local wasBurn = isInBootMode
+            or currentBootLevel == levelOf(entry_boot, "on_level", 1)
+            or currentOtaLevel == levelOf(entry_ota, "on_level", 1)
+        ensRunPins()
         if wasBurn and isPoweredOn then
             t3xWarn("normal_power_cycle_clear_burn", tostring(tag or ""))
-            aplPwrLeve(false)
-            sys.wait(bootDelay)
-            ensureNormalRunPins()
+            applyPwrLvl(false)
+            sys.wait(BOOT_DELAY_MS)
+            ensRunPins()
         end
-        local ok = aplPwrLeve(true)
-        lastAction = "ensureNormalPowerOn"
+        local ok = applyPwrLvl(true)
+        lastAction = "ensNormalPwrOn"
         t3xInfo("ensure_normal_power_on", tostring(tag or ""), wasBurn and "cycled" or "ok")
         return ok
     end
-    if not ipcInTask() then
-        sys.taskInit(function()
-            doIt()
-        end)
+    if not utils.inSysTask() then
+        sys.taskInit(doIt)
         return true
     end
     return doIt()
 end
 
 function powerOn()
-    -- 普通上电也清烧录脚，避免误进 U-Boot/烧录
-    return ensureNormalPowerOn("powerOn")
+    return ensNormalPwrOn("powerOn")
 end
 
 function powerOff()
-    return aplPwrLeve(false)
+    return applyPwrLvl(false)
 end
 
 function pulseMcuInt()
-    local _, entry_int = getEntries()
-    ensurePins()
+    local _, entry_int = ensPins()
     if not t3xMcuIntPin then
         t3xError("mcu_int_pin_missing")
         return false
     end
-    local idle, active = getMcuInt(entry_int)
-    local ms = tonumber((_G.HOST_WAKE_CFG or {}).pulse_ms) or pulseLowMs
+    local cfg = cfgm.get("HOST_WAKE_CFG")
+    local idle = cfg.idle_level
+    local active = cfg.pulse_level
+    if idle == nil then idle = levelOf(entry_int, "init_level", 1) end
+    if active == nil then active = levelOf(entry_int, "on_level", 0) end
     t3xMcuIntPin(active)
     sys.timerStart(function()
         t3xMcuIntPin(idle)
         lastAction = "pulseMcuInt"
-    end, ms)
+    end, tonumber(cfg.pulse_ms) or 120)
     return true
 end
 
 function entBootMode()
-    ensurePins()
-    if not t3xPowerPin or not t3XBootMode or not t3xOtaPin then
+    local _, _, entry_boot, entry_ota = ensPins()
+    if not t3xPowerPin or not t3xBootPin or not t3xOtaPin then
         t3xError("enter_bootmode_pin_missing")
         return false
     end
     t3xWarn("enter_bootmode")
-    -- 烧录上电必须用 aplPwrLeve，禁止走 powerOn/ensureNormalPowerOn（会清 BOOT/OTA）
-    aplPwrLeve(false)
-    -- 单定时器串行：先置 BOOT/OTA 脚位再上电，避免两个同延时定时器顺序不定导致先上电
+    applyPwrLvl(false)
+    local bootOn = levelOf(entry_boot, "on_level", 1)
+    local otaOn = levelOf(entry_ota, "on_level", 1)
     sys.timerStart(function()
-        t3XBootMode(bootModeLvl)
-        t3xOtaPin(otaModeLevel)
-        crrnBootLvl = bootModeLvl
-        crrnOtaLvl = otaModeLevel
+        driveBootOta(bootOn, otaOn)
         isInBootMode = true
-        aplPwrLeve(true)
-    end, bootDelay)
+        applyPwrLvl(true)
+    end, BOOT_DELAY_MS)
     lastAction = "enterBootMode"
     return true
 end
 
 function pulseUsbDebugEn(opts)
     opts = utils.optTable(opts)
-    local _, _, _, entry_ota = getEntries()
-    ensurePins()
-    if not t3xOtaPin or not entry_ota or not entry_ota.pin then
+    local _, _, _, entry_ota = ensPins()
+    if not t3xOtaPin or not entry_ota or entry_ota.pin == nil then
         return false, 0
     end
-    local usbCfg = _G.HOST_USB_CFG or {}
-    local high_ms = tonumber(opts.high_ms) or tonumber(usbCfg.usb_debug_en_pulse_ms) or 300
-    if high_ms < 0 then
-        high_ms = 0
-    end
-    local otaOff = entry_ota.init_level or 0
+    local highMs = tonumber(opts.highMs)
+        or tonumber(cfgm.get("HOST_USB_CFG").usb_debug_en_pulse_ms)
+        or 300
+    if highMs < 0 then highMs = 0 end
+    local otaOn = levelOf(entry_ota, "on_level", 1)
+    local otaOff = levelOf(entry_ota, "init_level", 0)
+    t3xOtaPin(otaOn)
+    currentOtaLevel = otaOn
     local function finishPulse()
         t3xOtaPin(otaOff)
-        crrnOtaLvl = otaOff
+        currentOtaLevel = otaOff
         lastAction = "pulseUsbDebugEn"
     end
-    t3xOtaPin(otaModeLevel)
-    crrnOtaLvl = otaModeLevel
-    if high_ms <= 0 then
+    if highMs == 0 then
         finishPulse()
         return true, 0
     end
-    sys.timerStart(finishPulse, high_ms)
-    return true, high_ms
+    sys.timerStart(finishPulse, highMs)
+    return true, highMs
 end
 
 function extBootMode()
-    ensurePins()
-    if not t3XBootMode or not t3xOtaPin then
+    local _, _, entry_boot, entry_ota = ensPins()
+    if not t3xBootPin or not t3xOtaPin then
         t3xError("exit_bootmode_pin_missing")
         return false
     end
-    local bootOff = 1 - bootModeLvl
-    local otaOff = 1 - otaModeLevel
-    t3XBootMode(bootOff)
-    t3xOtaPin(otaOff)
-    crrnBootLvl = bootOff
-    crrnOtaLvl = otaOff
+    driveBootOta(1 - levelOf(entry_boot, "on_level", 1), 1 - levelOf(entry_ota, "on_level", 1))
     isInBootMode = false
     lastAction = "exitBootMode"
     t3xInfo("exit_bootmode")
     return true
 end
 
-local function shldBlckSlp(opts)
-    if opts.skip_pending_work_check == true then
-        return false
-    end
-    local hu = hostUartMod()
-    local he = hostEventMod()
-    if not hu or not hu.buildHostEvtBody or not he or not he.shouldBlockT3xSleep then
-        return false
-    end
-    return he.shouldBlockT3xSleep(hu.buildHostEvtBody()) == true
+local function blockSleep(opts)
+    if opts.skipPendingWorkCheck == true then return false end
+    local hu = utils.hostUart()
+    return hu ~= nil and hostEvt.shouldBlockT3xSleep(hu.bldHostEvtBody()) == true
 end
 
-local function shtdPwrd3X(opts)
-    if not isPoweredOn then
-        return
-    end
-    local ipcCfg = _G.HOST_IPC_CFG or {}
-    if ipcCfg.graceful_poweroff == false then
+local function shutdownT3x(opts)
+    if not isPoweredOn then return end
+    local ipc = cfgm.get("HOST_IPC_CFG")
+    if ipc.graceful_poweroff == false then
         powerOff()
         return
     end
-    local playSound = opts.ipc_poweroff_sound
-    if playSound == nil then
-        playSound = ipcCfg.poweroff_play_sound
-    end
+    local playSound = opts.ipcPoweroffSound
+    if playSound == nil then playSound = ipc.poweroff_play_sound end
     gracePowOff({
-        play_sound = playSound,
-        poweroff_timeout_ms = opts.ipc_poweroff_timeout_ms,
-        status_timeout_ms = opts.ipc_status_timeout_ms,
+        playSound = playSound,
+        poweroffTimeoutMs = opts.ipcPoweroffTimeoutMs,
+        statusTimeoutMs = opts.ipcStatusTimeoutMs,
     })
 end
 
@@ -344,7 +267,7 @@ function enterSleep(opts)
         t3xInfo("sleep_already")
         return
     end
-    if shldBlckSlp(opts) then
+    if blockSleep(opts) then
         t3xWarn("sleep_blocked_pending_work")
         return false
     end
@@ -355,10 +278,10 @@ function enterSleep(opts)
         pm.hibernate()
         return
     end
-    slpInPrgr = true
+    sleepInProgress = true
     sys.taskInit(function()
-        local ok, err = pcall(shtdPwrd3X, opts)
-        slpInPrgr = false
+        local ok, err = pcall(shutdownT3x, opts)
+        sleepInProgress = false
         if not ok then
             t3xError("enter_sleep_fail", tostring(err or ""))
         end
@@ -366,125 +289,85 @@ function enterSleep(opts)
 end
 
 function wake()
-    waitBfrWake()
     state.last_wake_reason = rtos.last_wake_reason and rtos.last_wake_reason() or nil
     t3xInfo("wake", tostring(state.last_wake_reason or ""))
-    ensureNormalPowerOn("wake")
+    ensNormalPwrOn("wake")
     pulseMcuInt()
 end
 
 function getState()
-    local entry_pwr, entry_int, entry_boot, entry_ota = getEntries()
     return {
         powered_on = isPoweredOn,
-        power_level = crrnPwrLvl,
+        power_level = currentPowerLevel,
         in_boot_mode = isInBootMode,
-        boot_level = crrnBootLvl,
-        ota_level = crrnOtaLvl,
+        boot_level = currentBootLevel,
+        ota_level = currentOtaLevel,
         power_state = state.power_state,
-        slpInPrgr = slpInPrgr,
+        slpInPrgr = sleepInProgress,
         last_wake_reason = state.last_wake_reason,
         rest_enter_time = state.rest_enter_time,
         last_action = lastAction,
-        pins = {
-            pwr = entry_pwr and entry_pwr.pin,
-            mcu_int = entry_int and entry_int.pin,
-            boot = entry_boot and entry_boot.pin,
-            ota = entry_ota and entry_ota.pin,
-        },
     }
 end
 
-local function ipcCfg()
-    return _G.HOST_IPC_CFG or {}
-end
-
-local function ipcEnabled()
-    return ipcCfg().enabled ~= false
-end
-
-local function ipcHostUart()
-    return hostUartMod()
-end
-
-local function rslvPwrWait(opts)
+local function resolvePwrWaitMs(opts)
     opts = utils.optTable(opts)
-    local waitMs = tonumber(opts.power_wait_ms) or tonumber(opts.t3x_power_wait_ms)
-    if waitMs ~= nil then
-        return waitMs
-    end
-    return tonumber(ipcCfg().t3x_power_wait_ms)
-        or tonumber((_G.TIME_SYNC_CFG or {}).t3x_power_wait_ms)
-        or tonumber((_G.SOUND_CFG or {}).t3x_power_wait_ms)
+    return tonumber(opts.powerWaitMs) or tonumber(opts.t3xPowerWaitMs)
+        or tonumber(cfgm.get("HOST_IPC_CFG").t3x_power_wait_ms)
+        or tonumber(cfgm.get("TIME_SYNC_CFG").t3x_power_wait_ms)
+        or tonumber(cfgm.get("SOUND_CFG").t3x_power_wait_ms)
         or 800
-end
-
-local function rstHostLink(hu)
-    if hu and hu.resetHostLinkState then
-        hu.resetHostLinkState()
-    end
 end
 
 function ensPowOn(tag, opts)
     opts = utils.optTable(opts)
-    waitBfrWake()
-    local policy = t3xPolicyMod()
-    if type(policy) == "table" and policy.mayPowerT3x
-        and not policy.mayPowerT3x(tag or "t3x_ipc") then
-        t3xWarn("ensure_power_denied", tostring(tag or "t3x_ipc"))
+    tag = tag or "t3x_ipc"
+    if not t3xPolicy.mayPowerT3x(tag) then
+        t3xWarn("ensure_power_denied", tostring(tag))
         return false
     end
-    -- 即使已上电，也清一次烧录脚（卡在烧录态时需断电再上）
-    ensureNormalPowerOn(tag or "t3x_ipc")
-    local waitMs = rslvPwrWait(opts)
-    if waitMs > 0 and ipcInTask() then
-        sys.wait(waitMs)
-    end
+    ensNormalPwrOn(tag)
+    local waitMs = resolvePwrWaitMs(opts)
+    if waitMs > 0 and utils.inSysTask() then sys.wait(waitMs) end
     return true
 end
 
 function gracePowOff(opts)
     opts = utils.optTable(opts)
-    local hu = ipcHostUart()
-    local playSound = opts.play_sound
-    if playSound == nil then
-        playSound = ipcCfg().poweroff_play_sound ~= false
-    end
-    if ipcEnabled() and hu and hu.hostIpcPowerOff then
+    local hu = utils.hostUart()
+    local ipc = cfgm.get("HOST_IPC_CFG")
+    local playSound = opts.playSound
+    if playSound == nil then playSound = ipc.poweroff_play_sound ~= false end
+    if ipc.enabled ~= false and hu then
         t3xInfo("ipc_poweroff_begin")
-        local ack = hu.hostIpcPowerOff(playSound, opts.poweroff_timeout_ms)
+        local ack = hu.hostIpcPowerOff(playSound, opts.poweroffTimeoutMs)
         t3xInfo("ipc_poweroff_done", ack and "ack" or "timeout")
-        local settle = tonumber(opts.settle_ms) or tonumber(ipcCfg().poweroff_settle_ms) or 500
-        if settle > 0 then
-            sys.wait(settle)
-        end
+        local settle = tonumber(opts.settleMs) or tonumber(ipc.poweroff_settle_ms) or 500
+        if settle > 0 then sys.wait(settle) end
     end
     powerOff()
-    rstHostLink(hu)
+    if hu then hu.resetHostLinkState() end
     return true
 end
 
 function pwrOnReady(opts)
     opts = utils.optTable(opts)
-    if not ipcInTask() then
-        return false
-    end
-    local hu = ipcHostUart()
-    if ipcEnabled() and hu and hu.qryHostStat then
-        if hu.qryHostStat(opts.status_timeout_ms) == "ready" then
-            return true
-        end
+    if not utils.inSysTask() then return false end
+    local hu = utils.hostUart()
+    local ipc = cfgm.get("HOST_IPC_CFG")
+    local ipcOn = ipc.enabled ~= false and hu
+    if ipcOn and hu.qryHostStat(opts.statusTimeoutMs) == "ready" then
+        return true
     end
     if not isPoweredOn then
         powerOn()
-        sys.wait(rslvPwrWait(opts))
+        sys.wait(resolvePwrWaitMs(opts))
     end
-    if ipcEnabled() and hu and hu.waitHostIpcReady then
-        return hu.waitHostIpcReady(opts.ready_timeout_ms, opts.poll_ms)
+    if ipcOn then
+        return hu.waitHostIpcReady(opts.readyTimeoutMs, opts.pollMs)
     end
-    sys.wait(tonumber(ipcCfg().hostBootWaitMs)
-        or tonumber((_G.TIME_SYNC_CFG or {}).hostBootWaitMs)
-        or 1500)
-    return hu and hu.isHostAtReady and hu.isHostAtReady() or true
+    sys.wait(tonumber(ipc.hostBootWaitMs) or 1500)
+    return true
 end
+
 return _M

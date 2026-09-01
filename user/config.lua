@@ -76,23 +76,40 @@ _G.APP_STACK = {
     mqtt = "net_mqtt",
     uart = "uart_bridge",
 }
-_G.APP_RUNTIME = {
-    online_status = 0,
-    power_status = 0,
-    low_power_mode = 0,
-    work_mode = "person_detect",
-    low_power_interval_sec = 30,
-    battery_percent = "--",
-    battery_mv = "--",
-    battery_consumption_rate = "0",
-    sim_operator = "unknown",
-    sim_operator_name = "未知",
-    sim_present = 0,
-    cellular_apn = "",
-    wled_on = 0,
+-- 嵌套运行态种子；真表由 runtime_power 持有，_G.APP_RUNTIME 指向同一张表（调试用）
+_G.APP_RUNTIME_DEFAULTS = {
+    net = { online = 0 },
+    power = {
+        status = 0,
+        rest = 0,
+        interval_sec = 30,
+        last_rest_reason = nil,
+        wled_on = 0,
+    },
+    work = { mode = "person_detect" },
+    battery = {
+        percent = nil,
+        mv = nil,
+        rate = "0",
+        tier = nil,
+        dynamic_rest = 0,
+    },
+    cellular = {
+        operator = "unknown",
+        operator_name = "未知",
+        present = 0,
+        apn = "",
+    },
+    usb = {
+        recovery = nil,
+        count = nil,
+        last_err = nil,
+        logical = nil,
+        netdev = nil,
+    },
 }
 if _G.LOW_POWER_CFG and _G.LOW_POWER_CFG.rest_mqtt_interval_sec then
-    _G.APP_RUNTIME.low_power_interval_sec = _G.LOW_POWER_CFG.rest_mqtt_interval_sec
+    _G.APP_RUNTIME_DEFAULTS.power.interval_sec = _G.LOW_POWER_CFG.rest_mqtt_interval_sec
 end
 _G.CELLULAR_CFG = {
     enabled = true,
@@ -399,7 +416,6 @@ _G.TIME_SYNC_CFG = {
     enabled = true,
     min_valid_unix = 1704067200,
     sync_on_sntp = true,
-    sync_on_wake = true,
     sync_before_wake = true,
     hostBootWaitMs = 1500,
     t3x_power_wait_ms = 800,

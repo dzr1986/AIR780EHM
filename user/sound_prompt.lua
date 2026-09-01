@@ -9,144 +9,123 @@ require "config"
 local utils = require "utils"
 local cfgm = require "config_manager"
 local loader = require "module_loader"
+local t3xPolicy = require "t3x_policy"
+local t3x_ctrl = require "t3x_ctrl"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
 local ACK_EVENT = "SOUND_PROMPT_ACK"
-local coldBoot = false
-local bootCold = false
+local coldBootPlayed = false
+local bootColdScheduled = false
+
+-- optIn=true：配置须显式 true；optIn=false：默认开，仅 false 关
+local SCENES = {
+    boot_cold = {
+        key = "boot_on_cold_start", optIn = false,
+        guard = function() return not coldBootPlayed end,
+    },
+    boot_wake = { key = "boot_on_wake", optIn = true },
+    shutdown_user = { key = "shutdown_on_user_off", optIn = false },
+    shutdown_low_power = { key = "shutdown_on_low_power", optIn = true },
+    shutdown_battery = { key = "shutdown_on_battery_off", optIn = true },
+}
+
+local SHUTDOWN_SCENES = {
+    low_power = "shutdown_low_power",
+    battery = "shutdown_battery",
+}
+
+local function soundCfg()
+    return cfgm.get("SOUND_CFG")
+end
+
 local function enabled()
-    if cfgm.get("SOUND_CFG").enabled == false then
-        return false
-    end
-    if not loader.enabled("sound_prompt") then
-        return false
-    end
-    return true
+    return soundCfg().enabled ~= false and loader.enabled("sound_prompt")
+end
+
+local function cfgEnabled(rule, value)
+    if rule.optIn then return value == true end
+    return value ~= false
 end
 
 function shouldPlay(scene)
-    if not enabled() or _G.T3X_BURN_MODE_ACTIVE then
-        return false
-    end
-    local c = cfgm.get("SOUND_CFG")
-    if scene == "boot_cold" then
-        return c.boot_on_cold_start ~= false and not coldBoot
-    elseif scene == "boot_wake" then
-        return c.boot_on_wake == true
-    elseif scene == "shutdown_user" then
-        return c.shutdown_on_user_off ~= false
-    elseif scene == "shutdown_low_power" then
-        return c.shutdown_on_low_power == true
-    elseif scene == "shutdown_battery" then
-        return c.shutdown_on_battery_off == true
-    end
-    return false
+    if not enabled() or t3xPolicy.isBurnActive() then return false end
+    local rule = SCENES[scene]
+    if not rule then return false end
+    if not cfgEnabled(rule, soundCfg()[rule.key]) then return false end
+    return not rule.guard or rule.guard()
 end
 
-local function getUart()
-    return utils.getUartBridge()
-end
-local function t3xOn(extra)
+local function ensT3xPower(extra)
     return utils.t3xOn("sound_prompt", extra, {
-        t3x_power_wait_ms = tonumber(cfgm.get("SOUND_CFG").t3x_power_wait_ms) or 800,
+        t3xPowerWaitMs = tonumber(soundCfg().t3x_power_wait_ms) or 800,
     })
 end
 
-local function waitSoundAck(name, timeoutMs)
-    return utils.waitT3xCmdAck(ACK_EVENT, timeoutMs, function(ackName)
+function playBlocking(name, scene)
+    if not name or name == ""
+        or (scene and not shouldPlay(scene))
+        or (not scene and not enabled()) then
+        return false
+    end
+    local ub = utils.uartBridge()
+    if not ub then return false end
+    ensT3xPower()
+    if scene == "boot_cold" then coldBootPlayed = true end
+    ub.sendString("AT+PLAYSOUND=" .. name, true)
+    local timeoutMs = tonumber(soundCfg().play_timeout_ms) or 2500
+    return utils.waitT3xAck(ACK_EVENT, timeoutMs, function(ackName)
         return ackName == name or ackName == nil
     end)
 end
 
-function playBlocking(name, scene)
-    if not name or name == "" then
-        return false
-    end
-    if scene and not shouldPlay(scene) then
-        return false
-    end
-    if not enabled() then
-        return false
-    end
-    local ub = getUart()
-    if not ub or not ub.sendString then
-        return false
-    end
-    t3xOn()
-    local timeoutMs = tonumber(cfgm.get("SOUND_CFG").play_timeout_ms) or 2500
-    if scene == "boot_cold" then
-        coldBoot = true
-    end
-    ub.sendString("AT+PLAYSOUND=" .. name, true)
-    local ok = waitSoundAck(name, timeoutMs)
-    return ok
+function onSoundAck(name)
+    if name and name ~= "" then sys.publish(ACK_EVENT, name) end
 end
 
-function onSoundAck(name)
-    if name and name ~= "" then
-        sys.publish(ACK_EVENT, name)
+local function bootHostTimeoutMs(sound)
+    return tonumber(sound.boot_wait_host_ms)
+        or tonumber(sound.boot_delay_ms)
+        or 60000
+end
+
+local function waitHostForBootSound(ipc, sound)
+    if ipc.enabled == false or ipc.boot_sound_wait_ready == false then
+        return true
     end
+    return t3x_ctrl.pwrOnReady({
+        readyTimeoutMs = bootHostTimeoutMs(sound),
+        pollMs = ipc.ready_poll_ms,
+    })
 end
 
 function onAppStarted()
-    if bootCold or not shouldPlay("boot_cold") then
-        return
-    end
-    bootCold = true
+    if bootColdScheduled or not shouldPlay("boot_cold") then return end
+    bootColdScheduled = true
     sys.taskInit(function()
-        local ipcCfg = _G.HOST_IPC_CFG or {}
-        local timeoutMs = tonumber(cfgm.get("SOUND_CFG").boot_wait_host_ms)
-            or tonumber(cfgm.get("SOUND_CFG").boot_delay_ms)
-            or 60000
-        if ipcCfg.enabled ~= false and ipcCfg.boot_sound_wait_ready ~= false then
-            local ipc = loader.load("t3x_ctrl")
-            if ipc and ipc.pwrOnReady then
-                if not ipc.pwrOnReady({
-                    ready_timeout_ms = timeoutMs,
-                    poll_ms = ipcCfg.ready_poll_ms,
-                }) then
-                    return
-                end
-            else
-                local evt = utils.appEvent("HOST_UART_FIRST_AT", "host_uart_first_at")
-                if not sys.waitUntil(evt, timeoutMs) then
-                    return
-                end
-            end
-        end
+        local ipc = cfgm.get("HOST_IPC_CFG")
+        local sound = soundCfg()
+        if not waitHostForBootSound(ipc, sound) then return end
         playBlocking("boot", "boot_cold")
     end)
 end
 
 function onWakeFromLowPower()
-    if not shouldPlay("boot_wake") then
-        return
-    end
-    sys.taskInit(function()
-        playBlocking("boot", "boot_wake")
-    end)
+    if not shouldPlay("boot_wake") then return end
+    sys.taskInit(function() playBlocking("boot", "boot_wake") end)
 end
 
 function playShutdownThen(reason, callback)
-    reason = reason or "user"
-    local scene = "shutdown_user"
-    if reason == "low_power" then
-        scene = "shutdown_low_power"
-    elseif reason == "battery" then
-        scene = "shutdown_battery"
-    end
+    local scene = SHUTDOWN_SCENES[reason or "user"] or "shutdown_user"
     sys.taskInit(function()
-        if shouldPlay(scene) then
-            playBlocking("shutdown", scene)
-        end
-        if type(callback) == "function" then
-            callback()
-        end
+        if shouldPlay(scene) then playBlocking("shutdown", scene) end
+        if type(callback) == "function" then callback() end
     end)
 end
 
-function start(opts)
+function start(_opts)
     return true
 end
+
 return _M
