@@ -17,6 +17,7 @@ function bind(C, H)
     local cfgm = require "config_manager"
     local state = C.state
     local SYS_EVT = C.SYS_EVT
+    local utils = C.utils
     local defineQuery = H.defineQuery
     local defineSet = H.defineSet
     local identityCfg = H.idCfgFn
@@ -39,9 +40,7 @@ function bind(C, H)
         return cfgm.get("HOST_RECORD_CFG")
     end
 
-    local function asTbl(v)
-        return type(v) == "table" and v or {}
-    end
+    local asTbl = utils.optTable
 
     local function needUpload(v)
         local n = tonumber(v)

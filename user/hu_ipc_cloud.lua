@@ -205,17 +205,16 @@ function bind(C, H)
 
     local function qryIpcCloudStat(timeoutMs)
         local snapCloud = getCloudStat
+        local cached = snapCloud()
         return hostQuery(timeoutMs, {
             busyKey = "ipc_cloud_stat_query_busy",
-            busyReturn = snapCloud(),
+            busyReturn = cached,
             policyTag = "host_ipc",
             cfg = getCfg("HOST_IPC_CFG"),
-            timeoutCfgKey = "status_query_timeout_ms",
-            defaultTimeout = TIMEOUT.cloudStatQuery,
             waitBoot = false,
             atCmd = "AT+IPCSTAT?",
             ackEvent = SYS_EVT.IPCSTAT_ACK,
-            defaultResult = snapCloud(),
+            defaultResult = cached,
             whenDisabled = function(cfg)
                 if cfg.enabled == false then
                     return snapCloud()

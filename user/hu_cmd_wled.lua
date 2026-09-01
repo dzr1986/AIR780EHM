@@ -70,8 +70,6 @@ function bind(C)
             busyKey = busyKey,
             policyTag = "wled",
             cfg = wc,
-            timeoutCfgKey = "ack_timeout_ms",
-            defaultTimeout = TIMEOUT.ackMs,
             atCmd = atCmd,
             ackEvent = SYS_EVT.WLED_ACK,
             skipQuiet = true,

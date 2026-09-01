@@ -26,6 +26,7 @@ function bind(C, dsl)
     local lineMatch = dsl.lineMatch
     local normMatchers = dsl.normMatchers
     local drainRows = dsl.drainRows
+    local asNum = dsl.asNum
 
     local ROW_KEY = {
         venc = "encode_venc_rows",
@@ -39,10 +40,6 @@ function bind(C, dsl)
     ----------------------------------------------------------------
     -- utils / handler builders
     ----------------------------------------------------------------
-
-    local function asNum(v)
-        return tonumber(v) or 0
-    end
 
     local function drainRowQueue(queue)
         for i = 1, #queue do

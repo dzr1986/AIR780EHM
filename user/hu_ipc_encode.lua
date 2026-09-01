@@ -14,6 +14,7 @@ _G[_modname] = _M
 
 function bind(C, H)
     local state, SYS_EVT = C.state, C.SYS_EVT
+    local utils = C.utils
     local getCfg, hostQuery = H.getCfg, H.hostQuery
     local defineSet = H.defineSet
 
@@ -23,9 +24,7 @@ function bind(C, H)
         return getCfg("HOST_ENCODE_CFG")
     end
 
-    local function optTable(opts)
-        return type(opts) == "table" and opts or {}
-    end
+    local optTable = utils.optTable
 
     local function isAudio(opts)
         return opts.scope == "audio"

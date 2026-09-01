@@ -53,13 +53,6 @@ function bind(C)
         return (asNum(v) ~= 0) and 1 or 0
     end
 
-    local function trimStr(s)
-        if not s then
-            return s
-        end
-        return s:gsub("^%s+", ""):gsub("%s+$", "")
-    end
-
     ----------------------------------------------------------------
     -- capture → row
     ----------------------------------------------------------------
@@ -266,7 +259,7 @@ function bind(C)
         if id == nil then
             return false
         end
-        id = trimStr(id)
+        id = normLine(id)
         state.host_gb28181_id = id
         sys.publish(SYS_EVT.GB28181_ACK, id)
         return true
@@ -508,6 +501,7 @@ function bind(C)
 
     return {
         normLine = normLine,
+        asNum = asNum,
         pubAck = publishAck,
         matchFlag = matchFlag,
         matchPub = matchPub,

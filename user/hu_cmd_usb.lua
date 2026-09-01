@@ -183,12 +183,7 @@ function bind(C)
         state = state and state:upper() or "IDLE"
         count = tonumber(count) or 0
         local stateLower = state:lower()
-        local lastErr = ""
-        if stateLower == "exhausted" then
-            lastErr = "netdev_missing"
-        elseif stateLower == "ok" then
-            lastErr = ""
-        end
+        local lastErr = (stateLower == "exhausted") and "netdev_missing" or ""
         pushRecover(stateLower, {
             count = count,
             logical = 1,

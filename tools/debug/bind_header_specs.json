@@ -68,7 +68,7 @@
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT"],
+      "c": ["state", "SYS_EVT", "utils"],
       "h": ["defineQuery", "defineSet"],
       "inject": [
         ["identityCfg", "H.idCfgFn"],
@@ -98,7 +98,7 @@
     "hu_ipc_encode.lua": {
       "bind_args": "C, H",
       "requires_sys": false,
-      "c": ["state", "SYS_EVT"],
+      "c": ["state", "SYS_EVT", "utils"],
       "h": ["hostQuery", "getCfg", "defineSet"]
     }
   }

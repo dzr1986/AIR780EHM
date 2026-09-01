@@ -242,6 +242,10 @@ exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只�
 | `hu_ipc_rec.lua` | `noteUartLinkOk = clearMissStreak` |
 | `hu_ipc_power.lua` | `waitBusyClear` 合成 while |
 | `hu_at.lua` | 分区注释；HOSTEVT 与 PIR exact 排一起 |
+| `hu_rx_dsl.lua` / `hu_rx_media.lua` | 二次：`trimStr` 并入 `normLine`；`asNum` 由 dsl 导出复用 |
+| `hu_ipc_encode.lua` / `hu_ipc_hostq.lua` | 二次：`optTable`/`asTbl` 复用 `utils.optTable` |
+| `hu_cmd_wled.lua` / `hu_ipc_cloud.lua` | 二次：删 `hostQuery` 永不读的死 `timeoutCfgKey`/`defaultTimeout`；cloud 快照只取一次 |
+| `hu_cmd_usb.lua` | 二次：USBRECOVERY `lastErr` 一行式 |
 
 `hu_ipc.lua` / `hu_ipc_tffmt.lua` / `hu_rx_media.lua` 本轮结构已短，未再拆。
 
@@ -250,6 +254,7 @@ exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只�
 - `atSend`：`fn` 返回 `false` 时不能写成 `extra and fn(...) or fn(...)`（会调两次）。
 - `hu_cmd_usb` bind 头不要快照 `C.state`（handler 不用）。
 - WLED：表叫 `wledRt`，getter 叫 `wledGet`；同名会把表盖成函数，`+WLED:` 写 `.on` 会崩。
+- `hostQuery(waitMs, opts)` 先置 `opts.timeoutMs = waitMs`：调用方传了非 nil 超时后，spec 里的 `timeoutCfgKey`/`defaultTimeout` 即为死字段（例外 `qryHostStat`：`t3x_ctrl` 可能传 nil，回退必须保留）。
 
 ---
 
