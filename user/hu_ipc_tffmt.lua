@@ -16,6 +16,7 @@ function bind(C, H)
     local uart_bridge = C.uart_bridge
     local utils = C.utils
     local t3xSecOff = C.t3xSecOff
+    local hostNowMs = C.hostNowMs
     local ensT3xHost = H.ensT3xHost
     local hostBoot = H.hostBoot
 
@@ -45,10 +46,6 @@ function bind(C, H)
             return tail
         end
         return s
-    end
-
-    local function nowMs()
-        return os.time() * 1000
     end
 
     local function rebootFlag(opts, cfg)
@@ -84,11 +81,11 @@ function bind(C, H)
     ----------------------------------------------------------------
 
     local function waitFormatAck(timeoutMs, outcome)
-        local deadline = nowMs() + timeoutMs
-        local startDeadline = nowMs() + TIMEOUT.startDeadlineMs
+        local deadline = hostNowMs() + timeoutMs
+        local startDeadline = hostNowMs() + TIMEOUT.startDeadlineMs
         local started = false
         while true do
-            local t = nowMs()
+            local t = hostNowMs()
             if t >= deadline then
                 break
             end

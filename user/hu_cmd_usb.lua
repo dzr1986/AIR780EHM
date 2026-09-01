@@ -17,9 +17,7 @@ function bind(C)
     local hostUsbCfg, usbInserted = C.hostUsbCfg, C.usbInserted
     local t3xSecOff = C.t3xSecOff
     local RSP_ERROR, LOG_TAG = C.RSP_ERROR, C.LOG_TAG
-    local function pushUsbIdle(...)
-        return C.pushUsbIdle(...)
-    end
+    local pushUsbIdle = C.pushUsbIdle
 
     local LIMITS = {
         bootGuardSec = 180,
@@ -40,6 +38,17 @@ function bind(C)
     ----------------------------------------------------------------
     -- guard / recovery state
     ----------------------------------------------------------------
+
+    local function recoverSnap(st, extra)
+        extra = extra or {}
+        return {
+            state = st,
+            count = extra.count or usbRcvrGrd.count or 0,
+            last_err = extra.err or "",
+            usb_logical = extra.logical ~= nil and extra.logical or (usbInserted() and 1 or 0),
+            usb_netdev = extra.netdev or 0,
+        }
+    end
 
     local function t3xRestBlock()
         local cfg = hostUsbCfg()
@@ -93,12 +102,7 @@ function bind(C)
 
     local function usbRcvrExec(tag, cfg, do_fn)
         usbRcvrGrd.busy = true
-        expUsbRecover({
-            state = "recovering",
-            usb_logical = usbInserted() and 1 or 0,
-            usb_netdev = 0,
-            last_err = "",
-        })
+        expUsbRecover(recoverSnap("recovering"))
         pubUsbRecover()
         sys.taskInit(function()
             local notify_ms = tonumber(cfg.usb_reset_notify_after_ms) or TIMEOUT.notifyAfterMs
@@ -120,13 +124,7 @@ function bind(C)
             usbRcvrGrd.last_sec = os.time()
             usbRcvrGrd.count = (usbRcvrGrd.count or 0) + 1
             if not ok then
-                expUsbRecover({
-                    state = "idle",
-                    count = usbRcvrGrd.count,
-                    last_err = "rebind_failed",
-                    usb_logical = usbInserted() and 1 or 0,
-                    usb_netdev = 0,
-                })
+                expUsbRecover(recoverSnap("idle", { err = "rebind_failed" }))
                 pubUsbRecover()
             end
         end)
@@ -152,13 +150,7 @@ function bind(C)
         local allowed, deny = usbRcvrAllow(cfg)
         if not allowed then
             if deny == "REST" then
-                expUsbRecover({
-                    state = "blocked_rest",
-                    count = usbRcvrGrd.count or 0,
-                    last_err = "blocked_rest",
-                    usb_logical = usbInserted() and 1 or 0,
-                    usb_netdev = 0,
-                })
+                expUsbRecover(recoverSnap("blocked_rest", { err = "blocked_rest" }))
                 pubUsbRecover()
             end
             return rspOnly("USBRESET", deny)
@@ -204,40 +196,29 @@ function bind(C)
         elseif stateLower == "ok" then
             lastErr = ""
         end
-        expUsbRecover({
-            state = stateLower,
+        expUsbRecover(recoverSnap(stateLower, {
             count = count,
-            usb_logical = 1,
-            usb_netdev = stateLower == "ok" and 1 or 0,
-            last_err = lastErr,
-        })
+            logical = 1,
+            netdev = stateLower == "ok" and 1 or 0,
+            err = lastErr,
+        }))
         pubUsbRecover()
         return rspBody("USBRECOVERY", state)
     end
 
+    local function markIdleRecover()
+        expUsbRecover(recoverSnap("idle", { count = 0 }))
+        usbRcvrGrd.count = 0
+        pubUsbRecover()
+    end
+
     function rstUsbRecover()
         if t3xSecOff() then
-            expUsbRecover({
-                state = "idle",
-                count = 0,
-                last_err = "",
-                usb_logical = usbInserted() and 1 or 0,
-                usb_netdev = 0,
-            })
-            usbRcvrGrd.count = 0
-            pubUsbRecover()
+            markIdleRecover()
             return false
         end
         uart_bridge.sendString("AT+USBRECOVERYRESET", true)
-        expUsbRecover({
-            state = "idle",
-            count = 0,
-            last_err = "",
-            usb_logical = usbInserted() and 1 or 0,
-            usb_netdev = 0,
-        })
-        usbRcvrGrd.count = 0
-        pubUsbRecover()
+        markIdleRecover()
         return true
     end
 

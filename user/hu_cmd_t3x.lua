@@ -51,11 +51,9 @@ function bind(C)
             state.t3x_rec_active = 1
             state.t3x_last_reason = reason
             patchCloud({ recordingT3x = 1 })
-            -- 全天 overlay 不是开停录，不发 1012
-            if reason == "allday_person" then
-                return rspBody("RECORD", "1,active=1")
+            if reason ~= "allday_person" then
+                sys.publish(E.T3X_RECORD_ACTIVE)
             end
-            sys.publish(E.T3X_RECORD_ACTIVE)
             return rspBody("RECORD", "1,active=1")
         end
         local reason = arg:match("^0,reason=(.+)$") or "unknown"

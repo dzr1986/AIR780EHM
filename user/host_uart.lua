@@ -116,17 +116,6 @@ local usbChargeCache = nil
 
 local hostNowMs = utils.nowMs
 
--- rx/ipc 绑定后赋值（cmd 阶段经 ctx 延迟包装调用）
-local parseIpcStat
-local parseTfCard
-local normIpcCloud
-local commitIpcStat
-local patchCloud
-local noteUartLinkOk
-local isT31HostQry
-local qryIpcCloudStat
-local mergeTfCloud
-
 ----------------------------------------------------------------
 -- 小工具
 ----------------------------------------------------------------
@@ -136,6 +125,10 @@ local function modCall(name, fn, ...)
     if m then
         return m[fn](...)
     end
+end
+
+local function rp(fn)
+    return modCall("runtime_power", fn)
 end
 
 local function noopIdle()
@@ -164,19 +157,17 @@ local function waitHostIdle(timeoutMs)
     local deadline = hostNowMs() + timeoutMs
     while hostBusy() do
         local now = hostNowMs()
-        if now >= deadline then
+        local remain = deadline - now
+        if remain <= 0 then
             return false
         end
         local quietUntil = tonumber(state.host_push_quiet_until) or 0
-        local slice = math.min(quietUntil - now + TIMEOUT.hostIdleSliceMin, deadline - now)
+        local slice = quietUntil - now + TIMEOUT.hostIdleSliceMin
         if slice < TIMEOUT.hostIdleSliceMin then
             slice = TIMEOUT.hostIdleSliceMin
         end
-        if now + slice > deadline then
-            slice = deadline - now
-        end
-        if slice <= 0 then
-            return false
+        if slice > remain then
+            slice = remain
         end
         sys.wait(slice)
     end
@@ -234,12 +225,9 @@ end
 -- AT 应答格式
 ----------------------------------------------------------------
 
-local okTail
-do
-    local RSP_OK = CRLF .. "OK" .. CRLF
-    okTail = function()
-        return RSP_OK
-    end
+local RSP_OK = CRLF .. "OK" .. CRLF
+local function okTail()
+    return RSP_OK
 end
 
 local function rspOnly(tag, body)
@@ -263,44 +251,8 @@ local function rspLineOk(tag)
 end
 
 ----------------------------------------------------------------
--- Hex / USB / 配置快照
+-- USB / 配置快照
 ----------------------------------------------------------------
-
-local function encodeHex(data)
-    if not data or #data == 0 then
-        return ""
-    end
-    if data.toHex then
-        return data:toHex()
-    end
-    if string.toHex then
-        return string.toHex(data)
-    end
-    local out = {}
-    for i = 1, #data do
-        out[i] = string.format("%02X", string.byte(data, i))
-    end
-    return table.concat(out)
-end
-
-local function decodeHex(hex)
-    hex = hex and hex:gsub("[%s]", "") or ""
-    if hex == "" or (#hex % 2) ~= 0 then
-        return nil
-    end
-    if string.fromHex then
-        return string.fromHex(hex)
-    end
-    local parts = {}
-    for i = 1, #hex, 2 do
-        local n = tonumber(hex:sub(i, i + 1), 16)
-        if n == nil then
-            return nil
-        end
-        parts[#parts + 1] = string.char(n)
-    end
-    return table.concat(parts)
-end
 
 local function hostUsbCfg()
     return cfgm.get("HOST_USB_CFG")
@@ -317,7 +269,7 @@ local function getUsbChargeMod()
 end
 
 local function usbInserted()
-    return modCall("runtime_power", "isUsbInserted") == true
+    return rp("isUsbInserted") == true
 end
 
 local function usbBlockHost()
@@ -332,15 +284,15 @@ local function configSnap()
     local meta = cfgm.get("APP_META")
     return {
         version = (_G.PROJECT or "780EHM") .. "_" .. (_G.VERSION or "2034.001.000"),
-        online = modCall("runtime_power", "isOnline") and 1 or 0,
-        power = modCall("runtime_power", "getPowerStatus") or 0,
-        lowpower = modCall("runtime_power", "isLowPowerMode") and 1 or 0,
-        battery = modCall("runtime_power", "getBatteryPercent") or "--",
-        vbat = modCall("runtime_power", "getBatteryMv") or "--",
-        interval = modCall("runtime_power", "getLowPowerInterval") or 0,
+        online = rp("isOnline") and 1 or 0,
+        power = rp("getPowerStatus") or 0,
+        lowpower = rp("isLowPowerMode") and 1 or 0,
+        battery = rp("getBatteryPercent") or "--",
+        vbat = rp("getBatteryMv") or "--",
+        interval = rp("getLowPowerInterval") or 0,
         devicemodel = meta.device_model or "",
-        wled = modCall("runtime_power", "getWledOn") or 0,
-        workmode = modCall("runtime_power", "getWorkMode") or "person_detect",
+        wled = rp("getWledOn") or 0,
+        workmode = rp("getWorkMode") or "person_detect",
         tcp_extra = modCall("lp_wakeup", "appCfgFields") or "",
     }
 end
@@ -387,7 +339,39 @@ local function echoRxHex(data)
     if not state.hex_report or not hooks.uartWrite or not data then
         return
     end
-    hooks.uartWrite(CRLF .. "+RXHEX:" .. encodeHex(data) .. CRLF)
+    hooks.uartWrite(CRLF .. "+RXHEX:" .. utils.encodeHex(data) .. CRLF)
+end
+
+local function writeT3xNotify(tpl, val)
+    local writeFn = hooks.uartWrite
+    if not writeFn and package.loaded.uart_bridge then
+        writeFn = package.loaded.uart_bridge.write
+    end
+    if not writeFn then
+        return false
+    end
+    local line = string.format(tpl, val and 1 or 0)
+    if not line:find("\r\n", 1, true) then
+        line = line .. CRLF
+    end
+    writeFn(line)
+    return true
+end
+
+function pushUsbIdle(inserted)
+    local cfg = hostUsbCfg()
+    if cfg.notify_t3x_usb_state == false then
+        return false
+    end
+    return writeT3xNotify(cfg.t3x_usb_ursp or "+CAT1:USB,%d", inserted)
+end
+
+function pushNetLedSt(online)
+    local cfg = cfgm.get("LED_CFG")
+    if cfg.notify_t3x_net_led ~= true then
+        return false
+    end
+    return writeT3xNotify(cfg.t3x_net_ursp or "+CAT1:MQTT,%d", online)
 end
 
 ----------------------------------------------------------------
@@ -421,8 +405,6 @@ local ctx = {
     usbBlockHost = usbBlockHost,
     configSnap = configSnap,
     hostUsbCfg = hostUsbCfg,
-    encodeHex = encodeHex,
-    decodeHex = decodeHex,
     hostNowMs = hostNowMs,
     t3xSecOff = t3xSecOff,
     waitHostIdle = waitHostIdle,
@@ -431,17 +413,10 @@ local ctx = {
     hostBusy = hostBusy,
     noteHostPush = noteHostPush,
     parseSvcArgs = parseSvcArgs,
-    parseIpcStat = function(...)
-        return parseIpcStat(...)
-    end,
-    parseTfCard = function(...)
-        return parseTfCard(...)
-    end,
+    pushUsbIdle = pushUsbIdle,
 }
 
 local cmd = require("hu_cmd").bind(ctx)
-ctx.wledGet = cmd.wledGet
-
 local AT_EXACT, AT_PREFIX = require("hu_at").compile(cmd.at)
 local LINE_HANDLERS = {
     HEX = cmd.hexLine,
@@ -472,24 +447,15 @@ local function runAtDispatch(atCmd)
 end
 
 local rx = require("hu_rx").bind(ctx)
-parseTfCard = rx.parseTfCard
-parseIpcStat = rx.parseIpcStat
-normIpcCloud = rx.normIpcCloud
-commitIpcStat = rx.commitIpcStat
-patchCloud = rx.patchCloud
+ctx.parseTfCard = rx.parseTfCard
+ctx.parseIpcStat = rx.parseIpcStat
+ctx.normIpcCloud = rx.normIpcCloud
+ctx.commitIpcStat = rx.commitIpcStat
+ctx.patchCloud = rx.patchCloud
 local normLine = rx.normLine
 local RX_LINE_TRY_HANDLERS = rx.tryHandlers
-ctx.patchCloud = patchCloud
-ctx.commitIpcStat = commitIpcStat
-ctx.normIpcCloud = normIpcCloud
 
 require("hu_ipc").bind(ctx)
-if ctx.noteUartLinkOk then
-    noteUartLinkOk = ctx.noteUartLinkOk
-end
-isT31HostQry = ctx.M.isT31HostQry
-qryIpcCloudStat = ctx.M.qryIpcCloudStat
-mergeTfCloud = ctx.M.mergeTfCloud
 
 ----------------------------------------------------------------
 -- RX 行处理
@@ -502,19 +468,19 @@ local function onFirstHostAt(atLine)
     state.host_at_ready = true
     state.first_host_at = atLine
     state.host_ready_seen = true
-    if noteUartLinkOk then
-        noteUartLinkOk()
+    if ctx.noteUartLinkOk then
+        ctx.noteUartLinkOk()
     end
     state.uart_recovery_attempts = 0
     state.uart_recovery_last_sec = 0
-    patchCloud({ cat1Link = 1 })
+    ctx.patchCloud({ cat1Link = 1 })
     sys.taskInit(function()
         sys.wait(TIMEOUT.firstAtCloudWait)
-        if not isT31HostQry() then
+        if not ctx.M.isT31HostQry() then
             return
         end
-        qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
-        mergeTfCloud()
+        ctx.M.qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
+        ctx.M.mergeTfCloud()
     end)
     sys.publish(E.HOST_UART_FIRST_AT, atLine or "")
 end
@@ -591,21 +557,21 @@ local function onUartLine(line)
     end
 end
 
+local START_HOOK_KEYS = {
+    "onServCreate", "onServClose", "onMqttCfg", "onAtExt",
+    "onEnterLowPower", "onExitLowPower", "onReboot", "onPowerOff",
+    "onOta", "onPlainLine",
+}
+
 local function bindStartHooks(opts)
-    hooks.onServCreate = opts.onServCreate
-    hooks.onServClose = opts.onServClose
-    hooks.onMqttCfg = opts.onMqttCfg
-    hooks.onAtExt = opts.onAtExt
-    hooks.onEnterLowPower = opts.onEnterLowPower
-    hooks.onExitLowPower = opts.onExitLowPower
-    hooks.onReboot = opts.onReboot
-    hooks.onPowerOff = opts.onPowerOff
-    hooks.onOta = opts.onOta
-    hooks.onPlainLine = opts.onPlainLine
+    for i = 1, #START_HOOK_KEYS do
+        local k = START_HOOK_KEYS[i]
+        hooks[k] = opts[k]
+    end
     hooks.uartWrite = uart_bridge.write
     hooks.sendString = uart_bridge.sendString
     hooks.sendHex = function(hex)
-        local bin = decodeHex(hex)
+        local bin = utils.decodeHex(hex)
         return bin and uart_bridge.write(bin)
     end
     hooks.modemAt = opts.modemAt or defaultModemAt
@@ -630,38 +596,6 @@ function stop()
     uart_bridge.setOnLine(nil)
     started = false
     return true
-end
-
-local function writeT3xNotify(tpl, val)
-    local writeFn = hooks.uartWrite
-    if not writeFn and package.loaded.uart_bridge then
-        writeFn = package.loaded.uart_bridge.write
-    end
-    if not writeFn then
-        return false
-    end
-    local line = string.format(tpl, val and 1 or 0)
-    if not line:find("\r\n", 1, true) then
-        line = line .. CRLF
-    end
-    writeFn(line)
-    return true
-end
-
-function pushUsbIdle(inserted)
-    local cfg = hostUsbCfg()
-    if cfg.notify_t3x_usb_state == false then
-        return false
-    end
-    return writeT3xNotify(cfg.t3x_usb_ursp or "+CAT1:USB,%d", inserted)
-end
-
-function pushNetLedSt(online)
-    local cfg = cfgm.get("LED_CFG")
-    if cfg.notify_t3x_net_led ~= true then
-        return false
-    end
-    return writeT3xNotify(cfg.t3x_net_ursp or "+CAT1:MQTT,%d", online)
 end
 
 function ntfHost(sid, evt)
@@ -699,5 +633,4 @@ function getState()
     }
 end
 
-ctx.pushUsbIdle = pushUsbIdle
 return _M

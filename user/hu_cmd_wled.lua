@@ -25,7 +25,7 @@ function bind(C)
         t3xPowerWaitMs = 800,
     }
 
-    local wledState = { on = 0, lastForwardMs = 0 }
+    local wledRt = { on = 0, lastForwardMs = 0 }
 
     ----------------------------------------------------------------
     -- cfg / runtime shadow
@@ -51,7 +51,7 @@ function bind(C)
         if v ~= nil then
             return v
         end
-        return wledState.on == 1 and 1 or 0
+        return wledRt.on == 1 and 1 or 0
     end
 
     local function wledQuerySpec(timeoutMs, atCmd, busyKey, onResponse, onNoT3x)
@@ -121,12 +121,12 @@ function bind(C)
         opts = utils.optTable(opts)
         if not (wledCfg().enabled ~= false) then
             on = on == 1 and 1 or 0
-            wledState.on = on
+            wledRt.on = on
             wledExport(on)
             return false
         end
         on = (on == 1 or on == true) and 1 or 0
-        wledState.on = on
+        wledRt.on = on
         wledExport(on)
         if opts.forward == false then
             return true
@@ -134,24 +134,24 @@ function bind(C)
         if opts.sync then
             if coroutine.running() then
                 local ok = fwdWledTo(on, opts.timeoutMs)
-                wledState.lastForwardMs = hostNowMs()
+                wledRt.lastForwardMs = hostNowMs()
                 return ok
             end
             return false
         end
         sys.taskInit(function()
             if fwdWledTo(on, opts.timeoutMs) then
-                wledState.lastForwardMs = hostNowMs()
+                wledRt.lastForwardMs = hostNowMs()
             end
         end)
         return true
     end
 
-    function wledState()
+    local function getWledState()
         return wledGet()
     end
 
-    function setWledState(on, opts)
+    local function setWledState(on, opts)
         return wledSet(on, opts)
     end
 
@@ -172,7 +172,8 @@ function bind(C)
         return rspFmt("WLED", "%d", n)
     end
     return {
-        wledState = wledState,
+        wledRt = wledRt,
+        wledState = getWledState,
         wledExport = wledExport,
         wledGet = wledGet,
         qryHostWled = qryHostWled,

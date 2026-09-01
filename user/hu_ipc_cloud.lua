@@ -167,16 +167,12 @@ function bind(C, H)
         return st ~= nil and st.powered_on == true
     end
 
-    local function shouldQryIpcStat()
-        return isT31HostQry()
-    end
-
     local function needsIpcStatRefresh()
         local life = state.host_ipc_status
         if life == "ready" or life == "shutting_down" then
             return false
         end
-        return shouldQryIpcStat()
+        return isT31HostQry()
     end
 
     local function mergeTfCloud()
@@ -241,7 +237,7 @@ function bind(C, H)
         if not coroutine.running() then
             return cloudCacheReady()
         end
-        if not shouldQryIpcStat() or isHuBusy() then
+        if not isT31HostQry() or isHuBusy() then
             return cloudCacheReady()
         end
         if not force and not isIpcCloudStatStale() then
@@ -297,7 +293,7 @@ function bind(C, H)
         isIpcCloudStatStale = isIpcCloudStatStale,
         getCloudStat = getCloudStat,
         isT31HostQry = isT31HostQry,
-        shouldQryIpcStat = shouldQryIpcStat,
+        shouldQryIpcStat = isT31HostQry,
         needsIpcStatRefresh = needsIpcStatRefresh,
         mergeTfCloud = mergeTfCloud,
         refCloudF1003 = refCloudF1003,

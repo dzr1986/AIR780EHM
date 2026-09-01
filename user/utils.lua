@@ -65,6 +65,42 @@ function optTable(x)
     return type(x) == "table" and x or {}
 end
 
+function encodeHex(data)
+    if not data or #data == 0 then
+        return ""
+    end
+    if data.toHex then
+        return data:toHex()
+    end
+    if string.toHex then
+        return string.toHex(data)
+    end
+    local out = {}
+    for i = 1, #data do
+        out[i] = string.format("%02X", string.byte(data, i))
+    end
+    return table.concat(out)
+end
+
+function decodeHex(hex)
+    hex = hex and hex:gsub("[%s]", "") or ""
+    if hex == "" or (#hex % 2) ~= 0 then
+        return nil
+    end
+    if string.fromHex then
+        return string.fromHex(hex)
+    end
+    local parts = {}
+    for i = 1, #hex, 2 do
+        local n = tonumber(hex:sub(i, i + 1), 16)
+        if n == nil then
+            return nil
+        end
+        parts[#parts + 1] = string.char(n)
+    end
+    return table.concat(parts)
+end
+
 function t3xOn(tag, extra, defaultExtra)
     local t3x = loader.load("t3x_ctrl")
     if not t3x then return false end

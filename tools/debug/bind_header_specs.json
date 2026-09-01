@@ -7,8 +7,7 @@
     "patchCloud",
     "hostQuery",
     "hostSet",
-    "idCfg",
-    "pushUsbIdle"
+    "idCfg"
   ],
   "modules": {
     "hu_cmd_usb.lua": {
@@ -31,9 +30,9 @@
         "usbInserted",
         "t3xSecOff",
         "RSP_ERROR",
-        "LOG_TAG"
-      ],
-      "wrappers": ["pushUsbIdle"]
+        "LOG_TAG",
+        "pushUsbIdle"
+      ]
     },
     "hu_cmd_link.lua": {
       "bind_args": "C",
@@ -63,9 +62,8 @@
     "hu_ipc_rec.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle"],
-      "h": ["getCfg", "hostQuery"],
-      "wrappers": ["pushUsbIdle"]
+      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle", "pushUsbIdle"],
+      "h": ["getCfg", "hostQuery"]
     },
     "hu_ipc_hostq.lua": {
       "bind_args": "C, H",
@@ -73,7 +71,7 @@
       "requires_cfgm": true,
       "c": ["state", "SYS_EVT"],
       "h": ["defineQuery", "defineSet"],
-      "wrappers": [
+      "inject": [
         ["identityCfg", "H.idCfgFn"],
         ["encodeCfg", "H.encodeCfgFn"],
         ["tfCardCfg", "H.tfCardCfgFn"]
@@ -95,7 +93,7 @@
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t3xSecOff"],
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t3xSecOff", "hostNowMs"],
       "h": ["ensT3xHost", "hostBoot"]
     },
     "hu_ipc_encode.lua": {

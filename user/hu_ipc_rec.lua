@@ -17,9 +17,7 @@ function bind(C, H)
     local noopIdle = C.noopIdle
     local getCfg = H.getCfg
     local hostQuery = H.hostQuery
-    local function pushUsbIdle(...)
-        return C.pushUsbIdle(...)
-    end
+    local pushUsbIdle = C.pushUsbIdle
 
     local TIMEOUT = {
         powerOffMs = 500,
@@ -97,7 +95,8 @@ function bind(C, H)
     end
 
     local function tryUartRecovery(_source)
-        if recoveryCfg().enabled ~= true then
+        local rc = recoveryCfg()
+        if rc.enabled ~= true then
             return
         end
         if state.host_ready_seen ~= true then
@@ -113,7 +112,6 @@ function bind(C, H)
         if state.uart_recovery_busy then
             return
         end
-        local rc = recoveryCfg()
         state.ipc_uart_miss_streak = (tonumber(state.ipc_uart_miss_streak) or 0) + 1
         if state.ipc_uart_miss_streak < rc.miss_threshold then
             return

@@ -19,15 +19,9 @@ function bind(C, H)
     local SYS_EVT = C.SYS_EVT
     local defineQuery = H.defineQuery
     local defineSet = H.defineSet
-    local function identityCfg(...)
-        return H.idCfgFn(...)
-    end
-    local function encodeCfg(...)
-        return H.encodeCfgFn(...)
-    end
-    local function tfCardCfg(...)
-        return H.tfCardCfgFn(...)
-    end
+    local identityCfg = H.idCfgFn
+    local encodeCfg = H.encodeCfgFn
+    local tfCardCfg = H.tfCardCfgFn
 
     local TMO = {
         rec = 3000,
