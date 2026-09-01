@@ -261,7 +261,7 @@ sub('user/t3x_ctrl.lua', [
     ('"========== 进入深度休眠 =========="', '"deep"'),
 ])
 
-sub('lib/cellular_bootstrap.lua', [
+sub('lib/cell_boot.lua', [
     ('local LOG_TAG = "cellular"', 'local LOG_TAG = "cell"'),
     ('"imsi/iccid op mismatch"', '"opMm"'),
     ('"sim info timeout, try auto apn"', '"simTo"'),
@@ -365,7 +365,7 @@ sub('lib/usb_rndis.lua', [
     ('"rebind ok"', '"rb"'),
 ])
 
-sub('lib/low_power_wakeup.lua', [
+sub('lib/lp_wakeup.lua', [
     ('"enter rest, keep tcp (mode=tcp)"', '"inT"'),
     ('"enter rest, close tcp (mode=mqtt)"', '"inM"'),
     ('"exit rest, restore tcp"', '"outT"'),

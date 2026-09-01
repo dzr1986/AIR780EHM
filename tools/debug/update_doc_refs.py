@@ -56,7 +56,7 @@ SNTP_REPLS = [
     ("vbat / usb_charge / sntp_sync / mobile_info", "vbat / usb_charge / time_sync(SNTP) / mobile_info"),
     ("`sntp_sync`", "`time_sync`"),
     ("4G 模组 `sntp_sync`", "4G 模组 `time_sync`（SNTP）"),
-    ("sntp_sync, cellular_bootstrap", "time_sync, cellular_bootstrap"),
+    ("sntp_sync, cell_boot", "time_sync, cell_boot"),
     ("usb_rndis, sntp_sync, sound_prompt", "usb_rndis, time_sync, sound_prompt"),
     ("optMod:  vbat, usb_charge, mobile_info, fota, usb_rndis, sntp_sync", "optMod:  vbat, usb_charge, mobile_info, fota_svc, usb_rndis"),
 ]
@@ -71,8 +71,8 @@ POWER_REPLS = [
 ]
 
 LIB_LIST = (
-    "`uart_bridge` `gpio_util` `usb_charge` `usb_rndis` `cellular_bootstrap` "
-    "`low_power_wakeup` `t3x_policy` `host_event` `watchdog` `device_id` `usb_policy`"
+    "`uart_bridge` `gpio_util` `usb_charge` `usb_rndis` `cell_boot` "
+    "`lp_wakeup` `t3x_policy` `host_event` `watchdog` `device_id` `usb_policy`"
 )
 OLD_LIB_LIST = "`uart_bridge` `gpio_util` `key` `pir` `led` `adc_lib` `bat_core`"
 

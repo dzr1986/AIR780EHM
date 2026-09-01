@@ -1,0 +1,113 @@
+{
+  "_comment": "host_uart cmd/ipc 子模块 bind 头真源；生成器对照/emit 用。延迟挂载字段用 wrapper，勿 local 快照。",
+  "delayed_c_wrappers": [
+    "parseIpcStat",
+    "parseTfCard",
+    "commitIpcStat",
+    "patchCloud",
+    "hostQuery",
+    "hostSet",
+    "idCfg",
+    "pushUsbIdle"
+  ],
+  "modules": {
+    "hu_cmd_usb.lua": {
+      "bind_args": "C",
+      "requires_sys": true,
+      "requires_cfgm": false,
+      "c": [
+        "state",
+        "E",
+        "rspOnly",
+        "rspBody",
+        "rspFmt",
+        "rspLine",
+        "rspLineOk",
+        "modCall",
+        "loader",
+        "uart_bridge",
+        "CRLF",
+        "hostUsbCfg",
+        "usbInserted",
+        "t3xSecOff",
+        "RSP_ERROR",
+        "LOG_TAG"
+      ],
+      "wrappers": ["pushUsbIdle"]
+    },
+    "hu_cmd_link.lua": {
+      "bind_args": "C",
+      "requires_sys": true,
+      "requires_cfgm": true,
+      "c": ["state", "hooks", "E", "rspBody", "rspFmt", "rspLine", "okTail", "modCall", "utils", "RSP_ERROR", "parseSvcArgs"],
+      "wrappers": [["qryGb28181", "C.M.qryGb28181"]]
+    },
+    "hu_cmd_pir.lua": {
+      "bind_args": "C",
+      "requires_sys": false,
+      "c": ["state", "rspBody", "rspLineOk", "modCall", "getHostEvtPending"]
+    },
+    "hu_cmd_t3x.lua": {
+      "bind_args": "C",
+      "requires_sys": true,
+      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush"],
+      "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud"]
+    },
+    "hu_cmd_wled.lua": {
+      "bind_args": "C",
+      "requires_sys": true,
+      "requires_cfgm": true,
+      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t3xSecOff", "RSP_ERROR", "noopFalse"],
+      "wrappers": ["hostQuery"]
+    },
+    "hu_ipc_rec.lua": {
+      "bind_args": "C, H",
+      "requires_sys": true,
+      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle"],
+      "h": ["getCfg", "hostQuery"],
+      "wrappers": ["pushUsbIdle"]
+    },
+    "hu_ipc_hostq.lua": {
+      "bind_args": "C, H",
+      "requires_sys": true,
+      "requires_cfgm": true,
+      "c": ["state", "SYS_EVT"],
+      "h": ["defineQuery", "defineSet"],
+      "wrappers": [
+        ["identityCfg", "H.idCfgFn"],
+        ["encodeCfg", "H.encodeCfgFn"],
+        ["tfCardCfg", "H.tfCardCfgFn"]
+      ]
+    },
+    "hu_ipc_cloud.lua": {
+      "bind_args": "C, H, recovery, hostq",
+      "requires_sys": true,
+      "c": ["state", "SYS_EVT", "E", "modCall", "hostBusy", "wledGet", "normIpcCloud", "commitIpcStat"],
+      "h": ["getCfg", "hostQuery", "defineQuery", "idCfgFn"],
+      "inject": [
+        ["qryHostStat", "recovery.qryHostStat"],
+        ["qryHostRecord", "hostq.qryHostRecord"]
+      ]
+    },
+    "hu_ipc_power.lua": {
+      "bind_args": "C, H, recovery",
+      "requires_sys": true,
+      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud"],
+      "h": ["getCfg"],
+      "inject": [["qryHostStat", "recovery.qryHostStat"]]
+    },
+    "hu_ipc_tffmt.lua": {
+      "bind_args": "C, H",
+      "requires_sys": true,
+      "requires_cfgm": true,
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t3xSecOff"],
+      "h": ["ensT3xHost", "hostBoot"]
+    },
+    "hu_ipc_encode.lua": {
+      "bind_args": "C, shared",
+      "requires_sys": false,
+      "c": ["state", "SYS_EVT"],
+      "shared": ["hostQuery", "getCfg", "defineSet"]
+    }
+  }
+}
