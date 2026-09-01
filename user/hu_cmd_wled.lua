@@ -35,8 +35,18 @@ function bind(C)
         return cfgm.get("WLED_CFG")
     end
 
+    local function ackMs(timeoutMs)
+        return tonumber(timeoutMs) or tonumber(wledCfg().ack_timeout_ms) or TIMEOUT.ackMs
+    end
+
     local function wledExport(on)
         modCall("runtime_power", "setWledOn", on)
+    end
+
+    local function writeShadow(on)
+        wledRt.on = on
+        wledExport(on)
+        return on
     end
 
     local function wledEnsPow()
@@ -56,8 +66,7 @@ function bind(C)
 
     local function wledQuerySpec(timeoutMs, atCmd, busyKey, onResponse, onNoT3x)
         local wc = wledCfg()
-        timeoutMs = tonumber(timeoutMs) or tonumber(wc.ack_timeout_ms) or TIMEOUT.ackMs
-        return timeoutMs, {
+        return ackMs(timeoutMs), {
             busyKey = busyKey,
             policyTag = "wled",
             cfg = wc,
@@ -80,30 +89,21 @@ function bind(C)
         if wc.forward_to_t3x == false then
             return true
         end
-        if t3xSecOff() then
+        if t3xSecOff() or not wledEnsPow() then
             return false
         end
-        if not wledEnsPow() then
-            return false
-        end
-        timeoutMs = tonumber(timeoutMs) or tonumber(wc.ack_timeout_ms) or TIMEOUT.ackMs
-        local atCmd = string.format("AT+WLED=%d", on)
-        local tmo, spec = wledQuerySpec(timeoutMs, atCmd, "wled_forward_busy", function(got, val)
-            return got and type(val) == "table" and val.ok == true
-        end, noopFalse)
-        local okFwd = hostQuery(tmo, spec)
-        return okFwd == true
+        local tmo, spec = wledQuerySpec(timeoutMs, string.format("AT+WLED=%d", on),
+            "wled_forward_busy", function(got, val)
+                return got and type(val) == "table" and val.ok == true
+            end, noopFalse)
+        return hostQuery(tmo, spec) == true
     end
 
-    function qryHostWled(timeoutMs)
+    local function qryHostWled(timeoutMs)
         local wc = wledCfg()
-        if wc.forward_to_t3x == false then
+        if wc.forward_to_t3x == false or not wledEnsPow() then
             return wledGet()
         end
-        if not wledEnsPow() then
-            return wledGet()
-        end
-        timeoutMs = tonumber(timeoutMs) or tonumber(wc.ack_timeout_ms) or TIMEOUT.ackMs
         local tmo, spec = wledQuerySpec(timeoutMs, "AT+WLED?", "wled_query_busy", function(got, rsp)
             if got and type(rsp) == "table" and rsp.ok then
                 return rsp.on
@@ -119,25 +119,21 @@ function bind(C)
 
     local function wledSet(on, opts)
         opts = utils.optTable(opts)
-        if not (wledCfg().enabled ~= false) then
-            on = on == 1 and 1 or 0
-            wledRt.on = on
-            wledExport(on)
+        if wledCfg().enabled == false then
+            writeShadow(on == 1 and 1 or 0)
             return false
         end
-        on = (on == 1 or on == true) and 1 or 0
-        wledRt.on = on
-        wledExport(on)
+        on = writeShadow((on == 1 or on == true) and 1 or 0)
         if opts.forward == false then
             return true
         end
         if opts.sync then
-            if coroutine.running() then
-                local ok = fwdWledTo(on, opts.timeoutMs)
-                wledRt.lastForwardMs = hostNowMs()
-                return ok
+            if not coroutine.running() then
+                return false
             end
-            return false
+            local ok = fwdWledTo(on, opts.timeoutMs)
+            wledRt.lastForwardMs = hostNowMs()
+            return ok
         end
         sys.taskInit(function()
             if fwdWledTo(on, opts.timeoutMs) then
@@ -145,14 +141,6 @@ function bind(C)
             end
         end)
         return true
-    end
-
-    local function getWledState()
-        return wledGet()
-    end
-
-    local function setWledState(on, opts)
-        return wledSet(on, opts)
     end
 
     ----------------------------------------------------------------
@@ -173,11 +161,11 @@ function bind(C)
     end
     return {
         wledRt = wledRt,
-        wledState = getWledState,
+        wledState = wledGet,
         wledExport = wledExport,
         wledGet = wledGet,
         qryHostWled = qryHostWled,
-        setWledState = setWledState,
+        setWledState = wledSet,
         uartWled = uartWled,
     }
 end

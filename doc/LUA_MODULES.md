@@ -230,18 +230,19 @@ applyUsbPower(inserted, source)
 
 ---
 
-### 3.8 `host_uart` 族 — T3x AT（主文件 ~657 行 + 15 子模块）
+### 3.8 `host_uart` 族 — T3x AT（主文件 ~636 行 + 15 子模块）
 
-> 专题：[HOST_UART_AT_DISPATCH.md](modules/HOST_UART_AT_DISPATCH.md) · API：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) §2.1  
-> 静态回归：`python tools/debug/_host_uart_regression_check.py`
+> 专题：[HOST_UART_AT_DISPATCH.md](modules/HOST_UART_AT_DISPATCH.md)（含 bind 顺序、AT/URC 对照、hu_* 精简说明）  
+> API：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) §2.1  
+> 静态回归：`python tools/debug/_protocol_regression_check.py`
 
 | 文件 | 职责 |
 |------|------|
 | `host_uart.lua` | 互斥锁、`SYS_EVT`、`state`、`processLine`、`uartAtCmd`、`start` |
-| `hu_at.lua` | `AT_CMD_TABLE` → `compile(at)` |
-| `hu_cmd.lua` + `cmd_*` | 主机→CAT1 **设置/通知** AT |
-| `hu_rx.lua` | URC/`+XXX:` 行解析、`RX_LINE_HANDLER_REGISTRY` |
-| `hu_ipc.lua` + `ipc_*` | IPC **查询/云状态/TF/编码/上电** |
+| `hu_at.lua` | `AT_CMD_TABLE` → `compile(at)` → `AT_EXACT` / `AT_PREFIX` |
+| `hu_cmd.lua` + `hu_cmd_*` | 主机→CAT1 **设置/通知** AT（camelCase handler） |
+| `hu_rx.lua` | URC/`+XXX:` 行解析、`tryHandlers` 函数数组 |
+| `hu_ipc.lua` + `hu_ipc_*` | IPC **查询/云状态/TF/编码/上电** |
 
 | 项 | 说明 |
 |----|------|

@@ -123,34 +123,22 @@ function bind(C, H)
     end
 
     local qryRecord = defineQuery{
-        busy = "record_query_busy", 
-        cache = "host_record",
-        tag = "host_record", 
-        cfg = recCfg, tmo = TMO.rec,
-        at = "AT+RECORD?", 
-        ev = SYS_EVT.RECORD_ACK,
-        dis = whenOff("host_record"),
-        rsp = saveSnap("host_record"),
+        busy = "record_query_busy", cache = "host_record",
+        tag = "host_record", cfg = recCfg, tmo = TMO.rec,
+        at = "AT+RECORD?", ev = SYS_EVT.RECORD_ACK,
+        dis = whenOff("host_record"), rsp = saveSnap("host_record"),
     }
 
     local qryRecTime = defineQuery{
-        busy = "recordtime_query_busy", 
-        cache = "host_record_time", 
-        parsed = true,
-        tag = "host_recordtime", 
-        cfg = recCfg, 
-        tmo = TMO.rec,
-        at = "AT+RECORDTIME?", 
-        ev = SYS_EVT.RECORDTIME_ACK,
+        busy = "recordtime_query_busy", cache = "host_record_time", parsed = true,
+        tag = "host_recordtime", cfg = recCfg, tmo = TMO.rec,
+        at = "AT+RECORDTIME?", ev = SYS_EVT.RECORDTIME_ACK,
         dis = whenOff("host_record_time"),
     }
 
     local setRecTime = defineSet{
-        busy = "recordtime_set_busy", 
-        tag = "host_recordtime_set",
-        cfg = recCfg, 
-        tmo = TMO.rec, 
-        ev = SYS_EVT.RECORDTIME_SET,
+        busy = "recordtime_set_busy", tag = "host_recordtime_set",
+        cfg = recCfg, tmo = TMO.rec, ev = SYS_EVT.RECORDTIME_SET,
         prep = function(opts)
             local min = tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
             if min == nil then
@@ -297,17 +285,13 @@ function bind(C, H)
         cfg = identityCfg, tmo = TMO.photo, ev = SYS_EVT.SOFTPHOTO_SET,
         prep = function(opts)
             opts = asTbl(opts)
-            local f = {
-                tonumber(opts.enable),
-                tonumber(opts.nightModeThreshold),
-                tonumber(opts.dayModeThreshold),
-                tonumber(opts.dayModeAltThreshold),
-                tonumber(opts.gbGainThreshold),
-                tonumber(opts.gbGainRecordInit),
-                tonumber(opts.checkTime),
-                tonumber(opts.checkCount),
+            local PHOTO = {
+                "enable", "nightModeThreshold", "dayModeThreshold", "dayModeAltThreshold",
+                "gbGainThreshold", "gbGainRecordInit", "checkTime", "checkCount",
             }
-            for i = 1, 8 do
+            local f = {}
+            for i = 1, #PHOTO do
+                f[i] = tonumber(opts[PHOTO[i]])
                 if f[i] == nil then
                     return false, "missing_params"
                 end

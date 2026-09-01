@@ -50,28 +50,20 @@ function bind(C, H)
         if type(rows) == "table" and rows.__error then
             return nil, rows.__error
         end
-        if type(rows) ~= "table" or #rows == 0 then
+        if type(rows) ~= "table" or #rows == 0 or type(rows[1]) ~= "table" then
             return nil, "empty_encode"
         end
-        for _, row in ipairs(rows) do
-            if type(row) == "table" then
-                if audio then
-                    return { audio = rows }
-                end
-                return { video = rows }
-            end
+        if audio then
+            return { audio = rows }
         end
-        return nil, "empty_encode"
+        return { video = rows }
     end
 
     local function queryAtCmd(opts)
         opts = optTable(opts)
         local cam, stream = opts.camera, opts.stream
         if isAudio(opts) then
-            if cam ~= nil then
-                return "AT+AUDIO?=" .. tonumber(cam)
-            end
-            return "AT+AUDIO?"
+            return cam ~= nil and ("AT+AUDIO?=" .. tonumber(cam)) or "AT+AUDIO?"
         end
         if cam ~= nil and stream ~= nil then
             return string.format("AT+VENC?=%d,%d", tonumber(cam), tonumber(stream))

@@ -175,16 +175,26 @@ function bind(C)
         return rspFmt("RIL_PERSONCNT", "%d", n)
     end
 
+    local function atSend(cmd, pat, fn, extra)
+        local payload = cmd:match(pat)
+        if not payload or not fn then
+            return rspLine("SEND", false)
+        end
+        local ok
+        if extra then
+            ok = fn(payload, extra)
+        else
+            ok = fn(payload)
+        end
+        return rspLine("SEND", ok and true or false)
+    end
+
     local function atSendStr(cmd)
-        local text = cmd:match("^AT%+SENDSTR=(.+)$")
-        local ok = text and hooks.sendString and hooks.sendString(text, true) or false
-        return rspLine("SEND", ok)
+        return atSend(cmd, "^AT%+SENDSTR=(.+)$", hooks.sendString, true)
     end
 
     local function atSendHex(cmd)
-        local hex = cmd:match("^AT%+SENDHEX=(.+)$")
-        local ok = hex and hooks.sendHex and hooks.sendHex(hex) or false
-        return rspLine("SEND", ok)
+        return atSend(cmd, "^AT%+SENDHEX=(.+)$", hooks.sendHex)
     end
 
     local function atLowPower(cmd)
@@ -192,8 +202,9 @@ function bind(C)
         if fc and fc.low_power == false then
             return rspOnly("LOWPOWER", "NOT_SUPPORTED")
         end
+        local inLp = modCall("runtime_power", "isLowPowerMode")
         if cmd == "AT+LOWPOWER=ENTER" then
-            if modCall("runtime_power", "isLowPowerMode") then
+            if inLp then
                 return rspOnly("LOWPOWER", "BUSY")
             end
             if hooks.onEnterLowPower then
@@ -202,7 +213,7 @@ function bind(C)
             return rspOnly("LOWPOWER", "ENTERING")
         end
         if cmd == "AT+LOWPOWER=EXIT" then
-            if not modCall("runtime_power", "isLowPowerMode") then
+            if not inLp then
                 return rspOnly("LOWPOWER", "ALREADY_AWAKE")
             end
             if hooks.onExitLowPower then
@@ -237,7 +248,6 @@ function bind(C)
         if not key or not val then
             return rspLine("SETCFG", false)
         end
-        local meta = _G.APP_META
         if key == "interval" and tonumber(val) then
             local ok = modCall("net_mqtt", "setStatIv", tonumber(val), true)
             if ok == nil then
@@ -248,8 +258,8 @@ function bind(C)
             end
             return rspLine("SETCFG", true)
         end
-        if key == "devicemodel" and meta then
-            meta.device_model = val
+        if key == "devicemodel" and _G.APP_META then
+            _G.APP_META.device_model = val
             return rspLine("SETCFG", true)
         end
         if key == "hexrpt" then

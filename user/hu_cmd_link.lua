@@ -38,6 +38,10 @@ function bind(C)
             and s:match("^[A-Za-z0-9]+$") ~= nil
     end
 
+    local function validPassword(s)
+        return type(s) == "string" and #s >= 1 and #s <= 63 and s:match("^[%w%p]+$") ~= nil
+    end
+
     local function parseGb28181(body)
         if not body or body == "" then
             return nil
@@ -112,9 +116,7 @@ function bind(C)
         if not device_id or not password then
             return RSP_ERROR
         end
-        if not digitStr(device_id, 10, 20)
-                or not (type(password) == "string" and #password >= 1 and #password <= 63
-                and password:match("^[%w%p]+$") ~= nil) then
+        if not digitStr(device_id, 10, 20) or not validPassword(password) then
             return RSP_ERROR
         end
         if imei and imei ~= "" and not digitStr(imei, 15, 15) then

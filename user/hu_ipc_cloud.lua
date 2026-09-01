@@ -75,12 +75,22 @@ function bind(C, H)
         return 0
     end
 
+    local function flag01(v)
+        return (tonumber(v) or 0) == 1 and 1 or 0
+    end
+
+    local function liftFlag(snap, key, cond)
+        if cond and (tonumber(snap[key]) or 0) == 0 then
+            snap[key] = 1
+        end
+    end
+
     local function applyTfToCloud(cloud)
         local tf = state.host_tf_card
         if type(tf) ~= "table" or not tf.parsed then
             return cloud
         end
-        cloud.tfPresent = (tonumber(tf.present) or 0) == 1 and 1 or 0
+        cloud.tfPresent = flag01(tf.present)
         return cloud
     end
 
@@ -98,16 +108,10 @@ function bind(C, H)
         if type(snap) ~= "table" then
             return snap
         end
-        if state.host_at_ready and (tonumber(snap.cat1Link) or 0) == 0 then
-            snap.cat1Link = 1
-        end
+        liftFlag(snap, "cat1Link", state.host_at_ready)
         local pst = modCall("t3x_ctrl", "getState")
-        if pst and pst.powered_on and (tonumber(snap.cat1Link) or 0) == 0 then
-            snap.cat1Link = 1
-        end
-        if state.host_ipc_status == "ready" and (tonumber(snap.ipcReady) or 0) == 0 then
-            snap.ipcReady = 1
-        end
+        liftFlag(snap, "cat1Link", pst and pst.powered_on)
+        liftFlag(snap, "ipcReady", state.host_ipc_status == "ready")
         if tonumber(state.t3x_rec_active) == 1 then
             snap.recordingT3x = 1
         end

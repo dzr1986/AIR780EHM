@@ -245,10 +245,7 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function trySoundAck(line)
-        if not line then
-            return false
-        end
-        local name = line:match("^%+SOUNDACK:(%w+)$")
+        local name = line and line:match("^%+SOUNDACK:(%w+)$")
         if not name then
             return false
         end
@@ -257,21 +254,15 @@ function bind(C)
     end
 
     local function tryTimesetAck(line)
-        if not line then
+        if not line or not line:match("^%+TIMESET:OK$") then
             return false
         end
-        if line:match("^%+TIMESET:OK$") then
-            modCall("time_sync", "onTimesetAck")
-            return true
-        end
-        return false
+        modCall("time_sync", "onTimesetAck")
+        return true
     end
 
     local function tryGb28181(line)
-        if not line then
-            return false
-        end
-        local id = line:match("^%+GB28181:(.*)$")
+        local id = line and line:match("^%+GB28181:(.*)$")
         if id == nil then
             return false
         end
@@ -286,8 +277,7 @@ function bind(C)
             return false
         end
         if line:match("^%+WLED:ERROR") then
-            sys.publish(SYS_EVT.WLED_ACK, { ok = false })
-            return true
+            return publishAck(SYS_EVT.WLED_ACK, { ok = false })
         end
         local n = line:match("^%+WLED:(%d+)$")
         if n == nil then
@@ -297,8 +287,7 @@ function bind(C)
         C.wledState.on = n
         C.wledExport(n)
         patchCloud({ wledEnable = n })
-        sys.publish(SYS_EVT.WLED_ACK, { ok = true, on = n })
-        return true
+        return publishAck(SYS_EVT.WLED_ACK, { ok = true, on = n })
     end
 
     ----------------------------------------------------------------
@@ -310,18 +299,15 @@ function bind(C)
             return false
         end
         if line:match("^%+TFFORMAT:ERROR") then
-            local ret = line:match("ret=([^,%s]+)") or "error"
-            sys.publish(SYS_EVT.TFFORMAT_ACK, { phase = "error", ret = ret })
-            return true
+            return publishAck(SYS_EVT.TFFORMAT_ACK, {
+                phase = "error", ret = line:match("ret=([^,%s]+)") or "error" })
         end
         if line:match("^%+TFFORMAT:STARTED") then
-            sys.publish(SYS_EVT.TFFORMAT_ACK, { phase = "started" })
-            return true
+            return publishAck(SYS_EVT.TFFORMAT_ACK, { phase = "started" })
         end
         if line:match("^%+TFFORMAT:OK") then
-            local reboot = line:match("reboot=(%d+)") or "0"
-            sys.publish(SYS_EVT.TFFORMAT_ACK, { phase = "ok", reboot = asNum(reboot) })
-            return true
+            return publishAck(SYS_EVT.TFFORMAT_ACK, {
+                phase = "ok", reboot = asNum(line:match("reboot=(%d+)") or "0") })
         end
         return false
     end
@@ -412,6 +398,14 @@ function bind(C)
         end
     end
 
+    local function recTimeRow(ok, kind, extra)
+        extra = extra or {}
+        extra.parsed = true
+        extra.ok = ok
+        extra[kind] = true
+        return extra
+    end
+
     local function parseRecTime(line)
         line = normLine(line)
         if not line or not line:match("^%+RECORDTIME:") then
@@ -419,27 +413,17 @@ function bind(C)
         end
         local min = line:match("^%+RECORDTIME:(%d+),min=")
         if min then
-            return {
-                parsed = true,
-                ok = true,
-                minutes = asNum(min),
-                query = true,
-            }
+            return recTimeRow(true, "query", { minutes = asNum(min) })
         end
         local okMin = line:match("^%+RECORDTIME:OK,(%d+)$")
         if okMin then
-            return {
-                parsed = true,
-                ok = true,
-                minutes = asNum(okMin),
-                set = true,
-            }
+            return recTimeRow(true, "set", { minutes = asNum(okMin) })
         end
         if line:match("^%+RECORDTIME:INVALID") then
-            return { parsed = true, ok = false, invalid = true, set = true }
+            return recTimeRow(false, "set", { invalid = true })
         end
         if line:match("^%+RECORDTIME:ERROR") then
-            return { parsed = true, ok = false, error = true, set = true }
+            return recTimeRow(false, "set", { error = true })
         end
         return nil
     end
@@ -508,19 +492,16 @@ function bind(C)
             return false
         end
         if line == "+IPCPOWEROFF:OK" then
-            sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = true })
-            return true
+            return publishAck(SYS_EVT.IPCPOWEROFF_ACK, { ok = true })
         end
         local stage = line:match("^%+IPCPOWEROFF:STAGE,([%w_]+)$")
         if stage then
-            sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, stage = stage })
-            return true
+            return publishAck(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, stage = stage })
         end
         if line:match("^%+IPCPOWEROFF:BUSY") or line:match("^%+IPCPOWEROFF:ERROR")
             or line:match("^%+IPCPOWEROFF:NOT_SUPPORTED") then
             logPowerOffRx(line)
-            sys.publish(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, error = true, line = line })
-            return true
+            return publishAck(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, error = true, line = line })
         end
         return false
     end

@@ -10,7 +10,7 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 
 function bind(C)
-    local state, E = C.state, C.E
+    local E = C.E
     local rspOnly, rspBody, rspFmt, rspLine, rspLineOk = C.rspOnly, C.rspBody, C.rspFmt, C.rspLine, C.rspLineOk
     local modCall, loader = C.modCall, C.loader
     local uart_bridge, CRLF = C.uart_bridge, C.CRLF
@@ -91,19 +91,14 @@ function bind(C)
         return true, nil
     end
 
-    local function expUsbRecover(st)
-        modCall("runtime_power", "setUsbRecovery", st)
-    end
-
-    local function pubUsbRecover()
-        local ev = E.MQTT_USB_RECOVERY_CHANGED
-        sys.publish(ev)
+    local function pushRecover(st, extra)
+        modCall("runtime_power", "setUsbRecovery", recoverSnap(st, extra))
+        sys.publish(E.MQTT_USB_RECOVERY_CHANGED)
     end
 
     local function usbRcvrExec(tag, cfg, do_fn)
         usbRcvrGrd.busy = true
-        expUsbRecover(recoverSnap("recovering"))
-        pubUsbRecover()
+        pushRecover("recovering")
         sys.taskInit(function()
             local notify_ms = tonumber(cfg.usb_reset_notify_after_ms) or TIMEOUT.notifyAfterMs
             local ok = false
@@ -124,8 +119,7 @@ function bind(C)
             usbRcvrGrd.last_sec = os.time()
             usbRcvrGrd.count = (usbRcvrGrd.count or 0) + 1
             if not ok then
-                expUsbRecover(recoverSnap("idle", { err = "rebind_failed" }))
-                pubUsbRecover()
+                pushRecover("idle", { err = "rebind_failed" })
             end
         end)
     end
@@ -150,8 +144,7 @@ function bind(C)
         local allowed, deny = usbRcvrAllow(cfg)
         if not allowed then
             if deny == "REST" then
-                expUsbRecover(recoverSnap("blocked_rest", { err = "blocked_rest" }))
-                pubUsbRecover()
+                pushRecover("blocked_rest", { err = "blocked_rest" })
             end
             return rspOnly("USBRESET", deny)
         end
@@ -196,23 +189,21 @@ function bind(C)
         elseif stateLower == "ok" then
             lastErr = ""
         end
-        expUsbRecover(recoverSnap(stateLower, {
+        pushRecover(stateLower, {
             count = count,
             logical = 1,
             netdev = stateLower == "ok" and 1 or 0,
             err = lastErr,
-        }))
-        pubUsbRecover()
+        })
         return rspBody("USBRECOVERY", state)
     end
 
     local function markIdleRecover()
-        expUsbRecover(recoverSnap("idle", { count = 0 }))
+        pushRecover("idle", { count = 0 })
         usbRcvrGrd.count = 0
-        pubUsbRecover()
     end
 
-    function rstUsbRecover()
+    local function rstUsbRecover()
         if t3xSecOff() then
             markIdleRecover()
             return false
@@ -239,25 +230,20 @@ function bind(C)
             )
         end
         local n = tonumber(cmd:match("^AT%+RNDIS=(%d+)$"))
-        if n == 1 then
-            sys.taskInit(function()
-                if usb_rndis.open then
-                    usb_rndis.open()
-                elseif usb_rndis.enable then
-                    usb_rndis.enable()
-                end
-            end)
-            return rspLineOk("RNDIS")
+        if n ~= 0 and n ~= 1 then
+            return RSP_ERROR
         end
-        if n == 0 then
-            sys.taskInit(function()
-                if usb_rndis.disable then
-                    usb_rndis.disable()
+        sys.taskInit(function()
+            if n == 1 then
+                local fn = usb_rndis.open or usb_rndis.enable
+                if fn then
+                    fn()
                 end
-            end)
-            return rspLineOk("RNDIS")
-        end
-        return RSP_ERROR
+            elseif usb_rndis.disable then
+                usb_rndis.disable()
+            end
+        end)
+        return rspLineOk("RNDIS")
     end
     return {
         uartUsbReset = uartUsbReset,

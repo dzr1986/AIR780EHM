@@ -70,12 +70,8 @@ function bind(C, H)
 
     local function waitBusyClear(deadlineMs)
         local untilMs = hostNowMs() + deadlineMs
-        while hostNowMs() < untilMs do
-            if ipcQueryBusy() then
-                sys.wait(TIMEOUT.pollSliceMs)
-            else
-                break
-            end
+        while hostNowMs() < untilMs and ipcQueryBusy() do
+            sys.wait(TIMEOUT.pollSliceMs)
         end
     end
 

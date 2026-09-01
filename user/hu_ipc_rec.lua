@@ -58,10 +58,7 @@ function bind(C, H)
     local function clearMissStreak()
         state.ipc_uart_miss_streak = 0
     end
-
-    local function noteUartLinkOk()
-        clearMissStreak()
-    end
+    local noteUartLinkOk = clearMissStreak
 
     ----------------------------------------------------------------
     -- power cycle / UART recovery

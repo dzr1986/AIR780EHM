@@ -15,7 +15,6 @@
       "requires_sys": true,
       "requires_cfgm": false,
       "c": [
-        "state",
         "E",
         "rspOnly",
         "rspBody",

@@ -100,7 +100,7 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function uartHostEvtQry(_cmd)
-        return rspBody("HOSTEVT", bldPirWake(true))
+        return rspBody("HOSTEVT", bldHostEvtBody())
     end
 
     local function uartHostEvtClr(_cmd)
@@ -109,9 +109,11 @@ function bind(C)
         modCall("pir_ctrl", "clearConsumableMarkers")
         return rspBody("HOSTEVTCLR", "OK")
     end
+
     local function uartPirStatQry(_cmd)
         return rspBody("PIRSTAT", bldPirWake(false))
     end
+
     local function uartPirClr(_cmd)
         modCall("pir_ctrl", "resetCounters")
         return rspLineOk("PIRCLR")

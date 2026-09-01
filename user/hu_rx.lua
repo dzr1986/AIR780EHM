@@ -20,9 +20,10 @@ function bind(C)
     -- handler registry
     ----------------------------------------------------------------
 
+    -- 顺序：更具体的前缀先匹配；裸 OK/ERROR 只 flush 进行中的 encode 查询
     local RX_LINE_HANDLER_REGISTRY = {
-        media.tryEncodeUartErr,
-        media.tryEncodeUartOk,
+        media.tryEncodeUartErr,   -- 裸 ERROR
+        media.tryEncodeUartOk,    -- 裸 OK
         dsl.trySoundAck,
         dsl.tryTimesetAck,
         dsl.tryGb28181,

@@ -2,28 +2,61 @@
 
 > **代码真源**：[`user/host_uart.lua`](../../user/host_uart.lua)（互斥、分发、RX 调度、start）  
 > **AT 表**：[`user/hu_at.lua`](../../user/hu_at.lua)  
-> **AT handler**：[`user/hu_cmd.lua`](../../user/hu_cmd.lua)（分发 + TIME/HOSTIDLE/OTA 等）  
-> **PIR/HOSTEVT**：[`user/hu_cmd_pir.lua`](../../user/hu_cmd_pir.lua)  
-> **T3x NOTIFY**：[`user/hu_cmd_t3x.lua`](../../user/hu_cmd_t3x.lua)（RECORD/UPLOAD/IPCSTAT 等）  
-> **链路/MQTT**：[`user/hu_cmd_link.lua`](../../user/hu_cmd_link.lua)（P2P/GB28181/MQTTPUB/SERV）  
-> **WLED**：[`user/hu_cmd_wled.lua`](../../user/hu_cmd_wled.lua)  
-> **USB/RNDIS**：[`user/hu_cmd_usb.lua`](../../user/hu_cmd_usb.lua)（USBRESET/RNDIS/RECOVERY）  
-> **URC/RX 行解析**：[`user/hu_rx.lua`](../../user/hu_rx.lua)（编排/注册表）+ [`hu_rx_dsl.lua`](../../user/hu_rx_dsl.lua) + [`hu_rx_media.lua`](../../user/hu_rx_media.lua)（encode URC）  
-> **IPC 核心**：[`user/hu_ipc.lua`](../../user/hu_ipc.lua)（hostQuery/hostSet + 编排）  
-> **IPC 云状态**：[`user/hu_ipc_cloud.lua`](../../user/hu_ipc_cloud.lua)  
-> **UART 恢复**：[`user/hu_ipc_rec.lua`](../../user/hu_ipc_rec.lua)  
-> **IPC 关机**：[`user/hu_ipc_power.lua`](../../user/hu_ipc_power.lua)  
-> **主机 query/set**：[`user/hu_ipc_hostq.lua`](../../user/hu_ipc_hostq.lua)（RECORD/MIC/SOFTPHOTO 等）  
-> **TF 格式化**：[`user/hu_ipc_tffmt.lua`](../../user/hu_ipc_tffmt.lua)  
-> **VENC/AUDIO 编码**：[`user/hu_ipc_encode.lua`](../../user/hu_ipc_encode.lua)  
+> **AT handler**：[`user/hu_cmd.lua`](../../user/hu_cmd.lua) + `hu_cmd_*`  
+> **URC/RX**：[`user/hu_rx.lua`](../../user/hu_rx.lua) + `hu_rx_dsl.lua` / `hu_rx_media.lua`  
+> **IPC query/set**：[`user/hu_ipc.lua`](../../user/hu_ipc.lua) + `hu_ipc_*`  
 > **协议对照**：[UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../UART_PROTOCOL.md)  
-> **bind 头生成/校验**：`python tools/debug/_gen_bind_header.py --check-all` · spec：`tools/debug/bind_header_specs.json`
+> **bind 头**：`python tools/debug/_gen_bind_header.py --check-all` · spec：`tools/debug/bind_header_specs.json`  
+> **回归**：`python tools/debug/_protocol_regression_check.py`
+
+锁 / `SYS_EVT` / `state` 只留在 `host_uart.lua`，不要迁出。`hu_*` 文件名 ≤24 字节。
 
 ---
 
-## 0. 子模块 bind 头约定
+## 0. 模块树与 bind 顺序
 
-`hu_cmd_*` / `hu_ipc_*` 在 `function bind(C[, H, …])` 开头只做 **ctx 字段快照** 或 **延迟 wrapper**，业务逻辑从第一个非 header 行开始。
+```
+host_uart.lua              锁 / SYS_EVT / state / processLine / start
+├── hu_at.lua              AT_CMD_TABLE → exact 哈希 + prefix 数组
+├── hu_cmd.lua             AT 编排（bind 顺序固定）
+│   ├── hu_cmd_usb.lua     USBRESET / RNDIS / USBRECOVERY
+│   ├── hu_cmd_link.lua    P2P / GB28181 / MQTT / SERV
+│   ├── hu_cmd_pir.lua     HOSTEVT / PIRSTAT
+│   ├── hu_cmd_t3x.lua     RECORD / UPLOAD / IPCSTAT 等 NOTIFY
+│   └── hu_cmd_wled.lua    WLED 影子表 + AT
+├── hu_rx.lua              URC 编排，tryHandlers 函数数组
+│   ├── hu_rx_dsl.lua      匹配 DSL + 云态/TF/录像/IPC 行
+│   └── hu_rx_media.lua    VENC / AUDIO / MIC / FRAMERATE 等
+└── hu_ipc.lua             hostQuery / hostSet + 子模块编排
+    ├── hu_ipc_rec.lua     UART 恢复、qryHostStat
+    ├── hu_ipc_hostq.lua   RECORD / MIC / SOFTPHOTO query/set
+    ├── hu_ipc_cloud.lua   云状态 / GB28181（依赖 rec + hostq）
+    ├── hu_ipc_power.lua   IPC 关机 / ready（依赖 rec）
+    ├── hu_ipc_tffmt.lua   TF format
+    └── hu_ipc_encode.lua  VENC / AUDIO
+```
+
+**主文件 bind 顺序**（不要改）：
+
+1. 组 `ctx`（含 `pushUsbIdle`，cmd/usb/rec 可快照）
+2. `hu_cmd.bind(ctx)` → `hu_at.compile(cmd.at)`
+3. `hu_rx.bind(ctx)`，再把 `parseIpcStat` / `patchCloud` 等挂回 `ctx`
+4. `hu_ipc.bind(ctx)`：`rec → hostq`（查询挂到 `H`）→ `cloud → power → tffmt → encode`
+
+cmd 里用到 rx 的 `parseIpcStat` / `patchCloud` 必须 **延迟 wrapper**（`return C.foo(...)`），不能 `local foo = C.foo`。
+
+**WLED 两套入口**（不要混）：
+
+| 符号 | 是什么 | 谁用 |
+|------|--------|------|
+| `C.wledState` | 表 `wledRt`（有 `.on`） | `hu_rx_dsl` 写 `C.wledState.on` |
+| `C.M.wledState` | getter `wledGet` | `net_mqtt` 调 `hu.wledState()` |
+
+---
+
+## 1. bind 头约定
+
+`hu_cmd_*` / `hu_ipc_*` 在 `function bind(C[, H, …])` 开头只做 **ctx 字段快照** 或 **延迟 wrapper**，业务从第一个非 header 行开始。
 
 | 类型 | 写法 | 适用 |
 |------|------|------|
@@ -36,188 +69,188 @@
 新增/改子模块后：
 
 ```bash
-python tools/debug/_gen_bind_header.py --emit hu_cmd_xxx.lua   # 看建议头
-python tools/debug/_gen_bind_header.py --check-all                    # 对照 spec
+python tools/debug/_gen_bind_header.py --emit hu_cmd_xxx.lua
+python tools/debug/_gen_bind_header.py --check-all
 python tools/debug/_protocol_regression_check.py
 ```
 
 ---
 
-## 1. 数据流
+## 2. 数据流
 
 ```mermaid
 flowchart TD
-    RX[uart_bridge onRxRaw] --> PROC[host_process_line]
-    PROC --> TRY{RX_LINE_HANDLER_REGISTRY}
-    TRY -->|命中| ACK[专用 try_* 解析 / sys.publish]
+    RX[uart_bridge onUartLine] --> PROC[processLine]
+    PROC --> TRY{RX_LINE_TRY_HANDLERS}
+    TRY -->|命中| ACK[try* 解析 / sys.publish]
     TRY -->|未命中| AT{以 AT 开头?}
-    AT -->|是| DISPATCH[uart_dispatch_at]
-    AT -->|否| STR{STR:/HEX:}
-    STR -->|是| LINE[LINE_HANDLERS]
-    STR -->|否| PLAIN[host_plain_line]
-    DISPATCH --> EXACT[AT_EXACT 精确匹配]
-    DISPATCH --> PREFIX[AT_PREFIX 前缀匹配]
+    AT -->|是| DISPATCH[uartAtCmd → runAtDispatch]
+    AT -->|否| STR{第 4 字符是冒号?}
+    STR -->|是| LINE[LINE_HANDLERS HEX/STR]
+    STR -->|否| PLAIN[plainLine]
+    DISPATCH --> EXACT[AT_EXACT 哈希]
+    DISPATCH --> PREFIX[AT_PREFIX 数组]
+    DISPATCH --> RIL{passthrough?}
+    RIL -->|是| MODEM[hooks.modemAt]
 ```
 
-**原则**：T3x 主动上报的 `+XXX:` 应答行 **优先** 走 `RX_LINE_HANDLER_REGISTRY`，避免被 AT 分发误解析。
+**原则**：T3x 主动上报的 `+XXX:` 行 **优先** 走 `RX_LINE_TRY_HANDLERS`，避免被 AT 分发误解析。
+
+`uartAtCmd`：仅当整串不在 `AT_EXACT` 时才剥尾部 `?`，避免 `AT+USBRESET?` 被剥成 `AT+USBRESET` 真复位。
 
 ---
 
-### 2.0 AT/URC → 源文件速查
+## 3. AT 命令表（`hu_at.compile`）
 
-| 域 | 文件 |
-|----|------|
-| AT 表编译 | `hu_at.lua` |
-| TIME/HOSTIDLE/GETCFG/OTA/REBOOT | `hu_cmd.lua` |
-| HOSTEVT/PIRSTAT/PIRCLR | `hu_cmd_pir.lua` |
-| RECORD/UPLOAD/IPCSTAT NOTIFY | `hu_cmd_t3x.lua` |
-| P2P/GB28181/MQTT/SERV | `hu_cmd_link.lua` |
-| WLED | `hu_cmd_wled.lua` |
-| USB/RNDIS/RECOVERY | `hu_cmd_usb.lua` |
-| URC 注册表 | `hu_rx.lua` |
-| 云态/TF/录制/IPC 行 + 匹配 DSL | `hu_rx_dsl.lua` |
-| 编码 URC | `hu_rx_media.lua` |
-| hostQuery/hostSet/IPC 编排 | `hu_ipc.lua` |
-| 云状态/GB28181 | `hu_ipc_cloud.lua` |
-| UART 恢复 | `hu_ipc_rec.lua` |
-| IPC 上电/关机 | `hu_ipc_power.lua` |
-| RECORD/MIC/SOFTPHOTO query/set | `hu_ipc_hostq.lua` |
-| TF format | `hu_ipc_tffmt.lua` |
-| VENC/AUDIO 编码 | `hu_ipc_encode.lua` |
+`uartCmdEntr(keys, prefix, handler)` → `AT_EXACT` 哈希 + `AT_PREFIX` 数组。  
+handler 名是 `hu_cmd` 注入表的短键（`at_ack` / `record`），对应函数是 camelCase（`atAck` / `t3x.uartRecord`）。
 
----
+### 3.1 握手 / 版本 / 状态
 
-## 2. AT 命令表（`AT_CMD_TABLE`）
+| 匹配 | handler 键 | 函数 | 说明 |
+|------|------------|------|------|
+| `AT` | `at_ack` | `atAck` | 链路存活 |
+| `ATI` / `AT+CGMR` / `AT+GETVER` | `ati` | `atVersion` | 固件版本 |
+| `AT+GETCFG` | `getcfg` | `atGetCfg` | 4G 综合状态 |
+| `AT+PIRSTAT` / `AT+PIRSTAT?` | `pirstat` | `uartPirStatQry` | PIR 宽表 |
+| `AT+PIRCLR` | `pirclr` | `uartPirClr` | 清零 PIR |
+| `AT+HOSTEVT` / `AT+HOSTEVT?` | `hostevt` | `uartHostEvtQry` | 待处理事件 |
+| `AT+HOSTEVTCLR` | `hostevtclr` | `uartHostEvtClr` | 清 pending 唤醒 |
+| `AT+RECORD` / `AT+RECORD?` | `record_qry` | `atRecordQry` | 4G 侧录像会话 |
+| `AT+TIME` | `time` | `atTime` | Unix 时间 |
+| `AT+IMEI` / `AT+IMEI?` | `imei` | `atImei` | Cat.1 IMEI |
+| `AT+IPCINFO` / `AT+IPCINFO?` | `ipcinfo` | `uartIpcInfoQry` | IMEI + GB28181 |
+| `AT+WLED?` / `AT+WLEDEN?` / `AT+WLED=` / `AT+WLEDEN=` | `wled` | `uartWled` | 白光灯 |
+| `AT+HOSTIDLE` / `AT+HOSTIDLE?` / `AT+HOSTIDLE=` | `hostidle` | `atHostIdle` | T31 休眠门禁 |
 
-构建：`uart_cmd_entry(keys, prefix, handler)` → 编译为 `AT_EXACT` 哈希 + `AT_PREFIX` 数组。
+exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只为阅读。
 
-### 2.1 握手 / 版本
+### 3.2 T3x 主动上报（前缀 `AT+XXX=`）
 
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT` | `uart_at_ack` | 链路存活 |
-| `ATI` / `AT+CGMR` / `AT+GETVER` | `uart_ati` | 固件版本 |
+| 前缀 | handler 键 | 函数 |
+|------|------------|------|
+| `AT+RECORD=` | `record` | `uartRecord` |
+| `AT+IPCSTATUS=` | `ipcstatus` | `uartIpcStatusNtf` |
+| `AT+IPCSTAT=` | `ipcstat` | `uartIpcStatNtf` |
+| `AT+TFCARD=` | `tfcard` | `uartTfCardNtf` |
+| `AT+SNAPSHOT=` | `snapshot` | `uartSnapshot` |
+| `AT+PIRMEDIA=` | `pirmedia` | `uartPirMedia` |
+| `AT+PERSONCNT=` | `personcnt` | `uartPersonCnt` |
+| `AT+IPCALERT=` | `ipcalert` | `uartIpcAlert` |
+| `AT+UPLOADNEED=` | `uploadneed` | `uartUploadNeed` |
+| `AT+UPLOADRESULT=` | `uploadresult` | `uartUploadResult` |
 
-### 2.2 状态查询
+空参一律 `RSP_ERROR`（`needArg` / `ntfArg`）。`ntfArg` 会先 `noteHostPush()`。
 
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT+GETCFG` | `uart_getcfg` | 4G 综合状态 |
-| `AT+PIRSTAT` / `AT+PIRSTAT?` | `uart_pirstat_query` | PIR 宽表 + has_work |
-| `AT+RECORD` / `AT+RECORD?` | `uart_record_query` | 4G 侧录像会话 |
-| `AT+HOSTEVT` / `AT+HOSTEVT?` | `uart_hostevt_query` | 精简待处理事件 |
-| `AT+HOSTIDLE` / `AT+HOSTIDLE?` / `AT+HOSTIDLE=` | `uart_hostidle` | T31 休眠门禁 |
-| `AT+TIME` | `uart_time_query` | Unix 时间 |
-| `AT+IMEI` / `AT+IMEI?` | `uart_imei` | Cat.1 IMEI |
-| `AT+IPCINFO` / `AT+IPCINFO?` | `uart_ipcinfo_query` | IMEI + GB28181 |
-| `AT+WLED?` / `AT+WLEDEN?` / `AT+WLED=` / `AT+WLEDEN=` | `uart_wled` | 白光灯 |
+### 3.3 链路 / 低功耗 / USB / 维护
 
-### 2.3 T3x 主动上报（前缀 `AT+XXX=`）
+| 匹配 | handler 键 | 说明 |
+|------|------------|------|
+| `AT+SERVCREATE=` / `AT+SERVCLOSE=` | `servcreate` / `servclose` | TCP 通道 |
+| `AT+MQTTCFG=` / `AT+MQTTPUB=` | `mqttcfg` / `mqttpub` | MQTT 配置 / 代发 |
+| `AT+P2PCFG=` / `AT+GB28181CFG=` | `p2pcfg` / `gb28181` | 流媒体 |
+| `AT+RIL=` | `ril` | modem 透传 |
+| `AT+SENDSTR=` / `AT+SENDHEX=` | `sendstr` / `sendhex` | 透传 |
+| `AT+LOWPOWER=` | `lowpower` | 4G rest 进/出 |
+| `AT+RNDIS` / `AT+RNDIS=` | `rndis` | USB 网卡 |
+| `AT+USBRESET` / `AT+USBRESET?` | `usbreset` | USB 重新枚举 |
+| `AT+USBRECOVERY=` | `usbrecovery` | UART 恢复流程 |
+| `AT+REBOOT` / `AT+POWEROFF` | `reboot` / `poweroff` | 重启 / 关机 |
+| `AT+OTA` / `AT+OTACHECK` | `ota` | OTA |
+| `AT+SETCFG=` | `setcfg` | 运行时配置 |
 
-| 前缀 | Handler | 典型 URC |
-|------|---------|----------|
-| `AT+RECORD=` | `uart_record_notify` | 录像开始/结束 |
-| `AT+IPCSTATUS=` | `uart_ipcstatus_notify` | IPC 生命周期 |
-| `AT+IPCSTAT=` | `uart_ipcstat_notify` | 云状态快照 |
-| `AT+TFCARD=` | `uart_tfcard_notify` | TF 卡状态 |
-| `AT+SNAPSHOT=` | `uart_snapshot_notify` | 抓拍结果 |
-| `AT+PIRMEDIA=` | `uart_pir_media_notify` | PIR 媒体策略 |
-| `AT+PERSONCNT=` | `uart_person_cnt_notify` | 人形计数 |
-| `AT+IPCALERT=` | `uart_ipc_alert_notify` | IPC 异常告警 |
-
-### 2.4 链路配置
-
-| 前缀 | Handler | 说明 |
-|------|---------|------|
-| `AT+SERVCREATE=` | `uart_servcreate` | TCP 通道 |
-| `AT+MQTTCFG=` | `uart_mqttcfg` | 写 MQTT 配置并重启 |
-| `AT+P2PCFG=` / `AT+GB28181CFG=` | 对应 handler | 流媒体配置 |
-| `AT+SERVCLOSE=` | `uart_servclose` | 关 TCP |
-| `AT+RIL=` | `uart_ril` | modem 透传开关 |
-| `AT+MQTTPUB=` | `uart_mqttpub` | T3x 请求 4G 发 MQTT |
-
-### 2.5 低功耗 / USB
-
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT+LOWPOWER=` | `uart_lowpower` | 4G rest 进/出 |
-| `AT+RNDIS` / `AT+RNDIS=` | `uart_rndis` | USB 网卡 |
-| `AT+USBRESET` / `AT+USBRESET?` | `uart_usbreset` | USB 重新枚举 |
-| `AT+USBRECOVERY=` | `uart_usbrecovery` | UART 恢复流程 |
-
-### 2.6 电源 / 维护
-
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT+REBOOT` | `uart_reboot` | 重启 4G |
-| `AT+POWEROFF` | `uart_poweroff` | 关机 |
-| `AT+OTA` / `AT+OTACHECK` | `uart_ota` | OTA |
-| `AT+SETCFG=` | `uart_setcfg` | 运行时配置 |
-| `AT+PIRCLR` | `uart_pirclr` | 清零 PIR 统计 |
-| `AT+HOSTEVTCLR` | `uart_hostevt_clr` | 清除 pending 唤醒 |
-
-### 2.7 透传与其它
-
-| 类型 | 说明 |
-|------|------|
-| `STR:` / `HEX:` 行 | `LINE_HANDLERS` → 原样/十六进制转发 |
-| `state.passthrough` + `AT*` | 转交 `hooks.modem_at`（RIL 模式） |
+`STR:` / `HEX:` 行走 `LINE_HANDLERS`，不进 AT 表。`state.passthrough` 时未命中的 `AT*` 转交 `hooks.modemAt`。
 
 ---
 
-## 3. 上行应答注册表（`RX_LINE_HANDLER_REGISTRY`）
+## 4. 上行应答（`RX_LINE_TRY_HANDLERS`）
 
-按序调用 `try_*`，返回 `true` 表示已消费。
+按序调用函数，返回 `true` 表示已消费。注册表是 **函数数组**，不是 `{ name, fn }`。
 
-| name | 函数 | 典型行 | 用途 |
-|------|------|--------|------|
-| encode_uart_error | `try_encode_uart_error` | `+ENCODE:ERROR` | 编码 UART 错误 |
-| sound_ack | `try_sound_ack_line` | `+SOUNDACK:` | 提示音 ACK |
-| timeset_ack | `try_timeset_ack_line` | `+TIMESET:` | 对时 ACK |
-| gb28181 | `try_gb28181_line` | `+GB28181:` | GB28181 配置应答 |
-| wled | `try_wled_line` | `+WLED:` | 白光灯状态 |
-| tfformat | `try_tfformat_line` | `+TFFORMAT:` | 格式化结果 |
-| tfcard | `try_tfcard_line` | `+TFCARD:` | TF 卡查询应答 |
-| recordtime | `try_recordtime_line` | `+RECORDTIME:` | MQTT 2022/2023 |
-| framerate | `try_framerate_line` | `+FRAMERATE:` | MQTT 2024/2025 |
-| recordctrl | `try_recordctrl_line` | `+RECORDCTRL:` | 停录控制 |
-| persondet | `try_persondet_line` | `+PERSONDET:` | MQTT 2026/2027 |
-| record | `try_record_line` | `+RECORD:` | T3x 录像 URC |
-| venc / vencset | `try_venc_*` | `+VENC:` | 视频编码 query/set |
-| audio / audioset | `try_audio_*` | `+AUDIO:` | 音频编码 |
-| mic / micset | `try_mic_*` | `+MIC:` | 麦克风 MQTT 2028/2029 |
-| softphoto / softphotoset | `try_softphoto_*` | `+SOFTPHOTO:` | 软光敏 2030/2031 |
-| ipcstat | `try_ipcstat_line` | `+IPCSTAT:` | 云状态 |
-| ipcstatus | `try_ipcstatus_line` | `+IPCSTATUS:` | IPC 生命周期 |
-| ipcpoweroff | `try_ipcpoweroff_line` | `+IPCPOWEROFF:OK` | 优雅关机 ACK |
-| encode_ok_tail | `try_encode_ok_tail` | 行尾 OK | 编码命令完成 |
-
----
-
-## 4. HOSTIDLE 门禁（与电量联动）
-
-`uart_hostidle` 决策顺序：
-
-1. `FEATURE_CFG.host_evt` / `HOST_EVT_CFG.allow_host_idle_sleep`
-2. USB 插入 → `+HOSTIDLE:USB`
-3. `build_hostevt_body` 含 `has_event=1` → `BUSY`
-4. `battery_guard.shdHostSleep()` → >20% 回 `BUSY`
-5. `battery_guard.canHostSleep()` → PIR 唤醒 30s 内 `BUSY`
-6. 通过 → `t3x_ctrl.enterSleep({ reason="host_idle" })` → `OK`
+| 函数 | 典型行 | 用途 |
+|------|--------|------|
+| `tryEncodeUartErr` | 裸 `ERROR` | 冲掉进行中的 encode 查询 |
+| `tryEncodeUartOk` | 裸 `OK` | encode / MIC 查询结束 |
+| `trySoundAck` | `+SOUNDACK:` | 提示音 ACK |
+| `tryTimesetAck` | `+TIMESET:OK` | 对时 ACK |
+| `tryGb28181` | `+GB28181:` | GB28181 配置应答 |
+| `tryWledLine` | `+WLED:` | 白光灯状态 |
+| `tryTfFormat` | `+TFFORMAT:` | 格式化结果 |
+| `tryTfCard` | `+TFCARD:` | TF 卡查询应答 |
+| `tryRecTime` | `+RECORDTIME:` | MQTT 2022/2023 |
+| `tryRecord` | `+RECORD:` | T3x 录像 URC |
+| `tryRecordCtrlLine` | `+RECORDCTRL:` | 停录控制 |
+| `tryUploadLine` | `+UPLOADVIDEO:` | 上传 |
+| `tryFramerateLine` | `+FRAMERATE:` | MQTT 2024/2025 |
+| `tryVenc*` / `tryAudio*` | `+VENC:` / `+AUDIO:` | 视频/音频编码 |
+| `tryMic*` | `+MIC:` | 麦克风 MQTT 2028/2029 |
+| `trySoftPhoto*` | `+SOFTPHOTO:` | 软光敏 2030/2031 |
+| `tryPersonDetLine` | `+PERSONDET:` | 人形开关 |
+| `tryIpcStatCloud` | `+IPCSTAT:` | 云状态 |
+| `tryIpcStatus` | `+IPCSTATUS:` | IPC 生命周期 |
+| `tryIpcPowerOff` | `+IPCPOWEROFF:` | 优雅关机 ACK |
 
 ---
 
-## 5. 扩展新 AT 命令
+## 5. HOSTIDLE 门禁
 
-1. 实现 `local function uart_xxx(cmd) ... end`
-2. 在 `AT_CMD_TABLE` 追加 `uart_cmd_entry(...)`
-3. 无需改 `uart_dispatch_at`（表自动编译）
+`atHostIdle` 决策顺序：
 
-扩展新 T3x 上行应答：
-
-1. 实现 `local function try_xxx_line(line) ... end`
-2. 在 `RX_LINE_HANDLER_REGISTRY` 追加 `{ name, fn }`（注意顺序：更具体的放前面）
+1. `FEATURE_CFG.host_evt == false` → `NOT_SUPPORTED`
+2. `HOST_EVT_CFG.allow_host_idle_sleep == false` → `DISABLED`
+3. USB 挡休眠且 `AT+HOSTIDLE=1` → `+HOSTIDLE:USB`（`=0` 仍回 OK）
+4. `bldPirWake(true)` 含 `has_event=1` → `BUSY`
+5. `AT+HOSTIDLE?` → 回 `lowpower/usb/host_idle_allow` 快照
+6. `battery_guard.shdHostSleep()` / `canHostSleep()` 任一否 → `BUSY`
+7. 通过 → `t3x_ctrl.enterSleep({ reason="host_idle" })` → `OK`
 
 ---
 
-**版本**：2026-06-30
+## 6. 扩展
+
+新 AT：
+
+1. 在对应 `hu_cmd_*.lua` 写 `local function uartXxx(cmd)`
+2. 挂到 `hu_cmd` 的 `at` 表
+3. 在 `hu_at.lua` 追加 `uartCmdEntr(...)`
+4. 无需改 `runAtDispatch`
+
+新 T3x 上行：
+
+1. 在 `hu_rx_dsl` / `hu_rx_media` 写 `tryXxx(line)`，命中返回 `true`
+2. 追加到 `hu_rx.lua` 的函数数组（更具体的放前面）
+
+---
+
+## 7. 本轮 hu_* 精简（可读性，协议语义不变）
+
+目标：少重复、早返回、名字对齐；不改 AT/MQTT 线格式。
+
+| 文件 | 做了什么 |
+|------|----------|
+| `hu_cmd_t3x.lua` | `needArg` / `ntfArg`；NOTIFY 空参统一 ERROR |
+| `hu_cmd.lua` | `atSend` 分 STR/HEX；`atLowPower` 一次读 rest；`atSend` 不用 `and/or` 调两次 |
+| `hu_cmd_usb.lua` | 去掉未用 `C.state`；`pushRecover`；RNDIS 开/关合一 |
+| `hu_cmd_wled.lua` | `ackMs` / `writeShadow`；影子表 `wledRt`（勿再命名成 `wledState`） |
+| `hu_cmd_link.lua` | `validPassword` |
+| `hu_cmd_pir.lua` | `uartHostEvtQry` 走 `bldHostEvtBody()` |
+| `hu_rx_dsl.lua` | `publishAck` / `recTimeRow`；TFFORMAT/WLED/IPCPOWEROFF 共用 ACK |
+| `hu_rx.lua` | 注册表分组注释 |
+| `hu_ipc_cloud.lua` | `flag01` / `liftFlag` |
+| `hu_ipc_encode.lua` | `packRows` 不再循环找第一行 |
+| `hu_ipc_hostq.lua` | `defineQuery` 对齐；SOFTPHOTO 字段名表 |
+| `hu_ipc_rec.lua` | `noteUartLinkOk = clearMissStreak` |
+| `hu_ipc_power.lua` | `waitBusyClear` 合成 while |
+| `hu_at.lua` | 分区注释；HOSTEVT 与 PIR exact 排一起 |
+
+`hu_ipc.lua` / `hu_ipc_tffmt.lua` / `hu_rx_media.lua` 本轮结构已短，未再拆。
+
+**不要再踩**：
+
+- `atSend`：`fn` 返回 `false` 时不能写成 `extra and fn(...) or fn(...)`（会调两次）。
+- `hu_cmd_usb` bind 头不要快照 `C.state`（handler 不用）。
+- WLED：表叫 `wledRt`，getter 叫 `wledGet`；同名会把表盖成函数，`+WLED:` 写 `.on` 会崩。
+
+---
+
+**版本**：2026-09-01

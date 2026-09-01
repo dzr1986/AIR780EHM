@@ -32,6 +32,20 @@ function bind(C)
         return (st == "ready") and 1 or 0
     end
 
+    -- AT+XXX= 体；空或未匹配一律 ERROR
+    local function needArg(cmd, pat)
+        local arg = cmd:match(pat)
+        if not arg or arg == "" then
+            return nil
+        end
+        return arg
+    end
+
+    local function ntfArg(cmd, pat)
+        noteHostPush()
+        return needArg(cmd, pat)
+    end
+
     local function kvFromArg(arg, key)
         local v = arg:match(key .. "=([^,]+)")
         return v and v:gsub("^%s+", ""):gsub("%s+$", "") or ""
@@ -42,8 +56,8 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function uartRecord(cmd)
-        local arg = cmd:match("^AT%+RECORD=(.+)$")
-        if not arg or arg == "" then
+        local arg = needArg(cmd, "^AT%+RECORD=(.+)$")
+        if not arg then
             return RSP_ERROR
         end
         if arg == "1" or arg:match("^1,") then
@@ -72,19 +86,18 @@ function bind(C)
     end
 
     local function uartPersonCnt(cmd)
-        local cnt = cmd:match("^AT%+PERSONCNT=(%d+)$")
+        local cnt = needArg(cmd, "^AT%+PERSONCNT=(%d+)$")
         if not cnt then
             return RSP_ERROR
         end
         local n = tonumber(cnt) or 0
         sys.publish(E.T3X_PERSON_CNT, n)
-        -- 人数不上 MQTT；app.lua 对 T3X_PERSON_CNT 不再 publishPirToMqtt
         return rspFmt("PERSONCNT", "ok,count=%d", n)
     end
 
     local function uartPirMedia(cmd)
-        local action = cmd:match("^AT%+PIRMEDIA=(.+)$")
-        if not action or action == "" then
+        local action = needArg(cmd, "^AT%+PIRMEDIA=(.+)$")
+        if not action then
             return RSP_ERROR
         end
         modCall("pir_ctrl", "applEffMedia", action)
@@ -96,8 +109,7 @@ function bind(C)
         if not code or code == "" then
             return RSP_ERROR
         end
-        detail = detail or ""
-        sys.publish(E.T3X_IPC_ALERT, code, detail)
+        sys.publish(E.T3X_IPC_ALERT, code, detail or "")
         return rspFmt("IPCALERT", "OK,code=%s", code)
     end
 
@@ -106,39 +118,32 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function uartUploadNeed(cmd)
-        local arg = cmd:match("^AT%+UPLOADNEED=(.+)$")
-        if not arg or arg == "" then
+        local arg = needArg(cmd, "^AT%+UPLOADNEED=(.+)$")
+        if not arg then
             return RSP_ERROR
         end
         local need = tonumber(arg:match("^(%d+)")) or 1
-        local reason = arg:match("reason=([^,]+)") or "record_done"
-        local path = arg:match("path=([^,]+)") or ""
-        local pirStatus = arg:match("pirStatus=([^,]+)") or "t3x_active"
         modCall("net_mqtt", "pubUploadNeed", {
             needUpload = need,
             action = "upload_video",
-            reason = reason,
-            recordPath = path,
-            pirStatus = pirStatus,
+            reason = arg:match("reason=([^,]+)") or "record_done",
+            recordPath = arg:match("path=([^,]+)") or "",
+            pirStatus = arg:match("pirStatus=([^,]+)") or "t3x_active",
             source = "t3x",
         })
         return rspFmt("UPLOADNEED", "ok,need=%d", need)
     end
 
     local function uartUploadResult(cmd)
-        local arg = cmd:match("^AT%+UPLOADRESULT=(.+)$")
-        if not arg or arg == "" then
+        local arg = needArg(cmd, "^AT%+UPLOADRESULT=(.+)$")
+        if not arg then
             return RSP_ERROR
         end
-
         local ret = tonumber(kvFromArg(arg, "ret")) or -1
-        local vtype = tonumber(kvFromArg(arg, "type")) or 1
-        local startTs = tonumber(kvFromArg(arg, "start")) or 0
-        local endTs = tonumber(kvFromArg(arg, "end")) or 0
         modCall("net_mqtt", "pubUploadDone", ret, kvFromArg(arg, "msgId"), {
-            videoType = vtype,
-            beginTs = startTs,
-            endTs = endTs,
+            videoType = tonumber(kvFromArg(arg, "type")) or 1,
+            beginTs = tonumber(kvFromArg(arg, "start")) or 0,
+            endTs = tonumber(kvFromArg(arg, "end")) or 0,
             uploadTs = kvFromArg(arg, "uploadTs"),
             fileName = kvFromArg(arg, "file"),
             httpPath = kvFromArg(arg, "httpPath"),
@@ -149,10 +154,9 @@ function bind(C)
         return rspFmt("UPLOADRESULT", "ok,ret=%d", ret)
     end
 
-    function uartIpcStatusNtf(cmd)
-        noteHostPush()
-        local st = cmd:match("^AT%+IPCSTATUS=(.+)$")
-        if not st or st == "" then
+    local function uartIpcStatusNtf(cmd)
+        local st = ntfArg(cmd, "^AT%+IPCSTATUS=(.+)$")
+        if not st then
             return RSP_ERROR
         end
         state.host_ipc_status = st
@@ -161,10 +165,9 @@ function bind(C)
         return rspFmt("IPCSTATUS", "OK,status=%s", st)
     end
 
-    function uartIpcStatNtf(cmd)
-        noteHostPush()
-        local body = cmd:match("^AT%+IPCSTAT=(.+)$")
-        if not body or body == "" then
+    local function uartIpcStatNtf(cmd)
+        local body = ntfArg(cmd, "^AT%+IPCSTAT=(.+)$")
+        if not body then
             return RSP_ERROR
         end
         local snap = parseIpcStat("+IPCSTAT:" .. body)
@@ -175,10 +178,9 @@ function bind(C)
         return rspLineOk("IPCSTAT")
     end
 
-    function uartTfCardNtf(cmd)
-        noteHostPush()
-        local body = cmd:match("^AT%+TFCARD=(.+)$")
-        if not body or body == "" then
+    local function uartTfCardNtf(cmd)
+        local body = ntfArg(cmd, "^AT%+TFCARD=(.+)$")
+        if not body then
             return RSP_ERROR
         end
         local snap = parseTfCard("+TFCARD:" .. body)
@@ -192,13 +194,14 @@ function bind(C)
     end
 
     local function uartSnapshot(cmd)
-        local path = cmd:match("^AT%+SNAPSHOT=(.+)$")
-        if not path or path == "" then
+        local path = needArg(cmd, "^AT%+SNAPSHOT=(.+)$")
+        if not path then
             return RSP_ERROR
         end
         sys.publish(E.T3X_SNAPSHOT_DONE, path)
         return rspFmt("SNAPSHOT", "ok,path=%s", path)
     end
+
     return {
         ipcReadyFrom = ipcReadyFrom,
         uartRecord = uartRecord,
