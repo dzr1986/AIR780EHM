@@ -286,7 +286,8 @@ function bind(C)
     -- AT 表 + export
     ----------------------------------------------------------------
 
-    C.wledState = wled.wledState
+    -- wledSt 给 URC 写 .on；wledState() 是对外 getter
+    C.wledState = wled.wledSt
     C.wledExport = wled.wledExport
     C.wledGet = wled.wledGet
     C.ipcReadyFrom = t3x.ipcReadyFrom
@@ -334,35 +335,28 @@ function bind(C)
         setcfg = atSetCfg,
     }
 
-    local exp = {
-        at = at,
-        hexLine = hexLine,
-        strLine = strLine,
+    -- 主文件只要 at 表 + HEX/STR 行；对外 API 一律挂 C.M
+    local pub = {
+        devImei = devImei,
+        bldHostEvtBody = pir.bldHostEvtBody,
+        getHostEvtPending = C.getHostEvtPending,
         wledState = wled.wledState,
         setWledState = wled.setWledState,
         qryHostWled = wled.qryHostWled,
         rstUsbRecover = usb.rstUsbRecover,
-        devImei = devImei,
-        bldHostEvtBody = pir.bldHostEvtBody,
-        getHostEvtPending = C.getHostEvtPending,
-        wledGet = wled.wledGet,
         uartIpcStatusNtf = t3x.uartIpcStatusNtf,
         uartIpcStatNtf = t3x.uartIpcStatNtf,
         uartTfCardNtf = t3x.uartTfCardNtf,
     }
+    for k, fn in pairs(pub) do
+        C.M[k] = fn
+    end
 
-    C.M.devImei = devImei
-    C.M.bldHostEvtBody = pir.bldHostEvtBody
-    C.M.getHostEvtPending = C.getHostEvtPending
-    C.M.wledState = wled.wledState
-    C.M.setWledState = wled.setWledState
-    C.M.qryHostWled = wled.qryHostWled
-    C.M.rstUsbRecover = usb.rstUsbRecover
-    C.M.uartIpcStatusNtf = t3x.uartIpcStatusNtf
-    C.M.uartIpcStatNtf = t3x.uartIpcStatNtf
-    C.M.uartTfCardNtf = t3x.uartTfCardNtf
-
-    return exp
+    return {
+        at = at,
+        hexLine = hexLine,
+        strLine = strLine,
+    }
 end
 
 return _M

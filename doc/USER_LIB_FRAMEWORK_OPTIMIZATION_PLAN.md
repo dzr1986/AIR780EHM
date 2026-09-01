@@ -198,7 +198,7 @@ python tools/debug/_gen_bind_header.py --emit hu_cmd_pir.lua
 python tools/debug/_gen_bind_header.py --scan user/hu_cmd_link.lua
 ```
 
-**约定**：`parseIpcStat` / `parseTfCard` / `hostQuery` / `idCfg` / `pushUsbIdle` 等 ctx 上 **晚于 rx.bind 才赋值** 的字段，子模块必须用 `local function foo(...) return C.foo(...) end`，**禁止** `local foo = C.foo` 快照。
+**约定**：`parseIpcStat` / `parseTfCard` / `hostQuery` / `idCfg` / `pushUsbIdle` 等 ctx 上 **晚于对应 bind 才赋值** 的字段，子模块必须用 `local function foo(...) return C.foo(...) end`，**禁止** `local foo = C.foo` 快照。主文件在 `hu_rx.bind` 之后把 parse*/patchCloud 写回 ctx；`pushUsbIdle` 在 start 段定义后挂上。
 
 ---
 

@@ -19,6 +19,19 @@
 > **协议对照**：[UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../UART_PROTOCOL.md)  
 > **bind 头生成/校验**：`python tools/debug/_gen_bind_header.py --check-all` · spec：`tools/debug/bind_header_specs.json`
 
+**主文件流水线**（`host_uart.lua`，顺序即契约）：
+
+```
+ctx 公共能力
+  → hu_cmd.bind     AT handler（notify 运行时再调 ctx.parseIpcStat）
+  → hu_at.compile   精确表 + 前缀表
+  → hu_rx.bind      URC 注册表，回填 parseIpcStat / patchCloud
+  → hu_ipc.bind     hostQuery/hostSet，回填 hostQuery / noteUartLinkOk
+processLine: URC 注册表 → AT 表 → STR:/HEX: → 明文
+```
+
+晚于 `rx.bind` 才挂到 ctx 的字段（`parseIpcStat` / `patchCloud` / `hostQuery` / `pushUsbIdle`）子模块必须用延迟 wrapper，禁止 `local foo = C.foo` 快照。
+
 ---
 
 ## 0. 子模块 bind 头约定

@@ -6,6 +6,7 @@
 --
 -- 本文件只做两件事：UART 上 query/set 公共路径，再 bind
 -- rec → hostq（查询挂 H）→ cloud → power → tffmt → encode
+-- defineQuery/defineSet 字段与 hostQuery/hostSet 同名
 --
 
 require "sys"
@@ -251,24 +252,28 @@ function bind(C)
     end
 
     ----------------------------------------------------------------
-    -- 工厂：子模块用短字段 busy/tag/tmo/at/ev/dis/pre/rsp/prep
+    -- 工厂：子模块用 hostQuery/hostSet 同名字段
     ----------------------------------------------------------------
 
     local function defineQuery(d)
         return function(arg)
             local opts = type(arg) == "table" and arg or nil
+            local atCmd = d.atCmd
+            if type(atCmd) == "function" then
+                atCmd = atCmd(opts or {})
+            end
             return cachedQry(opts and opts.timeoutMs or arg, {
-                busyKey = d.busy,
-                cacheKey = d.cache,
-                requireParsed = d.parsed,
-                policyTag = d.tag,
+                busyKey = d.busyKey,
+                cacheKey = d.cacheKey,
+                requireParsed = d.requireParsed,
+                policyTag = d.policyTag,
                 cfg = d.cfg(),
-                defaultTimeout = d.tmo,
-                atCmd = type(d.at) == "function" and d.at(opts or {}) or d.at,
-                ackEvent = d.ev,
-                whenDisabled = d.dis,
-                beforeSend = d.pre,
-                onResponse = d.rsp,
+                defaultTimeout = d.timeout,
+                atCmd = atCmd,
+                ackEvent = d.ackEvent,
+                whenDisabled = d.whenDisabled,
+                beforeSend = d.beforeSend,
+                onResponse = d.onResponse,
             })
         end
     end
@@ -277,18 +282,18 @@ function bind(C)
         return function(opts)
             opts = opts or {}
             return hostSet({
-                busyKey = d.busy,
-                policyTag = d.tag,
+                busyKey = d.busyKey,
+                policyTag = d.policyTag,
                 cfg = d.cfg(),
-                bootCfg = d.boot and d.boot() or nil,
-                defaultTimeout = d.tmo,
+                bootCfg = d.bootCfg and d.bootCfg() or nil,
+                defaultTimeout = d.timeout,
                 timeoutMs = opts.timeoutMs,
-                ackEvent = d.ev,
+                ackEvent = d.ackEvent,
                 skipQuiet = d.skipQuiet,
                 prepare = function()
-                    return d.prep(opts)
+                    return d.prepare(opts)
                 end,
-                parseRsp = d.parse or parseOk,
+                parseRsp = d.parseRsp or parseOk,
             })
         end
     end

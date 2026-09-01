@@ -1,7 +1,14 @@
 -- ================================================================
 -- Filename : host_uart.lua
--- Module   : T3x AT 核心：互斥、分发、RX 行解析、start/notify；handler 见 hu_cmd/ipc
+-- Module   : T3x UART 入口：锁 / state / 行分发 / start
 -- Arch     : doc/modules/HOST_UART_AT_DISPATCH.md
+--
+-- 数据流（uart_bridge.onLine → processLine）:
+--   1) RX 注册表（+URC）  2) AT 精确/前缀表  3) STR:/HEX:  4) 明文
+--
+-- 绑定（顺序即契约，勿改）:
+--   ctx → hu_cmd.bind → hu_at.compile → hu_rx.bind → hu_ipc.bind
+--   rx 回填 parseIpcStat / patchCloud；ipc 回填 hostQuery / noteUartLinkOk
 -- ================================================================
 
 require "sys"
@@ -63,16 +70,22 @@ _M.EVT = {
 
 local hooks = {}
 local state = {
+    -- 唤醒 pending
     pending_sid = 0,
     pending_evt = -1,
     pending_valid = false,
+    -- UART 会话
     passthrough = false,
     channel = nil,
     last_command = nil,
     hex_report = false,
+    uart_txn_busy = false,
+    host_push_quiet_until = 0,
+    -- 主机就绪
     host_at_ready = false,
     first_host_at = nil,
     host_ready_seen = false,
+    -- 身份 / P2P / GB28181
     host_gb28181_id = nil,
     p2p_uid = nil,
     p2p_product = nil,
@@ -80,6 +93,7 @@ local state = {
     gb28181_imei = nil,
     gb28181_query_busy = false,
     gb28181_refresh_scheduled = false,
+    -- TF / 录像缓存
     host_tf_card = nil,
     tf_card_query_busy = false,
     host_record = nil,
@@ -87,24 +101,25 @@ local state = {
     host_record_time = nil,
     recordtime_query_busy = false,
     recordtime_set_busy = false,
+    t3x_rec_active = 0,
+    t3x_last_reason = "idle",
+    tfcard_format_busy = false,
+    -- IPC 生命周期 / 云态
     host_ipc_status = nil,
     host_ipc_cloud_stat = nil,
     ipc_status_query_busy = false,
     ipc_cloud_stat_query_busy = false,
     ipc_poweroff_busy = false,
+    -- 编码行缓存
     encode_venc_rows = nil,
     encode_audio_rows = nil,
     encode_query_busy = false,
     encode_set_busy = false,
-    t3x_rec_active = 0,
-    t3x_last_reason = "idle",
-    tfcard_format_busy = false,
+    -- UART 恢复
     ipc_uart_miss_streak = 0,
     uart_recovery_busy = false,
     uart_recovery_attempts = 0,
     uart_recovery_last_sec = 0,
-    host_push_quiet_until = 0,
-    uart_txn_busy = false,
 }
 
 local E = cfgm.get("APP_EVENTS")
@@ -113,22 +128,10 @@ local uartTxnDepth = 0
 local started = false
 local t3xModule = nil
 local usbChargeCache = nil
-
 local hostNowMs = utils.nowMs
 
--- rx/ipc 绑定后赋值（cmd 阶段经 ctx 延迟包装调用）
-local parseIpcStat
-local parseTfCard
-local normIpcCloud
-local commitIpcStat
-local patchCloud
-local noteUartLinkOk
-local isT31HostQry
-local qryIpcCloudStat
-local mergeTfCloud
-
 ----------------------------------------------------------------
--- 小工具
+-- 小工具 / UART 事务锁
 ----------------------------------------------------------------
 
 local function modCall(name, fn, ...)
@@ -164,17 +167,12 @@ local function waitHostIdle(timeoutMs)
     local deadline = hostNowMs() + timeoutMs
     while hostBusy() do
         local now = hostNowMs()
-        if now >= deadline then
+        local remain = deadline - now
+        if remain <= 0 then
             return false
         end
         local quietUntil = tonumber(state.host_push_quiet_until) or 0
-        local slice = math.min(quietUntil - now + TIMEOUT.hostIdleSliceMin, deadline - now)
-        if slice < TIMEOUT.hostIdleSliceMin then
-            slice = TIMEOUT.hostIdleSliceMin
-        end
-        if now + slice > deadline then
-            slice = deadline - now
-        end
+        local slice = math.min(remain, math.max(quietUntil - now, 0) + TIMEOUT.hostIdleSliceMin)
         if slice <= 0 then
             return false
         end
@@ -182,10 +180,6 @@ local function waitHostIdle(timeoutMs)
     end
     return true
 end
-
-----------------------------------------------------------------
--- UART 事务锁（可重入）
-----------------------------------------------------------------
 
 local function uartAcquire(timeoutMs)
     timeoutMs = tonumber(timeoutMs) or 8000
@@ -391,7 +385,7 @@ local function echoRxHex(data)
 end
 
 ----------------------------------------------------------------
--- ctx → cmd / rx / ipc
+-- ctx：子模块只经这里拿能力；晚于本段才赋值的字段见 bind 流水线
 ----------------------------------------------------------------
 
 local ctx = {
@@ -431,22 +425,37 @@ local ctx = {
     hostBusy = hostBusy,
     noteHostPush = noteHostPush,
     parseSvcArgs = parseSvcArgs,
-    parseIpcStat = function(...)
-        return parseIpcStat(...)
-    end,
-    parseTfCard = function(...)
-        return parseTfCard(...)
-    end,
 }
 
-local cmd = require("hu_cmd").bind(ctx)
-ctx.wledGet = cmd.wledGet
+----------------------------------------------------------------
+-- 绑定流水线（顺序即契约，勿改）
+-- 1. cmd  AT handler（t3x notify 运行时再调 ctx.parseIpcStat）
+-- 2. at   编译精确/前缀表
+-- 3. rx   URC 解析，回填 parse* / patchCloud
+-- 4. ipc  query/set，回填 hostQuery / noteUartLinkOk
+----------------------------------------------------------------
 
+local cmd = require("hu_cmd").bind(ctx)
 local AT_EXACT, AT_PREFIX = require("hu_at").compile(cmd.at)
 local LINE_HANDLERS = {
     HEX = cmd.hexLine,
     STR = cmd.strLine,
 }
+
+local rx = require("hu_rx").bind(ctx)
+ctx.parseTfCard = rx.parseTfCard
+ctx.parseIpcStat = rx.parseIpcStat
+ctx.normIpcCloud = rx.normIpcCloud
+ctx.commitIpcStat = rx.commitIpcStat
+ctx.patchCloud = rx.patchCloud
+local normLine = rx.normLine
+local RX_LINE_TRY_HANDLERS = rx.tryHandlers
+
+require("hu_ipc").bind(ctx)
+
+----------------------------------------------------------------
+-- 行处理：URC → AT → STR/HEX → 明文
+----------------------------------------------------------------
 
 local function runAtDispatch(atCmd)
     local exact = AT_EXACT[atCmd]
@@ -471,30 +480,6 @@ local function runAtDispatch(atCmd)
     return RSP_ERROR
 end
 
-local rx = require("hu_rx").bind(ctx)
-parseTfCard = rx.parseTfCard
-parseIpcStat = rx.parseIpcStat
-normIpcCloud = rx.normIpcCloud
-commitIpcStat = rx.commitIpcStat
-patchCloud = rx.patchCloud
-local normLine = rx.normLine
-local RX_LINE_TRY_HANDLERS = rx.tryHandlers
-ctx.patchCloud = patchCloud
-ctx.commitIpcStat = commitIpcStat
-ctx.normIpcCloud = normIpcCloud
-
-require("hu_ipc").bind(ctx)
-if ctx.noteUartLinkOk then
-    noteUartLinkOk = ctx.noteUartLinkOk
-end
-isT31HostQry = ctx.M.isT31HostQry
-qryIpcCloudStat = ctx.M.qryIpcCloudStat
-mergeTfCloud = ctx.M.mergeTfCloud
-
-----------------------------------------------------------------
--- RX 行处理
-----------------------------------------------------------------
-
 local function onFirstHostAt(atLine)
     if state.host_at_ready then
         return
@@ -502,19 +487,19 @@ local function onFirstHostAt(atLine)
     state.host_at_ready = true
     state.first_host_at = atLine
     state.host_ready_seen = true
-    if noteUartLinkOk then
-        noteUartLinkOk()
+    if ctx.noteUartLinkOk then
+        ctx.noteUartLinkOk()
     end
     state.uart_recovery_attempts = 0
     state.uart_recovery_last_sec = 0
-    patchCloud({ cat1Link = 1 })
+    ctx.patchCloud({ cat1Link = 1 })
     sys.taskInit(function()
         sys.wait(TIMEOUT.firstAtCloudWait)
-        if not isT31HostQry() then
+        if not ctx.M.isT31HostQry() then
             return
         end
-        qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
-        mergeTfCloud()
+        ctx.M.qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
+        ctx.M.mergeTfCloud()
     end)
     sys.publish(E.HOST_UART_FIRST_AT, atLine or "")
 end

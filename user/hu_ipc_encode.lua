@@ -187,13 +187,13 @@ function bind(C, H)
 
     local function encodeSet(ev, audio)
         return defineSet{
-            busy = "encode_set_busy",
-            tag = "host_encode_set",
+            busyKey = "encode_set_busy",
+            policyTag = "host_encode_set",
             cfg = encodeCfg,
-            boot = encodeCfg,
-            tmo = QUERY_MS,
-            ev = ev,
-            prep = function(o)
+            bootCfg = encodeCfg,
+            timeout = QUERY_MS,
+            ackEvent = ev,
+            prepare = function(o)
                 return buildSetAt(o, audio)
             end,
         }

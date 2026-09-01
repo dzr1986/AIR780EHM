@@ -14,6 +14,7 @@ function bind(C)
     local rspBody, rspFmt, rspLineOk = C.rspBody, C.rspFmt, C.rspLineOk
     local modCall = C.modCall
     local RSP_ERROR = C.RSP_ERROR
+    -- parse*/patchCloud 在 hu_rx.bind 之后才挂到 ctx，运行时再调
     local function parseIpcStat(...)
         return C.parseIpcStat(...)
     end
@@ -151,7 +152,7 @@ function bind(C)
         return rspFmt("UPLOADRESULT", "ok,ret=%d", ret)
     end
 
-    function uartIpcStatusNtf(cmd)
+    local function uartIpcStatusNtf(cmd)
         noteHostPush()
         local st = cmd:match("^AT%+IPCSTATUS=(.+)$")
         if not st or st == "" then
@@ -163,7 +164,7 @@ function bind(C)
         return rspFmt("IPCSTATUS", "OK,status=%s", st)
     end
 
-    function uartIpcStatNtf(cmd)
+    local function uartIpcStatNtf(cmd)
         noteHostPush()
         local body = cmd:match("^AT%+IPCSTAT=(.+)$")
         if not body or body == "" then
@@ -177,7 +178,7 @@ function bind(C)
         return rspLineOk("IPCSTAT")
     end
 
-    function uartTfCardNtf(cmd)
+    local function uartTfCardNtf(cmd)
         noteHostPush()
         local body = cmd:match("^AT%+TFCARD=(.+)$")
         if not body or body == "" then

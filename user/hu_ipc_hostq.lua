@@ -99,12 +99,12 @@ function bind(C, H)
 
     local function recCtrl(tag, tmo, want, atFn)
         return defineSet{
-            tag = tag, cfg = identityCfg, boot = recCfg,
-            tmo = tmo, ev = SYS_EVT.RECORDCTRL_SET, skipQuiet = true,
-            prep = function(opts)
+            policyTag = tag, cfg = identityCfg, bootCfg = recCfg,
+            timeout = tmo, ackEvent = SYS_EVT.RECORDCTRL_SET, skipQuiet = true,
+            prepare = function(opts)
                 return true, nil, atFn(opts)
             end,
-            parse = function(rsp)
+            parseRsp = function(rsp)
                 if rsp.ok and rsp.start == want then
                     return true, "ok", rsp
                 end
@@ -129,42 +129,43 @@ function bind(C, H)
     end
 
     local qryRecord = defineQuery{
-        busy = "record_query_busy", 
-        cache = "host_record",
-        tag = "host_record", 
-        cfg = recCfg, tmo = TMO.rec,
-        at = "AT+RECORD?", 
-        ev = SYS_EVT.RECORD_ACK,
-        dis = whenOff("host_record"),
-        rsp = saveSnap("host_record"),
+        busyKey = "record_query_busy",
+        cacheKey = "host_record",
+        policyTag = "host_record",
+        cfg = recCfg,
+        timeout = TMO.rec,
+        atCmd = "AT+RECORD?",
+        ackEvent = SYS_EVT.RECORD_ACK,
+        whenDisabled = whenOff("host_record"),
+        onResponse = saveSnap("host_record"),
     }
 
     local qryRecTime = defineQuery{
-        busy = "recordtime_query_busy", 
-        cache = "host_record_time", 
-        parsed = true,
-        tag = "host_recordtime", 
-        cfg = recCfg, 
-        tmo = TMO.rec,
-        at = "AT+RECORDTIME?", 
-        ev = SYS_EVT.RECORDTIME_ACK,
-        dis = whenOff("host_record_time"),
+        busyKey = "recordtime_query_busy",
+        cacheKey = "host_record_time",
+        requireParsed = true,
+        policyTag = "host_recordtime",
+        cfg = recCfg,
+        timeout = TMO.rec,
+        atCmd = "AT+RECORDTIME?",
+        ackEvent = SYS_EVT.RECORDTIME_ACK,
+        whenDisabled = whenOff("host_record_time"),
     }
 
     local setRecTime = defineSet{
-        busy = "recordtime_set_busy", 
-        tag = "host_recordtime_set",
-        cfg = recCfg, 
-        tmo = TMO.rec, 
-        ev = SYS_EVT.RECORDTIME_SET,
-        prep = function(opts)
+        busyKey = "recordtime_set_busy",
+        policyTag = "host_recordtime_set",
+        cfg = recCfg,
+        timeout = TMO.rec,
+        ackEvent = SYS_EVT.RECORDTIME_SET,
+        prepare = function(opts)
             local min = tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
             if min == nil then
                 return false, "missing_min"
             end
             return true, nil, string.format("AT+RECORDTIME=%d", min)
         end,
-        parse = function(rsp)
+        parseRsp = function(rsp)
             if rsp.ok then
                 state.host_record_time = rsp
                 return true, "ok", { minutes = rsp.minutes }
@@ -188,22 +189,28 @@ function bind(C, H)
     -- 帧率
     ----------------------------------------------------------------
     local qryFps = defineQuery{
-        busy = "framerate_query_busy", cache = "host_framerate",
-        tag = "host_framerate", cfg = encodeCfg, tmo = TMO.fpsQ,
-        ev = SYS_EVT.FRAMERATE_QUERY,
-        at = function(opts)
+        busyKey = "framerate_query_busy",
+        cacheKey = "host_framerate",
+        policyTag = "host_framerate",
+        cfg = encodeCfg,
+        timeout = TMO.fpsQ,
+        ackEvent = SYS_EVT.FRAMERATE_QUERY,
+        atCmd = function(opts)
             return atQry("AT+FRAMERATE?", opts)
         end,
-        pre = function()
+        beforeSend = function()
             state.framerate_rows = {}
         end,
-        rsp = saveSnap("host_framerate", true),
+        onResponse = saveSnap("host_framerate", true),
     }
 
     local setFps = defineSet{
-        busy = "framerate_set_busy", tag = "host_framerate_set",
-        cfg = encodeCfg, tmo = TMO.fpsS, ev = SYS_EVT.FRAMERATE_SET,
-        prep = function(opts)
+        busyKey = "framerate_set_busy",
+        policyTag = "host_framerate_set",
+        cfg = encodeCfg,
+        timeout = TMO.fpsS,
+        ackEvent = SYS_EVT.FRAMERATE_SET,
+        prepare = function(opts)
             local fps = tonumber(opts.framerate or opts.fps)
             if fps == nil then
                 return false, "missing_framerate"
@@ -232,12 +239,12 @@ function bind(C, H)
     end
 
     local uploadVideo = defineSet{
-        tag = "host_uploadvideo", cfg = identityCfg, boot = recCfg,
-        tmo = TMO.upload, ev = SYS_EVT.UPLOADVIDEO_SET, skipQuiet = true,
-        prep = function(opts)
+        policyTag = "host_uploadvideo", cfg = identityCfg, bootCfg = recCfg,
+        timeout = TMO.upload, ackEvent = SYS_EVT.UPLOADVIDEO_SET, skipQuiet = true,
+        prepare = function(opts)
             return true, nil, atUpload(opts)
         end,
-        parse = function(rsp)
+        parseRsp = function(rsp)
             if rsp and rsp.ok then
                 return true, "ok", rsp
             end
@@ -250,15 +257,23 @@ function bind(C, H)
     ----------------------------------------------------------------
 
     local qryPerson = defineQuery{
-        busy = "persondet_query_busy", cache = "host_person_detect", parsed = true,
-        tag = "host_persondet", cfg = identityCfg, tmo = TMO.person,
-        at = "AT+PERSONDET?", ev = SYS_EVT.PERSONDET_ACK,
+        busyKey = "persondet_query_busy",
+        cacheKey = "host_person_detect",
+        requireParsed = true,
+        policyTag = "host_persondet",
+        cfg = identityCfg,
+        timeout = TMO.person,
+        atCmd = "AT+PERSONDET?",
+        ackEvent = SYS_EVT.PERSONDET_ACK,
     }
 
     local setPerson = defineSet{
-        busy = "persondet_set_busy", tag = "host_persondet_set",
-        cfg = identityCfg, tmo = TMO.person, ev = SYS_EVT.PERSONDET_SET,
-        prep = function(opts)
+        busyKey = "persondet_set_busy",
+        policyTag = "host_persondet_set",
+        cfg = identityCfg,
+        timeout = TMO.person,
+        ackEvent = SYS_EVT.PERSONDET_SET,
+        prepare = function(opts)
             local on = tonumber(opts.enable)
             if on ~= 0 and on ~= 1 then
                 return false, "invalid_enable"
@@ -268,21 +283,28 @@ function bind(C, H)
     }
 
     local qryMic = defineQuery{
-        busy = "mic_query_busy", cache = "host_mic", parsed = false,
-        tag = "host_mic", cfg = identityCfg, tmo = TMO.mic,
-        ev = SYS_EVT.MIC_QUERY,
-        at = function(opts)
+        busyKey = "mic_query_busy",
+        cacheKey = "host_mic",
+        requireParsed = false,
+        policyTag = "host_mic",
+        cfg = identityCfg,
+        timeout = TMO.mic,
+        ackEvent = SYS_EVT.MIC_QUERY,
+        atCmd = function(opts)
             return atQry("AT+MIC?", opts)
         end,
-        pre = function()
+        beforeSend = function()
             state.mic_rows = {}
         end,
     }
 
     local setMic = defineSet{
-        busy = "mic_set_busy", tag = "host_mic_set",
-        cfg = identityCfg, tmo = TMO.mic, ev = SYS_EVT.MIC_SET,
-        prep = function(opts)
+        busyKey = "mic_set_busy",
+        policyTag = "host_mic_set",
+        cfg = identityCfg,
+        timeout = TMO.mic,
+        ackEvent = SYS_EVT.MIC_SET,
+        prepare = function(opts)
             local vol, gain = tonumber(opts.volume), tonumber(opts.gain)
             if vol == nil or gain == nil then
                 return false, "missing_params"
@@ -293,15 +315,23 @@ function bind(C, H)
     }
 
     local qryPhoto = defineQuery{
-        busy = "softphoto_query_busy", cache = "host_softphoto", parsed = true,
-        tag = "host_softphoto", cfg = identityCfg, tmo = TMO.photo,
-        at = "AT+SOFTPHOTO?", ev = SYS_EVT.SOFTPHOTO_QUERY,
+        busyKey = "softphoto_query_busy",
+        cacheKey = "host_softphoto",
+        requireParsed = true,
+        policyTag = "host_softphoto",
+        cfg = identityCfg,
+        timeout = TMO.photo,
+        atCmd = "AT+SOFTPHOTO?",
+        ackEvent = SYS_EVT.SOFTPHOTO_QUERY,
     }
 
     local setPhoto = defineSet{
-        busy = "softphoto_set_busy", tag = "host_softphoto_set",
-        cfg = identityCfg, tmo = TMO.photo, ev = SYS_EVT.SOFTPHOTO_SET,
-        prep = function(opts)
+        busyKey = "softphoto_set_busy",
+        policyTag = "host_softphoto_set",
+        cfg = identityCfg,
+        timeout = TMO.photo,
+        ackEvent = SYS_EVT.SOFTPHOTO_SET,
+        prepare = function(opts)
             opts = asTbl(opts)
             local f = {
                 tonumber(opts.enable),
@@ -325,10 +355,14 @@ function bind(C, H)
     }
 
     local qryTf = defineQuery{
-        busy = "tf_card_query_busy", cache = "host_tf_card",
-        tag = "host_tfcard", cfg = tfCardCfg, tmo = TMO.rec,
-        at = "AT+TFCARD?", ev = SYS_EVT.TFCARD_ACK,
-        rsp = function(got, snap)
+        busyKey = "tf_card_query_busy",
+        cacheKey = "host_tf_card",
+        policyTag = "host_tfcard",
+        cfg = tfCardCfg,
+        timeout = TMO.rec,
+        atCmd = "AT+TFCARD?",
+        ackEvent = SYS_EVT.TFCARD_ACK,
+        onResponse = function(got, snap)
             if got and type(snap) == "table" and snap.parsed then
                 state.host_tf_card = snap
                 return snap

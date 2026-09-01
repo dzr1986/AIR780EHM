@@ -60,7 +60,8 @@ host_uart.lua              ← 锁 / SYS_EVT / state / processLine / start
     └── hu_ipc_encode.lua
 ```
 
-**主文件 bind 顺序**：`ctx` → `hu_cmd.bind` → `hu_at.compile` → `hu_rx.bind` → `hu_ipc.bind`。
+**主文件 bind 顺序**：`ctx` → `hu_cmd.bind` → `hu_at.compile` → `hu_rx.bind`（回填 parse*/patchCloud）→ `hu_ipc.bind`（回填 hostQuery/noteUartLinkOk）。
+`defineQuery` / `defineSet` 字段与 `hostQuery` / `hostSet` 同名（`busyKey` / `atCmd` / `ackEvent` / `prepare` 等）。
 
 ### net_mqtt 族（12 文件）
 

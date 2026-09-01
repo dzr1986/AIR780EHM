@@ -48,10 +48,14 @@ function bind(C, H)
     end
 
     local qryGb28181 = defineQuery{
-        busy = "gb28181_query_busy", cache = "host_gb28181_id",
-        tag = "host_identity", cfg = idCfgFn, tmo = TIMEOUT.gb28181Query,
-        at = "AT+GB28181?", ev = SYS_EVT.GB28181_ACK,
-        rsp = function(got, id)
+        busyKey = "gb28181_query_busy",
+        cacheKey = "host_gb28181_id",
+        policyTag = "host_identity",
+        cfg = idCfgFn,
+        timeout = TIMEOUT.gb28181Query,
+        atCmd = "AT+GB28181?",
+        ackEvent = SYS_EVT.GB28181_ACK,
+        onResponse = function(got, id)
             if got and id ~= nil then
                 state.host_gb28181_id = id
             end

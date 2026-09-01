@@ -86,6 +86,11 @@ CHECKS: list[tuple[str, str, str]] = [
         "user/host_uart.lua",
         r"RX_LINE_TRY_HANDLERS = rx\.tryHandlers",
     ),
+    (
+        "主文件 rx.bind 后回填 parse*/patchCloud",
+        "user/host_uart.lua",
+        r'require\("hu_rx"\)\.bind\(ctx\)[\s\S]*ctx\.parseIpcStat = rx\.parseIpcStat[\s\S]*ctx\.patchCloud = rx\.patchCloud',
+    ),
 ]
 
 

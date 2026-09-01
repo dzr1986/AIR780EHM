@@ -215,7 +215,7 @@ function bind(C)
         return rspBody("USBRECOVERY", state)
     end
 
-    function rstUsbRecover()
+    local function rstUsbRecover()
         if t3xSecOff() then
             expUsbRecover({
                 state = "idle",
