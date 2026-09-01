@@ -52,14 +52,14 @@ CHECKS: list[tuple[str, str, str]] = [
         r'hu_ipc_rec[\s\S]*hu_ipc_hostq[\s\S]*hu_ipc_cloud[\s\S]*hu_ipc_power',
     ),
     (
-        "ipc cloud 注入 recovery+hostq",
+        "ipc rec/hostq 查询挂到 H",
         "user/hu_ipc.lua",
-        r'hu_ipc_cloud"\)\.bind\(C, H, recovery, hostq\)',
+        r'H\.qryHostStat = recovery\.qryHostStat[\s\S]*H\.qryHostRecord = hostq\.qryHostRecord',
     ),
     (
-        "ipc power 注入 recovery",
+        "ipc cloud/power 只 bind(C, H)",
         "user/hu_ipc.lua",
-        r'hu_ipc_power"\)\.bind\(C, H, recovery\)',
+        r'hu_ipc_cloud"\)\.bind\(C, H\)[\s\S]*hu_ipc_power"\)\.bind\(C, H\)',
     ),
     (
         "rx bind dsl→media→registry",

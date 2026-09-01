@@ -5,20 +5,19 @@
 -- ================================================================
 --
 -- AT+VENC? / AT+AUDIO? 查询；AT+VENCSET / AT+AUDIOSET 设置
+-- 设置缺 width/height/bitrate（视频）或 encoder/samplerate（音频）时先 query 当前行
 --
 
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-function bind(C, shared)
-    local state = C.state
-    local SYS_EVT = C.SYS_EVT
-    local hostQuery = shared.hostQuery
-    local getCfg = shared.getCfg
-    local defineSet = shared.defineSet
+function bind(C, H)
+    local state, SYS_EVT = C.state, C.SYS_EVT
+    local getCfg, hostQuery = H.getCfg, H.hostQuery
+    local defineSet = H.defineSet
 
-    local DEFAULT_TIMEOUT = 8000
+    local QUERY_MS = 8000
 
     local function encodeCfg()
         return getCfg("HOST_ENCODE_CFG")
@@ -39,58 +38,52 @@ function bind(C, shared)
         return (v == true or v == 1) and 1 or 0
     end
 
-    ----------------------------------------------------------------
-    -- 查询解析
-    ----------------------------------------------------------------
-
-    local function rowsValid(rows)
-        if type(rows) ~= "table" or rows.__error or #rows == 0 then
-            return false
-        end
-        for _, row in ipairs(rows) do
-            if type(row) == "table" then
-                return true
-            end
-        end
-        return false
+    local function num(v, fallback)
+        return tonumber(v) or fallback
     end
+
+    ----------------------------------------------------------------
+    -- 查询
+    ----------------------------------------------------------------
 
     local function packRows(rows, audio)
         if type(rows) == "table" and rows.__error then
             return nil, rows.__error
         end
-        if not rowsValid(rows) then
+        if type(rows) ~= "table" or #rows == 0 then
             return nil, "empty_encode"
         end
-        if audio then
-            return { audio = rows }, nil
+        for _, row in ipairs(rows) do
+            if type(row) == "table" then
+                if audio then
+                    return { audio = rows }
+                end
+                return { video = rows }
+            end
         end
-        return { video = rows }, nil
+        return nil, "empty_encode"
     end
 
     local function queryAtCmd(opts)
         opts = optTable(opts)
+        local cam, stream = opts.camera, opts.stream
         if isAudio(opts) then
-            if opts.camera ~= nil then
-                return "AT+AUDIO?=" .. tonumber(opts.camera)
+            if cam ~= nil then
+                return "AT+AUDIO?=" .. tonumber(cam)
             end
             return "AT+AUDIO?"
         end
-        if opts.camera ~= nil and opts.stream ~= nil then
-            return string.format("AT+VENC?=%d,%d", tonumber(opts.camera), tonumber(opts.stream))
+        if cam ~= nil and stream ~= nil then
+            return string.format("AT+VENC?=%d,%d", tonumber(cam), tonumber(stream))
         end
-        if opts.camera ~= nil then
-            return "AT+VENC?=" .. tonumber(opts.camera)
+        if cam ~= nil then
+            return "AT+VENC?=" .. tonumber(cam)
         end
         return "AT+VENC?"
     end
 
     local function clearEncodeRows(audio)
-        if audio then
-            state.encode_audio_rows = {}
-        else
-            state.encode_venc_rows = {}
-        end
+        state[audio and "encode_audio_rows" or "encode_venc_rows"] = {}
     end
 
     local function queryHostEncode(opts)
@@ -102,7 +95,7 @@ function bind(C, shared)
             policyTag = "host_encode",
             cfg = encodeCfg(),
             timeoutCfgKey = "query_timeout_ms",
-            defaultTimeout = DEFAULT_TIMEOUT,
+            defaultTimeout = QUERY_MS,
             atCmd = queryAtCmd(opts),
             ackEvent = audio and SYS_EVT.AUDIO_QUERY or SYS_EVT.VENC_QUERY,
             beforeSend = function()
@@ -128,8 +121,14 @@ function bind(C, shared)
     end
 
     ----------------------------------------------------------------
-    -- 设置：缺字段时先 query 当前行
+    -- 设置：缺关键字段时先 query 当前行再拼 AT
     ----------------------------------------------------------------
+
+    local function queryTimeoutMs(opts)
+        return tonumber(opts.timeoutMs)
+            or tonumber(encodeCfg().query_timeout_ms)
+            or QUERY_MS
+    end
 
     local function fetchCurrentRow(audio, cam, stream, timeoutMs, needQuery)
         if not needQuery then
@@ -142,84 +141,66 @@ function bind(C, shared)
             qopts.stream = stream
         end
         local q, qerr = queryHostEncode(qopts)
-        if audio then
-            if q and q.audio and q.audio[1] then
-                return q.audio[1], nil
-            end
-        elseif q and q.video and q.video[1] then
-            return q.video[1], nil
+        local rows = q and (audio and q.audio or q.video)
+        if rows and rows[1] then
+            return rows[1], nil
         end
         return nil, qerr
     end
 
-    local function queryTimeoutMs(opts)
-        return tonumber(opts.timeoutMs)
-            or tonumber(encodeCfg().query_timeout_ms)
-            or DEFAULT_TIMEOUT
-    end
-
-    local function audioSetAtCmd(opts)
+    local function buildSetAt(opts, audio)
         opts = optTable(opts)
-        local timeoutMs = queryTimeoutMs(opts)
-        local cam = tonumber(opts.camera) or 0
-        local cur, qerr = fetchCurrentRow(true, cam, nil, timeoutMs,
-            opts.encoder == nil or opts.samplerate == nil)
-        if qerr and not cur then
-            return false, qerr
-        end
-        cur = cur or {}
-        return true, nil, string.format("AT+AUDIOSET=%d,%d,%d,%d,%d,%d,%d,%d",
-            cam, asEnable01(opts.enable, cur.enable or 1),
-            tonumber(opts.encoder or cur.encoder) or 4,
-            tonumber(opts.samplerate or cur.samplerate) or 8000,
-            tonumber(opts.bitwidth or cur.bitwidth) or 16,
-            tonumber(opts.soundmode or cur.soundmode) or 1,
-            tonumber(opts.volume or cur.volume) or 80,
-            tonumber(opts.gain or cur.gain) or 28)
-    end
-
-    local function videoSetAtCmd(opts)
-        opts = optTable(opts)
-        local timeoutMs = queryTimeoutMs(opts)
-        local cam = tonumber(opts.camera) or 0
-        local stream = tonumber(opts.stream) or 0
-        local cur, qerr = fetchCurrentRow(false, cam, stream, timeoutMs,
-            opts.width == nil or opts.height == nil or opts.bitrate == nil)
-        if qerr and not cur then
-            return false, qerr
-        end
-        cur = cur or {}
-        return true, nil, string.format("AT+VENCSET=%d,%d,%d,%d,%d,%d,%d,%d,%d",
-            cam, stream, asEnable01(opts.enable, cur.enable or 1),
-            tonumber(opts.width or cur.width) or 1920,
-            tonumber(opts.height or cur.height) or 1080,
-            tonumber(opts.bitrate or cur.bitrate) or 1200,
-            tonumber(opts.framerate or cur.framerate) or 25,
-            tonumber(opts.rcmode or cur.rcmode) or 2,
-            tonumber(opts.encoder or cur.encoder) or 4)
-    end
-
-    local function setAtCmd(opts, audio)
+        local cam = num(opts.camera, 0)
+        local stream = num(opts.stream, 0)
+        local needQuery
         if audio then
-            return audioSetAtCmd(opts)
+            needQuery = opts.encoder == nil or opts.samplerate == nil
+        else
+            needQuery = opts.width == nil or opts.height == nil or opts.bitrate == nil
         end
-        return videoSetAtCmd(opts)
+        local cur, qerr = fetchCurrentRow(audio, cam, stream, queryTimeoutMs(opts), needQuery)
+        if qerr and not cur then
+            return false, qerr
+        end
+        cur = cur or {}
+        if audio then
+            return true, nil, string.format(
+                "AT+AUDIOSET=%d,%d,%d,%d,%d,%d,%d,%d",
+                cam, asEnable01(opts.enable, cur.enable or 1),
+                num(opts.encoder or cur.encoder, 4),
+                num(opts.samplerate or cur.samplerate, 8000),
+                num(opts.bitwidth or cur.bitwidth, 16),
+                num(opts.soundmode or cur.soundmode, 1),
+                num(opts.volume or cur.volume, 80),
+                num(opts.gain or cur.gain, 28))
+        end
+        return true, nil, string.format(
+            "AT+VENCSET=%d,%d,%d,%d,%d,%d,%d,%d,%d",
+            cam, stream, asEnable01(opts.enable, cur.enable or 1),
+            num(opts.width or cur.width, 1920),
+            num(opts.height or cur.height, 1080),
+            num(opts.bitrate or cur.bitrate, 1200),
+            num(opts.framerate or cur.framerate, 25),
+            num(opts.rcmode or cur.rcmode, 2),
+            num(opts.encoder or cur.encoder, 4))
     end
 
-    local setHostVideoEncode = defineSet{
-        busy = "encode_set_busy", tag = "host_encode_set",
-        cfg = encodeCfg, boot = encodeCfg, tmo = DEFAULT_TIMEOUT, ev = SYS_EVT.VENC_SET,
-        prep = function(o)
-            return setAtCmd(o, false)
-        end,
-    }
-    local setHostAudioEncode = defineSet{
-        busy = "encode_set_busy", tag = "host_encode_set",
-        cfg = encodeCfg, boot = encodeCfg, tmo = DEFAULT_TIMEOUT, ev = SYS_EVT.AUDIO_SET,
-        prep = function(o)
-            return setAtCmd(o, true)
-        end,
-    }
+    local function encodeSet(ev, audio)
+        return defineSet{
+            busy = "encode_set_busy",
+            tag = "host_encode_set",
+            cfg = encodeCfg,
+            boot = encodeCfg,
+            tmo = QUERY_MS,
+            ev = ev,
+            prep = function(o)
+                return buildSetAt(o, audio)
+            end,
+        }
+    end
+
+    local setHostVideoEncode = encodeSet(SYS_EVT.VENC_SET, false)
+    local setHostAudioEncode = encodeSet(SYS_EVT.AUDIO_SET, true)
 
     local function setHostEncode(scope, opts)
         if scope == "audio" then

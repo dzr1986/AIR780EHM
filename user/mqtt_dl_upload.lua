@@ -15,7 +15,7 @@ _G[_modname] = _M
 function bind(C, shared)
     local hostUart = C.hostUart
     local utils = C.utils
-    local pubUploadReply = C.M.pubUploadReply
+    local pubUploadReply = C.pub.pubUploadReply
     local dlMsgId = shared.dlMsgId
     local hostReady = shared.t3xHostReady
 

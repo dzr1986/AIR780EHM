@@ -80,21 +80,16 @@
       ]
     },
     "hu_ipc_cloud.lua": {
-      "bind_args": "C, H, recovery, hostq",
+      "bind_args": "C, H",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "E", "modCall", "hostBusy", "wledGet", "normIpcCloud", "commitIpcStat"],
-      "h": ["getCfg", "hostQuery", "defineQuery", "idCfgFn"],
-      "inject": [
-        ["qryHostStat", "recovery.qryHostStat"],
-        ["qryHostRecord", "hostq.qryHostRecord"]
-      ]
+      "h": ["getCfg", "hostQuery", "defineQuery", "idCfgFn", "qryHostStat", "qryHostRecord"]
     },
     "hu_ipc_power.lua": {
-      "bind_args": "C, H, recovery",
+      "bind_args": "C, H",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud"],
-      "h": ["getCfg"],
-      "inject": [["qryHostStat", "recovery.qryHostStat"]]
+      "h": ["getCfg", "qryHostStat"]
     },
     "hu_ipc_tffmt.lua": {
       "bind_args": "C, H",
@@ -104,10 +99,10 @@
       "h": ["ensT3xHost", "hostBoot"]
     },
     "hu_ipc_encode.lua": {
-      "bind_args": "C, shared",
+      "bind_args": "C, H",
       "requires_sys": false,
       "c": ["state", "SYS_EVT"],
-      "shared": ["hostQuery", "getCfg", "defineSet"]
+      "h": ["hostQuery", "getCfg", "defineSet"]
     }
   }
 }

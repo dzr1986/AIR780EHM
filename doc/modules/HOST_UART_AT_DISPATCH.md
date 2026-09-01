@@ -11,7 +11,7 @@
 > **URC/RX 行解析**：[`user/hu_rx.lua`](../../user/hu_rx.lua)（编排/注册表）+ [`hu_rx_dsl.lua`](../../user/hu_rx_dsl.lua) + [`hu_rx_media.lua`](../../user/hu_rx_media.lua)（encode URC）  
 > **IPC 核心**：[`user/hu_ipc.lua`](../../user/hu_ipc.lua)（hostQuery/hostSet + 编排）  
 > **IPC 云状态**：[`user/hu_ipc_cloud.lua`](../../user/hu_ipc_cloud.lua)  
-> **UART 恢复**：[`user/hu_ipc_recovery.lua`](../../user/hu_ipc_recovery.lua)  
+> **UART 恢复**：[`user/hu_ipc_rec.lua`](../../user/hu_ipc_rec.lua)  
 > **IPC 关机**：[`user/hu_ipc_power.lua`](../../user/hu_ipc_power.lua)  
 > **主机 query/set**：[`user/hu_ipc_hostq.lua`](../../user/hu_ipc_hostq.lua)（RECORD/MIC/SOFTPHOTO 等）  
 > **TF 格式化**：[`user/hu_ipc_tffmt.lua`](../../user/hu_ipc_tffmt.lua)  
@@ -30,7 +30,7 @@
 | 快照 | `local state = C.state` | bind 前已存在于 ctx |
 | 合并 | `local state, E = C.state, C.E` | 热路径少行 |
 | 延迟 wrapper | `local function parseIpcStat(...) return C.parseIpcStat(...) end` | rx.bind 后才挂 ctx |
-| 注入 | `local qryHostStat = recovery.qryHostStat` | ipc 子模块顺序依赖 |
+| 注入 | `local qryHostStat = H.qryHostStat` | rec/hostq 先 bind，查询挂到 H |
 | 直用 shared | `shared.defineSet{ ... }` | encode 等于工厂，不必再 local |
 
 新增/改子模块后：
@@ -74,10 +74,12 @@ flowchart TD
 | P2P/GB28181/MQTT/SERV | `hu_cmd_link.lua` |
 | WLED | `hu_cmd_wled.lua` |
 | USB/RNDIS/RECOVERY | `hu_cmd_usb.lua` |
-| URC `+XXX:` 行 | `hu_rx.lua` |
+| URC 注册表 | `hu_rx.lua` |
+| 云态/TF/录制/IPC 行 + 匹配 DSL | `hu_rx_dsl.lua` |
+| 编码 URC | `hu_rx_media.lua` |
 | hostQuery/hostSet/IPC 编排 | `hu_ipc.lua` |
 | 云状态/GB28181 | `hu_ipc_cloud.lua` |
-| UART 恢复 | `hu_ipc_recovery.lua` |
+| UART 恢复 | `hu_ipc_rec.lua` |
 | IPC 上电/关机 | `hu_ipc_power.lua` |
 | RECORD/MIC/SOFTPHOTO query/set | `hu_ipc_hostq.lua` |
 | TF format | `hu_ipc_tffmt.lua` |

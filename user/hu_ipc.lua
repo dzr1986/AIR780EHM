@@ -1,10 +1,11 @@
 -- ================================================================
 -- Filename : hu_ipc.lua
--- Module   : hostQuery/hostSet 核心 + 子模块编排，由 host_uart.bind
+-- Module   : hostQuery / hostSet + 子模块编排，由 host_uart.bind
 -- Arch     : doc/modules/HOST_UART_AT_DISPATCH.md
 -- ================================================================
 --
--- hostQuery / hostSet / defineQuery / defineSet → recovery/hostq/cloud/power/tffmt/encode
+-- 本文件只做两件事：UART 上 query/set 公共路径，再 bind
+-- rec → hostq（查询挂 H）→ cloud → power → tffmt → encode
 --
 
 require "sys"
@@ -20,65 +21,56 @@ function bind(C)
     local waitHostIdle = C.waitHostIdle
     local uart_bridge = C.uart_bridge
     local modCall = C.modCall
+    local getCfg = cfgm.get
 
-    local TIMEOUT = {
-        atRetryWait = 200,
-        atRetryCap = 4000,
-        postQueryWait = 300,
-        quietCap = 1500,
-        defaultQuery = 3000,
-        t3xPowerWait = 800,
-        hostBootWait = 1500,
+    local TMO = {
+        retryWait = 200,
+        retryCap = 4000,
+        postQry = 300,
+        quiet = 1500,
+        qry = 3000,
+        t3xWait = 800,
+        bootWait = 1500,
     }
 
     ----------------------------------------------------------------
-    -- 配置
+    -- 配置 / T3x
     ----------------------------------------------------------------
 
-    local function getCfg(key)
-        return cfgm.get(key)
-    end
-
-    local function idCfgFn()
+    local function idCfg()
         return getCfg("HOST_IDENTITY_CFG")
     end
 
-    local function encodeCfgFn()
+    local function encodeCfg()
         return getCfg("HOST_ENCODE_CFG")
     end
 
-    local function tfCardCfgFn()
+    local function tfCfg()
         return getCfg("HOST_TFCARD_CFG")
     end
 
-    local function t3xPowerWaitMs(hostCfg)
-        return tonumber(hostCfg.t3x_power_wait_ms)
-            or tonumber(getCfg("TIME_SYNC_CFG").t3x_power_wait_ms)
-            or TIMEOUT.t3xPowerWait
-    end
-
-    local function hostBootWaitMs(hostCfg)
-        return tonumber(hostCfg.hostBootWaitMs)
-            or tonumber(getCfg("TIME_SYNC_CFG").hostBootWaitMs)
-            or TIMEOUT.hostBootWait
+    local function cfgMs(hostCfg, key, fb)
+        return tonumber(hostCfg[key])
+            or tonumber(getCfg("TIME_SYNC_CFG")[key])
+            or fb
     end
 
     local function ensT3xHost(policyTag, hostCfg)
-        hostCfg = hostCfg or idCfgFn()
+        hostCfg = hostCfg or idCfg()
         return modCall("t3x_ctrl", "ensPowOn", policyTag or "host_identity", {
-            t3xPowerWaitMs = t3xPowerWaitMs(hostCfg),
+            t3xPowerWaitMs = cfgMs(hostCfg, "t3x_power_wait_ms", TMO.t3xWait),
         }) == true
     end
 
     local function hostBoot(hostCfg)
-        return hostBootWaitMs(hostCfg)
+        return cfgMs(hostCfg, "hostBootWaitMs", TMO.bootWait)
     end
 
     ----------------------------------------------------------------
-    -- query / set 公共
+    -- query / set 公共：锁 → 上电 → 等静 → AT（失败再发一次）
     ----------------------------------------------------------------
 
-    local function queryFallback(opts)
+    local function qryFallback(opts)
         if opts.cacheKey and state[opts.cacheKey] ~= nil then
             return state[opts.cacheKey]
         end
@@ -88,77 +80,79 @@ function bind(C)
         return opts.defaultResult
     end
 
-    local function resolveTimeout(hostCfg, opts)
+    local function timeoutMs(hostCfg, opts)
         return tonumber(opts.timeoutMs)
             or tonumber(hostCfg[opts.timeoutCfgKey or "query_timeout_ms"])
             or opts.defaultTimeout
-            or TIMEOUT.defaultQuery
+            or TMO.qry
     end
 
-    local function waitHostQuiet(timeoutMs)
-        waitHostIdle(math.min(timeoutMs, TIMEOUT.quietCap))
-    end
-
-    local function waitHostBootIfNeeded(hostCfg, spec)
+    local function waitBoot(hostCfg, spec)
         if spec.waitBoot == false or state.host_at_ready then
             return
         end
         sys.wait(hostBoot(spec.bootCfg or hostCfg))
     end
 
-    local function sendAtRetry(atCmd, ackEvent, timeoutMs, beforeSend)
+    local function sendAt(atCmd, ackEvent, waitMs, beforeSend)
         if beforeSend then
             beforeSend()
         end
         uart_bridge.sendString(atCmd, true)
-        local got, val = sys.waitUntil(ackEvent, timeoutMs)
+        return sys.waitUntil(ackEvent, waitMs)
+    end
+
+    local function sendAtRetry(atCmd, ackEvent, waitMs, beforeSend)
+        local got, val = sendAt(atCmd, ackEvent, waitMs, beforeSend)
         if got then
             return got, val
         end
-        sys.wait(TIMEOUT.atRetryWait)
-        if beforeSend then
-            beforeSend()
-        end
-        uart_bridge.sendString(atCmd, true)
-        return sys.waitUntil(ackEvent, math.min(timeoutMs, TIMEOUT.atRetryCap))
+        sys.wait(TMO.retryWait)
+        return sendAt(atCmd, ackEvent, math.min(waitMs, TMO.retryCap), beforeSend)
     end
 
-    local function runHostQuery(opts)
-        if not coroutine.running() then
-            return queryFallback(opts)
+    -- T3x 在线后等 boot/quiet。失败返回 false（query 走 onNoT3x，set 回 t3x_unavailable）
+    local function armHost(cfg, spec, waitMs)
+        if not ensT3xHost(spec.policyTag, cfg) then
+            return false
         end
-        if state[opts.busyKey] then
-            return queryFallback(opts)
+        waitBoot(cfg, spec)
+        if spec.skipQuiet ~= true then
+            waitHostIdle(math.min(waitMs, TMO.quiet))
         end
-        local hostCfg = opts.cfg or idCfgFn()
-        local timeoutMs = resolveTimeout(hostCfg, opts)
-        if not uartAcquire(timeoutMs) then
-            return queryFallback(opts)
+        return true
+    end
+
+    local function hostQuery(waitMs, opts)
+        opts.timeoutMs = waitMs
+        if not coroutine.running() or state[opts.busyKey] then
+            return qryFallback(opts)
+        end
+        local cfg = opts.cfg or idCfg()
+        waitMs = timeoutMs(cfg, opts)
+        if not uartAcquire(waitMs) then
+            return qryFallback(opts)
         end
         state[opts.busyKey] = true
         local result = opts.defaultResult
         local ok, err = pcall(function()
             if opts.whenDisabled then
-                local early = opts.whenDisabled(hostCfg)
+                local early = opts.whenDisabled(cfg)
                 if early ~= nil then
                     result = early
                     return
                 end
             end
-            if not ensT3xHost(opts.policyTag, hostCfg) then
+            if not armHost(cfg, opts, waitMs) then
                 if opts.onNoT3x then
                     result = opts.onNoT3x()
                 end
                 return
             end
-            waitHostBootIfNeeded(hostCfg, opts)
-            if opts.skipQuiet ~= true then
-                waitHostQuiet(timeoutMs)
-            end
-            local got, val = sendAtRetry(opts.atCmd, opts.ackEvent, timeoutMs, opts.beforeSend)
-            result = opts.onResponse(got, val, timeoutMs) or result
+            local got, val = sendAtRetry(opts.atCmd, opts.ackEvent, waitMs, opts.beforeSend)
+            result = opts.onResponse(got, val, waitMs) or result
             if not got then
-                sys.wait(TIMEOUT.postQueryWait)
+                sys.wait(TMO.postQry)
             end
         end)
         state[opts.busyKey] = false
@@ -172,25 +166,20 @@ function bind(C)
         return result
     end
 
-    local function hostQuery(timeoutMs, opts)
-        opts.timeoutMs = timeoutMs
-        return runHostQuery(opts)
-    end
-
     local function hostSet(spec)
         spec = spec or {}
-        local busyKey = spec.busyKey
-        if busyKey and state[busyKey] then
+        local busy = spec.busyKey
+        if busy and state[busy] then
             return false, "busy", nil
         end
-        if busyKey then
-            state[busyKey] = true
+        if busy then
+            state[busy] = true
         end
         local okSet, msg, extra
         local ok, e = pcall(function()
-            local cfg = spec.cfg or idCfgFn()
-            local timeoutMs = resolveTimeout(cfg, spec)
-            if not uartAcquire(timeoutMs) then
+            local cfg = spec.cfg or idCfg()
+            local waitMs = timeoutMs(cfg, spec)
+            if not uartAcquire(waitMs) then
                 okSet, msg = false, "busy"
                 return
             end
@@ -206,15 +195,11 @@ function bind(C)
                 okSet, msg = false, "missing_at"
                 return
             end
-            if not ensT3xHost(spec.policyTag, cfg) then
+            if not armHost(cfg, spec, waitMs) then
                 okSet, msg = false, "t3x_unavailable"
                 return
             end
-            waitHostBootIfNeeded(cfg, spec)
-            if spec.skipQuiet ~= true then
-                waitHostQuiet(timeoutMs)
-            end
-            local got, rsp = sendAtRetry(atCmd, spec.ackEvent, timeoutMs)
+            local got, rsp = sendAtRetry(atCmd, spec.ackEvent, waitMs)
             if not got or type(rsp) ~= "table" then
                 okSet, msg = false, "timeout"
                 return
@@ -230,8 +215,8 @@ function bind(C)
             okSet, msg = false, "error"
         end)
         uartRelease()
-        if busyKey then
-            state[busyKey] = false
+        if busy then
+            state[busy] = false
         end
         if not ok then
             return false, tostring(e), nil
@@ -239,9 +224,9 @@ function bind(C)
         return okSet, msg, extra
     end
 
-    local function cacheOnResponse(cacheKey, requireParsed)
+    local function cacheRsp(cacheKey, needParsed)
         return function(got, snap)
-            if got and type(snap) == "table" and (not requireParsed or snap.parsed) then
+            if got and type(snap) == "table" and (not needParsed or snap.parsed) then
                 state[cacheKey] = snap
                 return snap
             end
@@ -249,30 +234,30 @@ function bind(C)
         end
     end
 
-    local function parseOkRsp(rsp)
+    local function parseOk(rsp)
         if rsp and rsp.ok then
             return true, "ok", rsp
         end
         return false, "error", nil
     end
 
-    local function cachedHostQuery(timeoutMs, opts)
+    local function cachedQry(waitMs, opts)
         opts = opts or {}
         if opts.cacheKey and opts.requireParsed ~= nil and not opts.onResponse then
-            opts.onResponse = cacheOnResponse(opts.cacheKey, opts.requireParsed)
+            opts.onResponse = cacheRsp(opts.cacheKey, opts.requireParsed)
         end
         opts.requireParsed = nil
-        return hostQuery(timeoutMs, opts)
+        return hostQuery(waitMs, opts)
     end
 
     ----------------------------------------------------------------
-    -- defineQuery / defineSet 工厂
+    -- 工厂：子模块用短字段 busy/tag/tmo/at/ev/dis/pre/rsp/prep
     ----------------------------------------------------------------
 
     local function defineQuery(d)
         return function(arg)
             local opts = type(arg) == "table" and arg or nil
-            return cachedHostQuery(opts and opts.timeoutMs or arg, {
+            return cachedQry(opts and opts.timeoutMs or arg, {
                 busyKey = d.busy,
                 cacheKey = d.cache,
                 requireParsed = d.parsed,
@@ -303,7 +288,7 @@ function bind(C)
                 prepare = function()
                     return d.prep(opts)
                 end,
-                parseRsp = d.parse or parseOkRsp,
+                parseRsp = d.parse or parseOk,
             })
         end
     end
@@ -316,74 +301,40 @@ function bind(C)
         defineSet = defineSet,
         ensT3xHost = ensT3xHost,
         hostBoot = hostBoot,
-        idCfgFn = idCfgFn,
-        encodeCfgFn = encodeCfgFn,
-        tfCardCfgFn = tfCardCfgFn,
+        idCfgFn = idCfg,
+        encodeCfgFn = encodeCfg,
+        tfCardCfgFn = tfCfg,
     }
 
     ----------------------------------------------------------------
-    -- 子模块编排
+    -- 子模块：顺序不要改（先 rec/hostq，把查询挂上 H，再 cloud/power）
     ----------------------------------------------------------------
 
     local recovery = require("hu_ipc_rec").bind(C, H)
+    H.qryHostStat = recovery.qryHostStat
     local hostq = require("hu_ipc_hostq").bind(C, H)
-    local cloud = require("hu_ipc_cloud").bind(C, H, recovery, hostq)
-    local power = require("hu_ipc_power").bind(C, H, recovery)
+    H.qryHostRecord = hostq.qryHostRecord
+    local cloud = require("hu_ipc_cloud").bind(C, H)
+    local power = require("hu_ipc_power").bind(C, H)
     local tffmt = require("hu_ipc_tffmt").bind(C, H)
-    local enc = require("hu_ipc_encode").bind(C, {
-        defineSet = defineSet,
-        hostQuery = hostQuery,
-        getCfg = getCfg,
-    })
+    local enc = require("hu_ipc_encode").bind(C, H)
 
-    C.idCfg = idCfgFn
+    C.idCfg = idCfg
     C.hostQuery = hostQuery
     C.hostSet = hostSet
     C.noteUartLinkOk = recovery.noteUartLinkOk
 
-    local exp = {
-        cachedGb28181Id = cloud.cachedGb28181Id,
-        qryGb28181 = cloud.qryGb28181,
-        isIpcCloudStatStale = cloud.isIpcCloudStatStale,
-        isT31HostQry = cloud.isT31HostQry,
-        shouldQryIpcStat = cloud.shouldQryIpcStat,
-        needsIpcStatRefresh = cloud.needsIpcStatRefresh,
-        mergeTfCloud = cloud.mergeTfCloud,
-        refCloudF1003 = cloud.refCloudF1003,
-        isHuBusy = cloud.isHuBusy,
-        recHostSess = cloud.recHostSess,
-        qryIpcCloudStat = cloud.qryIpcCloudStat,
-        cachedTfCard = cloud.cachedTfCard,
-        resetHostLink = recovery.resetHostLink,
-        qryHostRecord = hostq.qryHostRecord,
-        qryRecTime = hostq.qryRecTime,
-        setRecTime = hostq.setRecTime,
-        queryHostFramerate = hostq.queryHostFramerate,
-        setHostFramerate = hostq.setHostFramerate,
-        queryHostPersonDetect = hostq.queryHostPersonDetect,
-        setHostPersonDetect = hostq.setHostPersonDetect,
-        queryHostMic = hostq.queryHostMic,
-        setHostMic = hostq.setHostMic,
-        queryHostSoftPhoto = hostq.queryHostSoftPhoto,
-        setHostSoftPhoto = hostq.setHostSoftPhoto,
-        queryHostTfCard = hostq.queryHostTfCard,
-        queryHostEncode = enc.queryHostEncode,
-        setHostVideoEncode = enc.setHostVideoEncode,
-        setHostAudioEncode = enc.setHostAudioEncode,
-        setHostEncode = enc.setHostEncode,
-        formatHostTfCard = tffmt.formatHostTfCard,
-        requestUploadVideo = hostq.requestUploadVideo,
-        recordCtrlStart = hostq.recordCtrlStart,
-        recordCtrlStop = hostq.recordCtrlStop,
-        qryHostStat = recovery.qryHostStat,
-        hostIpcPowerOff = power.hostIpcPowerOff,
-        waitHostIpcReady = power.waitHostIpcReady,
-        getCloudStat = cloud.getCloudStat,
-        getT3xRecActive = hostq.getT3xRecActive,
-    }
-    for k, fn in pairs(exp) do
-        C.M[k] = fn
+    -- noteUartLinkOk 只挂 C；其余 return 表即 host_uart 对外 API
+    C.M.resetHostLink = recovery.resetHostLink
+    C.M.qryHostStat = recovery.qryHostStat
+    local function hang(...)
+        for i = 1, select("#", ...) do
+            for k, fn in pairs((select(i, ...))) do
+                C.M[k] = fn
+            end
+        end
     end
+    hang(hostq, cloud, power, tffmt, enc)
     return _M
 end
 

@@ -1,6 +1,6 @@
 -- ================================================================
 -- Filename : net_mqtt.lua
--- Module   : 云端 MQTT 核心：mqttTask 连接循环；外围见 net_mqtt_*
+-- Module   : 云端 MQTT 核心：mqttTask 连接循环；外围见 mqtt_*
 -- Arch     : doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- ================================================================
 
@@ -160,16 +160,16 @@ local TIMEOUT = {
 local conn = require("mqtt_conn").bind({
     deviceId = deviceId,
     utils = utils,
-    cfgm = cfgm,
-    mqttInfo = mqttInfo,
-    mqttWarn = mqttWarn,
-    rntmPwr = rntmPwr,
+    config = cfgm,
+    logInfo = mqttInfo,
+    logWarn = mqttWarn,
+    power = rntmPwr,
     loader = loader,
     flags = netFlags,
 })
 
 function bootstrapNet()
-    return conn.bootstrapNet()
+    return conn.startNet()
 end
 function sameMqttCfg(mcfg)
     return conn.sameMqttCfg(mcfg)
@@ -227,29 +227,28 @@ local function getWledState()
 end
 
 local ctx = {
-    M = _M,
     DT = DT,
     hostUart = utils.hostUart,
     pubUplink = pubUplink,
     pubAppEvent = pubAppEvent,
     escJson = escJson,
-    mqttInfo = mqttInfo,
-    mqttWarn = mqttWarn,
-    rntmPwr = rntmPwr,
-    pir_ctrl = pirCtrl,
+    logInfo = mqttInfo,
+    logWarn = mqttWarn,
+    power = rntmPwr,
+    pirCtrl = pirCtrl,
     utils = utils,
     loader = loader,
-    t3x_ctrl = t3xCtrl,
+    t3xCtrl = t3xCtrl,
     t3xNotify = t3xNotify,
     hostQueue = hostQueue,
     HOST_DL_NEEDS_T3X = HOST_DL_NEEDS_T3X,
     getDeviceId = conn.getDeviceId,
-    msgIdPart = conn.msgIdPart,
+    msgIdJson = conn.msgIdJson,
     ipc_sup = ipc_sup,
     getWledState = getWledState,
-    snapBattery = conn.snapBattery,
-    snapRadio = conn.snapRadio,
-    snapSim = conn.snapSim,
+    battSnap = conn.battSnap,
+    radioSnap = conn.radioSnap,
+    simSnap = conn.simSnap,
     isConnected = function()
         return isConnected
     end,
@@ -257,37 +256,34 @@ local ctx = {
     setLastBatteryAt = function(v)
         statFlags.lastBatteryAt = v
     end,
+    pub = {},
+    dl = {},
 }
 local stat = require("mqtt_uplink").bind(ctx)
 function setStatIv(sec, persist)
     return stat.setStatIv(sec, persist)
 end
 DOWNLINK_HANDLERS = require("mqtt_downlink").bind(ctx)
+for name, fn in pairs(ctx.pub) do
+    _M[name] = fn
+end
 
 local dispatch = require("mqtt_dispatch").bind({
-    isDlTopic = conn.isDlTopic,
-    getDownlinkHandlers = function()
-        return DOWNLINK_HANDLERS
-    end,
+    isDownTopic = conn.isDownTopic,
+    handlers = DOWNLINK_HANDLERS,
     pubAppEvent = pubAppEvent,
     callbacks = callbacks,
-    mqttInfo = mqttInfo,
-    mqttWarn = mqttWarn,
-    mqttError = mqttError,
+    logInfo = mqttInfo,
+    logWarn = mqttWarn,
+    logError = mqttError,
     flags = hookFlags,
     state = state,
     isConnected = function()
         return isConnected
     end,
-    pubStatus = function(opts)
-        return _M.pubStatus(opts)
-    end,
-    drainHostQueue = function()
-        return _M.drainHostQueue()
-    end,
-    maybePubIdentity = function()
-        return _M.maybePubIdentity()
-    end,
+    pubStatus = ctx.pub.pubStatus,
+    drainHostQueue = ctx.dl.drainHostQueue,
+    maybePubIdentity = ctx.dl.maybePubIdentity,
 })
 
 ----------------------------------------------------------------
@@ -296,11 +292,11 @@ local dispatch = require("mqtt_dispatch").bind({
 
 local function waitCellAdapter(cellAdp)
     local waitIp = 0
-    while not conn.mqttAdpReady(cellAdp) and waitIp < TIMEOUT.adapterWaitMax do
+    while not conn.adapterReady(cellAdp) and waitIp < TIMEOUT.adapterWaitMax do
         sys.waitUntil("IP_READY", TIMEOUT.adapterWaitSlice)
         waitIp = waitIp + 1
     end
-    if conn.mqttAdpReady(cellAdp) then
+    if conn.adapterReady(cellAdp) then
         return cellAdp
     end
     mqttWarn("mqtt_adapter_fallback_default", cellAdp ~= nil and tostring(cellAdp) or "nil")
@@ -362,10 +358,10 @@ local function onMqttConack()
     state.reconnect_count = 0
     sys.publish(APP_EVENTS.MQTT_CONNECTED)
     conn.pushNetLed(true)
-    pubConnect()
-    maybePubIdentity()
+    ctx.pub.pubConnect()
+    ctx.dl.maybePubIdentity()
     pcall(function()
-        pubVersion({ messageId = "boot" })
+        ctx.pub.pubVersion({ messageId = "boot" })
     end)
 end
 
@@ -383,7 +379,7 @@ end
 
 local function mqttTask()
     local deviceNo = conn.waitNet()
-    local mcfg = conn.curMqttCfg()
+    local mcfg = conn.mqttCfg()
     if not mcfg.host or mcfg.host == "" then
         mqttError("mqtt_no_host_config")
         return
@@ -393,7 +389,7 @@ local function mqttTask()
         mqttError("mqtt_no_login_config")
         return
     end
-    local cellAdp = conn.mqttCellAdp()
+    local cellAdp = conn.cellAdapter()
     if cellAdp ~= nil and socket.dft then
         pcall(socket.dft, cellAdp)
     end
@@ -425,7 +421,7 @@ local function mqttTask()
         if minConnSec > 0 and lastConnAt > 0 and (now - lastConnAt) < minConnSec then
             return
         end
-        if not conn.mqttAdpReady(cellAdp) then
+        if not conn.adapterReady(cellAdp) then
             return
         end
         lastConnAt = now
@@ -438,7 +434,7 @@ local function mqttTask()
     mqttClient:on(function(client, event, data, payload)
         if event == "conack" then
             onMqttConack()
-            conn.subDownlink(client)
+            conn.subDown(client)
         elseif event == "recv" then
             dispatch.onServerMsg(data, payload)
         elseif event == "disconnect" then
@@ -513,9 +509,9 @@ function notifyPowerOff(reason, callback)
         if ensureConnectedForShutdown(waitMs) then
             if reason ~= "mqtt" then
                 local msg = POWEROFF_MSG[reason] or ("shutdown_" .. tostring(reason))
-                pubCtrlReply("off", 0, msg, {})
+                ctx.pub.pubCtrlReply("off", 0, msg, {})
             end
-            pubStatus({ skipIpcStatRefresh = true })
+            ctx.pub.pubStatus({ skipIpcStatRefresh = true })
             sys.wait(graceMs)
         end
         if type(callback) == "function" then
@@ -562,7 +558,7 @@ function start(options)
             callbacks.onMessage = options.onMessage
         end
     end
-    setupIdAutoPub()
+    ctx.dl.setupIdAutoPub()
     if not hookFlags.hostDrainHooked then
         dispatch.hookHostDrain()
     end
@@ -581,7 +577,7 @@ end
 function stop()
     local canWait = utils.inSysTask()
     if isConnected and mqttClient and rntmPwr.isLowPowerMode() then
-        pcall(pubRest, {
+        pcall(ctx.pub.pubRest, {
             reason = rntmPwr.getLastRestReason() or "unknown",
             source = "reconnect",
         })
@@ -622,6 +618,6 @@ stat.loadStatIvCfg()
 ipc_sup.bind({
     pubUplink = pubUplink,
     dtUlControl = DT.UL_CONTROL,
-    pubT3xStop = pubT3xStop,
+    pubT3xStop = ctx.pub.pubT3xStop,
 })
 return _M

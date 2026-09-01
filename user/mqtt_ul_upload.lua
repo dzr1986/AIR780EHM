@@ -16,7 +16,7 @@ function bind(C)
     local pubUplink = C.pubUplink
     local escJson = C.escJson
     local utils = C.utils
-    local mqttInfo = C.mqttInfo
+    local logInfo = C.logInfo
     local lastNeedPubAt = 0
 
     local LIMITS = {
@@ -129,7 +129,7 @@ function bind(C)
         if need == 1 then
             local now = os.time()
             if lastNeedPubAt > 0 and (now - lastNeedPubAt) < LIMITS.needDebounceSec then
-                mqttInfo("uploadneed_debounce", tostring(now - lastNeedPubAt) .. "s")
+                logInfo("uploadneed_debounce", tostring(now - lastNeedPubAt) .. "s")
                 return
             end
             lastNeedPubAt = now

@@ -15,14 +15,14 @@ _G[_modname] = _M
 
 function bind(C, shared)
     local hostUart = C.hostUart
-    local pirCtrl = C.pir_ctrl
+    local pirCtrl = C.pirCtrl
     local utils = C.utils
     local ipcSupervision = C.ipc_sup
-    local pubPirDetect = C.M.pubPirDetect
-    local pubPirStart = C.M.pubPirStart
-    local pubPirStop = C.M.pubPirStop
-    local pubPirFromSt = C.M.pubPirFromSt
-    local pubIpcAlert = C.M.pubIpcAlert
+    local pubPirDetect = C.pub.pubPirDetect
+    local pubPirStart = C.pub.pubPirStart
+    local pubPirStop = C.pub.pubPirStop
+    local pubPirFromSt = C.pub.pubPirFromSt
+    local pubIpcAlert = C.pub.pubIpcAlert
     local dlMsgId = shared.dlMsgId
     local ctrlMsg = shared.ctrlMsg
     local hostReady = shared.t3xHostReady

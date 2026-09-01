@@ -1,8 +1,12 @@
 -- ================================================================
 -- Filename : hu_ipc_hostq.lua
--- Module   : RECORD/FRAMERATE/MIC/SOFTPHOTO/TFCARD query/set，由 hu_ipc.bind
+-- Module   : RECORD / FPS / MIC / SOFTPHOTO / TFCARD query/set，由 hu_ipc.bind
 -- Arch     : doc/modules/HOST_UART_AT_DISPATCH.md
 -- ================================================================
+--
+-- 内部短名：qry/set + 域（Record/Fps/Person/Mic/Photo/Tf/RecStart）
+-- 导出键仍是 host_uart 对外名，mqtt/app 不用改
+--
 
 require "sys"
 local _modname = ...
@@ -25,31 +29,27 @@ function bind(C, H)
         return H.tfCardCfgFn(...)
     end
 
-    local TIMEOUT = {
-        record = 3000,
-        framerateQuery = 5000,
-        framerateSet = 8000,
+    local TMO = {
+        rec = 3000,
+        fpsQ = 5000,
+        fpsS = 8000,
         upload = 12000,
-        personDetect = 5000,
+        person = 5000,
         mic = 8000,
-        softPhoto = 8000,
-        recordCtrlStart = 8000,
-        recordCtrlStop = 22000,
+        photo = 8000,
+        recOn = 8000,
+        recOff = 22000,
     }
 
-    ----------------------------------------------------------------
-    -- helper
-    ----------------------------------------------------------------
-
-    local function recordCfg()
+    local function recCfg()
         return cfgm.get("HOST_RECORD_CFG")
     end
 
-    local function optTable(opts)
-        return type(opts) == "table" and opts or {}
+    local function asTbl(v)
+        return type(v) == "table" and v or {}
     end
 
-    local function asNeedUpload(v)
+    local function needUpload(v)
         local n = tonumber(v)
         if n == nil then
             n = 1
@@ -57,12 +57,67 @@ function bind(C, H)
         return (n == 0) and 0 or 1
     end
 
-    local function normVideoType(vtype)
-        vtype = tonumber(vtype) or 2
-        return (vtype == 1) and 1 or 2
+    local function videoType(v)
+        v = tonumber(v) or 2
+        return (v == 1) and 1 or 2
     end
 
-    local function getT3xRecActive()
+    local function maxSec(opts, fb)
+        return tonumber(opts.maxSec or opts.maxDurationSec or opts.videoMaxDurationSec) or fb
+    end
+
+    -- camera=0 在 Lua 为假，拼 AT 不要改成 ~= nil
+    local function atQry(cmd, opts)
+        opts = asTbl(opts)
+        local cam, stream = tonumber(opts.camera), tonumber(opts.stream)
+        if cam and stream then
+            return string.format("%s=%d,%d", cmd, cam, stream)
+        end
+        if cam then
+            return string.format("%s=%d", cmd, cam)
+        end
+        return cmd
+    end
+
+    local function whenOff(key)
+        return function(cfg)
+            if cfg.enabled == false then
+                return state[key]
+            end
+        end
+    end
+
+    local function saveSnap(key, useCache)
+        return function(got, snap)
+            if got and type(snap) == "table" then
+                state[key] = snap
+                return snap
+            end
+            return useCache and state[key] or nil
+        end
+    end
+
+    local function recCtrl(tag, tmo, want, atFn)
+        return defineSet{
+            tag = tag, cfg = identityCfg, boot = recCfg,
+            tmo = tmo, ev = SYS_EVT.RECORDCTRL_SET, skipQuiet = true,
+            prep = function(opts)
+                return true, nil, atFn(opts)
+            end,
+            parse = function(rsp)
+                if rsp.ok and rsp.start == want then
+                    return true, "ok", rsp
+                end
+                return false, "error", rsp
+            end,
+        }
+    end
+
+    ----------------------------------------------------------------
+    -- 录像状态 / 时长
+    ----------------------------------------------------------------
+
+    local function t3xRecOn()
         if tonumber(state.t3x_rec_active) == 1 then
             return 1
         end
@@ -73,106 +128,37 @@ function bind(C, H)
         return 0
     end
 
-    local function framerateQueryAt(opts)
-        local cam, stream = tonumber(opts.camera), tonumber(opts.stream)
-        if cam and stream then
-            return string.format("AT+FRAMERATE?=%d,%d", cam, stream)
-        end
-        if cam then
-            return string.format("AT+FRAMERATE?=%d", cam)
-        end
-        return "AT+FRAMERATE?"
-    end
-
-    local function micQueryAt(opts)
-        local cam = tonumber(opts.camera)
-        return cam and string.format("AT+MIC?=%d", cam) or "AT+MIC?"
-    end
-
-    local function recordTimeMinutes(opts)
-        return tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
-    end
-
-    local function uploadMsgId(opts)
-        local mid = tostring(opts.messageId or opts.msgid or ""):gsub("[^%w%-_]", "")
-        if #mid > 40 then
-            mid = mid:sub(1, 40)
-        end
-        return mid
-    end
-
-    local function uploadVideoAt(opts)
-        opts = optTable(opts)
-        return string.format("AT+UPLOADVIDEO=%d,%d,%d,%d,%d,%s",
-            asNeedUpload(opts.needUpload or opts.need),
-            normVideoType(opts.videoType or opts.vtype),
-            tonumber(opts.beginTs) or 0,
-            tonumber(opts.endTs) or 0,
-            tonumber(opts.maxSec or opts.maxDurationSec or opts.videoMaxDurationSec) or 0,
-            uploadMsgId(opts))
-    end
-
-    local function softPhotoSetAt(opts)
-        opts = optTable(opts)
-        local fields = {
-            tonumber(opts.enable),
-            tonumber(opts.nightModeThreshold),
-            tonumber(opts.dayModeThreshold),
-            tonumber(opts.dayModeAltThreshold),
-            tonumber(opts.gbGainThreshold),
-            tonumber(opts.gbGainRecordInit),
-            tonumber(opts.checkTime),
-            tonumber(opts.checkCount),
-        }
-        for i = 1, 8 do
-            if fields[i] == nil then
-                return false, "missing_params"
-            end
-        end
-        return true, nil, string.format(
-            "AT+SOFTPHOTOSET=%d,%d,%d,%d,%d,%d,%d,%d",
-            fields[1], fields[2], fields[3], fields[4],
-            fields[5], fields[6], fields[7], fields[8])
-    end
-
-    ----------------------------------------------------------------
-    -- RECORD / RECORDTIME / RECORDCTRL
-    ----------------------------------------------------------------
-
-    local qryHostRecord = defineQuery{
-        busy = "record_query_busy", cache = "host_record",
-        tag = "host_record", cfg = recordCfg, tmo = TIMEOUT.record,
-        at = "AT+RECORD?", ev = SYS_EVT.RECORD_ACK,
-        dis = function(cfg)
-            if cfg.enabled == false then
-                return state.host_record
-            end
-        end,
-        rsp = function(got, snap)
-            if got and type(snap) == "table" then
-                state.host_record = snap
-                return snap
-            end
-            return nil
-        end,
+    local qryRecord = defineQuery{
+        busy = "record_query_busy", 
+        cache = "host_record",
+        tag = "host_record", 
+        cfg = recCfg, tmo = TMO.rec,
+        at = "AT+RECORD?", 
+        ev = SYS_EVT.RECORD_ACK,
+        dis = whenOff("host_record"),
+        rsp = saveSnap("host_record"),
     }
 
     local qryRecTime = defineQuery{
-        busy = "recordtime_query_busy", cache = "host_record_time", parsed = true,
-        tag = "host_recordtime", cfg = recordCfg, tmo = TIMEOUT.record,
-        at = "AT+RECORDTIME?", ev = SYS_EVT.RECORDTIME_ACK,
-        dis = function(cfg)
-            if cfg.enabled == false then
-                return state.host_record_time
-            end
-        end,
+        busy = "recordtime_query_busy", 
+        cache = "host_record_time", 
+        parsed = true,
+        tag = "host_recordtime", 
+        cfg = recCfg, 
+        tmo = TMO.rec,
+        at = "AT+RECORDTIME?", 
+        ev = SYS_EVT.RECORDTIME_ACK,
+        dis = whenOff("host_record_time"),
     }
 
     local setRecTime = defineSet{
-        busy = "recordtime_set_busy", tag = "host_recordtime_set",
-        cfg = recordCfg, tmo = TIMEOUT.record, ev = SYS_EVT.RECORDTIME_SET,
+        busy = "recordtime_set_busy", 
+        tag = "host_recordtime_set",
+        cfg = recCfg, 
+        tmo = TMO.rec, 
+        ev = SYS_EVT.RECORDTIME_SET,
         prep = function(opts)
-            local min = recordTimeMinutes(opts)
+            local min = tonumber(opts.minutes or opts.recTime or opts.recordTimeMin)
             if min == nil then
                 return false, "missing_min"
             end
@@ -190,59 +176,33 @@ function bind(C, H)
         end,
     }
 
-    local recordCtrlStart = defineSet{
-        tag = "host_recordctrl_start", cfg = identityCfg, boot = recordCfg,
-        tmo = TIMEOUT.recordCtrlStart, ev = SYS_EVT.RECORDCTRL_SET, skipQuiet = true,
-        prep = function(opts)
-            return true, nil, string.format("AT+RECORDCTRL=1,%d",
-                tonumber(opts.maxSec or opts.maxDurationSec or opts.videoMaxDurationSec) or 60)
-        end,
-        parse = function(rsp)
-            if rsp.ok and rsp.start == 1 then
-                return true, "ok", rsp
-            end
-            return false, "error", rsp
-        end,
-    }
+    local recStart = recCtrl("host_recordctrl_start", TMO.recOn, 1, function(opts)
+        return string.format("AT+RECORDCTRL=1,%d", maxSec(opts, 60))
+    end)
 
-    local recordCtrlStop = defineSet{
-        tag = "host_recordctrl_stop", cfg = identityCfg, boot = recordCfg,
-        tmo = TIMEOUT.recordCtrlStop, ev = SYS_EVT.RECORDCTRL_SET, skipQuiet = true,
-        prep = function(opts)
-            return true, nil, string.format("AT+RECORDCTRL=0,%s", tostring(opts.reason or "cloud"))
-        end,
-        parse = function(rsp)
-            if rsp.ok and rsp.start == 0 then
-                return true, "ok", rsp
-            end
-            return false, "error", rsp
-        end,
-    }
+    local recStop = recCtrl("host_recordctrl_stop", TMO.recOff, 0, function(opts)
+        return string.format("AT+RECORDCTRL=0,%s", tostring(opts.reason or "cloud"))
+    end)
 
     ----------------------------------------------------------------
-    -- FRAMERATE / UPLOAD / PERSONDET / MIC / SOFTPHOTO / TFCARD
+    -- 帧率
     ----------------------------------------------------------------
-
-    local queryHostFramerate = defineQuery{
+    local qryFps = defineQuery{
         busy = "framerate_query_busy", cache = "host_framerate",
-        tag = "host_framerate", cfg = encodeCfg, tmo = TIMEOUT.framerateQuery,
+        tag = "host_framerate", cfg = encodeCfg, tmo = TMO.fpsQ,
         ev = SYS_EVT.FRAMERATE_QUERY,
-        at = framerateQueryAt,
+        at = function(opts)
+            return atQry("AT+FRAMERATE?", opts)
+        end,
         pre = function()
             state.framerate_rows = {}
         end,
-        rsp = function(got, rows)
-            if got and type(rows) == "table" then
-                state.host_framerate = rows
-                return rows
-            end
-            return state.host_framerate
-        end,
+        rsp = saveSnap("host_framerate", true),
     }
 
-    local setHostFramerate = defineSet{
+    local setFps = defineSet{
         busy = "framerate_set_busy", tag = "host_framerate_set",
-        cfg = encodeCfg, tmo = TIMEOUT.framerateSet, ev = SYS_EVT.FRAMERATE_SET,
+        cfg = encodeCfg, tmo = TMO.fpsS, ev = SYS_EVT.FRAMERATE_SET,
         prep = function(opts)
             local fps = tonumber(opts.framerate or opts.fps)
             if fps == nil then
@@ -253,11 +213,29 @@ function bind(C, H)
         end,
     }
 
-    local requestUploadVideo = defineSet{
-        tag = "host_uploadvideo", cfg = identityCfg, boot = recordCfg,
-        tmo = TIMEOUT.upload, ev = SYS_EVT.UPLOADVIDEO_SET, skipQuiet = true,
+    ----------------------------------------------------------------
+    -- 上传
+    ----------------------------------------------------------------
+    local function atUpload(opts)
+        opts = asTbl(opts)
+        local mid = tostring(opts.messageId or opts.msgid or ""):gsub("[^%w%-_]", "")
+        if #mid > 40 then
+            mid = mid:sub(1, 40)
+        end
+        return string.format("AT+UPLOADVIDEO=%d,%d,%d,%d,%d,%s",
+            needUpload(opts.needUpload or opts.need),
+            videoType(opts.videoType or opts.vtype),
+            tonumber(opts.beginTs) or 0,
+            tonumber(opts.endTs) or 0,
+            maxSec(opts, 0),
+            mid)
+    end
+
+    local uploadVideo = defineSet{
+        tag = "host_uploadvideo", cfg = identityCfg, boot = recCfg,
+        tmo = TMO.upload, ev = SYS_EVT.UPLOADVIDEO_SET, skipQuiet = true,
         prep = function(opts)
-            return true, nil, uploadVideoAt(opts)
+            return true, nil, atUpload(opts)
         end,
         parse = function(rsp)
             if rsp and rsp.ok then
@@ -267,62 +245,88 @@ function bind(C, H)
         end,
     }
 
-    local queryHostPersonDetect = defineQuery{
+    ----------------------------------------------------------------
+    -- 人形 / 麦克风 / 软光敏 / TF
+    ----------------------------------------------------------------
+
+    local qryPerson = defineQuery{
         busy = "persondet_query_busy", cache = "host_person_detect", parsed = true,
-        tag = "host_persondet", cfg = identityCfg, tmo = TIMEOUT.personDetect,
+        tag = "host_persondet", cfg = identityCfg, tmo = TMO.person,
         at = "AT+PERSONDET?", ev = SYS_EVT.PERSONDET_ACK,
     }
 
-    local setHostPersonDetect = defineSet{
+    local setPerson = defineSet{
         busy = "persondet_set_busy", tag = "host_persondet_set",
-        cfg = identityCfg, tmo = TIMEOUT.personDetect, ev = SYS_EVT.PERSONDET_SET,
+        cfg = identityCfg, tmo = TMO.person, ev = SYS_EVT.PERSONDET_SET,
         prep = function(opts)
-            local enable = tonumber(opts.enable)
-            if enable == nil or (enable ~= 0 and enable ~= 1) then
+            local on = tonumber(opts.enable)
+            if on ~= 0 and on ~= 1 then
                 return false, "invalid_enable"
             end
-            return true, nil, string.format("AT+PERSONDET=%d", enable)
+            return true, nil, string.format("AT+PERSONDET=%d", on)
         end,
     }
 
-    local queryHostMic = defineQuery{
+    local qryMic = defineQuery{
         busy = "mic_query_busy", cache = "host_mic", parsed = false,
-        tag = "host_mic", cfg = identityCfg, tmo = TIMEOUT.mic,
+        tag = "host_mic", cfg = identityCfg, tmo = TMO.mic,
         ev = SYS_EVT.MIC_QUERY,
-        at = micQueryAt,
+        at = function(opts)
+            return atQry("AT+MIC?", opts)
+        end,
         pre = function()
             state.mic_rows = {}
         end,
     }
 
-    local setHostMic = defineSet{
+    local setMic = defineSet{
         busy = "mic_set_busy", tag = "host_mic_set",
-        cfg = identityCfg, tmo = TIMEOUT.mic, ev = SYS_EVT.MIC_SET,
+        cfg = identityCfg, tmo = TMO.mic, ev = SYS_EVT.MIC_SET,
         prep = function(opts)
-            local volume, gain = tonumber(opts.volume), tonumber(opts.gain)
-            if volume == nil or gain == nil then
+            local vol, gain = tonumber(opts.volume), tonumber(opts.gain)
+            if vol == nil or gain == nil then
                 return false, "missing_params"
             end
             return true, nil, string.format("AT+MICSET=%d,%d,%d",
-                tonumber(opts.camera) or 0, volume, gain)
+                tonumber(opts.camera) or 0, vol, gain)
         end,
     }
 
-    local queryHostSoftPhoto = defineQuery{
+    local qryPhoto = defineQuery{
         busy = "softphoto_query_busy", cache = "host_softphoto", parsed = true,
-        tag = "host_softphoto", cfg = identityCfg, tmo = TIMEOUT.softPhoto,
+        tag = "host_softphoto", cfg = identityCfg, tmo = TMO.photo,
         at = "AT+SOFTPHOTO?", ev = SYS_EVT.SOFTPHOTO_QUERY,
     }
 
-    local setHostSoftPhoto = defineSet{
+    local setPhoto = defineSet{
         busy = "softphoto_set_busy", tag = "host_softphoto_set",
-        cfg = identityCfg, tmo = TIMEOUT.softPhoto, ev = SYS_EVT.SOFTPHOTO_SET,
-        prep = softPhotoSetAt,
+        cfg = identityCfg, tmo = TMO.photo, ev = SYS_EVT.SOFTPHOTO_SET,
+        prep = function(opts)
+            opts = asTbl(opts)
+            local f = {
+                tonumber(opts.enable),
+                tonumber(opts.nightModeThreshold),
+                tonumber(opts.dayModeThreshold),
+                tonumber(opts.dayModeAltThreshold),
+                tonumber(opts.gbGainThreshold),
+                tonumber(opts.gbGainRecordInit),
+                tonumber(opts.checkTime),
+                tonumber(opts.checkCount),
+            }
+            for i = 1, 8 do
+                if f[i] == nil then
+                    return false, "missing_params"
+                end
+            end
+            return true, nil, string.format(
+                "AT+SOFTPHOTOSET=%d,%d,%d,%d,%d,%d,%d,%d",
+                f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8])
+        end,
     }
 
-    local queryHostTfCard = defineQuery{
+    local qryTf = defineQuery{
         busy = "tf_card_query_busy", cache = "host_tf_card",
-        tag = "host_tfcard", cfg = tfCardCfg, tmo = TIMEOUT.record,
+        tag = "host_tfcard", cfg = tfCardCfg, tmo = TMO.rec,
         at = "AT+TFCARD?", ev = SYS_EVT.TFCARD_ACK,
         rsp = function(got, snap)
             if got and type(snap) == "table" and snap.parsed then
@@ -334,22 +338,22 @@ function bind(C, H)
     }
 
     return {
-        getT3xRecActive = getT3xRecActive,
-        qryHostRecord = qryHostRecord,
+        getT3xRecActive = t3xRecOn,
+        qryHostRecord = qryRecord,
         qryRecTime = qryRecTime,
         setRecTime = setRecTime,
-        queryHostFramerate = queryHostFramerate,
-        setHostFramerate = setHostFramerate,
-        recordCtrlStart = recordCtrlStart,
-        recordCtrlStop = recordCtrlStop,
-        requestUploadVideo = requestUploadVideo,
-        queryHostPersonDetect = queryHostPersonDetect,
-        setHostPersonDetect = setHostPersonDetect,
-        queryHostMic = queryHostMic,
-        setHostMic = setHostMic,
-        queryHostSoftPhoto = queryHostSoftPhoto,
-        setHostSoftPhoto = setHostSoftPhoto,
-        queryHostTfCard = queryHostTfCard,
+        queryHostFramerate = qryFps,
+        setHostFramerate = setFps,
+        recordCtrlStart = recStart,
+        recordCtrlStop = recStop,
+        requestUploadVideo = uploadVideo,
+        queryHostPersonDetect = qryPerson,
+        setHostPersonDetect = setPerson,
+        queryHostMic = qryMic,
+        setHostMic = setMic,
+        queryHostSoftPhoto = qryPhoto,
+        setHostSoftPhoto = setPhoto,
+        queryHostTfCard = qryTf,
     }
 end
 

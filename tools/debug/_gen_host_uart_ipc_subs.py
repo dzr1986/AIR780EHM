@@ -16,8 +16,8 @@ SPECS = [
         "title": "IPC 云状态 / GB28181 / qryIpcCloudStat",
         "start": 286,
         "end": 538,
-        "bind_args": "C, H, recovery, hostq",
-        "header_extra": "    local idCfgFn = H.idCfgFn\n    local qryHostStat = recovery.qryHostStat\n    local qryHostRecord = hostq.qryHostRecord\n",
+        "bind_args": "C, H",
+        "header_extra": "    local idCfgFn = H.idCfgFn\n    local qryHostStat, qryHostRecord = H.qryHostStat, H.qryHostRecord\n",
         "returns": """    return {
         cachedGb28181Id = cachedGb28181Id,
         qryGb28181 = qryGb28181,
@@ -52,8 +52,8 @@ SPECS = [
         "title": "hostIpcPowerOff / waitHostIpcReady",
         "start": 665,
         "end": 781,
-        "bind_args": "C, H, recovery",
-        "header_extra": "    local qryHostStat = recovery.qryHostStat\n",
+        "bind_args": "C, H",
+        "header_extra": "    local qryHostStat = H.qryHostStat\n",
         "returns": """    return {
         hostIpcPowerOff = hostIpcPowerOff,
         waitHostIpcReady = waitHostIpcReady,
@@ -186,9 +186,11 @@ bind_block = [
     "        tfCardCfgFn = tfCardCfgFn,",
     "    }",
     '    local recovery = require("hu_ipc_rec").bind(C, H)',
+    '    H.qryHostStat = recovery.qryHostStat',
     '    local hostq = require("hu_ipc_hostq").bind(C, H)',
-    '    local cloud = require("hu_ipc_cloud").bind(C, H, recovery, hostq)',
-    '    local power = require("hu_ipc_power").bind(C, H, recovery)',
+    '    H.qryHostRecord = hostq.qryHostRecord',
+    '    local cloud = require("hu_ipc_cloud").bind(C, H)',
+    '    local power = require("hu_ipc_power").bind(C, H)',
     '    local tffmt = require("hu_ipc_tffmt").bind(C, H)',
 ]
 

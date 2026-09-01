@@ -15,10 +15,10 @@ _G[_modname] = _M
 
 function bind(C, shared)
     local hostUart = C.hostUart
-    local pirCtrl = C.pir_ctrl
+    local pirCtrl = C.pirCtrl
     local utils = C.utils
-    local pubTfCard = C.M.pubTfCard
-    local pubTfFormat = C.M.pubTfFormat
+    local pubTfCard = C.pub.pubTfCard
+    local pubTfFormat = C.pub.pubTfFormat
     local hostReady = shared.t3xHostReady
 
     local TIMEOUT = {

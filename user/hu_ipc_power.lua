@@ -9,7 +9,7 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-function bind(C, H, recovery)
+function bind(C, H)
     local state, SYS_EVT = C.state, C.SYS_EVT
     local uartAcquire, uartRelease = C.uartAcquire, C.uartRelease
     local waitHostIdle = C.waitHostIdle
@@ -17,7 +17,7 @@ function bind(C, H, recovery)
     local hostNowMs = C.hostNowMs
     local patchCloud = C.patchCloud
     local getCfg = H.getCfg
-    local qryHostStat = recovery.qryHostStat
+    local qryHostStat = H.qryHostStat
 
     local TIMEOUT = {
         powerOffFloorMs = 5000,

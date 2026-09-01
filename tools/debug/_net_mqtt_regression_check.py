@@ -13,7 +13,7 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "MQTT 连接 / conack / subDownlink",
         "user/net_mqtt.lua",
-        r'event == "conack".*conn\.subDownlink\(client\)',
+        r'event == "conack".*conn\.subDown\(client\)',
     ),
     (
         "MQTT tryMqttConn / boot 连接",
@@ -38,7 +38,7 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "下行 handler 表驱动",
         "user/mqtt_dispatch.lua",
-        r"getHandlers\(\).*handler\(data\)",
+        r"handler = handlers and handlers\[dataType\][\s\S]*handler\(data\)",
     ),
     (
         "pubRaw → mqtt_pub",
@@ -53,12 +53,12 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "dispatch hookUsbRec",
         "user/mqtt_dispatch.lua",
-        r"MQTT_USB_RECOVERY_CHANGED[\s\S]*pubStatus\(\)",
+        r"MQTT_USB_RECOVERY_CHANGED[\s\S]*pubStatus",
     ),
     (
         "HOSTEVT 合并订阅 drain+identity",
         "user/mqtt_dispatch.lua",
-        r"onHostFirstAt[\s\S]*maybePubIdentity[\s\S]*drainHostQueue",
+        r"HOST_UART_FIRST_AT[\s\S]*maybePubIdentity[\s\S]*drainHostQueue",
     ),
     (
         "setMqttCfg 导出",
@@ -68,7 +68,7 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "bootstrapNet 导出",
         "user/net_mqtt.lua",
-        r"function bootstrapNet[\s\S]*conn\.bootstrapNet",
+        r"function bootstrapNet[\s\S]*conn\.startNet",
     ),
     (
         "conn waitNet 供 mqttTask",
@@ -76,19 +76,19 @@ CHECKS: list[tuple[str, str, str]] = [
         r"function waitNet[\s\S]*net_ready",
     ),
     (
-        "conn isDlTopic 供 dispatch",
+        "conn isDownTopic 供 dispatch",
         "user/mqtt_dispatch.lua",
-        r"isDlTopic\(topic\)",
+        r"isDownTopic\(topic\)",
     ),
     (
-        "downlink bind 仍挂 ctx",
+        "ctx.pub / ctx.dl 注入，bind 后拷贝到 _M",
         "user/net_mqtt.lua",
-        r'require\("mqtt_downlink"\)\.bind\(ctx\)',
+        r"pub = \{\}[\s\S]*dl = \{\}[\s\S]*mqtt_uplink[\s\S]*mqtt_downlink[\s\S]*for name, fn in pairs\(ctx\.pub\)",
     ),
     (
-        "downlink 内联 identity + 子模块 pir/ctrl/tf/upload",
+        "downlink 子模块 dev/pir/ctrl/tf/upload",
         "user/mqtt_downlink.lua",
-        r"function refDevId[\s\S]*mqtt_dl_pir[\s\S]*mqtt_dl_ctrl[\s\S]*mqtt_dl_tf[\s\S]*mqtt_dl_upload",
+        r"mqtt_dl_dev[\s\S]*mqtt_dl_pir[\s\S]*mqtt_dl_ctrl[\s\S]*mqtt_dl_tf[\s\S]*mqtt_dl_upload",
     ),
     (
         "uplink bind pir/upload + stat interval",
@@ -98,7 +98,7 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "host_proto register 进 downlink",
         "user/mqtt_downlink.lua",
-        r'require\("mqtt_hproto"\)\.register\(DOWNLINK_HANDLERS',
+        r'require\("mqtt_hproto"\)\.register\(handlers',
     ),
     (
         "主文件 conn.bind",
@@ -112,6 +112,10 @@ MODULES = [
     "mqtt_conn.lua",
     "mqtt_dispatch.lua",
     "mqtt_uplink.lua",
+    "mqtt_downlink.lua",
+    "mqtt_dl_dev.lua",
+    "mqtt_dl_ctrl.lua",
+    "mqtt_hproto.lua",
 ]
 
 REMOVED = [

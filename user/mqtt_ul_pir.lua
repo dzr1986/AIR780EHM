@@ -16,8 +16,8 @@ function bind(C, shared)
     local DT = C.DT
     local pubUplink = C.pubUplink
     local escJson = C.escJson
-    local pirCtrl = C.pir_ctrl
-    local msgIdPart = C.msgIdPart
+    local pirCtrl = C.pirCtrl
+    local msgIdJson = C.msgIdJson
     local pirDetectExtra = shared.pirDetectExtra
 
     ----------------------------------------------------------------
@@ -76,7 +76,7 @@ function bind(C, shared)
                 escJson(extra.uploadMode),
                 escJson(extra.quality),
                 buildDetectOptional(extra),
-                msgIdPart(extra.messageId))
+                msgIdJson(extra.messageId))
         })
     end
 
@@ -144,7 +144,7 @@ function bind(C, shared)
                 escJson(action or "video"),
                 escJson(uploadMode or "auto"),
                 escJson(quality or "high"),
-                msgIdPart(opts.messageId))
+                msgIdJson(opts.messageId))
         })
     end
 
@@ -169,7 +169,7 @@ function bind(C, shared)
                 escJson(opts.source or "4g"),
                 escJson(uploadMode),
                 escJson(quality),
-                msgIdPart(mid))
+                msgIdJson(mid))
         })
     end
 

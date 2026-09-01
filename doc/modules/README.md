@@ -24,7 +24,7 @@
 | `hu_rx_dsl.lua` | URC 行匹配 DSL | 同上 |
 | `hu_rx_media.lua` | VENC/AUDIO/MIC/FRAMERATE URC | 同上 |
 | `hu_ipc.lua` | IPC 编排 | 同上 |
-| `hu_ipc_recovery.lua` | UART 恢复、`qryHostStat` | 同上 |
+| `hu_ipc_rec.lua` | UART 恢复、`qryHostStat` | 同上 |
 | `hu_ipc_hostq.lua` | RECORD/MIC/SOFTPHOTO query/set | 同上 |
 | `hu_ipc_cloud.lua` | 云状态/GB28181 | 同上 |
 | `hu_ipc_power.lua` | IPC 上电/关机/ready | 同上 |

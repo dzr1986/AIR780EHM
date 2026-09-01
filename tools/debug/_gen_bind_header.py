@@ -46,6 +46,7 @@ H_GROUPS: list[list[str]] = [
     ["defineQuery", "defineSet"],
     ["idCfgFn", "encodeCfgFn", "tfCardCfgFn"],
     ["ensT3xHost", "hostBoot"],
+    ["qryHostStat", "qryHostRecord"],
 ]
 
 

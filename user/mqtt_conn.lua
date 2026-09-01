@@ -1,11 +1,8 @@
 -- ================================================================
 -- Filename : mqtt_conn.lua
--- Module   : topic/cfg/bootstrap/adapter/snap 连接外围，由 net_mqtt.bind
+-- Module   : topic / 配置 / 组网 / 快照，由 net_mqtt.bind
 -- Arch     : doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- ================================================================
---
--- 结构：topic → uplink 格式 → MQTT 配置 → adapter/LED → 快照 → bootstrap
---
 
 require "sys"
 local _modname = ...
@@ -13,92 +10,103 @@ module(_modname, package.seeall)
 _G[_modname] = _M
 
 function bind(C)
-    local deviceId = C.deviceId
+    local idMod = C.deviceId
     local utils = C.utils
-    local cfgm = C.cfgm
-    local mqttInfo, mqttWarn = C.mqttInfo, C.mqttWarn
-    local runtimePower, loader = C.rntmPwr, C.loader
+    local config = C.config
+    local logInfo = C.logInfo
+    local logWarn = C.logWarn
+    local power = C.power
+    local loader = C.loader
     local flags = C.flags
     local escJson = utils.escJson
 
-    local TOPIC_APP_PREFIX = "/panshi/app/"
-    local TOPIC_DEVICE_PREFIX = "/panshi/device/"
+    local APP_TOPIC = "/panshi/app/"
+    local DEVICE_TOPIC = "/panshi/device/"
+    local WAIT_LOCAL_IP_MS = 300000
+    local WAIT_NET_READY_MS = 300000
+    local WAIT_IP_READY_MS = 120000
 
-    local TIMEOUT = {
-        waitLocalIpMs = 300000,
-        waitNetReadyMs = 300000,
-        waitIpReadyMs = 120000,
+    local cache = {
+        deviceId = nil,
+        pubTopic = nil,
+        subTopic = nil,
+        dlPrefix = nil,
+        mqttCfg = nil,
+        cell = nil,
     }
 
-    local cachedDeviceId
-    local cachedPubTopic
-    local cachedSubTopic
-    local runtimeMqttCfg
-
     ----------------------------------------------------------------
-    -- topic / deviceNo
+    -- 设备号 / 主题
     ----------------------------------------------------------------
 
     local function getDeviceId()
-        if cachedDeviceId then
-            return cachedDeviceId
+        local id = cache.deviceId
+        if id then
+            return id
         end
-        local id = deviceId.getDeviceId()
+        id = idMod.getDeviceId()
         if id and id ~= "" and id ~= "unknown_device" then
-            cachedDeviceId = id
+            cache.deviceId = id
+            return id
         end
         return id or "unknown_device"
     end
 
+    local function cachePut(key, value)
+        if cache.deviceId then
+            cache[key] = value
+        end
+        return value
+    end
+
+    local function dlPrefix()
+        local prefix = cache.dlPrefix
+        if prefix then
+            return prefix
+        end
+        return cachePut("dlPrefix", DEVICE_TOPIC .. getDeviceId())
+    end
+
     local function pubTopic()
-        if cachedPubTopic then
-            return cachedPubTopic
+        local topic = cache.pubTopic
+        if topic then
+            return topic
         end
-        local topic = TOPIC_APP_PREFIX .. getDeviceId() .. "/"
-        if cachedDeviceId then
-            cachedPubTopic = topic
-        end
-        return topic
+        return cachePut("pubTopic", APP_TOPIC .. getDeviceId() .. "/")
     end
 
     local function subTopic()
-        if cachedSubTopic then
-            return cachedSubTopic
+        local topic = cache.subTopic
+        if topic then
+            return topic
         end
-        local topic = TOPIC_DEVICE_PREFIX .. getDeviceId() .. "/#"
-        if cachedDeviceId then
-            cachedSubTopic = topic
-        end
-        return topic
+        return cachePut("subTopic", dlPrefix() .. "/#")
     end
 
-    local function isDlTopic(topic)
+    local function isDownTopic(topic)
         if type(topic) ~= "string" or topic == "" then
             return true
         end
-        local prefix = TOPIC_DEVICE_PREFIX .. getDeviceId()
-        if topic == prefix or topic == prefix .. "/" then
-            return true
-        end
-        return topic:sub(1, #prefix + 1) == prefix .. "/"
+        local prefix = dlPrefix()
+        return topic == prefix or topic:sub(1, #prefix + 1) == prefix .. "/"
     end
 
-    local function subDownlink(client)
-        local filter = subTopic()
-        local pkgid = client:subscribe(filter, 1)
+    local function subDown(client)
+        local topic = subTopic()
+        local pkgid = client:subscribe(topic, 1)
         if pkgid then
-            mqttInfo("subscribe_downlink", filter, pkgid)
+            logInfo("subscribe_downlink", topic, pkgid)
         else
-            mqttWarn("subscribe_downlink_failed", filter)
+            logWarn("subscribe_downlink_failed", topic)
         end
         return pkgid ~= nil
     end
 
     ----------------------------------------------------------------
-    -- uplink JSON 格式
+    -- 上行 JSON
     ----------------------------------------------------------------
 
-    local function msgIdPart(messageId)
+    local function msgIdJson(messageId)
         if messageId and messageId ~= "" then
             return string.format(',"messageId":"%s"', escJson(tostring(messageId)))
         end
@@ -106,22 +114,21 @@ function bind(C)
     end
 
     local function fmtUplink(dataType, fields)
-        fields = fields or ""
         return string.format(
             '{"deviceNo":"%s","dataType":"%s"%s,"time":"%s"}',
-            getDeviceId(), dataType, fields, utils.formatTime())
+            getDeviceId(), dataType, fields or "", utils.formatTime())
     end
 
     ----------------------------------------------------------------
-    -- MQTT 运行期配置
+    -- MQTT 配置
     ----------------------------------------------------------------
 
-    local function normalizeMqttCfg(cfg)
+    local function normMqttCfg(cfg)
         if not cfg or not cfg.host or cfg.host == "" then
             return nil
         end
         local clientId = cfg.client_id
-        if clientId == nil or clientId == "" then
+        if not clientId or clientId == "" then
             clientId = nil
         end
         return {
@@ -134,54 +141,48 @@ function bind(C)
         }
     end
 
-    local function currentMqttCfg()
-        if runtimeMqttCfg == nil then
-            runtimeMqttCfg = normalizeMqttCfg(cfgm.get("MQTT_CFG"))
+    local function mqttCfg()
+        if cache.mqttCfg == nil then
+            cache.mqttCfg = normMqttCfg(config.get("MQTT_CFG"))
         end
-        return runtimeMqttCfg or {}
-    end
-
-    local function mqttCfgEqual(a, b)
-        return a.host == b.host
-            and a.port == b.port
-            and a.ssl == b.ssl
-            and a.username == b.username
-            and a.password == b.password
-            and a.client_id == b.client_id
+        return cache.mqttCfg or {}
     end
 
     local function sameMqttCfg(cfg)
-        local nextCfg = normalizeMqttCfg(cfg)
-        local cur = currentMqttCfg()
-        if not nextCfg or not cur then
+        local nxt = normMqttCfg(cfg)
+        if not nxt then
             return false
         end
-        return mqttCfgEqual(nextCfg, cur)
+        local cur = mqttCfg()
+        return nxt.host == cur.host
+            and nxt.port == cur.port
+            and nxt.ssl == cur.ssl
+            and nxt.username == cur.username
+            and nxt.password == cur.password
+            and nxt.client_id == cur.client_id
     end
 
     local function setMqttCfg(cfg)
-        local normalized = normalizeMqttCfg(cfg)
-        if not normalized then
+        local nxt = normMqttCfg(cfg)
+        if not nxt then
             return false
         end
-        runtimeMqttCfg = normalized
+        cache.mqttCfg = nxt
         return true
     end
 
     ----------------------------------------------------------------
-    -- 蜂窝 adapter / 网络 LED
+    -- 网卡 / 联网灯
     ----------------------------------------------------------------
 
     local function pushNetLed(online)
-        pcall(function()
-            local hu = utils.hostUart()
-            if hu and hu.pushNetLedSt then
-                hu.pushNetLedSt(online)
-            end
-        end)
+        local ok, hu = pcall(utils.hostUart)
+        if ok and hu and hu.pushNetLedSt then
+            pcall(hu.pushNetLedSt, hu, online)
+        end
     end
 
-    local function cellularAdapter()
+    local function cellAdapter()
         if socket and socket.LWIP_GP ~= nil then
             return socket.LWIP_GP
         end
@@ -189,56 +190,63 @@ function bind(C)
     end
 
     local function adapterReady(adapter)
-        if utils.localIp(adapter) then
+        if utils.localIp(adapter) or not socket or not socket.adapter then
             return true
         end
-        if not socket or not socket.adapter then
+        if adapter == nil and socket.dft then
+            adapter = socket.dft()
+        end
+        if adapter == nil then
             return true
         end
-        local target = adapter
-        if target == nil and socket.dft then
-            target = socket.dft()
-        end
-        if target == nil then
-            return true
-        end
-        local ok, ready = pcall(socket.adapter, target)
+        local ok, ready = pcall(socket.adapter, adapter)
         return ok and ready == true
     end
 
     ----------------------------------------------------------------
-    -- SIM / 无线 / 电量快照
+    -- 快照
     ----------------------------------------------------------------
 
-    local function snapRadio()
+    local function mobVal(fn)
+        return fn and fn() or ""
+    end
+
+    local function radioSnap()
         return {
-            csq = mobile.csq and mobile.csq() or "",
-            rssi = mobile.rssi and mobile.rssi() or "",
-            rsrq = mobile.rsrq and mobile.rsrq() or "",
-            rsrp = mobile.rsrp and mobile.rsrp() or "",
-            snr = mobile.snr and mobile.snr() or "",
+            csq = mobVal(mobile.csq),
+            rssi = mobVal(mobile.rssi),
+            rsrq = mobVal(mobile.rsrq),
+            rsrp = mobVal(mobile.rsrp),
+            snr = mobVal(mobile.snr),
         }
     end
 
-    local function snapBattery()
-        local usbOn = runtimePower.isUsbInserted() and 1 or 0
+    local function battSnap()
+        local usbOn = power.isUsbInserted() and 1 or 0
         return {
             power_status = usbOn,
-            battery_percent = runtimePower.getBatteryPercent() or "--",
-            battery_mv = runtimePower.getBatteryMv() or "--",
-            low_power_mode = runtimePower.isLowPowerMode() and "rest" or "normal",
             usb_inserted = usbOn,
-            charging = runtimePower.isCharging() and 1 or 0,
+            battery_percent = power.getBatteryPercent() or "--",
+            battery_mv = power.getBatteryMv() or "--",
+            low_power_mode = power.isLowPowerMode() and "rest" or "normal",
+            charging = power.isCharging() and 1 or 0,
         }
+    end
+
+    local function loadCell()
+        if cache.cell == nil then
+            cache.cell = loader.load("cell_boot") or false
+        end
+        return cache.cell or nil
     end
 
     local function fillOperator(snap)
-        local cellular = loader.load("cell_boot")
-        if cellular then
-            snap.operator, snap.operator_name = cellular.resolveOperator(
+        local cell = loadCell()
+        if cell then
+            snap.operator, snap.operator_name = cell.resolveOperator(
                 snap.imsi, snap.iccid, snap.apn)
         end
-        local op, opName, apnFallback = runtimePower.getCellular()
+        local op, opName, apnFallback = power.getCellular()
         if snap.operator == "unknown" and op and op ~= "" and op ~= "unknown" then
             snap.operator = op
             snap.operator_name = opName or snap.operator_name
@@ -248,23 +256,16 @@ function bind(C)
         end
     end
 
-    local function snapSim()
-        local radio = snapRadio()
-        local snap = {
-            imei = mobile.imei() or "",
-            imsi = mobile.imsi() or "",
-            iccid = mobile.iccid() or "",
-            status = mobile.status and mobile.status() or "",
-            csq = radio.csq,
-            rssi = radio.rssi,
-            rsrq = radio.rsrq,
-            rsrp = radio.rsrp,
-            snr = radio.snr,
-            simid = mobile.simid and mobile.simid() or "",
-            ip = utils.localIp() or "",
-            operator = "",
-            operator_name = "",
-        }
+    local function simSnap()
+        local snap = radioSnap()
+        snap.imei = mobile.imei() or ""
+        snap.imsi = mobile.imsi() or ""
+        snap.iccid = mobile.iccid() or ""
+        snap.status = mobVal(mobile.status)
+        snap.simid = mobVal(mobile.simid)
+        snap.ip = utils.localIp() or ""
+        snap.operator = ""
+        snap.operator_name = ""
         local okApn, apn = pcall(mobile.apn, 0, 1)
         if okApn and apn then
             snap.apn = apn
@@ -274,67 +275,66 @@ function bind(C)
     end
 
     ----------------------------------------------------------------
-    -- 网络 bootstrap
+    -- 组网
     ----------------------------------------------------------------
 
-    local function publishNetReady(ok)
+    local function pubNetReady(ok)
         flags.netReadyPub = true
         sys.publish("net_ready", getDeviceId(), ok)
     end
 
-    local function startNetWaitTask()
+    local function startNet()
+        if flags.bootstrapStarted then
+            return true
+        end
         flags.bootstrapStarted = true
         sys.taskInit(function()
-            local cellular = loader.load("cell_boot")
+            local cell = loadCell()
             local ip
-            if cellular and loader.enabled("cellular") then
-                _, ip = cellular.waitNet()
+            if cell and loader.enabled("cellular") then
+                _, ip = cell.waitNet()
             else
-                ip = utils.waitLocalIp(TIMEOUT.waitLocalIpMs)
+                ip = utils.waitLocalIp(WAIT_LOCAL_IP_MS)
             end
             if not flags.netReadyPub then
-                publishNetReady(ip ~= nil)
+                pubNetReady(ip ~= nil)
             end
         end)
-    end
-
-    local function bootstrapNet()
-        if not flags.bootstrapStarted then
-            startNetWaitTask()
-        end
         return true
     end
 
     local function waitNet()
-        if not flags.netReadyPub and not sys.waitUntil("net_ready", TIMEOUT.waitNetReadyMs) then
-            sys.waitUntil("IP_READY", TIMEOUT.waitIpReadyMs)
+        if not flags.netReadyPub and not sys.waitUntil("net_ready", WAIT_NET_READY_MS) then
+            sys.waitUntil("IP_READY", WAIT_IP_READY_MS)
         end
         return getDeviceId()
     end
 
-    ----------------------------------------------------------------
-    -- export（名称供 net_mqtt / uplink / dispatch 引用）
-    ----------------------------------------------------------------
-
     return {
+        -- 主题
         getDeviceId = getDeviceId,
         pubTopic = pubTopic,
         subTopic = subTopic,
-        subDownlink = subDownlink,
-        isDlTopic = isDlTopic,
-        msgIdPart = msgIdPart,
+        subDown = subDown,
+        isDownTopic = isDownTopic,
+        -- 上行 JSON
+        msgIdJson = msgIdJson,
         fmtUplink = fmtUplink,
-        curMqttCfg = currentMqttCfg,
-        normMqttCfg = normalizeMqttCfg,
+        -- 配置
+        mqttCfg = mqttCfg,
+        normMqttCfg = normMqttCfg,
         sameMqttCfg = sameMqttCfg,
         setMqttCfg = setMqttCfg,
+        -- 网卡 / 灯
         pushNetLed = pushNetLed,
-        mqttCellAdp = cellularAdapter,
-        mqttAdpReady = adapterReady,
-        snapSim = snapSim,
-        snapRadio = snapRadio,
-        snapBattery = snapBattery,
-        bootstrapNet = bootstrapNet,
+        cellAdapter = cellAdapter,
+        adapterReady = adapterReady,
+        -- 快照
+        simSnap = simSnap,
+        radioSnap = radioSnap,
+        battSnap = battSnap,
+        -- 组网
+        startNet = startNet,
         waitNet = waitNet,
     }
 end

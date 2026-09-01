@@ -12,21 +12,17 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-function bind(C, H, recovery, hostq)
-    local state = C.state
-    local SYS_EVT = C.SYS_EVT
-    local E = C.E
+function bind(C, H)
+    local state, SYS_EVT, E = C.state, C.SYS_EVT, C.E
     local modCall = C.modCall
     local hostBusy = C.hostBusy
     local wledGet = C.wledGet
     local normIpcCloud = C.normIpcCloud
     local commitIpcStat = C.commitIpcStat
-    local getCfg = H.getCfg
-    local hostQuery = H.hostQuery
+    local getCfg, hostQuery = H.getCfg, H.hostQuery
     local defineQuery = H.defineQuery
     local idCfgFn = H.idCfgFn
-    local qryHostStat = recovery.qryHostStat
-    local qryHostRecord = hostq.qryHostRecord
+    local qryHostStat, qryHostRecord = H.qryHostStat, H.qryHostRecord
 
     local TIMEOUT = {
         gb28181Query = 3000,

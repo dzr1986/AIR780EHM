@@ -15,20 +15,20 @@ function bind(C)
     local pubUplink = C.pubUplink
     local escJson = C.escJson
     local utils = C.utils
-    local rntmPwr = C.rntmPwr
+    local power = C.power
     local getDeviceId = C.getDeviceId
-    local msgIdPart = C.msgIdPart
+    local msgIdJson = C.msgIdJson
     local ipc_sup = C.ipc_sup
     local pubAppEvent = C.pubAppEvent
     local isConnected = C.isConnected
     local statFlags = C.statFlags
-    local snapBattery = C.snapBattery
-    local snapRadio = C.snapRadio
-    local snapSim = C.snapSim
-    -- C.M.idEnabled/refDevId/pirDetectExtra 由 downlink.bind 挂载，延迟查找
-    local function idEnabled(...) return C.M.idEnabled(...) end
-    local function refDevId(...) return C.M.refDevId(...) end
-    local function pirDetectExtra(...) return C.M.pirDetectExtra(...) end
+    local battSnap = C.battSnap
+    local radioSnap = C.radioSnap
+    local simSnap = C.simSnap
+    -- C.dl.idEnabled/refDevId/pirDetectExtra 由 downlink.bind 填入，延迟查找
+    local function idEnabled(...) return C.dl.idEnabled(...) end
+    local function refDevId(...) return C.dl.refDevId(...) end
+    local function pirDetectExtra(...) return C.dl.pirDetectExtra(...) end
 
     local pirUl = require("mqtt_ul_pir").bind(C, { pirDetectExtra = pirDetectExtra })
     local uploadUl = require("mqtt_ul_upload").bind(C)
@@ -122,15 +122,15 @@ function bind(C)
             dataType = DT.UL_REST,
             fields = string.format(
                 ',"lowPowerMode":"enter","reason":"%s","source":"%s"',
-                escJson(opts.reason or rntmPwr.getLastRestReason() or "unknown"),
+                escJson(opts.reason or power.getLastRestReason() or "unknown"),
                 escJson(opts.source or "enter")),
             appEvent = "MQTT_PUBLISH_REST"
         })
     end
 
     function pubConnect()
-        if rntmPwr.isLowPowerMode() then
-            pubRest({ reason = rntmPwr.getLastRestReason() or "unknown", source = "reconnect" })
+        if power.isLowPowerMode() then
+            pubRest({ reason = power.getLastRestReason() or "unknown", source = "reconnect" })
             pubStatus()
         else
             pubWakeup()
@@ -143,9 +143,9 @@ function bind(C)
 
     function pubStatus(opts)
         opts = utils.optTable(opts)
-        local snap = snapBattery()
+        local snap = battSnap()
         local intervalSec = getStatIv()
-        local usbRecovery, usbRcvrCnt, usbRcvrLast, usbLogical, usbNetdev = rntmPwr.getUsbRecovery()
+        local usbRecovery, usbRcvrCnt, usbRcvrLast, usbLogical, usbNetdev = power.getUsbRecovery()
         usbLogical = tonumber(usbLogical) or snap.usb_inserted
         usbNetdev = tonumber(usbNetdev) or 0
         refreshIpcStat(opts.skipIpcStatRefresh)
@@ -159,14 +159,14 @@ function bind(C)
                 escJson(tostring(snap.battery_percent)),
                 escJson(tostring(snap.battery_mv)),
                 escJson(snap.low_power_mode),
-                escJson(rntmPwr.getWorkMode()),
+                escJson(power.getWorkMode()),
                 intervalSec,
                 usbLogical,
                 usbNetdev,
                 escJson(usbRecovery or "idle"),
                 tonumber(usbRcvrCnt) or 0,
                 escJson(usbRcvrLast or ""),
-                radioExtraFields(snapRadio()),
+                radioExtraFields(radioSnap()),
                 statusExtraFields(opts),
                 ipc_sup.ipcCloudStatFields()),
             onPublished = function()
@@ -181,7 +181,7 @@ function bind(C)
     ----------------------------------------------------------------
 
     function pubSimInfo()
-        local snap = snapSim()
+        local snap = simSnap()
         pubUplink({
             suffix = "sim",
             dataType = DT.UL_SIM,
@@ -213,7 +213,7 @@ function bind(C)
                 ',"imei":"%s","gb28181Id":"%s","ret":%d%s',
                 escJson(imei), escJson(gb28181Id),
                 (gb28181Id ~= "") and 0 or -1,
-                msgIdPart(messageId))
+                msgIdJson(messageId))
         })
     end
 
@@ -239,7 +239,7 @@ function bind(C)
                 tonumber(snap.usedMb) or 0,
                 tonumber(snap.freeMb) or 0,
                 snap.timeout and -1 or 0,
-                msgIdPart(messageId))
+                msgIdJson(messageId))
         })
     end
 
@@ -258,7 +258,7 @@ function bind(C)
                 tostring(retCode ~= nil and retCode or -1),
                 escJson(message),
                 rebootField,
-                msgIdPart(messageId))
+                msgIdJson(messageId))
         })
     end
 
@@ -302,7 +302,7 @@ function bind(C)
                 escJson(message),
                 escJson(normBuildVer(extra.currentVersion or _G.IOT_VERSION or VERSION or _G.version or "")),
                 escJson(normBuildVer(extra.targetVersion or extra.version or "")),
-                msgIdPart(extra.messageId or extra.msgId)),
+                msgIdJson(extra.messageId or extra.msgId)),
             appEventFn = function()
                 pubAppEvent("MQTT_OTA_STATUS", stage, retCode, message, extra)
             end
@@ -350,38 +350,39 @@ function bind(C)
                 escJson(snap.project),
                 escJson(snap.buildTag),
                 escJson(snap.productKey),
-                msgIdPart(snap.messageId))
+                msgIdJson(snap.messageId))
         })
     end
 
     ----------------------------------------------------------------
-    -- 挂载 C.M（含 pir/upload 子模块）
+    -- 写入 ctx.pub（含 pir/upload 子模块）
     ----------------------------------------------------------------
 
-    C.M.pubWakeup = pubWakeup
-    C.M.pubRest = pubRest
-    C.M.pubStatus = pubStatus
-    C.M.pubConnect = pubConnect
-    C.M.pubSimInfo = pubSimInfo
-    C.M.pubDeviceId = pubDeviceId
-    C.M.pubDeviceIdRef = pubDeviceIdRef
-    C.M.pubTfCard = pubTfCard
-    C.M.pubTfFormat = pubTfFormat
-    C.M.pubIpcAlert = pubIpcAlert
-    C.M.pubCtrlReply = pubCtrlReply
-    C.M.pubOtaStatus = pubOtaStatus
-    C.M.pubPirEvent = pirUl.pubPirEvent
-    C.M.pubPirFromSt = pirUl.pubPirFromSt
-    C.M.pubPirDetect = pirUl.pubPirDetect
-    C.M.pubSnapDone = pirUl.pubSnapDone
-    C.M.pubRecActive = pirUl.pubRecActive
-    C.M.pubUploadReply = uploadUl.pubUploadReply
-    C.M.pubUploadDone = uploadUl.pubUploadDone
-    C.M.pubUploadNeed = uploadUl.pubUploadNeed
-    C.M.pubPirStart = pirUl.pubPirStart
-    C.M.pubPirStop = pirUl.pubPirStop
-    C.M.pubT3xStop = pirUl.pubT3xStop
-    C.M.pubVersion = pubVersion
+    local pub = C.pub
+    pub.pubWakeup = pubWakeup
+    pub.pubRest = pubRest
+    pub.pubStatus = pubStatus
+    pub.pubConnect = pubConnect
+    pub.pubSimInfo = pubSimInfo
+    pub.pubDeviceId = pubDeviceId
+    pub.pubDeviceIdRef = pubDeviceIdRef
+    pub.pubTfCard = pubTfCard
+    pub.pubTfFormat = pubTfFormat
+    pub.pubIpcAlert = pubIpcAlert
+    pub.pubCtrlReply = pubCtrlReply
+    pub.pubOtaStatus = pubOtaStatus
+    pub.pubPirEvent = pirUl.pubPirEvent
+    pub.pubPirFromSt = pirUl.pubPirFromSt
+    pub.pubPirDetect = pirUl.pubPirDetect
+    pub.pubSnapDone = pirUl.pubSnapDone
+    pub.pubRecActive = pirUl.pubRecActive
+    pub.pubUploadReply = uploadUl.pubUploadReply
+    pub.pubUploadDone = uploadUl.pubUploadDone
+    pub.pubUploadNeed = uploadUl.pubUploadNeed
+    pub.pubPirStart = pirUl.pubPirStart
+    pub.pubPirStop = pirUl.pubPirStop
+    pub.pubT3xStop = pirUl.pubT3xStop
+    pub.pubVersion = pubVersion
 
     ----------------------------------------------------------------
     -- 1003 interval（原 net_mqtt_stat）
@@ -406,7 +407,7 @@ function bind(C)
     end
 
     local function syncInterval(sec)
-        rntmPwr.setLowPowerInterval(sec)
+        power.setLowPowerInterval(sec)
         local lp = cfgm.get("LOW_POWER_CFG")
         if lp then
             lp.rest_mqtt_interval_sec = sec
@@ -436,7 +437,7 @@ function bind(C)
     end
 
     local function getStatIv()
-        local sec = clampInterval(rntmPwr.getLowPowerInterval())
+        local sec = clampInterval(power.getLowPowerInterval())
         if sec then
             return sec
         end
