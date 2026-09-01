@@ -20,44 +20,36 @@ function bind(C)
     -- handler registry
     ----------------------------------------------------------------
 
+    -- 顺序敏感：更具体的匹配放前面（名称仅作文档索引）
     local RX_LINE_HANDLER_REGISTRY = {
-        -- encode
-        { name = "encode_uart_error", fn = media.tryEncodeUartErr },
-        { name = "encode_ok_tail", fn = media.tryEncodeUartOk },
-        -- misc
-        { name = "sound_ack", fn = dsl.trySoundAck },
-        { name = "timeset_ack", fn = dsl.tryTimesetAck },
-        { name = "gb28181", fn = dsl.tryGb28181 },
-        { name = "wled", fn = dsl.tryWledLine },
-        -- storage
-        { name = "tfformat", fn = dsl.tryTfFormat },
-        { name = "tfcard", fn = dsl.tryTfCard },
-        -- record
-        { name = "recordtime", fn = dsl.tryRecTime },
-        { name = "record", fn = dsl.tryRecord },
-        { name = "recordctrl", fn = media.tryRecordCtrlLine },
-        { name = "uploadvideo", fn = media.tryUploadLine },
-        -- encode query/set（media）
-        { name = "framerate", fn = media.tryFramerateLine },
-        { name = "venc", fn = media.tryVencLine },
-        { name = "vencset", fn = media.tryVencSetLine },
-        { name = "audio", fn = media.tryAudioLine },
-        { name = "audioset", fn = media.tryAudioSetLine },
-        { name = "mic", fn = media.tryMicLine },
-        { name = "micset", fn = media.tryMicSetLine },
-        { name = "softphoto", fn = media.trySoftPhotoLine },
-        { name = "softphotoset", fn = media.trySoftPhotoSetLine },
-        { name = "persondet", fn = media.tryPersonDetLine },
-        -- IPC
-        { name = "ipcstat", fn = dsl.tryIpcStatCloud },
-        { name = "ipcstatus", fn = dsl.tryIpcStatus },
-        { name = "ipcpoweroff", fn = dsl.tryIpcPowerOff },
+        media.tryEncodeUartErr,
+        media.tryEncodeUartOk,
+        dsl.trySoundAck,
+        dsl.tryTimesetAck,
+        dsl.tryGb28181,
+        dsl.tryWledLine,
+        dsl.tryTfFormat,
+        dsl.tryTfCard,
+        dsl.tryRecTime,
+        dsl.tryRecord,
+        media.tryRecordCtrlLine,
+        media.tryUploadLine,
+        media.tryFramerateLine,
+        media.tryVencLine,
+        media.tryVencSetLine,
+        media.tryAudioLine,
+        media.tryAudioSetLine,
+        media.tryMicLine,
+        media.tryMicSetLine,
+        media.trySoftPhotoLine,
+        media.trySoftPhotoSetLine,
+        media.tryPersonDetLine,
+        dsl.tryIpcStatCloud,
+        dsl.tryIpcStatus,
+        dsl.tryIpcPowerOff,
     }
 
-    local tryHandlers = {}
-    for i = 1, #RX_LINE_HANDLER_REGISTRY do
-        tryHandlers[i] = RX_LINE_HANDLER_REGISTRY[i].fn
-    end
+    local tryHandlers = RX_LINE_HANDLER_REGISTRY
     return {
         normLine = dsl.normLine,
         parseTfCard = dsl.parseTfCard,

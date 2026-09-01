@@ -1,6 +1,8 @@
 # host_uart AT 分发与上行应答
 
 > **代码真源**：[`user/host_uart.lua`](../../user/host_uart.lua)（互斥、分发、RX 调度、start）  
+> **AT 应答格式**：[`user/hu_rsp.lua`](../../user/hu_rsp.lua)  
+> **UART 事务锁**：[`user/hu_uart_txn.lua`](../../user/hu_uart_txn.lua)  
 > **AT 表**：[`user/hu_at.lua`](../../user/hu_at.lua)  
 > **AT handler**：[`user/hu_cmd.lua`](../../user/hu_cmd.lua)（分发 + TIME/HOSTIDLE/OTA 等）  
 > **PIR/HOSTEVT**：[`user/hu_cmd_pir.lua`](../../user/hu_cmd_pir.lua)  
@@ -67,6 +69,8 @@ flowchart TD
 
 | 域 | 文件 |
 |----|------|
+| AT 应答格式 | `hu_rsp.lua` |
+| UART 事务锁 / 静默窗 | `hu_uart_txn.lua` |
 | AT 表编译 | `hu_at.lua` |
 | TIME/HOSTIDLE/GETCFG/OTA/REBOOT | `hu_cmd.lua` |
 | HOSTEVT/PIRSTAT/PIRCLR | `hu_cmd_pir.lua` |

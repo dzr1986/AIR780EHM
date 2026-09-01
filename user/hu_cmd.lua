@@ -351,16 +351,12 @@ function bind(C)
         uartTfCardNtf = t3x.uartTfCardNtf,
     }
 
-    C.M.devImei = devImei
-    C.M.bldHostEvtBody = pir.bldHostEvtBody
-    C.M.getHostEvtPending = C.getHostEvtPending
-    C.M.wledState = wled.wledState
-    C.M.setWledState = wled.setWledState
-    C.M.qryHostWled = wled.qryHostWled
-    C.M.rstUsbRecover = usb.rstUsbRecover
-    C.M.uartIpcStatusNtf = t3x.uartIpcStatusNtf
-    C.M.uartIpcStatNtf = t3x.uartIpcStatNtf
-    C.M.uartTfCardNtf = t3x.uartTfCardNtf
+    local M = C.M
+    for k, v in pairs(exp) do
+        if k ~= "at" and k ~= "hexLine" and k ~= "strLine" then
+            M[k] = v
+        end
+    end
 
     return exp
 end

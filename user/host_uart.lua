@@ -2,6 +2,9 @@
 -- Filename : host_uart.lua
 -- Module   : T3x AT 核心：互斥、分发、RX 行解析、start/notify；handler 见 hu_cmd/ipc
 -- Arch     : doc/modules/HOST_UART_AT_DISPATCH.md
+--
+-- 数据流：uart_bridge → processLine → [URC tryHandlers | AT dispatch | STR/HEX]
+-- 子模块绑定顺序：cmd（AT 下行）→ rx（URC 上行）→ ipc（query/set）
 -- ================================================================
 
 require "sys"
@@ -10,21 +13,19 @@ local utils = require "utils"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
 local uart_bridge = require "uart_bridge"
+local huRsp = require "hu_rsp"
+local huUartTxn = require "hu_uart_txn"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
 local LOG_TAG = "host_uart"
-local CRLF = "\r\n"
-local RSP_ERROR = CRLF .. "ERROR" .. CRLF
-local HOST_PUSH_QUIET_MS = 300
+local CRLF = huRsp.CRLF
+local RSP_ERROR = huRsp.RSP_ERROR
 
 local TIMEOUT = {
     firstAtCloudWait = 300,
     firstAtCloudQuery = 2500,
-    txnWaitSlice = 80,
-    txnWaitMin = 20,
-    hostIdleSliceMin = 20,
 }
 
 local SYS_EVT = {
@@ -108,24 +109,12 @@ local state = {
 }
 
 local E = cfgm.get("APP_EVENTS")
-local uartTxnOwner = nil
-local uartTxnDepth = 0
 local started = false
 local t3xModule = nil
 local usbChargeCache = nil
-
 local hostNowMs = utils.nowMs
 
--- rx/ipc 绑定后赋值（cmd 阶段经 ctx 延迟包装调用）
-local parseIpcStat
-local parseTfCard
-local normIpcCloud
-local commitIpcStat
-local patchCloud
-local noteUartLinkOk
-local isT31HostQry
-local qryIpcCloudStat
-local mergeTfCloud
+local txn = huUartTxn.bind(state, hostNowMs)
 
 ----------------------------------------------------------------
 -- 小工具
@@ -149,122 +138,6 @@ end
 local function t3xSecOff()
     return not loader.enabled("t3x_app") or not loader.enabled("uart_bridge")
 end
-
-local function noteHostPush()
-    state.host_push_quiet_until = hostNowMs() + HOST_PUSH_QUIET_MS
-end
-
-local function hostBusy()
-    local untilMs = tonumber(state.host_push_quiet_until) or 0
-    return untilMs > 0 and hostNowMs() < untilMs
-end
-
-local function waitHostIdle(timeoutMs)
-    timeoutMs = math.max(0, tonumber(timeoutMs) or 2000)
-    local deadline = hostNowMs() + timeoutMs
-    while hostBusy() do
-        local now = hostNowMs()
-        if now >= deadline then
-            return false
-        end
-        local quietUntil = tonumber(state.host_push_quiet_until) or 0
-        local slice = math.min(quietUntil - now + TIMEOUT.hostIdleSliceMin, deadline - now)
-        if slice < TIMEOUT.hostIdleSliceMin then
-            slice = TIMEOUT.hostIdleSliceMin
-        end
-        if now + slice > deadline then
-            slice = deadline - now
-        end
-        if slice <= 0 then
-            return false
-        end
-        sys.wait(slice)
-    end
-    return true
-end
-
-----------------------------------------------------------------
--- UART 事务锁（可重入）
-----------------------------------------------------------------
-
-local function uartAcquire(timeoutMs)
-    timeoutMs = tonumber(timeoutMs) or 8000
-    local me = coroutine.running()
-    if not me then
-        return false
-    end
-    if uartTxnOwner == me then
-        uartTxnDepth = uartTxnDepth + 1
-        return true
-    end
-    local deadline = hostNowMs() + timeoutMs
-    while state.uart_txn_busy do
-        local now = hostNowMs()
-        if now >= deadline then
-            return false
-        end
-        local slice = deadline - now
-        if slice > TIMEOUT.txnWaitSlice then
-            slice = TIMEOUT.txnWaitSlice
-        elseif slice < TIMEOUT.txnWaitMin then
-            slice = TIMEOUT.txnWaitMin
-        end
-        sys.wait(slice)
-    end
-    state.uart_txn_busy = true
-    uartTxnOwner = me
-    uartTxnDepth = 1
-    return true
-end
-
-local function uartRelease()
-    local me = coroutine.running()
-    if uartTxnOwner ~= me then
-        return
-    end
-    uartTxnDepth = uartTxnDepth - 1
-    if uartTxnDepth <= 0 then
-        uartTxnDepth = 0
-        uartTxnOwner = nil
-        state.uart_txn_busy = false
-    end
-end
-
-----------------------------------------------------------------
--- AT 应答格式
-----------------------------------------------------------------
-
-local okTail
-do
-    local RSP_OK = CRLF .. "OK" .. CRLF
-    okTail = function()
-        return RSP_OK
-    end
-end
-
-local function rspOnly(tag, body)
-    return CRLF .. "+" .. tag .. ":" .. body .. CRLF
-end
-
-local function rspBody(tag, body)
-    return rspOnly(tag, body) .. okTail()
-end
-
-local function rspFmt(tag, fmt, ...)
-    return string.format(CRLF .. "+" .. tag .. ":" .. fmt .. CRLF, ...) .. okTail()
-end
-
-local function rspLine(tag, ok)
-    return rspOnly(tag, ok and "OK" or "ERROR")
-end
-
-local function rspLineOk(tag)
-    return rspLine(tag, true) .. okTail()
-end
-
-----------------------------------------------------------------
--- Hex / USB / 配置快照
-----------------------------------------------------------------
 
 local function encodeHex(data)
     if not data or #data == 0 then
@@ -391,8 +264,16 @@ local function echoRxHex(data)
 end
 
 ----------------------------------------------------------------
--- ctx → cmd / rx / ipc
+-- ctx：子模块共享上下文（rx 绑定前用 late 延迟挂载）
 ----------------------------------------------------------------
+
+local late = {}
+
+local function lateField(name)
+    return function(...)
+        return late[name](...)
+    end
+end
 
 local ctx = {
     M = _M,
@@ -400,12 +281,12 @@ local ctx = {
     hooks = hooks,
     SYS_EVT = SYS_EVT,
     E = E,
-    rspOnly = rspOnly,
-    rspBody = rspBody,
-    rspFmt = rspFmt,
-    rspLine = rspLine,
-    rspLineOk = rspLineOk,
-    okTail = okTail,
+    rspOnly = huRsp.rspOnly,
+    rspBody = huRsp.rspBody,
+    rspFmt = huRsp.rspFmt,
+    rspLine = huRsp.rspLine,
+    rspLineOk = huRsp.rspLineOk,
+    okTail = huRsp.okTail,
     modCall = modCall,
     loader = loader,
     utils = utils,
@@ -425,28 +306,58 @@ local ctx = {
     decodeHex = decodeHex,
     hostNowMs = hostNowMs,
     t3xSecOff = t3xSecOff,
-    waitHostIdle = waitHostIdle,
-    uartAcquire = uartAcquire,
-    uartRelease = uartRelease,
-    hostBusy = hostBusy,
-    noteHostPush = noteHostPush,
+    waitHostIdle = txn.waitHostIdle,
+    uartAcquire = txn.uartAcquire,
+    uartRelease = txn.uartRelease,
+    hostBusy = txn.hostBusy,
+    noteHostPush = txn.noteHostPush,
     parseSvcArgs = parseSvcArgs,
-    parseIpcStat = function(...)
-        return parseIpcStat(...)
-    end,
-    parseTfCard = function(...)
-        return parseTfCard(...)
-    end,
+    parseIpcStat = lateField("parseIpcStat"),
+    parseTfCard = lateField("parseTfCard"),
 }
 
-local cmd = require("hu_cmd").bind(ctx)
-ctx.wledGet = cmd.wledGet
+local function mountLate(rxFields)
+    for k, v in pairs(rxFields) do
+        late[k] = v
+        ctx[k] = v
+    end
+end
 
-local AT_EXACT, AT_PREFIX = require("hu_at").compile(cmd.at)
-local LINE_HANDLERS = {
-    HEX = cmd.hexLine,
-    STR = cmd.strLine,
-}
+----------------------------------------------------------------
+-- 子模块绑定：cmd → at 表 → rx → ipc
+----------------------------------------------------------------
+
+local function bindPipeline()
+    local cmd = require("hu_cmd").bind(ctx)
+    ctx.wledGet = cmd.wledGet
+
+    local AT_EXACT, AT_PREFIX = require("hu_at").compile(cmd.at)
+    local LINE_HANDLERS = {
+        HEX = cmd.hexLine,
+        STR = cmd.strLine,
+    }
+
+    local rx = require("hu_rx").bind(ctx)
+    mountLate({
+        parseTfCard = rx.parseTfCard,
+        parseIpcStat = rx.parseIpcStat,
+        normIpcCloud = rx.normIpcCloud,
+        commitIpcStat = rx.commitIpcStat,
+        patchCloud = rx.patchCloud,
+    })
+
+    require("hu_ipc").bind(ctx)
+
+    return AT_EXACT, AT_PREFIX, LINE_HANDLERS, rx
+end
+
+local AT_EXACT, AT_PREFIX, LINE_HANDLERS, rx = bindPipeline()
+local normLine = rx.normLine
+local RX_LINE_TRY_HANDLERS = rx.tryHandlers
+
+----------------------------------------------------------------
+-- AT 分发
+----------------------------------------------------------------
 
 local function runAtDispatch(atCmd)
     local exact = AT_EXACT[atCmd]
@@ -471,26 +382,6 @@ local function runAtDispatch(atCmd)
     return RSP_ERROR
 end
 
-local rx = require("hu_rx").bind(ctx)
-parseTfCard = rx.parseTfCard
-parseIpcStat = rx.parseIpcStat
-normIpcCloud = rx.normIpcCloud
-commitIpcStat = rx.commitIpcStat
-patchCloud = rx.patchCloud
-local normLine = rx.normLine
-local RX_LINE_TRY_HANDLERS = rx.tryHandlers
-ctx.patchCloud = patchCloud
-ctx.commitIpcStat = commitIpcStat
-ctx.normIpcCloud = normIpcCloud
-
-require("hu_ipc").bind(ctx)
-if ctx.noteUartLinkOk then
-    noteUartLinkOk = ctx.noteUartLinkOk
-end
-isT31HostQry = ctx.M.isT31HostQry
-qryIpcCloudStat = ctx.M.qryIpcCloudStat
-mergeTfCloud = ctx.M.mergeTfCloud
-
 ----------------------------------------------------------------
 -- RX 行处理
 ----------------------------------------------------------------
@@ -502,19 +393,19 @@ local function onFirstHostAt(atLine)
     state.host_at_ready = true
     state.first_host_at = atLine
     state.host_ready_seen = true
-    if noteUartLinkOk then
-        noteUartLinkOk()
+    if ctx.noteUartLinkOk then
+        ctx.noteUartLinkOk()
     end
     state.uart_recovery_attempts = 0
     state.uart_recovery_last_sec = 0
-    patchCloud({ cat1Link = 1 })
+    late.patchCloud({ cat1Link = 1 })
     sys.taskInit(function()
         sys.wait(TIMEOUT.firstAtCloudWait)
-        if not isT31HostQry() then
+        if not _M.isT31HostQry() then
             return
         end
-        qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
-        mergeTfCloud()
+        _M.qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
+        _M.mergeTfCloud()
     end)
     sys.publish(E.HOST_UART_FIRST_AT, atLine or "")
 end
@@ -540,7 +431,7 @@ local function processLine(line)
         end
     end
     if line:sub(1, 2) == "AT" then
-        noteHostPush()
+        txn.noteHostPush()
         onFirstHostAt(line)
         return uartAtCmd(line)
     end

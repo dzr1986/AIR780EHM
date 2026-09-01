@@ -69,7 +69,7 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "rx bind 返回 tryHandlers",
         "user/hu_rx.lua",
-        r"tryHandlers = \{\}[\s\S]*return \{[\s\S]*tryHandlers",
+        r"(tryHandlers = \{\}[\s\S]*return \{[\s\S]*tryHandlers|tryHandlers = RX_LINE_HANDLER_REGISTRY[\s\S]*return \{[\s\S]*tryHandlers)",
     ),
     (
         "rx 模块级 return _M",
