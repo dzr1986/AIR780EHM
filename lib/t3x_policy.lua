@@ -7,177 +7,118 @@
 require "sys"
 require "config"
 local loader = require "module_loader"
+local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
 local t3x_notify = require "t3x_notify"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local lastMqtt = 0
-local function cfg()
-    return _G.T3X_POLICY_CFG or {}
+
+local lastMqttWakeAt = 0
+local burnActive = false
+
+local function policyCfg()
+    return cfgm.get("T3X_POLICY_CFG")
 end
 
 local function guardCfg()
-    local root = _G.BATTERY_CFG or {}
-    return root.guard or {}
+    return cfgm.get("BATTERY_CFG").guard or {}
 end
 
-function isUsbInserted()
-    return rntmPwr.isUsbInserted()
-end
-
-function getBatteryPercent()
-    local rt = _G.APP_RUNTIME
-    if rt then
-        local p = tonumber(rt.battery_percent)
-        if p then
-            return p
-        end
-    end
-    return nil
-end
-
-function getBatteryMv()
-    local rt = _G.APP_RUNTIME
-    if rt then
-        return tonumber(rt.battery_mv)
-    end
-    return nil
-end
-
-function isLowPowerMode()
-    return rntmPwr.isLowPowerMode()
-end
-
-local function isBatDynRest()
-    return rntmPwr.isBatDynRest()
+function setBurnActive(active)
+    burnActive = active == true
 end
 
 function isBurnActive()
-    return _G.T3X_BURN_MODE_ACTIVE == true
+    return burnActive
 end
 
 local function isPirWake(reason)
     reason = tostring(reason or "")
-    if reason == "notify_host" or reason == "pir_media" or reason == "exit_low_power" then
-        return true
-    end
-    return reason:sub(1, 9) == "pir_stop"
+    return reason == "ntfHost" or reason == "pir_media"
+        or reason == "exit_low_power" or reason:sub(1, 9) == "pir_stop"
 end
 
-local function allwWakeIn(reason)
-    if cfg().allow_wled_wake_in_rest ~= false and tostring(reason or "") == "wled" then
+local function allowWakeRest(reason)
+    if policyCfg().allow_wled_wake_in_rest ~= false and tostring(reason or "") == "wled" then
         return true
     end
-    if not isPirWake(reason) then
-        return false
-    end
-    if cfg().allow_pir_wake_in_rest ~= false then
-        return true
-    end
-    if cfg().allow_pir_wake_in_battery_rest ~= false and isBatDynRest() then
-        return true
-    end
-    return false
+    return isPirWake(reason) and (
+        policyCfg().allow_pir_wake_in_rest ~= false
+        or (policyCfg().allow_pir_wake_in_battery_rest ~= false and rntmPwr.isBatDynRest())
+    )
 end
 
-local function plcyDsbl()
-    if cfg().enabled == false then
-        return true
-    end
-    return not loader.enabled("t3x_policy")
+local function policyOff()
+    return policyCfg().enabled == false or not loader.enabled("t3x_policy")
 end
 
-local function psssUsbGate(reason)
-    if not isUsbInserted() then
-        return false
-    end
-    if reason == "mqtt_offline" and cfg().allow_mqtt_offline_wake_when_usb ~= true then
-        return false
-    end
-    return true
+local function passUsbGate(reason)
+    return rntmPwr.isUsbInserted()
+        and (reason ~= "mqtt_offline" or policyCfg().allow_mqtt_offline_wake_when_usb == true)
 end
 
-local function psssLowPwr(reason, opts)
-    if cfg().block_wake_in_low_power == false or not isLowPowerMode() then
-        return true
-    end
-    if allwWakeIn(reason) then
-        return true
-    end
-    return false
+local function passLpGate(reason)
+    return policyCfg().block_wake_in_low_power == false
+        or not rntmPwr.isLowPowerMode()
+        or allowWakeRest(reason)
 end
 
-local function psssBttr()
-    local mv = getBatteryMv()
-    local blockMv = tonumber(cfg().block_wake_below_mv) or tonumber(guardCfg().shutdown_mv)
+local function passBatGate()
+    local mv = rntmPwr.getBatteryMv()
+    local blockMv = tonumber(policyCfg().block_wake_below_mv) or tonumber(guardCfg().shutdown_mv)
     if blockMv and mv and mv <= blockMv then
         return false
     end
-    local pct = getBatteryPercent()
-    local blockPct = tonumber(cfg().block_wake_below_percent) or tonumber(guardCfg().pir_suspend_percent) or 15
-    if pct ~= nil and pct <= blockPct then
-        return false
-    end
-    return true
+    local pct = rntmPwr.getBatteryPercent()
+    local blockPct = tonumber(policyCfg().block_wake_below_percent)
+        or tonumber(guardCfg().pir_suspend_percent) or 15
+    return pct == nil or pct > blockPct
 end
 
 function mayPowerT3x(reason, opts)
     opts = type(opts) == "table" and opts or {}
-    if plcyDsbl() or isBurnActive() or psssUsbGate(reason) or opts.force_wake then
+    if policyOff() or isBurnActive() or passUsbGate(reason) or opts.forceWake then
         return true
     end
-    if not psssLowPwr(reason, opts) then
-        return false
-    end
-    return psssBttr()
+    return passLpGate(reason) and passBatGate()
 end
 
 function shdWakeOffline()
-    if cfg().block_mqtt_offline_wake == false then
-        return mayPowerT3x("mqtt_offline")
-    end
-    if isLowPowerMode() then
-        return false
-    end
-    local cd = tonumber(cfg().mqtt_offline_wake_cooldown_sec)
-    if cd and cd > 0 and lastMqtt > 0
-        and os.time() - lastMqtt < cd then
-        return false
-    end
-    if cfg().block_mqtt_offline_wake_when_usb ~= false and isUsbInserted() then
-        return false
+    local cfg = policyCfg()
+    if cfg.block_mqtt_offline_wake ~= false then
+        if rntmPwr.isLowPowerMode() then return false end
+        local cd = tonumber(cfg.mqtt_offline_wake_cooldown_sec)
+        if cd and cd > 0 and lastMqttWakeAt > 0
+            and os.time() - lastMqttWakeAt < cd then
+            return false
+        end
+        if cfg.block_mqtt_offline_wake_when_usb ~= false and rntmPwr.isUsbInserted() then
+            return false
+        end
     end
     return mayPowerT3x("mqtt_offline")
 end
 
-local function rcrdMqtt(reason)
+local function recMqttWake(reason)
     if reason == "mqtt_offline" then
-        lastMqtt = os.time()
+        lastMqttWakeAt = os.time()
     end
 end
 
 function reqT3xWake(reason, sid, evt, opts)
-    sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+    sid = sid or cfgm.get("HOST_WAKE_CFG").default_sid or 1
     evt = evt or 0
     opts = type(opts) == "table" and opts or {}
-    if not mayPowerT3x(reason, opts) then
-        return false
-    end
-    return t3x_notify.wakeHost(sid, evt, {
-        on_done = function()
-            rcrdMqtt(reason)
+    return mayPowerT3x(reason, opts) and t3x_notify.wakeHost(sid, evt, {
+        onDone = function()
+            recMqttWake(reason)
         end,
     })
 end
 
 function bootPowerOn(t3xModule)
-    if not mayPowerT3x("boot") then
-        return false
-    end
-    if t3xModule and t3xModule.powerOn then
-        return t3xModule.powerOn()
-    end
-    return false
+    return mayPowerT3x("boot") and t3xModule ~= nil and t3xModule.powerOn()
 end
+
 return _M

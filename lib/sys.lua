@@ -10,7 +10,6 @@
 -- @license MIT
 -- @copyright openLuat
 -- @release 2017.9.13
-require "utils"
 require "patch"
 module(..., package.seeall)
 

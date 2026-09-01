@@ -5,90 +5,82 @@
 -- ================================================================
 
 require "sys"
+require "config"
 local loader = require "module_loader"
+local cfgm = require "config_manager"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-local modCache = {}
-local function getMod(name)
-    local g = _G[name]
-    if g then
-        return g
+local providers = {}
+
+function registerProviders(p)
+    if type(p) ~= "table" then return end
+    for k, v in pairs(p) do
+        providers[k] = v
     end
-    local m = modCache[name]
-    if m == nil then
-        m = loader.load(name) or false
-        modCache[name] = m
-    end
-    return m ~= false and m or nil
 end
 
-local function ntfyViaTime(sid, evt)
+local function wakeCfg()
+    return cfgm.get("HOST_WAKE_CFG")
+end
+
+local function ntfViaTimeSync(sid, evt)
+    if providers.pushBeforeNotify then
+        return providers.pushBeforeNotify(sid, evt) ~= false
+    end
     local time_sync = loader.load("time_sync")
-    if not time_sync or not time_sync.pushBeforeNotifyAsync then
-        return false
-    end
-    if not loader.enabled("time_sync") then
-        return false
-    end
-    time_sync.pushBeforeNotifyAsync(sid, evt)
-    return true
-end
-
-local function ntfyViaHost(sid, evt)
-    local hu = getMod("host_uart")
-    if hu and hu.notify_host then
-        return hu.notify_host(sid, evt) ~= false
+    if time_sync and loader.enabled("time_sync") then
+        time_sync.pushBeforeNotifyAsync(sid, evt)
+        return true
     end
     return false
 end
 
-local function fllbGpio(onDone)
-    local t3x = getMod("t3x_ctrl")
-    if not t3x or not t3x.wake then
-        return false
+local function ntfViaHostUart(sid, evt)
+    if providers.ntfHost then
+        return providers.ntfHost(sid, evt) ~= false
+    end
+    local hu = loader.load("host_uart")
+    return hu ~= nil and hu.ntfHost(sid, evt) ~= false
+end
+
+local function gpioWakeFb(onDone)
+    local wake = providers.wakeHost
+    if not wake then
+        local t3x = loader.load("t3x_ctrl")
+        if not t3x then return false end
+        wake = function() t3x.wake() end
     end
     sys.taskInit(function()
-        t3x.wake()
-        if onDone then
-            onDone()
-        end
+        wake()
+        if onDone then onDone() end
     end)
     return true
 end
 
 function wakeHost(sid, evt, opts)
     opts = type(opts) == "table" and opts or {}
-    sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
+    sid = sid or wakeCfg().default_sid or 1
     evt = evt or 0
-    local onDone = opts.on_done
-    -- 保留真值判断：t3x_wakeup 需显式为真，与 enabled() 的 nil 视为开启语义不同
-    if not (_G.MODULE_FLAGS and _G.MODULE_FLAGS.t3x_wakeup
-        and (_G.MODULE_FLAGS.t3x_app ~= false)) then
-        return fllbGpio(onDone)
-    end
-    if ntfyViaTime(sid, evt) then
-        if onDone then
-            onDone()
+    local onDone = opts.onDone
+    local flags = cfgm.get("MODULE_FLAGS")
+    -- t3x_wakeup 须显式为真；t3x_app 的 nil 视为开
+    if flags and flags.t3x_wakeup and flags.t3x_app ~= false then
+        if ntfViaTimeSync(sid, evt) or ntfViaHostUart(sid, evt) then
+            if onDone then onDone() end
+            return true
         end
-        return true
     end
-    if ntfyViaHost(sid, evt) then
-        if onDone then
-            onDone()
-        end
-        return true
-    end
-    return fllbGpio(onDone)
+    return gpioWakeFb(onDone)
 end
 
 function ensPowOn(tag, opts)
-    local t3x = getMod("t3x_ctrl")
-    if t3x and t3x.ensPowOn then
-        return t3x.ensPowOn(tag, opts)
+    if providers.ensPowOn then
+        return providers.ensPowOn(tag, opts)
     end
-    return false
+    local t3x = loader.load("t3x_ctrl")
+    return t3x ~= nil and t3x.ensPowOn(tag, opts)
 end
 
 return _M

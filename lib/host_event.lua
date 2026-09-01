@@ -5,48 +5,44 @@
 -- ================================================================
 
 require "config"
-local loader = require "module_loader"
+local cfgm = require "config_manager"
+local rntmPwr = require "runtime_power"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
+local mqttPendingFn
 local TYPE_BIT = { wake = 1, pir = 2, record = 4, mqtt = 8 }
 local PIR_PENDING_LAST = {
     detected = true,
     retrigger = true,
     hw_accept = true,
 }
-local function cfg()
-    return _G.HOST_EVT_CFG or {}
+
+local function hostEvtCfg()
+    return cfgm.get("HOST_EVT_CFG")
 end
 
 function isEnabled()
-    local fc = _G.FEATURE_CFG
-    if fc and fc.host_evt == false then
-        return false
-    end
-    return cfg().enabled ~= false
+    local fc = cfgm.get("FEATURE_CFG")
+    return fc.host_evt ~= false and hostEvtCfg().enabled ~= false
 end
 
 local function typeEnabled(name)
-    local mask = tonumber(cfg().types_mask) or 0x0F
+    local mask = tonumber(hostEvtCfg().types_mask) or 0x0F
     local bit = TYPE_BIT[name] or 0
     return bit ~= 0 and (mask & bit) ~= 0
 end
 
 local function fieldInt(body, key, default)
-    if not body or body == "" then
-        return default
-    end
+    if not body or body == "" then return default end
     local v = body:match(key .. "=(%d+)")
     return v and tonumber(v) or default
 end
 
 local function fieldStr(body, key, default)
-    if not body or body == "" then
-        return default
-    end
-    local v = body:match(key .. "=([^,]+)")
-    return v or default
+    if not body or body == "" then return default end
+    return body:match(key .. "=([^,]+)") or default
 end
 
 local function emptySummary()
@@ -59,7 +55,7 @@ local function emptySummary()
     }
 end
 
-local function rslvPndn(pirBody, wakeValid, wakeSid, wakeEvt)
+local function resolvePndWake(pirBody, wakeValid, wakeSid, wakeEvt)
     if wakeValid then
         return true, wakeSid or 0, wakeEvt or 0
     end
@@ -71,10 +67,8 @@ local function rslvPndn(pirBody, wakeValid, wakeSid, wakeEvt)
         fieldInt(pirBody, "pending_evt", wakeEvt or 0)
 end
 
-local function collectWake(types, ctx)
-    if not typeEnabled("wake") or not ctx.pendingWake then
-        return
-    end
+local function snapWake(types, ctx)
+    if not typeEnabled("wake") or not ctx.pendingWake then return end
     types[#types + 1] = "wake"
     if ctx.primary == "none" then
         ctx.primary = "wake"
@@ -83,62 +77,43 @@ local function collectWake(types, ctx)
     end
 end
 
-local function collectPir(types, ctx)
-    if not typeEnabled("pir") or not ctx.pirBody then
-        return
-    end
+local function snapPir(types, ctx)
+    if not typeEnabled("pir") or not ctx.pirBody then return end
     local last = fieldStr(ctx.pirBody, "last", "none")
     local lastTs = fieldInt(ctx.pirBody, "last_ts", 0)
-    local maxAge = tonumber(cfg().pir_pending_max_age_sec) or 120
-    if not PIR_PENDING_LAST[last] or lastTs <= 0 then
-        return
-    end
+    local maxAge = tonumber(hostEvtCfg().pir_pending_max_age_sec) or 120
+    if not PIR_PENDING_LAST[last] or lastTs <= 0 then return end
     local age = os.time() - lastTs
-    if age < 0 or age > maxAge then
-        return
-    end
+    if age < 0 or age > maxAge then return end
     types[#types + 1] = "pir"
-    if ctx.primary == "none" then
-        ctx.primary = "pir"
-    end
+    if ctx.primary == "none" then ctx.primary = "pir" end
 end
 
-local function cllcRcrd(types, ctx)
-    if not typeEnabled("record") or not ctx.pirBody then
-        return
-    end
-    if fieldInt(ctx.pirBody, "recording", 0) ~= 1 then
+local function snapRecord(types, ctx)
+    if not typeEnabled("record") or not ctx.pirBody
+        or fieldInt(ctx.pirBody, "recording", 0) ~= 1 then
         return
     end
     types[#types + 1] = "record"
-    if ctx.primary == "none" then
-        ctx.primary = "record"
-    end
+    if ctx.primary == "none" then ctx.primary = "record" end
 end
 
-local function collectMqtt(types, ctx)
-    if not typeEnabled("mqtt") then
-        return
-    end
-    local rt = _G.APP_RUNTIME or {}
-    if tonumber(rt.online_status) ~= 1 or tonumber(rt.low_power_mode) == 1 then
-        return
-    end
-    local net = loader.load("net_mqtt")
-    if not net or not net.hasPendingHostWork or not net.hasPendingHostWork() then
+function bindMqttPending(fn)
+    mqttPendingFn = fn
+end
+
+local function snapMqtt(types, ctx)
+    if not typeEnabled("mqtt") or not rntmPwr.isOnline() or rntmPwr.isLowPowerMode()
+        or not mqttPendingFn or not mqttPendingFn() then
         return
     end
     types[#types + 1] = "mqtt"
-    if ctx.primary == "none" then
-        ctx.primary = "mqtt"
-    end
+    if ctx.primary == "none" then ctx.primary = "mqtt" end
 end
 
 function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
-    if not isEnabled() then
-        return emptySummary()
-    end
-    local pendingWake, sid, evt = rslvPndn(pirBody, wakeValid, wakeSid, wakeEvt)
+    if not isEnabled() then return emptySummary() end
+    local pendingWake, sid, evt = resolvePndWake(pirBody, wakeValid, wakeSid, wakeEvt)
     local types = {}
     local ctx = {
         pirBody = pirBody,
@@ -149,10 +124,10 @@ function summarize(pirBody, wakeValid, wakeSid, wakeEvt)
         sid = 0,
         evt = -1,
     }
-    collectWake(types, ctx)
-    collectPir(types, ctx)
-    cllcRcrd(types, ctx)
-    collectMqtt(types, ctx)
+    snapWake(types, ctx)
+    snapPir(types, ctx)
+    snapRecord(types, ctx)
+    snapMqtt(types, ctx)
     local has = #types > 0
     return {
         has_event = has and 1 or 0,
@@ -168,7 +143,7 @@ function hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
 end
 
 function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
-    if not isEnabled() or cfg().block_t3x_sleep_when_pending == false then
+    if not isEnabled() or hostEvtCfg().block_t3x_sleep_when_pending == false then
         return false
     end
     if pirBody and (pirBody:match("has_event=1") or pirBody:match("has_work=1")) then
@@ -176,4 +151,5 @@ function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
     end
     return hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
 end
+
 return _M

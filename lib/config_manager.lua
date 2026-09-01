@@ -17,6 +17,26 @@ function get(name)
     return type(t) == "table" and t or {}
 end
 
+-- 解析配置来源：t 可为全局配置名或直接配置表
+local function resolve(t)
+    return type(t) == "string" and get(t) or (type(t) == "table" and t or {})
+end
+
+-- 取数值配置：t 为全局配置名或表；缺失/非数值用 default
+function num(t, key, default)
+    local v = resolve(t)[key]
+    return type(v) == "number" and v or default
+end
+
+-- 取布尔配置：t 为全局配置名或表；nil 用 default；false/0/"0" 为 false
+function bool(t, key, default)
+    local v = resolve(t)[key]
+    if v == nil then
+        return default
+    end
+    return v ~= false and v ~= 0 and v ~= "0"
+end
+
 -- 将 overrides 合并进 defaults 并返回 defaults
 -- keys 给出白名单时仅合并这些键；否则全量合并（子表做一层浅合并）
 function merge(defaults, overrides, keys)

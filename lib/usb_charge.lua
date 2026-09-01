@@ -6,181 +6,126 @@
 
 require "sys"
 require "config"
-local utils = require "utils"
-local loader = require "module_loader"
 local gpio_util = require "gpio_util"
+local cfgm = require "config_manager"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-local updateChg
+
+local updateCharging
 local started = false
-local usbDetRdy = false
-local last_usb = nil
-local last_chg = nil
-local CHARGE_CONFIG = {
-    usb_det_pin = nil,
-    chg_state_pin = nil,
-    usb_inserted_level = 0,
-    chg_active_level = 1,
-    debounce_ms = 50,
-}
-local function loadCnfg()
-    local gin = _G.GPIO_IN
-    local usb = gin and gin.usb_det
-    local chg = gin and gin.chg_state
-    CHARGE_CONFIG.usb_det_pin = usb and usb.pin
-    CHARGE_CONFIG.chg_state_pin = chg and chg.pin
-    if usb and usb.active_level ~= nil then
-        CHARGE_CONFIG.usb_inserted_level = usb.active_level
-    end
-    if chg and chg.active_level ~= nil then
-        CHARGE_CONFIG.chg_active_level = chg.active_level
-    end
-    if usb and usb.debounce_ms then
-        CHARGE_CONFIG.debounce_ms = usb.debounce_ms
-    end
-end
-loadCnfg()
-local function cfg()
-    return CHARGE_CONFIG
+local usbDetReady = false
+local lastUsb = nil
+local lastCharging = nil
+local cancelPressHook
+
+local function gpioIn()
+    return cfgm.get("GPIO_IN")
 end
 
-local function usbPin()
-    return cfg().usb_det_pin
+local function activeLevel(entry, default)
+    if entry and entry.active_level ~= nil then
+        return entry.active_level
+    end
+    return default
 end
 
-local function ensrUsbDet()
-    if usbDetRdy then
+local function pinActive(entry, activeDefault)
+    local pin = entry and entry.pin
+    if pin == nil or not gpio or not gpio.get then return false end
+    return gpio.get(pin) == activeLevel(entry, activeDefault)
+end
+
+local function ensUsbDetPin()
+    local entry = gpioIn().usb_det
+    local pin = entry and entry.pin
+    if pin ~= nil and gpio and gpio.setup then
+        gpio_util.setupInput(pin, function() end, {
+            pull = entry.pull,
+            trigger_mode = entry.trigger_mode or "both",
+            debounce_ms = entry.debounce_ms,
+        })
+        usbDetReady = true
         return true
     end
-    local entry = (_G.GPIO_IN or {}).usb_det
-    local pin = entry and entry.pin or usbPin()
-    if not pin or not gpio or not gpio.setup then
-        return false
-    end
-    gpio_util.setup_input(pin, function() end, {
-        pull = entry and entry.pull,
-        trigger_mode = entry and entry.trigger_mode or "both",
-        debounce_ms = entry and entry.debounce_ms,
-    })
-    usbDetRdy = true
-    return true
-end
-
-local function readUsbInse()
-    if not ensrUsbDet() then
-        return false
-    end
-    local pin = usbPin()
-    if not pin or not gpio or not gpio.get then
-        return false
-    end
-    return gpio.get(pin) == cfg().usb_inserted_level
-end
-
-local function readCharging()
-    local pin = cfg().chg_state_pin
-    if not pin or not gpio or not gpio.get then
-        return false
-    end
-    return gpio.get(pin) == cfg().chg_active_level
-end
-
-local function effChar()
-    return readUsbInse() and readCharging()
-end
-
-local function updateUsb(inserted, fromIrq)
-    if last_usb == inserted then
-        return
-    end
-    last_usb = inserted
-    if inserted and fromIrq then
-        local peri = loader.load("peripheral")
-        if peri and peri.cancelLongPress then
-            peri.cancelLongPress("pwr")
-        end
-    end
-    local ev = utils.appEvent("GPIO_USB_DET_CHANGED", "APP_GPIO_USB_DET_CHANGED")
-    sys.publish(ev, inserted and 1 or 0)
-    updateChg(effChar(), fromIrq)
-end
-updateChg = function(charging, fromIrq)
-    if last_chg == charging then
-        return
-    end
-    last_chg = charging
-    local ev = utils.appEvent("GPIO_CHG_STATE_CHANGED", "APP_GPIO_CHG_STATE_CHANGED")
-    sys.publish(ev, charging and 1 or 0)
-end
-
-local function onUsbIrq(_level)
-    updateUsb(readUsbInse(), true)
-end
-
-local function onChgIrq(_level)
-    updateChg(effChar(), true)
-end
-
-local function setupPinIrq(entry, callback)
-    return gpio_util.setup_input_entry(entry, callback)
-end
-
-function start()
-    if started then
-        return false
-    end
-    local c = cfg()
-    if not c.usb_det_pin or not c.chg_state_pin then
-        return false
-    end
-    if not gpio or not gpio.setup then
-        return false
-    end
-    local gin = _G.GPIO_IN or {}
-    ensrUsbDet()
-    if not setupPinIrq(gin.usb_det, onUsbIrq) or not setupPinIrq(gin.chg_state, onChgIrq) then
-        return false
-    end
-    started = true
-    last_usb = readUsbInse()
-    last_chg = effChar()
-    return true
+    return false
 end
 
 function isUsbInserted()
-    return readUsbInse()
+    return (usbDetReady or ensUsbDetPin()) and pinActive(gpioIn().usb_det, 0)
+end
+
+local function readChargingPin()
+    return pinActive(gpioIn().chg_state, 1)
+end
+
+local function effectiveCharging()
+    return isUsbInserted() and readChargingPin()
+end
+
+local function pubUsbChange(inserted, fromIrq)
+    if lastUsb == inserted then return end
+    lastUsb = inserted
+    if inserted and fromIrq and cancelPressHook then cancelPressHook() end
+    sys.publish(APP_EVENTS.GPIO_USB_DET_CHANGED, inserted and 1 or 0)
+    updateCharging(effectiveCharging(), fromIrq)
+end
+
+updateCharging = function(charging, fromIrq)
+    if lastCharging == charging then return end
+    lastCharging = charging
+    sys.publish(APP_EVENTS.GPIO_CHG_STATE_CHANGED, charging and 1 or 0)
+end
+
+local function onUsbIrq(_level)
+    pubUsbChange(isUsbInserted(), true)
+end
+
+local function onChgIrq(_level)
+    updateCharging(effectiveCharging(), true)
+end
+
+function start()
+    if started then return true end
+    local gin = gpioIn()
+    if (usbDetReady or ensUsbDetPin())
+        and gpio_util.setupInputEntry(gin.usb_det, onUsbIrq)
+        and gpio_util.setupInputEntry(gin.chg_state, onChgIrq) then
+        started = true
+        lastUsb = isUsbInserted()
+        lastCharging = effectiveCharging()
+        return true
+    end
+    return false
+end
+
+function onUsbInsert(cb)
+    cancelPressHook = (type(cb) == "function") and cb or nil
 end
 
 function isCharging()
-    if not readUsbInse() then
-        return 0
-    end
-    return effChar() and 1 or 0
+    return effectiveCharging() and 1 or 0
 end
 
-local function usbGtdPlcy(cfgKey)
-    if (_G.HOST_USB_CFG or {})[cfgKey] == false then
-        return false
-    end
-    return isUsbInserted()
+local function usbPolicyActive(cfgKey)
+    return cfgm.get("HOST_USB_CFG")[cfgKey] ~= false and isUsbInserted()
 end
 
 function blocksHostIdle()
-    return usbGtdPlcy("block_host_idle_when_usb")
+    return usbPolicyActive("block_host_idle_when_usb")
 end
 
 function blocks4gRest()
-    return usbGtdPlcy("block_4g_rest_when_usb")
+    return usbPolicyActive("block_4g_rest_when_usb")
 end
 
 function getState()
     return {
         started = started,
         mode = "irq",
-        config = cfg(),
-        usb_inserted = readUsbInse(),
+        usb_inserted = isUsbInserted(),
         charging = isCharging(),
     }
 end
+
 return _M
