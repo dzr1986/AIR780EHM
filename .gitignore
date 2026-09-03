@@ -47,3 +47,8 @@ Desktop.ini
 dist/
 build/
 __pycache__/
+
+# 大体积压缩包 / 日志 / 本地规格书（勿入 git）
+*.7z
+*.log
+datasheet/
