@@ -15,85 +15,90 @@
 
 ---
 
-## 2. 现状盘点（2026-08-31 统计）
+## 2. 现状盘点（2026-09-03 实测刷新）
+
+> **修订**：本节由 08-31 基线更新为 **09-03 实测**（`user/` 58 + `lib/` 15 = 73）。**子模块名仅作语义分组**，真名/计数/行数真源见 [`LUA_MODULES.md`](LUA_MODULES.md) §1.1；行数可用 `python tools/debug/_module_tree.py` 刷新。
 
 ### 2.1 规模
 
-| 目录 | `.lua` 文件数 | 总行数（约） | 说明 |
+| 目录 | `.lua` 文件数 | 总行数 | 说明 |
 |------|---------------|--------------|------|
-| `user/` | **50** | **12 273** | 业务 + 协议分发 |
-| `lib/` | **17** | **2 586** | 策略/底层/常驻库 |
-| **合计** | **67** | **~14 859** | 仅根目录真源 |
+| `user/` | **58** | **13 579** | 业务 + 协议分发（config 编排 + 10 片段计入） |
+| `lib/` | **15** | **2 533** | 策略/底层/常驻库 |
+| **合计** | **73** | **16 112** | 仅 user/lib 根目录真源 |
 
-### 2.2 两大协议族（占 user 行数 ~55%）
+### 2.2 两大协议族（user/，合计约 user 行数 62%）
 
-#### host_uart 族（16 文件，~4 900 行）
+> 下表为 09-03 实测文件清单（主文件行数标注）。**子模块名仅作语义分组**；完整行数与 bind 顺序见 [`LUA_MODULES.md`](LUA_MODULES.md) §1.1，本计划不再二次登记行数以防漂移。
 
-```
-host_uart.lua              657   ← 锁 / SYS_EVT / state / RX 入口 / bind 编排
-hif_at.lua            81
-hif_rx.lua           649   ← 最大子文件，URC 行分发
-hif_cmd.lua          327
-  hif_cmd_pir.lua    111
-  hif_cmd_t31x.lua    209
-  hif_cmd_link.lua   230
-  hif_cmd_wled.lua   169
-  hif_cmd_usb.lua    269
-hif_ipc.lua          348
-  hif_ipc_cloud.lua      296
-  hif_ipc_recovery.lua   155
-  hif_ipc_power.lua      145
-  hif_ipc_hostq.lua      275
-  hif_ipc_tffmt.lua      109
-  hif_ipc_encode.lua     182
-```
-
-#### net_mqtt 族（18 文件，~3 400 行）
+#### host_uart 族（18 文件，主文件 692 行）
 
 ```
-net_mqtt.lua               574   ← mqttTask / pubRaw / notifyPowerOff / 连接状态
-net_mqtt_topic.lua          99
-net_mqtt_cfg.lua            71
-net_mqtt_bootstrap.lua      58
-net_mqtt_adapter.lua        55
-net_mqtt_snap.lua           83
-net_mqtt_dispatch.lua       64
-net_mqtt_hooks.lua          45
-mqtt_uplink.lua       493  (+1003 interval，原 stat 153 行)
-net_mqtt_downlink.lua       222
-  net_mqtt_downlink_pir.lua      257
-  net_mqtt_downlink_ctrl.lua     183
-  net_mqtt_downlink_upload.lua   113
-  net_mqtt_downlink_tf.lua       122
-  net_mqtt_downlink_identity.lua  (小)
-mqtt_uplink.lua         345
-  mqtt_uplink_pir.lua        162
-  mqtt_uplink_upload.lua     152
-net_mqtt_host_proto.lua     432
+host_uart.lua (692)          ← 锁 / SYS_EVT / state / RX 行分发 / start / bind 编排
+├── hif_cmd.lua (382)        ← AT 应答编排（子模块 bind 顺序固定）
+│   ├── hif_cmd_usb.lua      USBRESET/RNDIS/USBRECOVERY
+│   ├── hif_cmd_link.lua     P2P/GB28181/MQTT/SERV
+│   ├── hif_cmd_pir.lua      HOSTEVT/PIRSTAT
+│   ├── hif_cmd_t31x.lua     RECORD/UPLOAD/IPCSTAT NOTIFY
+│   └── hif_cmd_wled.lua     WLED
+├── hif_rx.lua               URC 行解析编排（cmd 之后 bind）
+│   ├── hif_rx_dsl.lua       dsl：云态/TF/录制/IPC 状态行
+│   └── hif_rx_media.lua     media：VENC/AUDIO/MIC/FRAMERATE 编码行
+├── hif_ipc.lua (379)        ← IPC query/set 公共路径 + 子模块编排
+│   ├── hif_ipc_rec.lua      UART 链路恢复 / qryHostStat
+│   ├── hif_ipc_hostq.lua    RECORD/MIC/SOFTPHOTO query/set
+│   ├── hif_ipc_cloud.lua    IPC 云状态/GB28181
+│   ├── hif_ipc_power.lua    IPC 上电/关机/ready
+│   ├── hif_ipc_tffmt.lua    TF format
+│   └── hif_ipc_encode.lua   编码参数（VENC/AUDIO）
+└── hif_at.lua (87)          ← AT_CMD_TABLE 编译（独立于 hif_cmd）
 ```
 
-### 2.3 仍偏大但未动刀的 user 模块
+#### net_mqtt 族（13 文件，主文件 623 行）
+
+```
+net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / DOWNLINK_HANDLERS
+├── mqtt_conn.lua (342)      topic/配置/组网/快照（连接外围合一）
+├── mqtt_uplink.lua (535)    100x 上行 + 1003 interval
+│   ├── mqtt_ul_pir.lua      1010–1012 PIR 上行
+│   └── mqtt_ul_upload.lua   1013 上传上行
+├── mqtt_downlink.lua (191)  2001–2013 下行总线 + 待 T31x 队列
+│   ├── mqtt_dl_ctrl.lua     2004 控制（reboot/off/ota/wled）
+│   ├── mqtt_dl_dev.lua      2002 rest / 2003 status / 2006 identity
+│   ├── mqtt_dl_pir.lua      2010/2011/2012 PIR
+│   ├── mqtt_dl_tf.lua       TF 卡查询与格式化
+│   └── mqtt_dl_upload.lua   2013 上传视频下行
+├── mqtt_dispatch.lua (110)  下行 JSON 分发 + HOSTEVT/USB 钩子
+└── mqtt_hproto.lua (473)    2020–2031 host query/set（经 UART）
+```
+
+> 旧名修订（09-03，已停用）：`net_mqtt_downlink*`→`mqtt_dl_*`、`mqtt_uplink_pir/upload`→`mqtt_ul_pir/upload`、`net_mqtt_host_proto`→`mqtt_hproto`、`net_mqtt_dispatch`→`mqtt_dispatch`；`topic/cfg/adapter/snap/hooks` 等连接外围已并入 `mqtt_conn`。
+
+### 2.3 仍偏大但未动刀的 user/ 模块（09-03 实测）
 
 | 文件 | 行数 | 策略 |
 |------|------|------|
-| `app.lua` | 945 | **冻结**（规则禁止再拆/合） |
-| `config.lua` | 681 | 配置表聚合，暂不动 |
-| `pir_ctrl.lua` | 656 | 业务闭环，非协议分发，低优先级 |
+| `app.lua` | 972 | **冻结**（规则禁止再拆/合） |
+| `pir_ctrl.lua` | 722 | 业务闭环，非协议分发，低优先级 |
 | `battery_guard.lua` | 391 | 可接受 |
 | `t31x_ctrl.lua` | 373 | 可接受 |
+| `host_uart.lua` / `net_mqtt.lua` | 692 / 623 | 锁/连接任务冻结在主文件，新 handler 走子模块 |
+
+> config 已于 09-03 前拆为「`config.lua`（26 行编排）+ 10 个片段」，不再作为单体巨石，见 [LUA_MODULES.md](LUA_MODULES.md) §1.1。
+> 协议族内最大成品子文件 `mqtt_uplink`(535) / `hif_rx_dsl`(530) / `mqtt_hproto`(473) / `mqtt_conn`(342) 均已按域拆分完成、职责单一，**冻结期内不再拆**（判定同 [ARCHITECTURE_REVIEW_20260903.md](ARCHITECTURE_REVIEW_20260903.md) §2.1）。
 
 ### 2.4 lib/ 状态
 
-17 文件、最大 `sys.lua`（394 行）、`cellular_bootstrap.lua`（373 行）。**无 urgent 拆分需求**；优化重心在 user 协议族与文档/tooling。
+15 文件、最大 `sys.lua`（394 行）、`cell_boot.lua`（373 行）。`host_event`/`t31x_policy`/`t31x_notify`/`lp_wakeup` 已按业务归属迁回 `user/`（见 [LUA_MODULES.md](LUA_MODULES.md) §1.1）。**无 urgent 拆分需求**；优化重心在 user 协议族与文档/tooling。
 
 ### 2.5 已暴露的结构性风险
 
 | 风险 | 实例 | 教训 |
 |------|------|------|
 | 生成/手工合并导致 **死代码** | `hif_rx.lua` 注册表嵌在 `tryIpcParam` 之后 | 子模块 `return M` / 注册表必须在函数块外；生成脚本需 `\nend\n` 防护 |
-| **模块名 shadowing** | `IP_LOSE` 回调参数 `adapter` 遮蔽 `net_mqtt_adapter` | 回调参数用 `ipAdapter` 等前缀，文档写进约束 |
+| **模块名 shadowing** | `IP_LOSE` 回调参数 `adapter` 遮蔽 `net_mqtt_adapter`（该外围现并入 `mqtt_conn`） | 回调参数用 `ipAdapter` 等前缀，文档写进约束 |
 | **bind 顺序依赖** | ipc：`recovery → hostq → cloud → power` | 主文件 bind 顺序即契约，改顺序必跑回归 |
-| **文档与代码脱节** | `LUA_MODULES.md` 仍写「19 user 模块」 | 需模块树索引，而非继续堆「+N 模块」叙述 |
+| **文档与代码脱节** | `LUA_MODULES.md` 曾写「19 user 模块」而实际已达 73 | **已治理**（09-03 L1–L3）：以 [`LUA_MODULES.md`](LUA_MODULES.md) §1.1 模块树为唯一真源，行数用 `_module_tree.py` 刷新，禁止手写计数 |
 
 ---
 
@@ -165,23 +170,19 @@ net_mqtt_host_proto.lua     432
 
 **原则**：仅当单文件 **&gt; 500 行** 且边界清晰；**一次只动一刀**。
 
-| 候选 | 行数 | 建议 | 风险 |
-|------|------|------|------|
-| `hif_rx.lua` | 649 | 迁 **encode/framerate/mic try\*** 段 → `hif_rx_media.lua` | 中：URC 注册表分散 |
-| `net_mqtt_host_proto.lua` | 432 | **暂不动**（2020–2031 已独立） | — |
-| `mqtt_uplink.lua` | 345 | **暂不动** | — |
-| `pir_ctrl.lua` | 656 | 业务模块，非本计划范围 | — |
+| 08-31 候选 | 09-03 状态 | 说明 |
+|------|------|------|
+| `hif_rx.lua`（649 单体） | ✅ 已拆 | 现为编排壳（69 行）；URC 行解析已分 `hif_rx_dsl.lua`(530) / `hif_rx_media.lua`(275) |
+| `net_mqtt_host_proto.lua` | ✅ 已更名 | → `mqtt_hproto.lua`(473)，保持独立（2020–2031） |
+| `mqtt_uplink.lua` | 冻结 | 成品 535 行（含 1003 interval），职责单一，不拆 |
+| `pir_ctrl.lua` | 冻结 | 业务模块（722 行），非本计划范围 |
 
 **不推荐**：
 
 - 合并 `hif_cmd_pir` + `hif_cmd_t31x` 等（丢失域边界）。  
-- 把 `net_mqtt_downlink_*.lua` 并回 `downlink.lua`（已按 200x 域拆分，合并反增冲突）。
+- 把 `mqtt_dl_*.lua` 并回 `mqtt_downlink.lua`（已按 200x 域拆分，合并反增冲突）。
 
-**若执行 P2-1（rx_media）**：
-
-1. 主文件 `host_uart.lua` 增加 `rx_media.bind(ctx)`，顺序在 `rx.bind` 之后或合并注册。  
-2. 更新 `HOST_UART_AT_DISPATCH.md`。  
-3. 跑 P1-2 + 实机 AT encode/mic 冒烟。
+> P2 为 08-31 候选清单，rx 拆分与 `mqtt_hproto` 更名均已在 09-03 前落地；冻结期内不再新增候选。行数以 `python tools/debug/_module_tree.py` 实测为准，勿沿用本表手写值。
 
 ---
 
@@ -223,13 +224,13 @@ main.lua → app.lua → module_loader
          host_uart 族            net_mqtt 族
          (T31x 串口)               (云端 MQTT)
               ↓                        ↓
-    at / rx / cmd_* / ipc_*     topic/cfg/task↓
-                                downlink_* / uplink_* / host_proto
+    at / rx / cmd_* / ipc_*     mqtt_conn/task↓
+                                mqtt_dl_* / mqtt_ul_* / mqtt_hproto
 ```
 
 - **找 AT/URC**：`hif_at` + `hif_rx` + `hif_cmd_*` + `hif_ipc_*`。  
-- **找 200x/100x**：`net_mqtt_downlink*` / `mqtt_uplink*` / `net_mqtt_host_proto`。  
-- **找连接/重连**：只看 `net_mqtt.lua` + `net_mqtt_bootstrap` + `net_mqtt_adapter`。
+- **找 200x/100x**：`mqtt_dl_*` / `mqtt_uplink`（+`mqtt_ul_*`） / `mqtt_hproto`。  
+- **找连接/重连**：只看 `net_mqtt.lua` + `mqtt_conn.lua`（topic/cfg/adapter/snap 已并入 `mqtt_conn`）。
 
 ### 6.2 命名约定（保持）
 
@@ -237,7 +238,7 @@ main.lua → app.lua → module_loader
 |------|------|
 | `hif_cmd_*` | T31x **通知/设置** 类 AT（HOST→CAT1 方向为主） |
 | `hif_ipc_*` | **查询/云状态/TF/编码/上电** 等 IPC 交互 |
-| `hif_rx_*` | （若拆）纯 URC 行解析 |
+| `hif_rx_dsl_*` / `hif_rx_media_*` | URC 行解析（已按 dsl/media 拆分） |
 | `net_mqtt_downlink_*` | 云端 **下行** 200x 域 |
 | `mqtt_uplink_*` | 设备 **上行** 100x 域 |
 | `net_mqtt_*` 短名 | 连接外围（topic/cfg/stat/hooks），**不含** cmd handler |
@@ -320,9 +321,9 @@ python tools/gui/flash/cat1_flash.py flash-script
 |------|------|
 | 文件太多要不要合并？ | **不合并**；用文档树 + 静态检查治理 |
 | 还要不要继续拆？ | **默认冻结**；仅 &gt;500 行且边界清晰时单点动刀 |
-| 下一刀砍谁？ | 唯一候选：`hif_rx.lua` → `rx_media`（可选） |
-| app/config/pir 呢？ | app 冻结；其余低优先级 |
-| lib 呢？ | 维持 17 文件，无拆分计划 |
+| 下一刀砍谁？ | rx 拆分（`rx_dsl`/`rx_media`）已于 09-03 前完成；冻结期无候选 |
+| app/config/pir 呢？ | app 冻结；config 已拆片段；pir 低优先级 |
+| lib 呢？ | 维持 15 文件，无拆分计划 |
 | Flash 优化？ | 不靠减文件；见 `CODE_SIZE_OPTIMIZATION.md` |
 | VERSION？ | 纯重构/doc/tool **不升**；行为 fix 单独升 patch |
 | 工具收工？ | **是**（2026-08-31）：静态回归 + bind 头 + 行数基线 + smoke 脚本 |
@@ -335,8 +336,8 @@ python tools/gui/flash/cat1_flash.py flash-script
 | 文档 | 关系 |
 |------|------|
 | [USER_LIB_OPTIMIZATION_NEXT.md](USER_LIB_OPTIMIZATION_NEXT.md) | 历史拆分账本与 camelCase |
-| [LUA_MODULES.md](LUA_MODULES.md) | **待 P0 更新** 为模块树 |
-| [modules/README.md](modules/README.md) | **待 P0 更新** 子模块索引 |
+| [LUA_MODULES.md](LUA_MODULES.md) | **09-03 已重写**为模块树（user 58 + lib 15 = 73） |
+| [modules/README.md](modules/README.md) | **09-03 已更新**子模块索引（对齐真实文件名） |
 | [HOST_UART_AT_DISPATCH.md](modules/HOST_UART_AT_DISPATCH.md) | AT/URC 真源 |
 | [NET_MQTT_DOWNLINK_DISPATCH.md](modules/NET_MQTT_DOWNLINK_DISPATCH.md) | 下行分发 + `ipAdapter` 约束 |
 | [CODE_SIZE_OPTIMIZATION.md](CODE_SIZE_OPTIMIZATION.md) | Flash 体积（与文件数正交） |
