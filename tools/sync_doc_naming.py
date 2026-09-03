@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Sync doc/*.md API names to 001.000.134 naming. Skips LuaTools/."""
+"""Sync doc/*.md API names to 001.000.134 naming. Skips LuaTools/.
+
+WARNING(2026-09-04): REPLACEMENTS 下段的「151 批」目标映射（bldAtBody->buildStatBody、
+ntfHostIdle->notifyHostIdle、shdHostSleep->shouldHostSleep、setStatIv->setStatInterval 等）
+尚未在代码实施（冻结期，见 doc/CAT1_API_NAMING.md §4「规划改名」）。在代码 rename 完成前
+禁止运行本脚本，否则会把已对齐代码现状的 doc 名替换成代码不存在的名。
+"""
 
 from __future__ import annotations
 
@@ -101,7 +107,8 @@ REPLACEMENTS: list[tuple[str, str]] = [
     ("high_ms", "highMs"),
     ("app_event", "appEvent"),
     ("boot_gpio", "bootGpio"),
-    # 151 批：旧短名 → 新真名（与 doc/CAT1_API_NAMING.md §4 同步）
+    # 151 批（与 doc/CAT1_API_NAMING.md §4「规划改名」同步）
+    # ⚠ 尚未在代码实施（冻结期不动代码）；代码 rename 完成前勿运行本脚本，见文件头 WARNING
     ("bldReqOpts", "buildReqOpts"),
     ("refCloudF1003", "refCloudStat1003"),
     ("setStatIv", "setStatInterval"),

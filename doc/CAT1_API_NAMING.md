@@ -4,6 +4,11 @@
 > **协处理器系列写法**：[T31X_NAMING.md](T31X_NAMING.md)（`t31x` / `T31x` / `T31X`，与本文 API 驼峰无关）  
 > **优化账本**：[USER_LIB_OPTIMIZATION_NEXT.md](USER_LIB_OPTIMIZATION_NEXT.md)
 
+> ⚠ **命名漂移状态（2026-09-04 校准）**：`bldAtBody`→`buildStatBody`、`ntfHostIdle`→`notifyHostIdle`、
+> `shdHostSleep`→`shouldHostSleep`、`setStatIv`→`setStatInterval` 四组 rename 曾于 151 批次记录为"已完成"，
+> 但**代码未实施，文档先于代码**。冻结期不动代码，故下文 §2 一律写**代码当前真名**（`bldAtBody`/`ntfHostIdle`/
+> `shdHostSleep`/`setStatIv`），改名目标列于 §4「规划改名」清单，解冻后代码 + `sync_doc_naming.py` 三处同步执行。
+
 ---
 
 ## 1. 口径
@@ -16,12 +21,12 @@
 | `sched*` | 定时/对账调度 | `schedPirSleep`、`schedStopFallback` |
 | `ref*` | 刷新/对账 | `refCloudStat1003`、`refDevId`、`refTfCard` |
 | `on*` | 事件回调 | `onFirstHostAt`、`onPmdMsg`、`onRxRaw` |
-| `build*` | 拼装字符串/表（151 起取代 `bld*`） | `buildStatBody`、`buildReqOpts` |
-| `notify*` | 非 MQTT 通知（151 起取代 `ntf*`） | `notifyHostIdle`、`notifyUsbIdle` |
-| `ntf*` | **仅保留** `ntfHost`（`lib/t31x_notify` 依赖） | `ntfHost` |
+| `build*` | 拼装字符串/表（**目标前缀，rename 未实施**） | 代码现状 `bldAtBody`；目标 `buildStatBody`、`buildReqOpts` |
+| `notify*` | 非 MQTT 通知（**目标前缀，rename 未实施**） | 代码现状 `ntfHostIdle`；目标 `notifyHostIdle`、`notifyUsbIdle` |
+| `ntf*` | 业务侧当前名（`ntfHost` 保留） | `ntfHost`、`ntfHostIdle` |
 | camelCase | 模块内 helper、ctx 键 | `hostQuery`、`modCall`、`patchCloud` |
 
-> `bldPirWake` / `bldHostEvtBody` 为遗留名，后续随改动迁移到 `build*`。
+> 代码现状的 `bldAtBody` / `ntfHostIdle` / `shdHostSleep` / `setStatIv` 迁移目标见 §4「规划改名」。
 
 **135 起不再挂 `_M` 兼容别名**；文档与调用只写上表真名。
 
@@ -76,7 +81,7 @@ ctx 键：`hostNowMs`、`noteUartLinkOk`、`wledGet`、`okTail`、`hexLine`、`s
 | `pubRaw(topic, payload, qos)` | 原始 publish |
 | `subDownlink(client)` | 订阅下行 topic |
 | `dispatchDl(topic, payload)` | 200x 分发 |
-| `setStatInterval(sec, persist)` | 1003 间隔 |
+| `setStatIv(sec, persist)`（目标 `setStatInterval`，见 §4） | 1003 间隔 |
 | `bootstrapNet()` | 等网 + 启动 MQTT |
 | `sameMqttCfg` / `setMqttCfg` | 配置比较/写入 |
 | `drainHostQueue()` / `hasHostQueue()` | host 待办队列 |
@@ -121,8 +126,8 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 
 | 模块 | API |
 |------|-----|
-| `pir_ctrl` | `buildStatBody()` |
-| `battery_guard` | `notifyHostIdle()`、`shouldHostSleep()`、`canHostSleep()` |
+| `pir_ctrl` | `bldAtBody()`（目标 `buildStatBody`，见 §4） |
+| `battery_guard` | `ntfHostIdle()`、`shdHostSleep()`、`canHostSleep()` |
 | `app` | `notifyUsbIdle`、`applyUsbPower`、`setupUart` |
 | `time_sync` | `pushBeforeNotify` → `ntfHost` |
 | `fota_svc` | `buildReqOpts` |
@@ -164,8 +169,11 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 
 ## 4. 文档维护
 
-- 只写 §2 真名；历史别名见 git / [FUNCTION_NAME_MAP.md](FUNCTION_NAME_MAP.md)（只读）。
-- `python tools/sync_doc_naming.py` 仅做 doc 内旧字符串 → 真名（不再生成别名）。
-- 151 批改名（代码 + 本文 + `sync_doc_naming.py` 三处同步）：`bldAtBody`→`buildStatBody`、`ntfHostIdle`→`notifyHostIdle`、`shdHostSleep`→`shouldHostSleep`、`ntfT31xUsbIdle`→`notifyUsbIdle`、`bldReqOpts`→`buildReqOpts`、`refCloudF1003`→`refCloudStat1003`、`setStatIv`/`getStatIv`/`loadStatIvCfg`→`setStatInterval`/`getStatInterval`/`loadStatCfg`。
+- 只写 §2 **代码当前真名**；历史别名见 git / [FUNCTION_NAME_MAP.md](FUNCTION_NAME_MAP.md)（只读）。
+- `python tools/sync_doc_naming.py` 的「151 批」段目标映射**尚未在代码实施，暂禁用**（运行会把 doc 名改到代码不存在的名）。
+- **规划改名（未实施；解冻后代码 + 本文 + `sync_doc_naming.py` 三处同步）**：
+  `bldAtBody`→`buildStatBody`、`ntfHostIdle`→`notifyHostIdle`、`shdHostSleep`→`shouldHostSleep`、
+  `ntfT31xUsbIdle`→`notifyUsbIdle`、`bldReqOpts`→`buildReqOpts`、`refCloudF1003`→`refCloudStat1003`、
+  `setStatIv`/`getStatIv`/`loadStatIvCfg`→`setStatInterval`/`getStatInterval`/`loadStatCfg`。
 
-**版本**：2026-09-02 · 脚本 `001.000.151`
+**版本**：2026-09-04 · 对齐代码 `001.000.151`（§4 改名标记为规划未实施）

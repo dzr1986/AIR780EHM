@@ -236,7 +236,7 @@ applyUsbPower(inserted, source)
   拔出 → battery_guard.onUsbRemoved（按电量重评估，高电量不进 rest）
 ```
 
-**PIR 桥**：`PIR_WAKE_T31X` → `notifyHostIdle` + `requestT31xWake("pir_media")`
+**PIR 桥**：`PIR_WAKE_T31X` → `ntfHostIdle` + `requestT31xWake("pir_media")`
 
 ### 3.5 `battery_guard.lua` — 电量分档策略（391 行）
 
@@ -244,7 +244,7 @@ applyUsbPower(inserted, source)
 |----|------|
 | **职责** | USB 优先；三档电量；PIR 挂起；4G rest；关机定时器；HOSTIDLE 门禁 |
 | **档位** | `normal` (>20%) · `host_idle` (5~20%) · `shutdown` (≤5%) |
-| **关键 API** | `evaluate`, `getBatteryTier`, `shouldHostSleep`, `canHostSleep`, `notifyHostIdle` |
+| **关键 API** | `evaluate`, `getBatteryTier`, `shdHostSleep`, `canHostSleep`, `ntfHostIdle` |
 
 **evaluate 阶段**（未插 USB）
 
@@ -455,7 +455,7 @@ flowchart TD
 ```
 PIR 中断 → pir_ctrl.onPirTriggered
   → PIR_WAKE_T31X → app.wakeT31xForPir
-  → notifyHostIdle + requestT31xWake
+  → ntfHostIdle + requestT31xWake
   → host_uart.ntfHost → T31x 开始录像
   → AT+RECORD=1 → pir_ctrl 会话 → MQTT 1010/1011
 ```
