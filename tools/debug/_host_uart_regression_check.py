@@ -11,75 +11,75 @@ USER = ROOT / "user"
 
 MODULES = [
     "host_uart.lua",
-    "hu_at.lua",
-    "hu_rx.lua",
-    "hu_rx_dsl.lua",
-    "hu_rx_media.lua",
-    "hu_cmd.lua",
-    "hu_cmd_usb.lua",
-    "hu_cmd_link.lua",
-    "hu_cmd_pir.lua",
-    "hu_cmd_t31x.lua",
-    "hu_cmd_wled.lua",
-    "hu_ipc.lua",
-    "hu_ipc_rec.lua",
-    "hu_ipc_hostq.lua",
-    "hu_ipc_cloud.lua",
-    "hu_ipc_power.lua",
-    "hu_ipc_tffmt.lua",
-    "hu_ipc_encode.lua",
+    "hif_at.lua",
+    "hif_cmd.lua",
+    "hif_cmd_usb.lua",
+    "hif_cmd_link.lua",
+    "hif_cmd_pir.lua",
+    "hif_cmd_t31x.lua",
+    "hif_cmd_wled.lua",
+    "hif_rx.lua",
+    "hif_rx_dsl.lua",
+    "hif_rx_media.lua",
+    "hif_ipc.lua",
+    "hif_ipc_rec.lua",
+    "hif_ipc_hostq.lua",
+    "hif_ipc_cloud.lua",
+    "hif_ipc_power.lua",
+    "hif_ipc_tffmt.lua",
+    "hif_ipc_encode.lua",
 ]
 
 CHECKS: list[tuple[str, str, str]] = [
     (
         "主文件 cmd.bind 在 rx 前",
         "user/host_uart.lua",
-        r'require\("hu_cmd"\)\.bind\(ctx\)[\s\S]*require\("hu_rx"\)\.bind\(ctx\)',
+        r'require\("hif_cmd"\)\.bind\(ctx\)[\s\S]*require\("hif_rx"\)\.bind\(ctx\)',
     ),
     (
         "主文件 rx.bind 在 ipc 前",
         "user/host_uart.lua",
-        r'require\("hu_rx"\)\.bind\(ctx\)[\s\S]*require\("hu_ipc"\)\.bind\(ctx\)',
+        r'require\("hif_rx"\)\.bind\(ctx\)[\s\S]*require\("hif_ipc"\)\.bind\(ctx\)',
     ),
     (
         "cmd 子模块 bind 顺序 usb→link→pir→t31x→wled",
-        "user/hu_cmd.lua",
-        r'hu_cmd_usb[\s\S]*hu_cmd_link[\s\S]*hu_cmd_pir[\s\S]*hu_cmd_t31x[\s\S]*hu_cmd_wled',
+        "user/hif_cmd.lua",
+        r'hif_cmd_usb[\s\S]*hif_cmd_link[\s\S]*hif_cmd_pir[\s\S]*hif_cmd_t31x[\s\S]*hif_cmd_wled',
     ),
     (
-        "ipc recovery→hostq→cloud→power",
-        "user/hu_ipc.lua",
-        r'hu_ipc_rec[\s\S]*hu_ipc_hostq[\s\S]*hu_ipc_cloud[\s\S]*hu_ipc_power',
+        "ipc recovery→hostq→cloud→power→tffmt→encode",
+        "user/hif_ipc.lua",
+        r'hif_ipc_rec[\s\S]*hif_ipc_hostq[\s\S]*hif_ipc_cloud[\s\S]*hif_ipc_power[\s\S]*hif_ipc_tffmt[\s\S]*hif_ipc_encode',
     ),
     (
         "ipc rec/hostq 查询挂到 H",
-        "user/hu_ipc.lua",
+        "user/hif_ipc.lua",
         r'H\.qryHostStat = recovery\.qryHostStat[\s\S]*H\.qryHostRecord = hostq\.qryHostRecord',
     ),
     (
         "ipc cloud/power 只 bind(C, H)",
-        "user/hu_ipc.lua",
-        r'hu_ipc_cloud"\)\.bind\(C, H\)[\s\S]*hu_ipc_power"\)\.bind\(C, H\)',
+        "user/hif_ipc.lua",
+        r'hif_ipc_cloud"\)\.bind\(C, H\)[\s\S]*hif_ipc_power"\)\.bind\(C, H\)',
     ),
     (
         "rx bind dsl→media→registry",
-        "user/hu_rx.lua",
-        r'hu_rx_dsl"\)\.bind\(C\)[\s\S]*hu_rx_media"\)\.bind\(C, dsl\)[\s\S]*RX_LINE_HANDLER_REGISTRY',
+        "user/hif_rx.lua",
+        r'hif_rx_dsl"\)\.bind\(C\)[\s\S]*hif_rx_media"\)\.bind\(C, dsl\)[\s\S]*RX_LINE_HANDLER_REGISTRY',
     ),
     (
         "rx bind 返回 tryHandlers",
-        "user/hu_rx.lua",
+        "user/hif_rx.lua",
         r"tryHandlers = RX_LINE_HANDLER_REGISTRY",
     ),
     (
         "rx 模块级 return _M",
-        "user/hu_rx.lua",
+        "user/hif_rx.lua",
         r"^return _M\s*$",
     ),
     (
         "at compile(cmd.at)",
         "user/host_uart.lua",
-        r'require\("hu_at"\)\.compile\(cmd\.at\)',
+        r'require\("hif_at"\)\.compile\(cmd\.at\)',
     ),
     (
         "processLine 使用 rx.tryHandlers",
@@ -87,9 +87,9 @@ CHECKS: list[tuple[str, str, str]] = [
         r"RX_LINE_TRY_HANDLERS = rx\.tryHandlers",
     ),
     (
-        "hostq 对外保留 queryHostRecord/RecordTime",
-        "user/hu_ipc_hostq.lua",
-        r"queryHostRecord = qryRecord[\s\S]*queryHostRecordTime = qryRecTime[\s\S]*setHostRecordTime = setRecTime",
+        "hostq 对外保留 qryHostRecord/queryHostRecordTime/setHostRecordTime",
+        "user/hif_ipc_hostq.lua",
+        r"qryHostRecord = qryRecord[\s\S]*queryHostRecordTime = qryRecTime[\s\S]*setHostRecordTime = setRecTime",
     ),
 ]
 
@@ -120,7 +120,7 @@ def main() -> int:
     # 每个子模块必须有 function bind 与 return _M
     print("\n=== 子模块 bind/return ===")
     for name in MODULES:
-        if name in ("host_uart.lua", "hu_at.lua"):
+        if name in ("host_uart.lua", "hif_at.lua"):
             continue
         text = read(f"user/{name}")
         has_bind = "function bind(" in text

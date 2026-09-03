@@ -96,19 +96,19 @@ CHECKS: list[tuple[str, str, str]] = [
         r"mqtt_dl_dev[\s\S]*mqtt_dl_pir[\s\S]*mqtt_dl_ctrl[\s\S]*mqtt_dl_tf[\s\S]*mqtt_dl_upload",
     ),
     (
-        "uplink bind pir/upload + stat interval",
+        "uplink bind pir/upload + stat interval 上报链",
         "user/mqtt_uplink.lua",
-        r"mqtt_ul_pir[\s\S]*mqtt_ul_upload[\s\S]*function getStatInterval[\s\S]*startStatReporter",
+        r"mqtt_ul_pir[\s\S]*mqtt_ul_upload[\s\S]*function getStatIv[\s\S]*startStatReporter",
     ),
     (
-        "getStatInterval 在 pubStatus 之前定义",
+        "pubStatus 读取 upvalue getStatIv（声明于文件首）",
         "user/mqtt_uplink.lua",
-        r"local function getStatInterval[\s\S]*function pubStatus",
+        r"local getStatIv\s*[\s\S]*function pubStatus[\s\S]*intervalSec = getStatIv\(\)",
     ),
     (
-        "202x UART 串行队列 runHostJob",
+        "下行需 T31x 未就绪 deferHostDl 入队 → drainHostQueue",
         "user/mqtt_downlink.lua",
-        r"function runHostJob[\s\S]*wrapHostTask[\s\S]*runHostJob",
+        r"function deferHostDl[\s\S]*hostQueue\[[\s\S]*function drainHostQueue\(",
     ),
     (
         "host_proto register 进 downlink",

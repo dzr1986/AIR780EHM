@@ -4,9 +4,9 @@
 
 用法：
   python tools/debug/_gen_bind_header.py --check-all
-  python tools/debug/_gen_bind_header.py --emit user/hu_cmd_pir.lua
+  python tools/debug/_gen_bind_header.py --emit user/hif_cmd_pir.lua
   python tools/debug/_gen_bind_header.py --emit-all
-  python tools/debug/_gen_bind_header.py --scan user/hu_cmd_link.lua
+  python tools/debug/_gen_bind_header.py --scan user/hif_cmd_link.lua
 
 真源 spec：tools/debug/bind_header_specs.json
 延迟挂载（须 wrapper，勿 local 快照）：parseIpcStat / parseTfCard / hostQuery / idCfg 等。
@@ -307,7 +307,7 @@ def cmd_scan(path: str) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="host_uart bind 头生成/校验")
     ap.add_argument("--check-all", action="store_true", help="对照 bind_header_specs.json 校验全部子模块")
-    ap.add_argument("--emit", metavar="FILE", help="输出建议 bind 头（如 hu_cmd_pir.lua）")
+    ap.add_argument("--emit", metavar="FILE", help="输出建议 bind 头（如 hif_cmd_pir.lua）")
     ap.add_argument("--emit-all", action="store_true", help="输出全部子模块 bind 头")
     ap.add_argument("--scan", metavar="PATH", help="扫描 body 中 C/H/shared 引用")
     args = ap.parse_args()

@@ -7,10 +7,12 @@
     "patchCloud",
     "hostQuery",
     "hostSet",
-    "idCfg"
+    "idCfg",
+    "defineQuery",
+    "defineSet"
   ],
   "modules": {
-    "hu_cmd_usb.lua": {
+    "hif_cmd_usb.lua": {
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": false,
@@ -27,75 +29,69 @@
         "CRLF",
         "hostUsbCfg",
         "usbInserted",
-        "t31xUartOff",
+        "t31xSecOff",
         "RSP_ERROR",
         "LOG_TAG",
         "pushUsbIdle"
       ]
     },
-    "hu_cmd_link.lua": {
+    "hif_cmd_link.lua": {
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": true,
       "c": ["state", "hooks", "E", "rspBody", "rspFmt", "rspLine", "okTail", "modCall", "utils", "RSP_ERROR", "parseSvcArgs"],
       "wrappers": [["qryGb28181", "C.M.qryGb28181"]]
     },
-    "hu_cmd_pir.lua": {
+    "hif_cmd_pir.lua": {
       "bind_args": "C",
       "requires_sys": false,
       "c": ["state", "rspBody", "rspLineOk", "modCall", "getHostEvtPending"]
     },
-    "hu_cmd_t31x.lua": {
+    "hif_cmd_t31x.lua": {
       "bind_args": "C",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush"],
       "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud"]
     },
-    "hu_cmd_wled.lua": {
+    "hif_cmd_wled.lua": {
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xUartOff", "RSP_ERROR", "noopFalse"],
-      "wrappers": ["hostQuery"]
+      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xSecOff", "RSP_ERROR", "defineQuery", "defineSet"]
     },
-    "hu_ipc_rec.lua": {
+    "hif_ipc_rec.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle", "pushUsbIdle"],
       "h": ["getCfg", "hostQuery"]
     },
-    "hu_ipc_hostq.lua": {
+    "hif_ipc_hostq.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT"],
-      "h": ["defineQuery", "defineSet"],
-      "wrappers": [
-        ["identityCfg", "H.idCfgFn"],
-        ["encodeCfg", "H.encodeCfgFn"],
-        ["tfCardCfg", "H.tfCardCfgFn"]
-      ]
+      "c": ["state", "SYS_EVT", "utils"],
+      "h": ["defineQuery", "defineSet"]
     },
-    "hu_ipc_cloud.lua": {
+    "hif_ipc_cloud.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "E", "modCall", "hostBusy", "wledGet", "normIpcCloud", "commitIpcStat"],
       "h": ["getCfg", "hostQuery", "defineQuery", "idCfgFn", "qryHostStat", "qryHostRecord"]
     },
-    "hu_ipc_power.lua": {
+    "hif_ipc_power.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud"],
       "h": ["getCfg", "qryHostStat"]
     },
-    "hu_ipc_tffmt.lua": {
+    "hif_ipc_tffmt.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs"],
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xSecOff", "hostNowMs"],
       "h": ["ensT31xHost", "hostBoot"]
     },
-    "hu_ipc_encode.lua": {
+    "hif_ipc_encode.lua": {
       "bind_args": "C, H",
       "requires_sys": false,
       "c": ["state", "SYS_EVT", "utils"],
