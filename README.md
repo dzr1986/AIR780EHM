@@ -1,84 +1,86 @@
 # 780EHM_PJ
 
-技术文档：**[`doc/README.md`](doc/README.md)** · 命名约定：**[`doc/T31X_NAMING.md`](doc/T31X_NAMING.md)**（含 [T31X_RECORD_MQTT_FLOW.md](doc/T31X_RECORD_MQTT_FLOW.md) 录像 MQTT 流程）
+技术文档：**[`doc/README.md`](doc/README.md)** · 模块树：**[`doc/LUA_MODULES.md`](doc/LUA_MODULES.md)** · 命名约定：**[`doc/T31X_NAMING.md`](doc/T31X_NAMING.md)** · API 真源：**[`doc/CAT1_API_NAMING.md`](doc/CAT1_API_NAMING.md)**
 
-Air780EHM + T31x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`）。
+Air780EHM + T31x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`，真源共 **58 + 15 = 73** 个模块，2026-09-03 实测）。
 
 ## 架构一览
 
 ```
-main.lua
-  require config, app_config, key_config
-  [cellular_bootstrap] [rndis] net_mqtt.bootstrapNetwork()
-  └─ app.start(peripheral, net_mqtt, t31x_ctrl)   ← 18 步，见 doc/CODE_DOC_AUDIT.md §3
-       ├─ lib/uart_bridge    UART 驱动（UART_CFG）
-       ├─ user/host_uart     T31x AT 业务（setupUartBridge 内同启）
-       ├─ net_mqtt           唯一 MQTT（2001–2007/2010–2012/2020 ↓）
-       ├─ net_tcp            专有 TCP（LOW_POWER_WAKEUP_CFG.mode=tcp 时懒加载）
-       ├─ battery_guard      低电量 / USB 策略
-       ├─ user/vbat          电量 ADC 采样（自包含）
-       ├─ pir_ctrl           PIR 硬件 + 业务 + PIRSTAT 统计
-       ├─ t31x_ctrl           协处理器电源 / IPC 优雅断电 / ready 轮询
-       └─ peripheral         LED / 按键 / PIR 硬件启动
+main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/CODE_DOC_AUDIT.md §3）
+  ├─ config.lua          26 行编排 → require 10 个 config 片段（全量 _G.X_CFG，见下）
+  ├─ cell_boot.start()   [loader.enabled("cellular")] 蜂窝 SIM/APN 引导（lib/）
+  ├─ usb_rndis.open()    [loader.enabled("rndis")] 可选 USB RNDIS
+  ├─ net_mqtt.bootstrapNet()  [loader.enabled("mqtt")] MQTT 引导
+  └─ app.start(peripheral, net_mqtt, t31x_ctrl)
+       ├─ lib/uart_bridge → user/host_uart   T31x AT 业务（hif_* 族 18 文件）
+       ├─ battery_guard / vbat / usb_charge / runtime_power   电量 / USB / rest 读路径
+       ├─ pir_ctrl / peripheral / lib/led_ctrl / lp_wakeup    PIR 业务 / 外设 / 指示灯 / rest 唤醒
+       ├─ net_mqtt + mqtt_*    云端唯一 MQTT（uplink / dl_* / hproto / dispatch）
+       └─ t31x_ctrl / t31x_policy / t31x_notify / ipc_supv   协处理器电源门禁 / IPC 告警对账
 ```
+
+> 完整族树与职责见 [`doc/LUA_MODULES.md`](doc/LUA_MODULES.md) §1.1（模块树为真源，勿手工复制清单）。
 
 | 项 | 值 |
 |----|-----|
-| 配置真源 | `user/config.lua` 单文件（硬件引脚 / `*_CFG` / `MODULE_FLAGS` / `APP_EVENTS` / `KEY_CONFIG`） |
-| 文档 | [`doc/`](doc/)（见 [doc/CONFIG.md](doc/CONFIG.md)、[doc/LUA_MODULES.md](doc/LUA_MODULES.md)） |
+| 配置真源 | `user/config.lua` 编排 → 片段 `features`/`cellular`/`t31x_burn`/`gpio_cfg`/`led_pir`/`battery`/`host`/`net`/`flags`/`events`（均在 `user/` 顶层，全部 `_G.X_CFG`） |
+| 文档 | [`doc/`](doc/)（[doc/README.md](doc/README.md) 全量索引） |
 | 栈选择 | `APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }` |
 | 核心固件 | `luatos.json` → Air780EHM SOC |
-| 脚本区 | 约 **384KB** 上限；可选模块见 [doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md) |
+| 脚本区 | 量产约 **342KB / 512KB** 上限；可选裁剪见 [doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md) |
 
 ## 目录
 
 | 路径 | 说明 |
 |------|------|
-| `user/` | 入口、编排、MQTT、t31x_ctrl、PIR、外设、OTA、授时 |
-| `lib/` | 串口、GPIO 工具、USB/蜂窝/唤醒/策略等公共库 |
-| `doc/` | 协议、硬件、配置说明（Markdown） |
-| `archive/` | 历史归档（已移除，说明已并入 `doc/`） |
+| `user/` | 入口 / 编排 / config 片段 / MQTT 族 / T31x `hif_*` 族 / PIR / 外设 / FOTA / 授时（58 文件） |
+| `lib/` | 驱动与公共库：串口 / GPIO / USB / 蜂窝引导 / 唤醒策略 / 加载器 / 系统（15 文件） |
+| `doc/` | 协议、硬件、配置、架构说明（Markdown 索引见 [doc/README.md](doc/README.md)） |
+| `archive/` | 历史归档（已删模块留档、旧文档迁移表） |
+| `firmware/` `量产/` | 发布固件产物（`.soc` / `.binpkg`） |
+| `ota_server/` `http_server/` `video_upload_server/` `patch_server/` | 服务端（Java / Python，独立文档） |
+| `tools/` | 调试脚本（`tools/debug/` 静态护栏）、打包脚本 |
 
-### lib/ 主路径（参与启动）
+## lib/ 主路径（15）
 
 | 文件 | 用途 |
 |------|------|
 | `uart_bridge.lua` | 串口唯一入口 |
-| `gpio_util.lua` | GPIO 输入中断、输出初始化 |
-| `usb_charge.lua` | USB / 充电 GPIO |
-| `usb_rndis.lua` | RNDIS（可选） |
-| `cellular_bootstrap.lua` | 蜂窝拨号引导 |
-| `low_power_wakeup.lua` / `t31x_policy.lua` | 唤醒通道 mqtt/tcp / T31x 门禁 |
-| `host_event.lua` / `device_id.lua` / `usb_policy.lua` | HOSTEVT / IMEI / USB 策略 |
-| `watchdog.lua` | 模组 WDT |
+| `gpio_util.lua` | GPIO 输入中断 / 输出初始化工具 |
+| `config_manager.lua` | `_G.X_CFG` 统一读取（`cfgm.get`） |
+| `module_loader.lua` | `load` / `enabled` / `opt` 模块加载 |
+| `usb_charge.lua` | USB / 充电 / rest 门禁（`blocksHostIdle` / `blocks4gRest`） |
+| `usb_rndis.lua` / `usb_vuart.lua` | RNDIS（可选）/ USB 虚拟串口 |
+| `cell_boot.lua` | 蜂窝拨号引导：SIM/APN 探测、运营商映射、`IP_READY` 等待 |
+| `led_ctrl.lua` | 红蓝 LED、开机序列、电量灯效 |
+| `runtime_power.lua` | 运行态电量 / 在线 / rest 读路径收口 |
+| `device_id.lua` | 设备标识（IMEI 等） |
+| `utils.lua` / `sys.lua` / `watchdog.lua` / `libfota2.lua` | 工具 / 平台封装 / 模组 WDT / OTA 引擎 |
 
-按键、PIR 硬件、LED、电池采样、FOTA、SNTP 授时已合并进 `user/`（见下表）。
-
-### user/ 主路径
+## user/ 主路径（58）
 
 | 文件 | 职责 |
 |------|------|
-| `main.lua` | 入口 |
-| `config.lua` | `GPIO_IN` / `GPIO_OUT`、`PIR_CFG`、`BATTERY_CFG`、MQTT… |
-| `app_config.lua` | `MODULE_FLAGS`、`APP_EVENTS` |
-| `key_config.lua` | `KEY_CONFIG` |
-| `app.lua` | 编排中心 |
-| `net_mqtt.lua` | MQTT |
-| `net_tcp.lua` | T31x TCP 业务通道（LuatTools 清单必需；MQTT 模式懒加载） |
+| `main.lua` | 入口：VERSION 校验、蜂窝/RNDIS/MQTT 引导、`app.start`、`sys.run` |
+| `config.lua` | 配置编排（26 行，仅按依赖顺序 require 片段） |
+| `features.lua` / `cellular.lua` / `t31x_burn.lua` / `gpio_cfg.lua` / `led_pir.lua` / `battery.lua` / `host.lua` / `net.lua` / `flags.lua` / `events.lua` | **config 片段**：`FEATURE_CFG` / `CELLULAR_CFG` / 烧录门禁 / `GPIO_IN·OUT`+`KEY_CONFIG` / `LED·WLED·PIR_CFG` / `BATTERY_CFG` / T31x 服务 / `UART·WDT·MQTT·FOTA_CFG` / `MODULE_FLAGS` / `APP_EVENTS` |
+| `app.lua` | 编排中心：事件订阅、低功耗、USB/PIR 联动（**冻结不拆**） |
+| `host_uart.lua` | T31x AT 主文件（锁 / SYS_EVT / state）+ 子模块 `hif_cmd_*` / `hif_rx*` / `hif_ipc_*` |
+| `net_mqtt.lua` | MQTT 主文件 + 子模块 `mqtt_conn` / `mqtt_dispatch` / `mqtt_uplink` / `mqtt_dl_*` / `mqtt_hproto` |
+| `net_tcp.lua` | T31x TCP 业务通道（`MODULE_FLAGS` 懒加载） |
 | `pir_ctrl.lua` | PIR 硬件中断、冷却、录像会话、PIRSTAT |
-| `led_ctrl.lua` | 红蓝 LED、开机序列、电量灯效 |
-| `peripheral.lua` | 外设聚合（含按键逻辑） |
-| `t31x_ctrl.lua` | 协处理器 GPIO / IPC 断电 / ready |
-| `vbat.lua` / `battery_guard.lua` | 电池采样 / 电量保护 |
-| `host_uart.lua` | T31x AT 协议与唤醒 |
-| `fota_svc.lua` | MQTT 2004 OTA（HTTP 走 libfota2） |
-| `sound_prompt.lua` / `time_sync.lua` | 提示音 / 时间同步 |
+| `peripheral.lua` | 外设聚合（LED / 按键 / PIR 硬件启动） |
+| `t31x_ctrl.lua` / `t31x_policy.lua` / `t31x_notify.lua` | 协处理器 GPIO / IPC 断电 / ready / 上电门禁 / 唤醒三级链 |
+| `ipc_supv.lua` | IPC 告警对账（`alertCode` / `map1011` / `reconcile`；原 `ipc_supervision` + `ipc_alert_contract` 并入） |
+| `vbat.lua` / `battery_guard.lua` | 电池 ADC 采样 / 电量保护 |
+| `lp_wakeup.lua` / `host_event.lua` / `fota_svc.lua` / `sound_prompt.lua` / `time_sync.lua` | rest 唤醒通道 / HOSTEVT / MQTT 2004 OTA / 提示音 / 授时 |
 
 精简与开关说明：[doc/CAT1_SLIMMING_FLOW.md](doc/CAT1_SLIMMING_FLOW.md) · [doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md) · 低功耗策略 [doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)
 
 ## GPIO 配置速查
 
-在 `config.lua` 的 `GPIO_OUT` 中设置上电电平：
+引脚与按键在 `user/gpio_cfg.lua`（`GPIO_IN` / `GPIO_OUT` / `KEY_CONFIG`）：
 
 | 字段 | 含义 |
 |------|------|
@@ -87,13 +89,9 @@ main.lua
 
 `GPIO_IN` 使用 `pull`、`trigger_mode`、`debounce_ms`、`active_level`（见 [doc/CONFIG.md](doc/CONFIG.md)）。
 
-## 文档导读
-
-完整列表：[doc/README.md](doc/README.md)
-
 ## 功能开关
 
-在 `user/app_config.lua` → `MODULE_FLAGS` 中裁剪。
+`user/flags.lua` → `MODULE_FLAGS` 裁剪服务；`FEATURE_CFG` 见 `user/features.lua`（[doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md)）。
 
 ## 打包
 
@@ -101,4 +99,4 @@ main.lua
 
 ---
 
-**版本** 1.2.0 · **更新** 2026-06-11（文档与模块合并 / MQTT 1003 `usbInserted` 对齐）
+**工程包** v1.2 · **固件 VERSION** `001.000.151`（`user/main.lua`）· **更新** 2026-09-04（架构/配置口径对齐 73 模块真源；模块名与引导链以 `user/`、`lib/` 实测为准）

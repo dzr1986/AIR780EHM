@@ -4,7 +4,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CAT1_API_NAMING.md](CAT1_API_NAMING.md) | **Lua API 真源**（134：`pub*`/`dl*`/`ntf*`/`host_uart`/`net_mqtt` 导出与别名） |
+| [CAT1_API_NAMING.md](CAT1_API_NAMING.md) | **Lua API 命名真源**（前缀口径：`pub*`/`dl*`/`snap*`/`sched*`/`build*`/`notify*`…；版本 001.000.151） |
 | [T31X_NAMING.md](T31X_NAMING.md) | 协处理器系列写法（`t31x` / `T31x` / `T31X`，与 API 驼峰无关） |
 | [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md) | 旧 T31 文档名迁移 |
 
@@ -25,8 +25,7 @@
 | [PROJECT_DOC.md](PROJECT_DOC.md) | 模块职责、业务流程、调试 |
 | [CALL_GRAPH.md](CALL_GRAPH.md) | 启动顺序、require、事件流 |
 | [CODE_ANALYSIS.md](CODE_ANALYSIS.md) | 架构与风险 |
-| [LUA_MODULES.md](LUA_MODULES.md) | **30 个 Lua 模块逻辑分析**（职责/流程/依赖） |
-| [CAT1_API_NAMING.md](CAT1_API_NAMING.md) | **Lua API 命名真源**（135，无兼容别名） |
+| [LUA_MODULES.md](LUA_MODULES.md) | **模块树真源**（73 文件、config 片段族、设计原则） |
 | [CAT1_MODULE_FRAMEWORK.md](CAT1_MODULE_FRAMEWORK.md) | **模块框架**：`module_loader`/`config_manager`、生命周期/日志/事件约定 |
 | [modules/README.md](modules/README.md) | **模块专题**（AT / MQTT / PIR / 电量 / T31x 唤醒） |
 | [TIME_SYNC.md](TIME_SYNC.md) | SNTP + `AT+TIMESET` 时间同步 |
@@ -131,7 +130,7 @@
 
 ---
 
-**代码真源**：[`../user/config.lua`](../user/config.lua)（硬件/开关/事件/按键单文件）、[`../user/main.lua`](../user/main.lua)（`PRODUCT_KEY`）。
+**代码真源**：[`../user/config.lua`](../user/config.lua)（26 行编排 → `features`/`cellular`/`gpio_cfg`/… 10 个 config 片段，见 [CONFIG.md](CONFIG.md)）、[`../user/main.lua`](../user/main.lua)（`VERSION`/`PRODUCT_KEY`）。
 
 **模块命名**（与 `user/*.lua` 一致）：`t31x_ctrl`、`t31x_policy`、`pir_ctrl`、`host_uart`、`vbat`；`require` 使用 snake_case。
 

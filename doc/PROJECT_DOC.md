@@ -1,7 +1,7 @@
 # 780EHM_PJ 项目技术文档
 
 > Air780EHM + T31x 摄像头 · LuatOS 方案1（扁平架构）  
-> **配置真源**：[`CONFIG.md`](CONFIG.md)（单文件 `user/config.lua`，`app_config`/`key_config` 已并入）· **调用关系**：[`CALL_GRAPH.md`](CALL_GRAPH.md)  
+> **配置真源**：[`CONFIG.md`](CONFIG.md)（`user/config.lua` 编排 → 10 个 config 片段：`features`/`cellular`/`t31x_burn`/`gpio_cfg`/`led_pir`/`battery`/`host`/`net`/`flags`/`events`）· **调用关系**：[`CALL_GRAPH.md`](CALL_GRAPH.md)  
 > **协议专篇**：`MQTT_PROTOCOL.md` · `UART_PROTOCOL.md` · `PIR_PROTOCOL.md`  
 > **远程控制（帧率/录像/人形）**：[`MQTT_CLOUD_REMOTE_CTRL_FLOW.md`](MQTT_CLOUD_REMOTE_CTRL_FLOW.md)  
 > **代码分析**：`CODE_ANALYSIS.md`  
@@ -169,7 +169,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT31xWake()` 经 `t31x_ctrl`/`
 | 触发 | MQTT 2004 / `DEVICE_OTA_REQUEST` / `AT+OTA` |
 | 下载 | 封装 LuatOS **libfota2** HTTP |
 | 上报 | `net.pubOtaStatus` → 1004 |
-| 配置 | `_G.PRODUCT_KEY`（[`main.lua`](../user/main.lua)）、`FOTA_CFG`（`config.lua`） |
+| 配置 | `_G.PRODUCT_KEY`（[`main.lua`](../user/main.lua)）、`FOTA_CFG`（config 片段 [`net.lua`](../user/net.lua)） |
 
 ### 2.8 `user/` 补充模块
 
@@ -197,7 +197,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT31xWake()` 经 `t31x_ctrl`/`
 
 ## 3. 事件总线
 
-定义于 `config.lua` → `_G.APP_EVENTS`。
+定义于 config 片段 [`events.lua`](../user/events.lua) → `_G.APP_EVENTS`。
 
 ### 3.1 PIR / 串口
 
@@ -257,7 +257,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT31xWake()` 经 `t31x_ctrl`/`
 
 | 文件 | 内容 |
 |------|------|
-| `config.lua` | 单文件真源：`GPIO_IN`/`GPIO_OUT`、`MODULE_FLAGS`、`APP_EVENTS`、`KEY_CONFIG`、`PIR_CFG`、`BATTERY_CFG`、`MQTT_CFG`/`UART_CFG` |
+| `config.lua` | 26 行编排 → config 片段：`gpio_cfg`（`GPIO_IN/OUT`/`KEY_CONFIG`）、`flags`（`MODULE_FLAGS`）、`events`（`APP_EVENTS`）、`led_pir`/`battery`/`net`（各类 `*_CFG`） |
 | `pir_ctrl.lua` | `pirMediaConfig`、`pirRecordPolicy` 默认策略 |
 
 ---
@@ -338,7 +338,7 @@ peripheral pwrkey 长按 3s
 
 ## 7. GPIO 引脚
 
-与 `config.lua` → `GPIO_IN` / `GPIO_OUT` 一致（**Luat GPIO**；模组 Pin 见 [T31X_CAT1_GPIO.md §1.1](T31X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)）：
+与 config 片段 [`gpio_cfg.lua`](../user/gpio_cfg.lua) → `GPIO_IN` / `GPIO_OUT` 一致（**Luat GPIO**；模组 Pin 见 [T31X_CAT1_GPIO.md §1.1](T31X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)）：
 
 | 配置键 | Luat GPIO | 模组 Pin | 功能 |
 |--------|-----------|----------|------|
@@ -384,7 +384,7 @@ log.info("fota", json.encode(require("fota_svc").getState()))
 | 文件 | 职责 |
 |------|------|
 | `main.lua` | 入口、`PRODUCT_KEY`、cellular/rndis/MQTT 引导 |
-| `config.lua` | 单文件真源：硬件引脚、`MODULE_FLAGS`、`APP_EVENTS`、`KEY_CONFIG`、PIR/电池、MQTT |
+| `config.lua` | 配置编排（require 片段；引脚/开关/事件/各类 `*_CFG` 见 `gpio_cfg`/`flags`/`events`/`led_pir`/`battery`/`net`/…） |
 | `app.lua` | 编排中心 |
 | `net_mqtt.lua` | MQTT 上下行 |
 | `net_tcp.lua` | 专有 TCP（懒加载） |
@@ -404,7 +404,7 @@ log.info("fota", json.encode(require("fota_svc").getState()))
 
 | 文件 | 说明 |
 |------|------|
-| `CONFIG.md` | **配置分层索引**（单文件 `config.lua`） |
+| `CONFIG.md` | **配置分层索引**（`config.lua` 编排 + 10 个 config 片段） |
 | `CODE_DOC_AUDIT.md` | 代码↔文档核验流程与 `app.start` 真源 |
 | `CALL_GRAPH.md` | require 与事件流 |
 | `KEY_GPIO.md` | KEY_CONFIG / peripheral 按键与就绪 |

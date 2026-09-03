@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""文档-代码模块引用一致性审计：doc/*.md 引用的 .lua 文件名是否命中真源。
+"""文档-代码模块引用一致性审计：doc/*.md 与根 README.md 引用的 .lua 文件名是否命中真源。
 
 背景: 2026-09-03 架构体检结论「文档滞后于代码(方向相反)」；本脚本把 doc/ 全树
 剩余 .lua / require 裸模块名引用纳入静态审计，按「现状真源文档 vs 历史账本」分级，
@@ -108,14 +108,18 @@ def module_names() -> set:
 
 
 def walk_md():
+    # doc/ 全树 + 仓库根门面 README.md（现状索引，防 app_config 等旧名回潮）
     for dirpath, dirnames, filenames in os.walk(DOC):
         dirnames.sort()
         for fn in sorted(filenames):
             if fn.endswith(".md"):
                 yield dirpath, fn
+    yield (ROOT, "README.md")
 
 
 def classify(dirpath, fn):
+    if dirpath == ROOT:
+        return "fix"  # 根 README 属现状门面（同 fix 类处理）
     rel = os.path.relpath(os.path.join(dirpath, fn), DOC)
     parts = rel.split(os.sep)
     if parts[0] in HISTORY_DIRS:
