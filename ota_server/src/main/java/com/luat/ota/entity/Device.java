@@ -57,6 +57,23 @@ public class Device {
     @Column(length = 255)
     private String remark;
 
+    @Column(length = 32)
+    private String ipcVersion;
+
+    @Column(length = 32)
+    private String ipcTargetVersion;
+
+    /** 未显式允许则不可下发 IPC 升级；现网加列时允许 null，按 false 处理。 */
+    private Boolean ipcEnabled = false;
+
+    @Column(length = 32)
+    private String ipcStatus = "IDLE";
+
+    @Column(length = 64)
+    private String ipcSessionId;
+
+    private Instant lastIpcUpgradeAt;
+
     private Instant lastSeenAt;
     private Instant lastOtaCheckAt;
     private Instant lastOtaSuccessAt;
@@ -111,6 +128,18 @@ public class Device {
     public void setOtaStatus(DeviceOtaStatus otaStatus) { this.otaStatus = otaStatus; }
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }
+    public String getIpcVersion() { return ipcVersion; }
+    public void setIpcVersion(String ipcVersion) { this.ipcVersion = ipcVersion; }
+    public String getIpcTargetVersion() { return ipcTargetVersion; }
+    public void setIpcTargetVersion(String ipcTargetVersion) { this.ipcTargetVersion = ipcTargetVersion; }
+    public Boolean getIpcEnabled() { return ipcEnabled; }
+    public void setIpcEnabled(Boolean ipcEnabled) { this.ipcEnabled = ipcEnabled; }
+    public String getIpcStatus() { return ipcStatus; }
+    public void setIpcStatus(String ipcStatus) { this.ipcStatus = ipcStatus; }
+    public String getIpcSessionId() { return ipcSessionId; }
+    public void setIpcSessionId(String ipcSessionId) { this.ipcSessionId = ipcSessionId; }
+    public Instant getLastIpcUpgradeAt() { return lastIpcUpgradeAt; }
+    public void setLastIpcUpgradeAt(Instant lastIpcUpgradeAt) { this.lastIpcUpgradeAt = lastIpcUpgradeAt; }
     public Instant getLastSeenAt() { return lastSeenAt; }
     public void setLastSeenAt(Instant lastSeenAt) { this.lastSeenAt = lastSeenAt; }
     public Instant getLastOtaCheckAt() { return lastOtaCheckAt; }

@@ -4,7 +4,7 @@
 -- Arch     : doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- ================================================================
 --
--- dlUploadVideo：解析时间窗 → 转发 T3x requestUploadVideo → pubUploadReply
+-- dlUploadVideo：解析时间窗 → 转发 t31x requestUploadVideo → pubUploadReply
 --
 
 require "sys"
@@ -17,7 +17,7 @@ function bind(C, shared)
     local utils = C.utils
     local pubUploadReply = C.pub.pubUploadReply
     local dlMsgId = shared.dlMsgId
-    local hostReady = shared.t3xHostReady
+    local hostReady = shared.t31xHostReady
 
     local LIMITS = {
         maxWindowSec = 600,
@@ -130,16 +130,16 @@ function bind(C, shared)
                 pubUploadReply(0, "cancelled", messageId, extra)
                 return
             end
-            local hu = hostUart()
-            if not hu then
+            local hif = hostUart()
+            if not hif then
                 pubUploadReply(-1, "no_host_uart", messageId, extra)
                 return
             end
             if not hostReady() then
-                pubUploadReply(-1, "t3x_not_ready", messageId, extra)
+                pubUploadReply(-1, "t31x_not_ready", messageId, extra)
                 return
             end
-            local ok, msg, rsp = hu.requestUploadVideo({
+            local ok, msg, rsp = hif.requestUploadVideo({
                 needUpload = need,
                 videoType = vtype,
                 beginTs = startTs,

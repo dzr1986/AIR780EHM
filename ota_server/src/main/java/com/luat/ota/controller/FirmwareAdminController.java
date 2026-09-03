@@ -4,13 +4,13 @@ import com.luat.ota.entity.FirmwarePackage;
 import com.luat.ota.entity.OtaProject;
 import com.luat.ota.service.DeviceService;
 import com.luat.ota.service.FirmwareRegistryService;
+import com.luat.ota.util.ImeiListParser;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,7 +95,7 @@ public class FirmwareAdminController {
         meta.setAllowUpgrade(allowUpgrade);
         meta.setUpgradeAll(upgradeAll);
         meta.setRemark(remark);
-        List<String> imeiList = parseImeis(imeis);
+        List<String> imeiList = ImeiListParser.parse(imeis);
         FirmwarePackage saved = registry.createFromUpload(file, meta, imeiList);
         return toView(saved);
     }
@@ -125,7 +125,7 @@ public class FirmwareAdminController {
             patch.setSourceVersion(String.valueOf(body.get("sourceVersion")));
         }
         List<String> imeis = body.containsKey("imeis")
-                ? parseImeis(String.valueOf(body.get("imeis"))) : null;
+                ? ImeiListParser.parse(body.get("imeis")) : null;
         try {
             return ResponseEntity.ok(toView(registry.update(id, patch, imeis)));
         } catch (IllegalArgumentException ex) {
@@ -133,17 +133,79 @@ public class FirmwareAdminController {
         }
     }
 
+    @GetMapping("/firmware-packages/{id}/devices")
+    public ResponseEntity<Map<String, Object>> listAssignedDevices(@PathVariable Long id) {
+        return registry.findById(id)
+                .map(p -> {
+                    List<String> imeis = registry.listAssignedImeis(id);
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("id", id);
+                    body.put("firmwareName", p.getFirmwareName());
+                    body.put("version", p.getVersion());
+                    body.put("upgradeAll", p.getUpgradeAll());
+                    body.put("assignedImeis", imeis);
+                    body.put("total", imeis.size());
+                    return ResponseEntity.ok(body);
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @PutMapping("/firmware-packages/{id}/devices")
-    public ResponseEntity<Map<String, Object>> assignDevices(
+    public ResponseEntity<Map<String, Object>> replaceDevices(
             @PathVariable Long id,
-            @RequestBody Map<String, String> body
+            @RequestBody Map<String, Object> body
     ) {
         FirmwarePackage patch = new FirmwarePackage();
-        List<String> imeis = parseImeis(body.get("imeis"));
+        List<String> imeis = ImeiListParser.parse(body.get("imeis"));
         try {
-            return ResponseEntity.ok(toView(registry.update(id, patch, imeis)));
+            return ResponseEntity.ok(assignmentView(registry.update(id, patch, imeis), List.of(), List.of()));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PostMapping("/firmware-packages/{id}/devices")
+    public ResponseEntity<Map<String, Object>> addDevices(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        ImeiListParser.Result parsed = ImeiListParser.parseDetailed(body.get("imeis"));
+        if (parsed.valid().isEmpty()) {
+            throw new IllegalArgumentException("没有合法的 15 位 IMEI"
+                    + (parsed.invalid().isEmpty() ? "" : "，无效：" + String.join(", ", parsed.invalid())));
+        }
+        try {
+            List<String> before = registry.listAssignedImeis(id);
+            FirmwarePackage saved = registry.addAssignments(id, parsed.valid());
+            List<String> added = parsed.valid().stream().filter(imei -> !before.contains(imei)).toList();
+            List<String> skipped = parsed.valid().stream().filter(before::contains).toList();
+            Map<String, Object> view = assignmentView(saved, parsed.invalid(), skipped);
+            view.put("added", added);
+            view.put("addedCount", added.size());
+            return ResponseEntity.ok(view);
+        } catch (IllegalArgumentException ex) {
+            if ("firmware not found".equals(ex.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw ex;
+        }
+    }
+
+    @DeleteMapping("/firmware-packages/{id}/devices")
+    public ResponseEntity<Map<String, Object>> removeDevices(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(value = "imei", required = false) String imei
+    ) {
+        Object raw = body == null ? imei : (body.containsKey("imeis") ? body.get("imeis") : imei);
+        List<String> imeis = ImeiListParser.requireValid(raw);
+        try {
+            return ResponseEntity.ok(assignmentView(registry.removeAssignments(id, imeis), List.of(), List.of()));
+        } catch (IllegalArgumentException ex) {
+            if ("firmware not found".equals(ex.getMessage())) {
+                return ResponseEntity.notFound().build();
+            }
+            throw ex;
         }
     }
 
@@ -172,19 +234,16 @@ public class FirmwareAdminController {
         return m;
     }
 
+    private Map<String, Object> assignmentView(FirmwarePackage p, List<String> invalid, List<String> skipped) {
+        Map<String, Object> m = toView(p);
+        m.put("invalid", invalid);
+        m.put("skipped", skipped);
+        return m;
+    }
+
     private Map<String, Object> withDeviceCount(Map<String, Object> view) {
         Object key = view.get("projectKey");
         view.put("deviceCount", key == null ? 0 : deviceService.countByProjectKey(String.valueOf(key)));
         return view;
-    }
-
-    private static List<String> parseImeis(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(raw.split("[,\\s]+"))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .toList();
     }
 }

@@ -1,15 +1,15 @@
 # host_uart AT 分发与上行应答
 
 > **代码真源**：[`user/host_uart.lua`](../../user/host_uart.lua)（互斥、分发、RX 调度、start）  
-> **AT 表**：[`user/hu_at.lua`](../../user/hu_at.lua)  
-> **AT handler**：[`user/hu_cmd.lua`](../../user/hu_cmd.lua) + `hu_cmd_*`  
-> **URC/RX**：[`user/hu_rx.lua`](../../user/hu_rx.lua) + `hu_rx_dsl.lua` / `hu_rx_media.lua`  
-> **IPC query/set**：[`user/hu_ipc.lua`](../../user/hu_ipc.lua) + `hu_ipc_*`  
+> **AT 表**：[`user/hif_at.lua`](../../user/hif_at.lua)  
+> **AT handler**：[`user/hif_cmd.lua`](../../user/hif_cmd.lua) + `hif_cmd_*`  
+> **URC/RX**：[`user/hif_rx.lua`](../../user/hif_rx.lua) + `hif_rx_dsl.lua` / `hif_rx_media.lua`  
+> **IPC query/set**：[`user/hif_ipc.lua`](../../user/hif_ipc.lua) + `hif_ipc_*`  
 > **协议对照**：[UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../UART_PROTOCOL.md)  
 > **bind 头**：`python tools/debug/_gen_bind_header.py --check-all` · spec：`tools/debug/bind_header_specs.json`  
 > **回归**：`python tools/debug/_protocol_regression_check.py`
 
-锁 / `SYS_EVT` / `state` 只留在 `host_uart.lua`，不要迁出。`hu_*` 文件名 ≤24 字节。
+锁 / `SYS_EVT` / `state` 只留在 `host_uart.lua`，不要迁出。`hif_*` 文件名 ≤24 字节。
 
 ---
 
@@ -17,31 +17,31 @@
 
 ```
 host_uart.lua              锁 / SYS_EVT / state / processLine / start
-├── hu_at.lua              AT_CMD_TABLE → exact 哈希 + prefix 数组
-├── hu_cmd.lua             AT 编排（bind 顺序固定）
-│   ├── hu_cmd_usb.lua     USBRESET / RNDIS / USBRECOVERY
-│   ├── hu_cmd_link.lua    P2P / GB28181 / MQTT / SERV
-│   ├── hu_cmd_pir.lua     HOSTEVT / PIRSTAT
-│   ├── hu_cmd_t3x.lua     RECORD / UPLOAD / IPCSTAT 等 NOTIFY
-│   └── hu_cmd_wled.lua    WLED 影子表 + AT
-├── hu_rx.lua              URC 编排，tryHandlers 函数数组
-│   ├── hu_rx_dsl.lua      匹配 DSL + 云态/TF/录像/IPC 行
-│   └── hu_rx_media.lua    VENC / AUDIO / MIC / FRAMERATE 等
-└── hu_ipc.lua             hostQuery / hostSet + 子模块编排
-    ├── hu_ipc_rec.lua     UART 恢复、qryHostStat
-    ├── hu_ipc_hostq.lua   RECORD / MIC / SOFTPHOTO query/set
-    ├── hu_ipc_cloud.lua   云状态 / GB28181（依赖 rec + hostq）
-    ├── hu_ipc_power.lua   IPC 关机 / ready（依赖 rec）
-    ├── hu_ipc_tffmt.lua   TF format
-    └── hu_ipc_encode.lua  VENC / AUDIO
+├── hif_at.lua              AT_CMD_TABLE → exact 哈希 + prefix 数组
+├── hif_cmd.lua             AT 编排（bind 顺序固定）
+│   ├── hif_cmd_usb.lua     USBRESET / RNDIS / USBRECOVERY
+│   ├── hif_cmd_link.lua    P2P / GB28181 / MQTT / SERV
+│   ├── hif_cmd_pir.lua     HOSTEVT / PIRSTAT
+│   ├── hif_cmd_t31x.lua     RECORD / UPLOAD / IPCSTAT 等 NOTIFY
+│   └── hif_cmd_wled.lua    WLED 影子表 + AT
+├── hif_rx.lua              URC 编排，tryHandlers 函数数组
+│   ├── hif_rx_dsl.lua      匹配 DSL + 云态/TF/录像/IPC 行
+│   └── hif_rx_media.lua    VENC / AUDIO / MIC / FRAMERATE 等
+└── hif_ipc.lua             hostQuery / hostSet + 子模块编排
+    ├── hif_ipc_rec.lua     UART 恢复、qryHostStat
+    ├── hif_ipc_hostq.lua   RECORD / MIC / SOFTPHOTO query/set
+    ├── hif_ipc_cloud.lua   云状态 / GB28181（依赖 rec + hostq）
+    ├── hif_ipc_power.lua   IPC 关机 / ready（依赖 rec）
+    ├── hif_ipc_tffmt.lua   TF format
+    └── hif_ipc_encode.lua  VENC / AUDIO
 ```
 
 **主文件 bind 顺序**（不要改）：
 
 1. 组 `ctx`（含 `pushUsbIdle`，cmd/usb/rec 可快照）
-2. `hu_cmd.bind(ctx)` → `hu_at.compile(cmd.at)`
-3. `hu_rx.bind(ctx)`，再把 `parseIpcStat` / `patchCloud` 等挂回 `ctx`
-4. `hu_ipc.bind(ctx)`：`rec → hostq`（查询挂到 `H`）→ `cloud → power → tffmt → encode`
+2. `hif_cmd.bind(ctx)` → `hif_at.compile(cmd.at)`
+3. `hif_rx.bind(ctx)`，再把 `parseIpcStat` / `patchCloud` 等挂回 `ctx`
+4. `hif_ipc.bind(ctx)`：`rec → hostq`（查询挂到 `H`）→ `cloud → power → tffmt → encode`
 
 cmd 里用到 rx 的 `parseIpcStat` / `patchCloud` 必须 **延迟 wrapper**（`return C.foo(...)`），不能 `local foo = C.foo`。
 
@@ -49,14 +49,14 @@ cmd 里用到 rx 的 `parseIpcStat` / `patchCloud` 必须 **延迟 wrapper**（`
 
 | 符号 | 是什么 | 谁用 |
 |------|--------|------|
-| `C.wledState` | 表 `wledRt`（有 `.on`） | `hu_rx_dsl` 写 `C.wledState.on` |
-| `C.M.wledState` | getter `wledGet` | `net_mqtt` 调 `hu.wledState()` |
+| `C.wledState` | 表 `wledRuntime`（有 `.on`） | `hif_rx_dsl` 写 `C.wledState.on` |
+| `C.M.wledState` | getter `wledGet` | `net_mqtt` 调 `hif.wledState()` |
 
 ---
 
 ## 1. bind 头约定
 
-`hu_cmd_*` / `hu_ipc_*` 在 `function bind(C[, H, …])` 开头只做 **ctx 字段快照** 或 **延迟 wrapper**，业务从第一个非 header 行开始。
+`hif_cmd_*` / `hif_ipc_*` 在 `function bind(C[, H, …])` 开头只做 **ctx 字段快照** 或 **延迟 wrapper**，业务从第一个非 header 行开始。
 
 | 类型 | 写法 | 适用 |
 |------|------|------|
@@ -69,7 +69,7 @@ cmd 里用到 rx 的 `parseIpcStat` / `patchCloud` 必须 **延迟 wrapper**（`
 新增/改子模块后：
 
 ```bash
-python tools/debug/_gen_bind_header.py --emit hu_cmd_xxx.lua
+python tools/debug/_gen_bind_header.py --emit hif_cmd_xxx.lua
 python tools/debug/_gen_bind_header.py --check-all
 python tools/debug/_protocol_regression_check.py
 ```
@@ -94,16 +94,16 @@ flowchart TD
     RIL -->|是| MODEM[hooks.modemAt]
 ```
 
-**原则**：T3x 主动上报的 `+XXX:` 行 **优先** 走 `RX_LINE_TRY_HANDLERS`，避免被 AT 分发误解析。
+**原则**：T31x 主动上报的 `+XXX:` 行 **优先** 走 `RX_LINE_TRY_HANDLERS`，避免被 AT 分发误解析。
 
 `uartAtCmd`：仅当整串不在 `AT_EXACT` 时才剥尾部 `?`，避免 `AT+USBRESET?` 被剥成 `AT+USBRESET` 真复位。
 
 ---
 
-## 3. AT 命令表（`hu_at.compile`）
+## 3. AT 命令表（`hif_at.compile`）
 
 `uartCmdEntr(keys, prefix, handler)` → `AT_EXACT` 哈希 + `AT_PREFIX` 数组。  
-handler 名是 `hu_cmd` 注入表的短键（`at_ack` / `record`），对应函数是 camelCase（`atAck` / `t3x.uartRecord`）。
+handler 名是 `hif_cmd` 注入表的短键（`at_ack` / `record`），对应函数是 camelCase（`atAck` / `t31x.uartRecord`）。
 
 ### 3.1 握手 / 版本 / 状态
 
@@ -125,7 +125,7 @@ handler 名是 `hu_cmd` 注入表的短键（`at_ack` / `record`），对应函�
 
 exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只为阅读。
 
-### 3.2 T3x 主动上报（前缀 `AT+XXX=`）
+### 3.2 T31x 主动上报（前缀 `AT+XXX=`）
 
 | 前缀 | handler 键 | 函数 |
 |------|------------|------|
@@ -178,7 +178,7 @@ exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只�
 | `tryTfFormat` | `+TFFORMAT:` | 格式化结果 |
 | `tryTfCard` | `+TFCARD:` | TF 卡查询应答 |
 | `tryRecTime` | `+RECORDTIME:` | MQTT 2022/2023 |
-| `tryRecord` | `+RECORD:` | T3x 录像 URC |
+| `tryRecord` | `+RECORD:` | T31x 录像 URC |
 | `tryRecordCtrlLine` | `+RECORDCTRL:` | 停录控制 |
 | `tryUploadLine` | `+UPLOADVIDEO:` | 上传 |
 | `tryFramerateLine` | `+FRAMERATE:` | MQTT 2024/2025 |
@@ -201,8 +201,8 @@ exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只�
 3. USB 挡休眠且 `AT+HOSTIDLE=1` → `+HOSTIDLE:USB`（`=0` 仍回 OK）
 4. `bldPirWake(true)` 含 `has_event=1` → `BUSY`
 5. `AT+HOSTIDLE?` → 回 `lowpower/usb/host_idle_allow` 快照
-6. `battery_guard.shdHostSleep()` / `canHostSleep()` 任一否 → `BUSY`
-7. 通过 → `t3x_ctrl.enterSleep({ reason="host_idle" })` → `OK`
+6. `battery_guard.shouldHostSleep()` / `canHostSleep()` 任一否 → `BUSY`
+7. 通过 → `t31x_ctrl.enterSleep({ reason="host_idle" })` → `OK`
 
 ---
 
@@ -210,52 +210,52 @@ exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只�
 
 新 AT：
 
-1. 在对应 `hu_cmd_*.lua` 写 `local function uartXxx(cmd)`
-2. 挂到 `hu_cmd` 的 `at` 表
-3. 在 `hu_at.lua` 追加 `uartCmdEntr(...)`
+1. 在对应 `hif_cmd_*.lua` 写 `local function uartXxx(cmd)`
+2. 挂到 `hif_cmd` 的 `at` 表
+3. 在 `hif_at.lua` 追加 `uartCmdEntr(...)`
 4. 无需改 `runAtDispatch`
 
-新 T3x 上行：
+新 T31x 上行：
 
-1. 在 `hu_rx_dsl` / `hu_rx_media` 写 `tryXxx(line)`，命中返回 `true`
-2. 追加到 `hu_rx.lua` 的函数数组（更具体的放前面）
+1. 在 `hif_rx_dsl` / `hif_rx_media` 写 `tryXxx(line)`，命中返回 `true`
+2. 追加到 `hif_rx.lua` 的函数数组（更具体的放前面）
 
 ---
 
-## 7. 本轮 hu_* 精简（可读性，协议语义不变）
+## 7. 本轮 hif_* 精简（可读性，协议语义不变）
 
 目标：少重复、早返回、名字对齐；不改 AT/MQTT 线格式。
 
 | 文件 | 做了什么 |
 |------|----------|
-| `hu_cmd_t3x.lua` | `needArg` / `ntfArg`；NOTIFY 空参统一 ERROR |
-| `hu_cmd.lua` | `atSend` 分 STR/HEX；`atLowPower` 一次读 rest；`atSend` 不用 `and/or` 调两次 |
-| `hu_cmd_usb.lua` | 去掉未用 `C.state`；`pushRecover`；RNDIS 开/关合一 |
-| `hu_cmd_wled.lua` | `ackMs` / `writeShadow`；影子表 `wledRt`（勿再命名成 `wledState`） |
-| `hu_cmd_link.lua` | `validPassword` |
-| `hu_cmd_pir.lua` | `uartHostEvtQry` 走 `bldHostEvtBody()` |
-| `hu_rx_dsl.lua` | `publishAck` / `recTimeRow`；TFFORMAT/WLED/IPCPOWEROFF 共用 ACK |
-| `hu_rx.lua` | 注册表分组注释 |
-| `hu_ipc_cloud.lua` | `flag01` / `liftFlag` |
-| `hu_ipc_encode.lua` | `packRows` 不再循环找第一行 |
-| `hu_ipc_hostq.lua` | `defineQuery` 对齐；SOFTPHOTO 字段名表 |
-| `hu_ipc_rec.lua` | `noteUartLinkOk = clearMissStreak` |
-| `hu_ipc_power.lua` | `waitBusyClear` 合成 while |
-| `hu_at.lua` | 分区注释；HOSTEVT 与 PIR exact 排一起 |
-| `hu_rx_dsl.lua` / `hu_rx_media.lua` | 二次：`trimStr` 并入 `normLine`；`asNum` 由 dsl 导出复用 |
-| `hu_ipc_encode.lua` / `hu_ipc_hostq.lua` | 二次：`optTable`/`asTbl` 复用 `utils.optTable` |
-| `hu_cmd_wled.lua` / `hu_ipc_cloud.lua` | 二次：删 `hostQuery` 永不读的死 `timeoutCfgKey`/`defaultTimeout`；cloud 快照只取一次 |
-| `hu_cmd_usb.lua` | 二次：USBRECOVERY `lastErr` 一行式 |
+| `hif_cmd_t31x.lua` | `needArg` / `ntfArg`；NOTIFY 空参统一 ERROR |
+| `hif_cmd.lua` | `atSend` 分 STR/HEX；`atLowPower` 一次读 rest；`atSend` 不用 `and/or` 调两次 |
+| `hif_cmd_usb.lua` | 去掉未用 `C.state`；`pushRecover`；RNDIS 开/关合一 |
+| `hif_cmd_wled.lua` | `AT+WLED?` / `AT+WLED=` 经 `C.defineQuery` / `C.defineSet` 工厂下发；影子表 `wledRuntime`（勿再命名成 `wledState`） |
+| `hif_cmd_link.lua` | `validPassword` |
+| `hif_cmd_pir.lua` | `uartHostEvtQry` 走 `bldHostEvtBody()` |
+| `hif_rx_dsl.lua` | `publishAck` / `recTimeRow`；TFFORMAT/WLED/IPCPOWEROFF 共用 ACK |
+| `hif_rx.lua` | 注册表分组注释 |
+| `hif_ipc_cloud.lua` | `flag01` / `liftFlag` |
+| `hif_ipc_encode.lua` | `packRows` 不再循环找第一行 |
+| `hif_ipc_hostq.lua` | `defineQuery` 对齐；SOFTPHOTO 字段名表 |
+| `hif_ipc_rec.lua` | `noteUartLinkOk = clearMissStreak` |
+| `hif_ipc_power.lua` | `waitBusyClear` 合成 while |
+| `hif_at.lua` | 分区注释；HOSTEVT 与 PIR exact 排一起 |
+| `hif_rx_dsl.lua` / `hif_rx_media.lua` | 二次：`trimStr` 并入 `normLine`；`asNum` 由 dsl 导出复用 |
+| `hif_ipc_encode.lua` / `hif_ipc_hostq.lua` | 二次：`optTable`/`asTbl` 复用 `utils.optTable` |
+| `hif_cmd_wled.lua` / `hif_ipc_cloud.lua` | 二次：删 `hostQuery` 永不读的死 `timeoutCfgKey`/`defaultTimeout`；cloud 快照只取一次 |
+| `hif_cmd_usb.lua` | 二次：USBRECOVERY `lastErr` 一行式 |
 
-`hu_ipc.lua` / `hu_ipc_tffmt.lua` / `hu_rx_media.lua` 本轮结构已短，未再拆。
+`hif_ipc.lua` / `hif_ipc_tffmt.lua` / `hif_rx_media.lua` 本轮结构已短，未再拆。
 
 **不要再踩**：
 
 - `atSend`：`fn` 返回 `false` 时不能写成 `extra and fn(...) or fn(...)`（会调两次）。
-- `hu_cmd_usb` bind 头不要快照 `C.state`（handler 不用）。
-- WLED：表叫 `wledRt`，getter 叫 `wledGet`；同名会把表盖成函数，`+WLED:` 写 `.on` 会崩。
-- `hostQuery(waitMs, opts)` 先置 `opts.timeoutMs = waitMs`：调用方传了非 nil 超时后，spec 里的 `timeoutCfgKey`/`defaultTimeout` 即为死字段（例外 `qryHostStat`：`t3x_ctrl` 可能传 nil，回退必须保留）。
+- `hif_cmd_usb` bind 头不要快照 `C.state`（handler 不用）。
+- WLED：表叫 `wledRuntime`，getter 叫 `wledGet`；同名会把表盖成函数，`+WLED:` 写 `.on` 会崩。AT+WLED? / AT+WLED= 走 `C.defineQuery` / `C.defineSet` 工厂（wled 由 `hif_cmd.bind` 早于 `hif_ipc.bind` 装载，工厂运行期经 `C` 惰性取用），**不要**在 wled 里直调 `hostQuery` 手拼 spec（原 `wledQuerySpec` 已删）。
+- `hostQuery(waitMs, opts)` 先置 `opts.timeoutMs = waitMs`：调用方传了非 nil 超时后，spec 里的 `timeoutCfgKey`/`defaultTimeout` 即为死字段（例外 `qryHostStat`：`t31x_ctrl` 可能传 nil，回退必须保留）。
 
 ---
 
-**版本**：2026-09-01
+**版本**：2026-09-02

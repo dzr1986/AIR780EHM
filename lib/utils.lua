@@ -101,13 +101,13 @@ function decodeHex(hex)
     return table.concat(parts)
 end
 
-function t3xOn(tag, extra, defaultExtra)
-    local t3x = loader.load("t3x_ctrl")
-    if not t3x then return false end
-    return t3x.ensPowOn(tag, extra or defaultExtra)
+function t31xOn(tag, extra, defaultExtra)
+    local t31x = loader.load("t31x_ctrl")
+    if not t31x then return false end
+    return t31x.ensPowOn(tag, extra or defaultExtra)
 end
 
-function waitT3xAck(eventName, timeoutMs, ackOk)
+function waitT31xAck(eventName, timeoutMs, ackOk)
     local deadline = nowMs() + timeoutMs
     while true do
         local remain = timeoutMs
@@ -142,6 +142,10 @@ function parseBoolDef(v, default)
     if v == nil then return default end
     if v == false or v == 0 or v == "0" then return false end
     return true
+end
+
+function to01(v)
+    return (tonumber(v) == 1) and 1 or 0
 end
 
 function mkLogFns(tag)

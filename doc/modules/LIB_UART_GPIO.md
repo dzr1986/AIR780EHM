@@ -55,10 +55,10 @@ flowchart LR
 ```text
 uart_bridge.start({ onRaw = host_uart.onRxRaw })
   → _G.uart_bridge = uart_bridge
-  → host_uart.start({ t3x, hooks... })
+  → host_uart.start({ t31x, hooks... })
 ```
 
-T3x 烧录模式可 `uart_bridge.stop()` 释放串口给烧录工具。
+T31x 烧录模式可 `uart_bridge.stop()` 释放串口给烧录工具。
 
 **注意**：当前 `app.setupUartBridge` 仅注册 `onRaw`；行协议拆行在 `uart_bridge` 内部完成，但 `on_line` 未接 `host_uart`（`host_uart` 自行在 `onRxRaw` 内按行解析）。
 
@@ -104,10 +104,10 @@ gpio_util
   └─ pir_ctrl.startHw（PIR 中断，经 peripheral）
 
 uart_bridge
-  ├─ host_uart（T3x AT 协议）
+  ├─ host_uart（T31x AT 协议）
   ├─ time_sync（AT+TIMESET）
   ├─ sound_prompt（AT+PLAYSOUND）
-  └─ t3x_ctrl（深睡时可 stop）
+  └─ t31x_ctrl（深睡时可 stop）
 ```
 
 ---

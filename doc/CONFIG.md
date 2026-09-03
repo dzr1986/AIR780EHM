@@ -4,14 +4,14 @@
 > **开关/事件**：[`../user/app_config.lua`](../user/app_config.lua)  
 > **按键策略**：[`../user/key_config.lua`](../user/key_config.lua)  
 > **PIR 媒体**：[`../user/pir_ctrl.lua`](../user/pir_ctrl.lua)  
-> **T3x 协处理器**：[`../user/t3x_ctrl.lua`](../user/t3x_ctrl.lua)  
+> **T31x 协处理器**：[`../user/t31x_ctrl.lua`](../user/t31x_ctrl.lua)  
 > **加载**：`main.lua` → `config` → `app_config` → `key_config`
 
 ## 命名约定
 
 | 类别 | 规则 | 示例 |
 |------|------|------|
-| Lua 文件 | `snake_case` | `uart_bridge.lua`（lib）、`host_uart.lua`（T3x 串口业务）、`t3x_ctrl.lua`、`pir_ctrl.lua` |
+| Lua 文件 | `snake_case` | `uart_bridge.lua`（lib）、`host_uart.lua`（T31x 串口业务）、`t31x_ctrl.lua`、`pir_ctrl.lua` |
 | 配置表 | `*_CFG` | `GPIO_IN`、`MQTT_CFG` |
 | 运行时 | `APP_RUNTIME` | `battery_percent`、`online_status` |
 | 表内字段 | `snake_case` | `init_level`、`trigger_mode` |
@@ -20,8 +20,8 @@
 
 ## Air780 GPIO 编号对照（`config.lua`）
 
-> **`pin` 列 = 4G GPIO 号**（非模组物理 Pin）。完整表见 [T3X_CAT1_GPIO.md §1.1](T3X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)。  
-> **易混**：4G **GPIO26** = 模组 **Pin25** `CAN_TXD`（`T3x_BOOT`）；模组 **Pin26** = `PWM4`。
+> **`pin` 列 = 4G GPIO 号**（非模组物理 Pin）。完整表见 [T31X_CAT1_GPIO.md §1.1](T31X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)。  
+> **易混**：4G **GPIO26** = 模组 **Pin25** `CAN_TXD`（`T31x_BOOT`）；模组 **Pin26** = `PWM4`。
 
 | 方向 | `config` 键 | 4G GPIO | 模组 Pin | 丝印 | 原理图网络 |
 |------|-------------|-----------|----------|------|------------|
@@ -34,12 +34,12 @@
 | IN | `misc_pullup` | 7 | 7 | — | 预留 |
 | OUT | `led_red` | 20 | 102 | GPIO20 | **本板未用**（`enabled=false`） |
 | OUT | `bat_stat_led` | 21 | 107 | GPIO21 | **LED2 蓝灯**（`led_ctrl` single_blue） |
-| OUT | `t3x_pwr_wake` | 22 | 19 | GPIO22 | CPU_PWR_EN |
-| OUT | `t3x_boot` | **26** | **25** | **CAN_TXD** | **T3x_BOOT** |
-| OUT | `t3x_ota` | 32 | 33 | GPIO32 | USB_DEBUG_EN |
-| OUT | `t3x_mcu_int` | 29 | 30 | GPIO29 | MCU_INT_CPU |
+| OUT | `t31x_pwr_wake` | 22 | 19 | GPIO22 | CPU_PWR_EN |
+| OUT | `t31x_boot` | **26** | **25** | **CAN_TXD** | **T31x_BOOT** |
+| OUT | `t31x_ota` | 32 | 33 | GPIO32 | USB_DEBUG_EN |
+| OUT | `t31x_mcu_int` | 29 | 30 | GPIO29 | MCU_INT_CPU |
 
-烧录三根输出：**GPIO26 + GPIO32 + GPIO22** → [T3X_BURN_MODE.md](T3X_BURN_MODE.md)
+烧录三根输出：**GPIO26 + GPIO32 + GPIO22** → [T31X_BURN_MODE.md](T31X_BURN_MODE.md)
 
 ---
 
@@ -83,12 +83,12 @@
 |----|-----------|--------------|------------|----------|------|
 | `led_red` | 20 | **0** | **1** | 102 | **未用**（`enabled=false`） |
 | `bat_stat_led` | 21 | **1** | **0** | 107 | `led_ctrl` 单蓝灯 |
-| `t3x_boot` | **26** | **0** | **1** | **25** `CAN_TXD` | `t3x_ctrl` → `T3x_BOOT` |
-| `t3x_ota` | 32 | **0** | **1** | 33 | `t3x_ctrl` → `USB_DEBUG_EN` |
-| `t3x_pwr_wake` | 22 | **0** | **1** | 19 | `t3x_ctrl` → `CPU_PWR_EN` |
-| `t3x_mcu_int` | 29 | 1 | 0 | 30 | `t3x_ctrl` → `MCU_INT_CPU` 脉冲 |
+| `t31x_boot` | **26** | **0** | **1** | **25** `CAN_TXD` | `t31x_ctrl` → `T31x_BOOT` |
+| `t31x_ota` | 32 | **0** | **1** | 33 | `t31x_ctrl` → `USB_DEBUG_EN` |
+| `t31x_pwr_wake` | 22 | **0** | **1** | 19 | `t31x_ctrl` → `CPU_PWR_EN` |
+| `t31x_mcu_int` | 29 | 1 | 0 | 30 | `t31x_ctrl` → `MCU_INT_CPU` 脉冲 |
 
-**`USB_DEBUG_EN`（GPIO32）运行时电平**：上电/正常运行 **低**；GPIO28 长按进 T3x 烧录 **高**；`exitBootMode` 后 **低**；`AT+USBRESET` 为 **高约 300ms 再低**（见 [T3X_CAT1_GPIO §1.2](T3X_CAT1_GPIO.md#12-usb_debug_engpio32电平)）。
+**`USB_DEBUG_EN`（GPIO32）运行时电平**：上电/正常运行 **低**；GPIO28 长按进 T31x 烧录 **高**；`exitBootMode` 后 **低**；`AT+USBRESET` 为 **高约 300ms 再低**（见 [T31X_CAT1_GPIO §1.2](T31X_CAT1_GPIO.md#12-usb_debug_engpio32电平)）。
 
 修改 LED/协处理器默认亮灭：**只改 `init_level` / `on_level`**，无需改业务代码。
 
@@ -98,7 +98,7 @@
 
 - `PIR_CFG`：由 `GPIO_IN.pir_det` 自动带出中断参数 + `PIR_COOLDOWN_MS.frequent`
 - `BATTERY_CFG`：ADC 采样、模组灯、电量保护（真源 [`config.lua`](../user/config.lua)）；行为见 [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md)
-- `T3X_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
+- `T31X_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
 - `MODULE_FLAGS.battery_guard`：[`app_config.lua`](../user/app_config.lua)，`false` 可关闭电量保护
 
 ### `BATTERY_CFG` 字段一览
@@ -130,7 +130,7 @@
 | | `shutdown_recover_mv` | 3500 | >3.5V 才取消已排程关机 |
 | | `shutdown_percent` | 5 | 无有效 mV 时回退：≤5% 关机 |
 | | `shutdown_delay_ms` | 3000 | 关机前等待；插 USB 可取消 |
-| | `t3x_rest_percent` | 10 | **仅 hybrid 策略**：≤10% 进 4G rest |
+| | `t31x_rest_percent` | 10 | **仅 hybrid 策略**：≤10% 进 4G rest |
 | | `recover_rest_percent` | 10 | **仅 hybrid 策略**：退出 rest 阈值 |
 | | `pir_suspend_percent` | 5 | **仅 hybrid 策略**：挂起 PIR |
 | | `require_valid_sample` | true | 电量 `--` 时不执行 guard |
@@ -148,7 +148,7 @@ flowchart LR
     E[≤3.4V] --> F[rest + 延时关机]
 ```
 
-`hybrid` 策略另含 ≤`t3x_rest_percent` 进 4G rest，见 `LOW_POWER_ENTER_STRATEGY`。
+`hybrid` 策略另含 ≤`t31x_rest_percent` 进 4G rest，见 `LOW_POWER_ENTER_STRATEGY`。
 
 插 **USB_DET（GPIO27）** 后：`battery_guard` 跳过阈值；在 rest 时 `onExitLowPower` 唤醒 T31（冷启动由 `bootPowerOn` 单独上电）。
 
@@ -157,18 +157,18 @@ flowchart LR
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `enabled` | true | 总开关（`MODULE_FLAGS.sound_prompt`） |
-| `boot_on_cold_start` | true | 收到 T3x **首条 AT** 后发 `AT+PLAYSOUND=boot` |
+| `boot_on_cold_start` | true | 收到 T31x **首条 AT** 后发 `AT+PLAYSOUND=boot` |
 | `boot_on_wake` | **false** | 低功耗/PIR 唤醒 **不播** 开机音 |
 | `shutdown_on_user_off` | true | PWRKEY / MQTT / AT 关机前播 `shutdown` |
 | `shutdown_on_low_power` | false | 业务休眠前不播 |
 | `shutdown_on_battery_off` | false | 5% 自动关机不播 |
-| `boot_wait_host_ms` | 120000 | 等 T3x 首条 AT 超时（毫秒）；超时跳过开机音，**不会无限等待** |
+| `boot_wait_host_ms` | 120000 | 等 T31x 首条 AT 超时（毫秒）；超时跳过开机音，**不会无限等待** |
 | `play_timeout_ms` | 2500 | 等 `+SOUNDACK` 超时 |
-| `t3x_power_wait_ms` | 800 | 发 PLAYSOUND 前若 T3x 未上电则 `powerOn` 后等待 |
+| `t31xPowerWaitMs` | 800 | 发 PLAYSOUND 前若 T31x 未上电则 `powerOn` 后等待 |
 
 冷启动开机音流程（首条 AT、超时、防重复）见 [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md) §7.3。
 
-实现：`user/sound_prompt.lua`（4G）、`t3x_linux/audio_prompt.c`（T3x 桩）。见 [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md)。
+实现：`user/sound_prompt.lua`（4G）、`t3x_linux/audio_prompt.c`（T31x 桩）。见 [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md)。
 
 ### `TIME_SYNC_CFG` 时间同步（`config.lua`）
 
@@ -178,25 +178,25 @@ flowchart LR
 | `min_valid_unix` | 1704067200 | 低于此视为未同步（防 1970） |
 | `sync_on_sntp` | true | SNTP 成功后 `AT+TIMESET` |
 | `sync_before_wake` | true | GPIO 唤醒前先设时 |
-| `host_boot_wait_ms` | 1500 | T3x 上电后等 UART 就绪 |
+| `host_boot_wait_ms` | 1500 | T31x 上电后等 UART 就绪 |
 
 见 [TIME_SYNC.md](TIME_SYNC.md)。
 
 ### `HOST_IDENTITY_CFG` 设备标识（`config.lua`）
 
-Cat.1 IMEI + T3x GB28181 ID；MQTT **2006**→**1006**。见 [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) §4.6。
+Cat.1 IMEI + T31x GB28181 ID；MQTT **2006**→**1006**。见 [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) §4.6。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `enabled` | true | 总开关 |
-| `auto_publish_on_ready` | true | T3x 首条 AT 且 MQTT 在线后自动上报 1006 |
+| `auto_publish_on_ready` | true | T31x 首条 AT 且 MQTT 在线后自动上报 1006 |
 | `auto_publish_delay_ms` | 500 | 自动上报前额外等待 |
 | `query_timeout_ms` | 3000 | `AT+GB28181?` 等待超时 |
-| `host_boot_wait_ms` | 1500 | T3x 上电后等 UART 就绪 |
-| `t3x_power_wait_ms` | 800 | 查询前 `powerOn` 后等待 |
-| `publish_on_ipcinfo_query` | false | T3x 发 `AT+IPCINFO?` 后是否额外 MQTT 1006 |
+| `host_boot_wait_ms` | 1500 | T31x 上电后等 UART 就绪 |
+| `t31xPowerWaitMs` | 800 | 查询前 `powerOn` 后等待 |
+| `publish_on_ipcinfo_query` | false | T31x 发 `AT+IPCINFO?` 后是否额外 MQTT 1006 |
 
-T3x 侧在 `client.ini` 配置 `gb28181_id=`。
+T31x 侧在 `client.ini` 配置 `gb28181_id=`。
 
 ### `HOST_TFCARD_CFG` TF/SD 卡（`config.lua`）
 
@@ -204,38 +204,38 @@ T3x 侧在 `client.ini` 配置 `gb28181_id=`。
 |------|------|------|
 | `enabled` | true | 总开关 |
 | `query_timeout_ms` | 3000 | `AT+TFCARD?` 等待超时 |
-| `host_boot_wait_ms` | 1500 | T3x 上电后等 UART 就绪 |
-| `t3x_power_wait_ms` | 800 | 查询前 `powerOn` 后等待 |
+| `host_boot_wait_ms` | 1500 | T31x 上电后等 UART 就绪 |
+| `t31xPowerWaitMs` | 800 | 查询前 `powerOn` 后等待 |
 
-T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。见 [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) §4.7。
+T31x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。见 [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) §4.7。
 
 ### `HOST_USB_CFG` USB 与低功耗互斥（`config.lua`）
 
-USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=1` / `AT+LOWPOWER=ENTER`，并串口通知 T3x 勿发休眠 AT。拔出后通知 T3x 可恢复 `HOSTIDLE` 轮询。见 [T3X_USB_HOSTIDLE.md](T3X_USB_HOSTIDLE.md)。
+USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE=1` / `AT+LOWPOWER=ENTER`，并串口通知 T31x 勿发休眠 AT。拔出后通知 T31x 可恢复 `HOSTIDLE` 轮询。见 [T31X_USB_HOSTIDLE.md](T31X_USB_HOSTIDLE.md)。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `block_host_idle_when_usb` | true | T3x 发 `AT+HOSTIDLE=1` → 4G 回 `+HOSTIDLE:USB` |
+| `block_host_idle_when_usb` | true | T31x 发 `AT+HOSTIDLE=1` → 4G 回 `+HOSTIDLE:USB` |
 | `block_4g_rest_when_usb` | true | `onEnterLowPower`、MQTT 2002、`AT+LOWPOWER=ENTER` 在 USB=1 时忽略 |
-| `notify_t3x_usb_state` | true | 拔插、开机延迟、T3x 首条 AT 后推送 `+CAT1:USB,0/1` |
-| `t3x_usb_ursp` | `+CAT1:USB,%d` | URSP 模板 |
-| `boot_notify_delay_ms` | 1500 | 冷启动后补发 USB 态（等 UART/T3x 就绪） |
+| `notify_t31x_usb_state` | true | 拔插、开机延迟、T31x 首条 AT 后推送 `+CAT1:USB,0/1` |
+| `t31x_usb_ursp` | `+CAT1:USB,%d` | URSP 模板 |
+| `boot_notify_delay_ms` | 1500 | 冷启动后补发 USB 态（等 UART/T31x 就绪） |
 
-实现：`user/app.lua`（`applyUsbPower` / `ntfT3xUsbIdle`）、`user/host_uart.lua`（`pushUsbIdle` / `uart_hostidle` / `uart_lowpower`）、`user/net_mqtt.lua`（2002 拦截）。
+实现：`user/app.lua`（`applyUsbPower` / `notifyUsbIdle`）、`user/host_uart.lua`（`pushUsbIdle` / `uart_hostidle` / `uart_lowpower`）、`user/net_mqtt.lua`（2002 拦截）。
 
-### `HOST_IPC_CFG` T3x 电源（`config.lua`）
+### `HOST_IPC_CFG` T31x 电源（`config.lua`）
 
-实现：`t3x_ctrl.lua`、`user/host_uart.lua`（`queryHostIpcStatus` / `hostIpcPowerOff` / `waitHostIpcReady`）。见 [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) §3.4。
+实现：`t31x_ctrl.lua`、`user/host_uart.lua`（`queryHostIpcStatus` / `hostIpcPowerOff` / `waitHostIpcReady`）。见 [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) §3.4。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `enabled` | true | 总开关；false 时回退首条 AT / 直接 GPIO 断电 |
-| `graceful_poweroff` | true | `t3x_ctrl.enterSleep` 前先 `AT+IPCPOWEROFF` |
+| `graceful_poweroff` | true | `t31x_ctrl.enterSleep` 前先 `AT+IPCPOWEROFF` |
 | `poweroff_play_sound` | true | true→`=1` 播音，false→`=0` |
 | `poweroff_timeout_ms` | 30000 | 等待 `+IPCPOWEROFF:OK`（封盘可 >15s） |
 | `status_query_timeout_ms` | 2000 | 单次 `AT+IPCSTATUS?` 超时（无应答视为 idle） |
 | `ready_wait_timeout_ms` | 120000 | 上电后轮询 ready 总超时 |
-| `ready_poll_ms` | 1000 | ready 轮询间隔 |
+| `ready_pollMs` | 1000 | ready 轮询间隔 |
 | `boot_sound_wait_ready` | true | 冷启动开机音等 `+IPCSTATUS:ready` |
 | `uart_recovery.*` | 见下 | **USB 已插**且连续 `ipc_status_no_response` 时 powerOff→powerOn→脉冲 |
 
@@ -252,15 +252,15 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 
 日志：`uart_recovery_sched` → `uart_recovery_cycle`；耗尽 `uart_recovery_exhausted`。
 
-### `T3X_POLICY_CFG` T3x 门禁（`config.lua`，v1.2）
+### `T31X_POLICY_CFG` T31x 门禁（`config.lua`，v1.2）
 
-实现：`lib/t3x_policy.lua`。见 [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) §5。
+实现：`lib/t31x_policy.lua`。见 [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) §5。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `enabled` | true | 总开关（`MODULE_FLAGS.t3x_policy`） |
+| `enabled` | true | 总开关（`MODULE_FLAGS.t31x_policy`） |
 | `block_wake_in_low_power` | true | `low_power_mode=rest` 时禁止非强制唤醒 |
-| `block_mqtt_offline_wake` | true | rest 下 MQTT 离线不硬唤醒 T3x |
+| `block_mqtt_offline_wake` | true | rest 下 MQTT 离线不硬唤醒 T31x |
 | `block_wake_below_percent` | 15 | 未插 USB 且电量 ≤ 此值禁止上电/唤醒 |
 
 `force_wake`（退出低功耗、USB 恢复等）可绕过 rest/低电限制；**插 USB、烧录** 始终允许。
@@ -277,13 +277,13 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 | `ok_hold_ms` | 5000 | 正常常亮 |
 | `check_network` | true | 是否判 MQTT 离线 |
 | `suppress_low_when_charging` | true | USB+充电中跳过低电快闪 |
-| `notify_t3x_net_led` | false | 可选通知 T3x PB17 |
+| `notify_t31x_net_led` | false | 可选通知 T31x PB17 |
 
 - `UART_CFG`（`lib/uart_bridge` 唯一数据源）：
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `id` | `1` | UART 口（接 T3x） |
+| `id` | `1` | UART 口（接 T31x） |
 | `baud` | `115200` | 波特率，8N1 |
 | `line_protocol` | `true` | 按 `\r\n` 拆行 |
 | `rx_line_max` | `4096` | 行缓冲上限 |
@@ -308,4 +308,4 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T3x `AT+HOSTIDLE=
 
 ## 相关文档
 
-[README.md](README.md) · [CODE_DOC_AUDIT.md](CODE_DOC_AUDIT.md) · [LED_INDICATORS.md](LED_INDICATORS.md) · [CHARGE_BATTERY.md](CHARGE_BATTERY.md) · [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [T3X_CAT1_GPIO.md](T3X_CAT1_GPIO.md)
+[README.md](README.md) · [CODE_DOC_AUDIT.md](CODE_DOC_AUDIT.md) · [LED_INDICATORS.md](LED_INDICATORS.md) · [CHARGE_BATTERY.md](CHARGE_BATTERY.md) · [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [T31X_CAT1_GPIO.md](T31X_CAT1_GPIO.md)

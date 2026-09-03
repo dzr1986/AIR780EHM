@@ -1,0 +1,28 @@
+{
+  "theme": "warm",
+  "host": "http://43.136.55.143",
+  "prefix": "/ota",
+  "token": "ota-7f3a9c2e4b18d6a0e5c1",
+  "imei": "862323084068999",
+  "project_key": "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x",
+  "mqtt_host": "112.86.146.218",
+  "mqtt_port": "2123",
+  "mqtt_user": "fptop1",
+  "ipc_imei": "862323084068264\n862323084068330\n862323084068322\n862323084068272\n862323084068249\n862323084068116\n862323084068124\n862323084068157\n862323084068231\n862323084068280\n862323084068314\n862323084068306\n862323084068298\n862323084068223\n862323084073637",
+  "imei_file_dir": "D:\\WeChat_Files1\\xwechat_files\\wxid_f49pe04qtdlg21_c532\\msg\\file\\2026-09",
+  "ipc_ver": "1.0.40",
+  "prod_dir": "E:\\CAT1\\AIR780EHM\\ota_server\\量产",
+  "split_main": [
+    200,
+    429,
+    187
+  ],
+  "split_4g": [
+    608,
+    622
+  ],
+  "split_ipc": [
+    400,
+    830
+  ]
+}

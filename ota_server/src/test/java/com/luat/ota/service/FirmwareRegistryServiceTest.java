@@ -18,6 +18,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -88,6 +89,31 @@ class FirmwareRegistryServiceTest {
                 "2034.001.002", "999999999999999").isPresent());
         assertFalse(registry.isDeviceDenied(null, "PANSHI_CAT1_LuatOS-SoC_Air780EHM",
                 "2034.001.002", "999999999999999"));
+    }
+
+    @Test
+    void addAssignmentsSkipsExistingAndClearsUpgradeAll() {
+        FirmwarePackage pkg = buildPkg(4L, "2034.001.002", "2034.001.003", true);
+        when(firmwareRepo.findById(4L)).thenReturn(Optional.of(pkg));
+        when(firmwareRepo.save(pkg)).thenReturn(pkg);
+        when(assignmentRepo.existsByFirmwareIdAndImei(4L, "862323084068231")).thenReturn(false);
+        when(assignmentRepo.existsByFirmwareIdAndImei(4L, "862323084068124")).thenReturn(true);
+
+        FirmwarePackage saved = registry.addAssignments(4L,
+                List.of("862323084068231", "862323084068124"));
+
+        assertFalse(Boolean.TRUE.equals(saved.getUpgradeAll()));
+        verify(assignmentRepo).save(argThat(a -> a != null && "862323084068231".equals(a.getImei())));
+    }
+
+    @Test
+    void removeAssignmentsDeletesSelected() {
+        FirmwarePackage pkg = buildPkg(5L, "2034.001.002", "2034.001.003", false);
+        when(firmwareRepo.findById(5L)).thenReturn(Optional.of(pkg));
+
+        registry.removeAssignments(5L, List.of("862323084068231"));
+
+        verify(assignmentRepo).deleteByFirmwareIdAndImeiIn(5L, List.of("862323084068231"));
     }
 
     private static FirmwarePackage buildPkg(Long id, String src, String ver, boolean upgradeAll) {

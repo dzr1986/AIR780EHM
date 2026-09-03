@@ -137,7 +137,7 @@ Cat.1 收到 `+UPLOADVIDEO:OK` 后**立刻**发，**不经过** `AT+UPLOADRESULT
 |-------------------|------|
 | `0` / `ok` | 已排队，进入闭环等待进度/完成 |
 | `0` / `cancelled` | `needUpload=0` |
-| `-1` / `t3x_not_ready` | T31 未就绪，**不会**抽片 |
+| `-1` / `t31x_not_ready` | T31 未就绪，**不会**抽片 |
 
 旧固件可能没有 `stage` 字段：`reply=1` 且无 `percent` 即本档。
 
@@ -187,7 +187,7 @@ T31 HTTP 回调 → `AT+UPLOADPROGRESS` → Cat.1 立刻 ACK，再发 1013。
   "needUpload": 1,
   "action": "upload_video",
   "reason": "cloud",
-  "source": "t3x",
+  "source": "t31x",
   "videoType": 2,
   "fileName": "34020000001310267610-20260821-1787298684193.ts",
   "httpPath": "/apps/video/playback/....ts",

@@ -1,0 +1,27 @@
+server:
+  port: ${VIDEO_UPLOAD_PORT:7003}
+  address: ${VIDEO_UPLOAD_HOST:0.0.0.0}
+  tomcat:
+    max-http-form-post-size: 400MB
+    connection-timeout: 180000
+    threads:
+      max: 50
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 400MB
+      max-request-size: 400MB
+      file-size-threshold: 1MB
+  jackson:
+    default-property-inclusion: non_null
+
+video:
+  upload:
+    dir: ${VIDEO_UPLOAD_DIR:incoming}
+    aes-key: ${VIDEO_UPLOAD_AES_KEY:7f3A9c82D1e64B5F90a7C3d8E2F6b410}
+    max-bytes: ${VIDEO_UPLOAD_MAX_BYTES:419430400}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

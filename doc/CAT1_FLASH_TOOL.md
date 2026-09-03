@@ -1,5 +1,6 @@
 # Cat.1 烧录工具（Air780EHM）
 
+> **操作步骤（日常烧脚本）**：[CAT1_FLASH_FLOW.md](CAT1_FLASH_FLOW.md)  
 > 对齐合宙 **Luatools_v3** 的两种下载：**下载脚本**、**下载底层和脚本**。  
 > 代码：[`../tools/gui/flash/cat1_flash.py`](../tools/gui/flash/cat1_flash.py)（命令行）· [`../tools/gui/flash/cat1_flash_gui.py`](../tools/gui/flash/cat1_flash_gui.py)（界面）  
 > **界面入口**：双击 [`../tools/gui/02_Cat1烧录.bat`](../tools/gui/02_Cat1烧录.bat)  
@@ -17,7 +18,7 @@
 
 MQTT / 业务脚本变更 → 用 **下载脚本**。换底层固件版本（如 V2044）或救砖 → 用 **下载底层和脚本**。
 
-注意：这是 **4G 模组（Air780EHM）** 的 USB 烧录，不是 T3x 的 GPIO28 烧录模式（见 [T3X_BURN_MODE.md](T3X_BURN_MODE.md)）。
+注意：这是 **4G 模组（Air780EHM）** 的 USB 烧录，不是 T31x 的 GPIO28 烧录模式（见 [T31X_BURN_MODE.md](T31X_BURN_MODE.md)）。
 
 ---
 
@@ -118,7 +119,7 @@ AT+ECRST=delay,799\r\n
 
 - **仅 `AT+ECRST` = 软件重启**，模组仍跑原来的固件，不会自动进 BOOT。
 - 进下载要 `delay,799` + `7E00027E`，或按住 BOOT 再复位。
-- `AT+REBOOT` 是本仓库 UART1（T3x）命令，不是合宙 USB 日志口协议。
+- `AT+REBOOT` 是本仓库 UART1（T31x）命令，不是合宙 USB 日志口协议。
 
 | 现象 | 含义 |
 |------|------|

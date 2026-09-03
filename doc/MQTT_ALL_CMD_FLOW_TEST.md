@@ -86,7 +86,7 @@ python tools/gui/mqtt/mqtt_tools_client.py --danger-all
 
 | 层 | 谁维护 | 平台怎么看 |
 |----|--------|------------|
-| T31x 全天写盘（`record_mode=1`） | IPC `record_*`，开机就写卡 | 1003/1010 的 **`recordingT3x`**；2011 会发 `AT+RECORDCTRL=0`，`message=t3x_stopped` |
+| T31x 全天写盘（`record_mode=1`） | IPC `record_*`，开机就写卡 | 1003/1010 的 **`recordingT31x`**；2011 会发 `AT+RECORDCTRL=0`，`message=t31x_stopped` |
 | Cat.1 PIR/2012 会话 | `pir_ctrl.session.recording` | 1010 **`recording`**；2011 回 `ok` 并带 1011 |
 
 旧逻辑只看 PIR 会话，全天正在写卡时 2011 会误报 `not_recording`（001.000.008 已改：先查 `AT+IPCSTAT?` / `AT+RECORD?`）。
@@ -136,7 +136,7 @@ python tools/gui/mqtt/mqtt_tools_client.py --danger-all
 | 2004 `wled_query` | 1004 `wled` | `AT+WLED?`（未就绪可用缓存） | **通过** `enable=0` |
 | 2004 `wled` `enable=0/1` | 1004 `wled` | `AT+WLED=n` | 先 1004，再异步转发；录像中 UART 吵也不再卡 `wled_forward_fail` |
 | 2009 format `reboot=0` | 1009 tfcard_format | `AT+TFFORMAT=1,reboot=0` | **通过** `ret=0`（约 3s，TF ~117GB） |
-| 2011 | 1004 `pir_stop` → 1011 | `AT+RECORDCTRL=0,…` | PIR 会话在录：`ret=0 ok`；仅 T31x 全天写盘：`ret=0 t3x_stopped`；两边都未写：`ret=-1 not_recording` |
+| 2011 | 1004 `pir_stop` → 1011 | `AT+RECORDCTRL=0,…` | PIR 会话在录：`ret=0 ok`；仅 T31x 全天写盘：`ret=0 t31x_stopped`；两边都未写：`ret=-1 not_recording` |
 | 2012 | 1004 `pir_start` → 1012 | `AT+RECORDCTRL=1,…` | **通过** `ret=0`（空闲时） |
 | 2020 | 1020 encode | `AT+VENC?` | 忙：`timeout`；空闲可 `ret=0` |
 | 2021 | 1021 encode | `AT+VENCSET=…` | 忙：`timeout`（应答仍会回来，偏晚） |
@@ -169,7 +169,7 @@ python tools/gui/mqtt/mqtt_tools_client.py --danger-all
 ## 6. 建议测试顺序
 
 1. 2008 确认版本。  
-2. 2011 停录，等 1003 `recordingT3x=0` 且尽量 `usbRecovery=idle`。  
+2. 2011 停录，等 1003 `recordingT31x=0` 且尽量 `usbRecovery=idle`。  
 3. 安全查询：2001/2003/2005/2006/2007/2008/2010q。  
 4. T31x 查询：2020/2022/2024/2026/2028/2030、白光灯查询。  
 5. T31x 设置：2021/2023/2025/2027/2029/2031。  

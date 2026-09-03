@@ -26,12 +26,12 @@
 ```
 main.lua（入口）
   └─ app.lua（编排中心：启动链 / 事件集中订阅 / 烧录模式 / 低功耗进出）
-       ├─ user/ 业务层：net_mqtt、host_uart、t3x_ctrl、pir_ctrl、battery_guard、
+       ├─ user/ 业务层：net_mqtt、host_uart、t31x_ctrl、pir_ctrl、battery_guard、
        │            peripheral、led_ctrl、vbat、fota_svc、ipc_supervision、
        │            time_sync、sound_prompt、net_tcp（stub）、utils（工具）
        └─ lib/ 公共层：uart_bridge、module_loader、sys、config_manager、gpio_util、
                   usb_charge、usb_rndis、usb_vuart、cellular_bootstrap、low_power_wakeup、
-                  t3x_policy、t3x_notify、host_event、runtime_power、watchdog、device_id、libfota2
+                  t31x_policy、t31x_notify、host_event、runtime_power、watchdog、device_id、libfota2
 ```
 
 设计约定（与代码一致）：
@@ -50,30 +50,30 @@ main.lua（入口）
 | 层 | 模块 | 职责（一句话） |
 |----|------|----------------|
 | user | `app.lua` | 编排中心：启动 18 步、subscribeAll、烧录模式、低功耗进出、MOTOR 桥接 |
-| user | `net_mqtt.lua`（2803 行） | 云端 MQTT：1001–1031 上行 / 2001–2031 下行表驱动分发、待 T3x 下行队列 |
-| user | `host_uart.lua`（3673 行） | T3x AT 协议：44 条 AT_CMD_TABLE、24 个行处理器、事务互斥、唤醒通知 |
-| user | `t3x_ctrl.lua` | 协处理器电源：enterSleep 优雅关机、boot 模式、经 t3x_policy 门禁上电 |
+| user | `net_mqtt.lua`（2803 行） | 云端 MQTT：1001–1031 上行 / 2001–2031 下行表驱动分发、待 T31x 下行队列 |
+| user | `host_uart.lua`（3673 行） | T31x AT 协议：44 条 AT_CMD_TABLE、24 个行处理器、事务互斥、唤醒通知 |
+| user | `t31x_ctrl.lua` | 协处理器电源：enterSleep 优雅关机、boot 模式、经 t31x_policy 门禁上电 |
 | user | `pir_ctrl.lua` | PIR 侦测与会话：录像/冷却/云端启停/PIRSTAT、配置持久化 |
 | user | `battery_guard.lua` | 电量三档策略：3400mV 连续确认关机、PIR 挂起、battery rest、hooks 注入 |
 | user | `peripheral.lua` / `led_ctrl.lua` | 按键长短按 / 单蓝灯模式 |
 | user | `vbat.lua` | 电池 ADC：trim/EMA 滤波、发 BATTERY_UPDATE |
 | user | `fota_svc.lua` / `ipc_supervision.lua` | MQTT 2004 OTA / IPC 告警对账（1004/1011） |
 | user | `time_sync.lua` / `sound_prompt.lua` | 唤醒前对时 / 提示音 |
-| user | `utils.lua` | 工具：nowMs/escJson/appEvent/waitT3xCmdAck/lazyRequire |
+| user | `utils.lua` | 工具：nowMs/escJson/appEvent/waitT31xCmdAck/lazyRequire |
 | user | `net_tcp.lua`（33 行） | TCP 唤醒桩（默认 `mode="mqtt"` 不加载） |
 | lib | `uart_bridge.lua` / `sys.lua` | 底层串口（on_raw/on_line 拆包） / LuatOS 事件调度核心 |
 | lib | `module_loader.lua` / `config_manager.lua` | 懒加载门面 / 配置合并 |
 | lib | `usb_charge.lua` / `usb_rndis.lua` / `usb_vuart.lua` | USB 充电检测 / RNDIS 网卡 / USB 虚拟串口 |
 | lib | `cellular_bootstrap.lua` | 蜂窝拨号引导：SIM/APN 探测、运营商映射 |
-| lib | `low_power_wakeup.lua` / `t3x_policy.lua` / `t3x_notify.lua` | 唤醒通道 mqtt/tcp / T3x 上电门禁 / 唤醒三级链 |
+| lib | `low_power_wakeup.lua` / `t31x_policy.lua` / `t31x_notify.lua` | 唤醒通道 mqtt/tcp / T31x 上电门禁 / 唤醒三级链 |
 | lib | `host_event.lua` / `runtime_power.lua` | HOSTEVT 汇总（TYPE_BIT 位图）/ 工作模式查询 |
 | lib | `device_id.lua` / `watchdog.lua` / `gpio_util.lua` / `libfota2.lua` | IMEI 单点 / WDT / GPIO 工具 / FOTA 引擎（供应商） |
 
 ### 2.3 关键机制
 
-- **事件总线**：`config.lua` 中 `APP_EVENTS` 38 个常量；app.lua `subscribeAll` 集中订阅；模块内另有"点对点 ACK 事件"（host_uart `SYS_EVT` 约 28 个、`TIME_SYNC_ACK`、`SOUND_PROMPT_ACK`）+ `utils.waitT3xCmdAck` 等待原语。
+- **事件总线**：`config.lua` 中 `APP_EVENTS` 38 个常量；app.lua `subscribeAll` 集中订阅；模块内另有"点对点 ACK 事件"（host_uart `SYS_EVT` 约 28 个、`TIME_SYNC_ACK`、`SOUND_PROMPT_ACK`）+ `utils.waitT31xCmdAck` 等待原语。
 - **内部通道**：字符串事件 `"mqtt_pub"(topic, payload, qos)`（net_mqtt 对外发布口）、`"net_ready"`、系统事件（`IP_READY`/`SIM_IND`/`SNTP_SYNC_SUCCESS` 等）。
-- **依赖注入**：`app.start(peripheral, net, t3x_ctrl)` 构造注入；`battery_guard.start({onEnterLowPower, ...})` hooks；`ipc_supervision.bind(...)`。
+- **依赖注入**：`app.start(peripheral, net, t31x_ctrl)` 构造注入；`battery_guard.start({onEnterLowPower, ...})` hooks；`ipc_supervision.bind(...)`。
 - **协议分发**：net_mqtt `DOWNLINK_HANDLERS` 表驱动；host_uart `AT_CMD_TABLE` + `RX_LINE_HANDLER_REGISTRY`（24 个行处理器）。
 - **运行期共享状态**：`APP_RUNTIME`（online_status / power_status / low_power_mode / work_mode / battery_* / consumption_rate 等），多模块读写。
 
@@ -85,8 +85,8 @@ main.lua（入口）
 
 | 变量 | 位置 | 问题 | 建议 |
 |------|------|------|------|
-| `_G.APP_PIR_CONFIG` / `_G.normPirMCfg` / `_G.normPirRPol` / `_G.pirMediaConfig` / `_G.pirRecordPolicy` | `pir_ctrl.lua` 30/245/246/292/317/320/326/327/524/536 | **纯内部状态与函数写成全局**，全库除 pir_ctrl 外无任何外部引用 | 改模块级 local + 访问器 |
-| `_G.T3X_BURN_MODE_ACTIVE` | app.lua 写（273/618/879）；battery_guard:160 / sound_prompt:29 / t3x_policy:57 读 | 烧录模式标志 3 文件裸读裸写 | 收进 `t3x_ctrl` 模块状态 + `isBurnActive()` 访问器 |
+| `_G.APP_PIR_CONFIG` / `_G.normMediaCfg` / `_G.normRecPolicy` / `_G.pirMediaConfig` / `_G.pirRecordPolicy` | `pir_ctrl.lua` 30/245/246/292/317/320/326/327/524/536 | **纯内部状态与函数写成全局**，全库除 pir_ctrl 外无任何外部引用 | 改模块级 local + 访问器 |
+| `_G.T31X_BURN_MODE_ACTIVE` | app.lua 写（273/618/879）；battery_guard:160 / sound_prompt:29 / t31x_policy:57 读 | 烧录模式标志 3 文件裸读裸写 | 收进 `t31x_ctrl` 模块状态 + `isBurnActive()` 访问器 |
 | `_G.uart_bridge` | app.lua:339 写；utils.lua:153 读 | 实例别名走全局 | 改注入/模块持有 |
 | `_G.device_imei` | app.lua:519/1004 写；device_id:11 读 | 与 `lib/device_id.lua` 职责重叠 | 缓存收进 device_id + getter |
 | `_G.usbRndis = _M` | usb_rndis.lua:425 | 与 `_G[_modname] = _M` 重复注册 | 删除冗余行 |
@@ -98,7 +98,7 @@ main.lua（入口）
 
 | lib 模块 | 反向依赖 |
 |----------|----------|
-| `gpio_util.lua` / `cellular_bootstrap.lua` / `t3x_policy.lua` / `usb_charge.lua` / `host_event.lua` | `require "config"`（即 user/config.lua） |
+| `gpio_util.lua` / `cellular_bootstrap.lua` / `t31x_policy.lua` / `usb_charge.lua` / `host_event.lua` | `require "config"`（即 user/config.lua） |
 | `usb_charge.lua` | 另用 `user/utils` 函数 |
 | `host_event.lua` | `loader.load("net_mqtt")` 懒加载 **user 业务模块** |
 
@@ -110,7 +110,7 @@ main.lua（入口）
 |------|------|------|
 | `net_tcp.lua` 全文件（33 行 stub） | user/net_tcp.lua | 默认 `mode="mqtt"` 不加载；属开关保留桩 → 可归档或加文件头说明 |
 | `_G.aliyuncs_imei` 读取分支 | lib/device_id.lua:14-15 | 全库无写入方，**死读**（旧阿里云方案残留）→ 删除 |
-| `T3X_PERSON_CNT` 处理器空函数 | app.lua:818-821 | 故意 no-op（人数不上 MQTT 1010），保留订阅防丢事件 → 补注释说明意图 |
+| `T31X_PERSON_CNT` 处理器空函数 | app.lua:818-821 | 故意 no-op（人数不上 MQTT 1010），保留订阅防丢事件 → 补注释说明意图 |
 
 ### 3.4 大文件热点（P2）
 
@@ -123,7 +123,7 @@ main.lua（入口）
 | 漂移 | 说明 |
 |------|------|
 | `app_config.lua` / `key_config.lua` 不存在 | 已并入 `user/config.lua`（665 行），但 CODE_ANALYSIS.md / README.md 仍按三文件描述 |
-| `lib/usb_policy.lua` 不存在 | CAT1_LOGIC_SLIM.md §10 记载"已落地"，实际 lib/ 中无此文件（USB/rest 门禁现落在 usb_charge / t3x_policy / runtime_power） |
+| `lib/usb_policy.lua` 不存在 | CAT1_LOGIC_SLIM.md §10 记载"已落地"，实际 lib/ 中无此文件（USB/rest 门禁现落在 usb_charge / t31x_policy / runtime_power） |
 | 行号过期 | CODE_ANALYSIS.md 引用 `app.start` 1106–1157，实际 app.lua 仅 1063 行 |
 | `lib/mobile_info.lua`、`lib/led.lua`、`lib/pir.lua` 等引用 | 均已归档/合并，旧文档仍提及 |
 
@@ -140,7 +140,7 @@ main.lua（入口）
 ```
 main.lua
   └─ app.lua（编排中心，保持集中订阅）
-       ├─ user/ 业务层（net_mqtt / host_uart / t3x_ctrl / pir_ctrl / battery_guard / ...）
+       ├─ user/ 业务层（net_mqtt / host_uart / t31x_ctrl / pir_ctrl / battery_guard / ...）
        ├─ lib/  公共层（uart_bridge / module_loader / usb_* / cellular / 电源策略 / ...）
        └─ config 基础层（唯一真源；lib 允许依赖，禁止 lib 依赖 user 业务）
 ```
@@ -166,7 +166,7 @@ main.lua
 | 动作 | 文件 |
 |------|------|
 | 修正配置描述：三文件 → 单文件 `user/config.lua` | README.md、CODE_ANALYSIS.md、doc/README.md |
-| 修正 `usb_policy.lua` 条目：标注"已回退/职责并入 usb_charge、t3x_policy、runtime_power" | CAT1_LOGIC_SLIM.md §10 |
+| 修正 `usb_policy.lua` 条目：标注"已回退/职责并入 usb_charge、t31x_policy、runtime_power" | CAT1_LOGIC_SLIM.md §10 |
 | 修正过期行号引用 | CODE_ANALYSIS.md |
 | 新增本计划到文档索引 | doc/README.md |
 
@@ -178,8 +178,8 @@ main.lua
 
 | # | 改动 | 文件 |
 |---|------|------|
-| 1.1 | pir_ctrl 5 个全局（APP_PIR_CONFIG / normPirMCfg / normPirRPol / pirMediaConfig / pirRecordPolicy）→ 模块级 local + `getPirMediaConfig()` / `getRecordPolicy()` 访问器（net_mqtt 2010 已走模块 API，无外部引用，安全） | user/pir_ctrl.lua |
-| 1.2 | `T3X_BURN_MODE_ACTIVE` → `t3x_policy.setBurnActive()` 规范状态 + `isBurnActive()` 访问器；app 侧 `setBurnMode()` 统一写入口；battery_guard / sound_prompt / pir_ctrl 改调用访问器 | user/app.lua、user/battery_guard.lua、user/sound_prompt.lua、user/pir_ctrl.lua、lib/t3x_policy.lua |
+| 1.1 | pir_ctrl 5 个全局（APP_PIR_CONFIG / normMediaCfg / normRecPolicy / pirMediaConfig / pirRecordPolicy）→ 模块级 local + `getPirMediaConfig()` / `getRecordPolicy()` 访问器（net_mqtt 2010 已走模块 API，无外部引用，安全） | user/pir_ctrl.lua |
+| 1.2 | `T31X_BURN_MODE_ACTIVE` → `t31x_policy.setBurnActive()` 规范状态 + `isBurnActive()` 访问器；app 侧 `setBurnMode()` 统一写入口；battery_guard / sound_prompt / pir_ctrl 改调用访问器 | user/app.lua、user/battery_guard.lua、user/sound_prompt.lua、user/pir_ctrl.lua、lib/t31x_policy.lua |
 | 1.3 | `_G.uart_bridge` 实例别名 → 删除（`loader.load("uart_bridge")` 等价）；`_G.host_uart` 死读同步清理 | user/app.lua、user/utils.lua |
 | 1.4 | `_G.device_imei` 缓存 → 收进 `lib/device_id.lua`（`setImei()` + 模块内缓存）；app.lua 两处写改调用 `didCacheImei` | user/app.lua、lib/device_id.lua |
 | 1.5 | 删除 `_G.usbRndis = _M` 冗余行 | lib/usb_rndis.lua |
@@ -209,7 +209,7 @@ main.lua
 |---|------|------|
 | 3.1 | 删除 `aliyuncs_imei` 死读分支 | lib/device_id.lua（阶段 1.4 一并完成） |
 | 3.2 | `net_tcp.lua` stub 归档到 archive/（保留桩说明）或文件头标注"tcp 模式启用时才加载" | 已有文件头说明，维持现状（静态打包锚点依赖该文件） |
-| 3.3 | `T3X_PERSON_CNT` no-op 补注释说明意图 | 已有注释（app.lua:831-834），维持现状 |
+| 3.3 | `T31X_PERSON_CNT` no-op 补注释说明意图 | 已有注释（app.lua:831-834），维持现状 |
 | 3.4 | 评估 `POWER_ENTERED_REST` 无订阅者：清理或标注扩展点 | ✅ 已标注扩展点注释（user/app.lua） |
 
 **验收**：功能开关组合（mqtt 模式、tcp 模式、低功耗开/关）下烧录回归通过。
@@ -220,11 +220,11 @@ main.lua
 
 | 方案 | 说明 | 取舍 |
 |------|------|------|
-| A. 数据表外置 | `AT_CMD_TABLE` / `DOWNLINK_HANDLERS` 等纯数据表拆到独立 `.lua`（如 `hu_at_tbl.lua`），运行时 require 合并 | 低风险、不触 200 local 上限；推荐先做 |
+| A. 数据表外置 | `AT_CMD_TABLE` / `DOWNLINK_HANDLERS` 等纯数据表拆到独立 `.lua`（如 `hif_at_tbl.lua`），运行时 require 合并 | 低风险、不触 200 local 上限；推荐先做 |
 | B. 处理器子模块 | 按协议族（GB28181 / TF / RECORD / IPC / 编码）拆 handler 文件 | 中高风险：跨文件互斥锁、SYS_EVT 表、seeall 语义需整体搬迁；需保持 200 local 上限约束 |
 | C. 维持现状 | 只在表驱动与命名上持续优化 | 零风险 |
 
-**2026-08-30 已做 A**：`hu_at.lua`（AT 表）+ `net_mqtt_host_proto.lua`（2020–2031）。方案 B（按协议族拆 handler / 互斥锁）仍冻结。`APP_RUNTIME` 改为嵌套表，见 [USER_LIB_OPTIMIZATION_NEXT.md](USER_LIB_OPTIMIZATION_NEXT.md)。版本 `001.000.071`。
+**2026-08-30 已做 A**：`hif_at.lua`（AT 表）+ `net_mqtt_host_proto.lua`（2020–2031）。方案 B（按协议族拆 handler / 互斥锁）仍冻结。`APP_RUNTIME` 改为嵌套表，见 [USER_LIB_OPTIMIZATION_NEXT.md](USER_LIB_OPTIMIZATION_NEXT.md)。版本 `001.000.071`。
 
 ---
 
@@ -245,7 +245,7 @@ main.lua
 - [ ] **MQTT**：2001–2007、2010–2021、2020、2013 下行；1001–1011 上行
 - [ ] **PIR**：2010 录像/拍照、PIRSTAT / HOSTEVT body、冷却与计数
 - [ ] **低功耗**：rest 进/出、USB 插入拦截 rest、`AT+HOSTIDLE`、唤醒通道 mqtt/tcp
-- [ ] **T3x 电源**：上电门禁、`IPCPOWEROFF` 优雅断电、USBRESET、烧录模式（GPIO28 长按）
+- [ ] **T31x 电源**：上电门禁、`IPCPOWEROFF` 优雅断电、USBRESET、烧录模式（GPIO28 长按）
 - [ ] **电量**：vbat ADC 上报、3400mV 关机、电量灯效
 - [ ] **对账**：`doc/CODE_DOC_AUDIT.md` 的代码↔文档核验流程跑一遍
 
@@ -258,8 +258,8 @@ main.lua
 | 日期 | 说明 |
 |------|------|
 | 2026-08-29 | 初版：基线审计（user/ 19 + lib/ 17 全量）+ 四阶段优化路线（0 文档同步 / 1 全局收敛 / 2 依赖治理 / 3 死代码 / 4 可选拆分） |
-| 2026-08-29 | **阶段 0–3 已落地**：文档漂移修正；全局状态收敛（pir_ctrl 5 全局 / 烧录态收进 t3x_policy / 实例别名 / device_imei / usbRndis / MQTT_CFG 局部副本）；依赖治理（host_event 回调注入 / appEvent 下沉 config_manager）；死代码清理。luatos-cli 全量编译通过（36 文件）。阶段 4 未实施（数据表外置需单独评估）。 |
+| 2026-08-29 | **阶段 0–3 已落地**：文档漂移修正；全局状态收敛（pir_ctrl 5 全局 / 烧录态收进 t31x_policy / 实例别名 / device_imei / usbRndis / MQTT_CFG 局部副本）；依赖治理（host_event 回调注入 / appEvent 下沉 config_manager）；死代码清理。luatos-cli 全量编译通过（36 文件）。阶段 4 未实施（数据表外置需单独评估）。 |
 | 2026-08-30 | 阶段 4 冻结；下一刀见 [USER_LIB_OPTIMIZATION_PLAN_20260830.md](USER_LIB_OPTIMIZATION_PLAN_20260830.md)；阶段 5A USB/充电查询收进 `runtime_power`；脚本区口径改为 512KB；版本 `001.000.050`。 |
 | 2026-08-30 | 阶段 5B：运行态访问器（电量/在线/rest 读路径）；版本 `001.000.051`。 |
 | 2026-08-30 | 阶段 5D：去过度防护（常驻库直接调、可关模块只判 nil）；版本 `001.000.052` → `001.000.055`。5D 可收项已尽，停止。 |
-| 2026-08-30 | 阶段 4A + 嵌套 `APP_RUNTIME`：`hu_at` / `net_mqtt_host_proto`；版本 `001.000.071`。 |
+| 2026-08-30 | 阶段 4A + 嵌套 `APP_RUNTIME`：`hif_at` / `net_mqtt_host_proto`；版本 `001.000.071`。 |

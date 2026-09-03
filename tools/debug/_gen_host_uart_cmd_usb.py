@@ -24,7 +24,7 @@ function bind(C)
     local modCall, loader = C.modCall, C.loader
     local uart_bridge, CRLF = C.uart_bridge, C.CRLF
     local hostUsbCfg, usbInserted = C.hostUsbCfg, C.usbInserted
-    local t3xSecOff = C.t3xSecOff
+    local t31xUartOff = C.t31xUartOff
     local RSP_ERROR, LOG_TAG = C.RSP_ERROR, C.LOG_TAG
     local function pushUsbIdle(...)
         return C.pushUsbIdle(...)

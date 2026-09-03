@@ -17,15 +17,15 @@ FOTA_CUSTOM_URL ?=
 FOTA_CUSTOM_FULL_URL ?= 1
 FOTA_CUSTOM_VERSION ?=
 
-# ========== USB RNDIS 重枚举（T3x AT+USBRESET）==========
-# 1 = 允许 T3x 发 AT+USBRESET 触发 usb_rndis.rebind
+# ========== USB RNDIS 重枚举（T31x AT+USBRESET）==========
+# 1 = 允许 T31x 发 AT+USBRESET 触发 usb_rndis.rebind
 # 0 = 4G 回 +USBRESET:DISABLED
 USB_REENUM_ENABLE ?= 1
 #
 # config.lua 对应：
 #   local USB_REENUM_ENABLE = 1
 #   FEATURE_CFG.usb_reenum = (USB_REENUM_ENABLE == 1)
-#   HOST_USB_CFG.allow_t3x_usb_reset = ...
+#   HOST_USB_CFG.allow_t31x_usb_reset = ...
 #
 # ========== 以下宏仅在 user/config.lua 维护（config.mk 无对应项）==========
 # LOW_POWER_ENABLE = 1   → FEATURE_CFG.low_power → MODULE_FLAGS.low_power

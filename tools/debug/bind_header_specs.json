@@ -27,7 +27,7 @@
         "CRLF",
         "hostUsbCfg",
         "usbInserted",
-        "t3xSecOff",
+        "t31xUartOff",
         "RSP_ERROR",
         "LOG_TAG",
         "pushUsbIdle"
@@ -45,7 +45,7 @@
       "requires_sys": false,
       "c": ["state", "rspBody", "rspLineOk", "modCall", "getHostEvtPending"]
     },
-    "hu_cmd_t3x.lua": {
+    "hu_cmd_t31x.lua": {
       "bind_args": "C",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush"],
@@ -55,7 +55,7 @@
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t3xSecOff", "RSP_ERROR", "noopFalse"],
+      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xUartOff", "RSP_ERROR", "noopFalse"],
       "wrappers": ["hostQuery"]
     },
     "hu_ipc_rec.lua": {
@@ -68,9 +68,9 @@
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "utils"],
+      "c": ["state", "SYS_EVT"],
       "h": ["defineQuery", "defineSet"],
-      "inject": [
+      "wrappers": [
         ["identityCfg", "H.idCfgFn"],
         ["encodeCfg", "H.encodeCfgFn"],
         ["tfCardCfg", "H.tfCardCfgFn"]
@@ -92,8 +92,8 @@
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t3xSecOff", "hostNowMs"],
-      "h": ["ensT3xHost", "hostBoot"]
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs"],
+      "h": ["ensT31xHost", "hostBoot"]
     },
     "hu_ipc_encode.lua": {
       "bind_args": "C, H",

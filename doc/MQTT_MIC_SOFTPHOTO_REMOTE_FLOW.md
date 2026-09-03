@@ -9,7 +9,7 @@
 ```text
 平台 MQTT  /panshi/device/{IMEI}/
     → net_mqtt.lua（dataType 2020–2031）
-    → host_uart.lua（唤醒 T3x + AT）
+    → host_uart.lua（唤醒 T31x + AT）
     → host_at.c 入站分发表
     → host_remote.c 读写 syscfg / 热更新
     → 上行 /panshi/app/{IMEI}/encode|mic|softPhoto
@@ -60,8 +60,8 @@
 
 | 方向 | AT | 应答 |
 |------|-----|------|
-| 4G→T3x | `AT+MIC?` / `AT+MIC?=0` | `+MIC:0,60,28` … `+MIC:END` `OK` |
-| 4G→T3x | `AT+MICSET=0,55,26` | `+MICSET:OK,cam=0,runtimeApply=1` `OK` |
+| 4G→T31x | `AT+MIC?` / `AT+MIC?=0` | `+MIC:0,60,28` … `+MIC:END` `OK` |
+| 4G→T31x | `AT+MICSET=0,55,26` | `+MICSET:OK,cam=0,runtimeApply=1` `OK` |
 
 ### 2.4 IPC 持久化
 
@@ -110,16 +110,16 @@ gain=28
 
 | 方向 | AT |
 |------|-----|
-| 4G→T3x | `AT+SOFTPHOTO?` → `+SOFTPHOTO:1,500,800,...` `OK` |
-| 4G→T3x | `AT+SOFTPHOTOSET=1,500,800,600,100,50,10,3` → `+SOFTPHOTOSET:OK` `OK` |
+| 4G→T31x | `AT+SOFTPHOTO?` → `+SOFTPHOTO:1,500,800,...` `OK` |
+| 4G→T31x | `AT+SOFTPHOTOSET=1,500,800,600,100,50,10,3` → `+SOFTPHOTOSET:OK` `OK` |
 
 实现：`save_soft_photosensitive_cfg()` + `sample_soft_photosensitive_ctrl()` 读 `lpSysCfg->soft_photosensitive`。
 
 ---
 
-## 4. T3x 休眠与入队
+## 4. T31x 休眠与入队
 
-2028–2031 与 2024–2027 相同，列入 `HOST_DL_NEEDS_T3X`：T3x rest/未 AT 就绪时命令入 `pendingHostQueue`，GPIO 唤醒后再 UART 执行。
+2028–2031 与 2024–2027 相同，列入 `HOST_DL_NEEDS_T31X`：T31x rest/未 AT 就绪时命令入 `pendingHostQueue`，GPIO 唤醒后再 UART 执行。
 
 ---
 

@@ -1,0 +1,6 @@
+target/
+incoming/**/*.ts
+incoming/**/*.json
+!incoming/**/.gitkeep
+.idea/
+*.iml

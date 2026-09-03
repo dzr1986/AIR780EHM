@@ -13,7 +13,7 @@ import cat1_flash as flash  # noqa: E402
 import serial
 
 KEYS = (
-    "mqtt", "MQTT", "T3x", "t3x", "UART", "uart", "AT+", "GETCFG",
+    "mqtt", "MQTT", "T31x", "t31x", "UART", "uart", "AT+", "GETCFG",
     "PERSONCNT", "HOSTIDLE", "PERSONDET", "ipcReady", "1001", "1003",
     "1008", "1010", "timeout", "workMode", "host_uart", "VENC", "MIC",
     "SDINFO", "DEVINFO", "RECORD", "WLED", "ALS", "query_fail", "busy",

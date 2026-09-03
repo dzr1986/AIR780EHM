@@ -37,7 +37,7 @@ Options:
 
 开录标记（任一命中即开窗）:
   record_start | AT+RECORD=1 | RECORD notify sent: AT+RECORD=1
-  录像会话开始 | t3x_active | publishPirRecordActive
+  录像会话开始 | t31x_active | publishPirRecordActive
 
 关窗标记:
   AT+RECORD=0 | record_stop | publishPirRecordStop | 录像.*停
@@ -128,7 +128,7 @@ function is_record_start(line) {
         || line ~ /AT\+RECORD=1/ \
         || line ~ /RECORD notify sent: AT\+RECORD=1/ \
         || line ~ /录像会话开始/ \
-        || line ~ /t3x_active/ \
+        || line ~ /t31x_active/ \
         || line ~ /publishPirRecordActive/ \
         || line ~ /\[CAT1\].*record_start/)
 }
@@ -145,8 +145,8 @@ function is_legit_retrigger_context(line) {
     return (line ~ /pir_retrigger/ \
         || line ~ /二次 PIR/ \
         || line ~ /PIR停录/ \
-        || line ~ /requestT3xStopRecord/ \
-        || line ~ /PIR_REQUEST_T3X_STOP/)
+        || line ~ /requestT31xStopRecord/ \
+        || line ~ /PIR_REQUEST_T31X_STOP/)
 }
 
 {
@@ -248,7 +248,7 @@ if [[ "${M[bad_retrigger]:-0}" -gt 0 ]]; then
 fi
 
 if [[ "${M[bad_idle_ok]:-0}" -gt 0 || "${M[bad_hostidle_ok_at]:-0}" -gt 0 ]]; then
-    echo "[FAIL] 录像进行中 T3x/4G 接受了 HOSTIDLE 断电请求"
+    echo "[FAIL] 录像进行中 T31x/4G 接受了 HOSTIDLE 断电请求"
     FAIL=1
 fi
 

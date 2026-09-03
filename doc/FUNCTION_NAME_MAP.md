@@ -55,7 +55,7 @@
 | 1 | `appendGetCfgFields` | `appCfgFields` | 6 | host_uart.lua |
 | 2 | `apply_cached_tf_to_cloud` | `aplTfToCloud` | 12 | host_uart.lua |
 | 3 | `applyEffectiveMediaAction` | `applEffMedia` | 13 | pir_ctrl.lua |
-| 4 | `applyPowerLevel` | `aplPwrLeve` | 5 | t3x_ctrl.lua |
+| 4 | `applyPowerLevel` | `aplPwrLeve` | 5 | t31x_ctrl.lua |
 | 5 | `applyUsbInsertState` | `aplUsbInsSt` | 8 | app.lua |
 | 6 | `buildAtBody` | `buildAtBod` | 1 | pir_ctrl.lua |
 | 7 | `buildIotOtaVersion` | `bldIotOtaVer` | 6 | main.lua |
@@ -70,19 +70,19 @@
 | 16 | `downlinkMessageId` | `downMessId` | 7 | net_mqtt.lua |
 | 17 | `dynamicDetectEnabled` | `dynDeteOn` | 11 | battery_guard.lua |
 | 18 | `effectiveCharging` | `effChar` | 10 | usb_charge.lua |
-| 19 | `enterBootMode` | `entBootMode` | 2 | t3x_ctrl.lua |
+| 19 | `enterBootMode` | `entBootMode` | 2 | t31x_ctrl.lua |
 | 20 | `enterRestIfNeededAfterUsbRemove` | `entRestIfNeedAfteUsbRm` | 9 | app.lua |
-| 21 | `ensurePowered` | `ensPowOn` | 5 | t3x_ctrl.lua |
-| 22 | `ensure_t3x_for_host_query` | `ensT3xHostQry` | 12 | host_uart.lua |
+| 21 | `ensurePowered` | `ensPowOn` | 5 | t31x_ctrl.lua |
+| 22 | `ensure_t31x_for_host_query` | `ensT31xHostQry` | 12 | host_uart.lua |
 | 23 | `exitBatteryRest` | `extBatRest` | 5 | battery_guard.lua |
-| 24 | `exitBootMode` | `extBootMode` | 1 | t3x_ctrl.lua |
+| 24 | `exitBootMode` | `extBootMode` | 1 | t31x_ctrl.lua |
 | 25 | `exitRestIfNeededAfterUsbInsert` | `extRestIfNeedAfteUsbIns` | 7 | app.lua |
 | 26 | `export_usb_recovery_runtime` | `expUsbRcvryRt` | 14 | host_uart.lua |
 | 27 | `forward_wled_to_host` | `forwWledToHost` | 6 | host_uart.lua |
 | 28 | `getCachedHostIpcCloudStat` | `getCloudStat` | 13 | host_uart.lua |
 | 29 | `getRecordPolicy` | `getRecPol` | 6 | pir_ctrl.lua |
 | 30 | `getStatusReportIntervalSec` | `getStatIntv` | 15 | net_mqtt.lua |
-| 31 | `gracefulPowerOff` | `gracePowOff` | 5 | t3x_ctrl.lua |
+| 31 | `gracefulPowerOff` | `gracePowOff` | 5 | t31x_ctrl.lua |
 | 32 | `hookIpReadyForRndis` | `hookIpReadyForRndi` | 1 | usb_rndis.lua |
 | 33 | `host_boot_wait_ms` | `hostBootWaitMs` | 3 | config.lua |
 | 34 | `hostFirstAtEvent` | `hostFirsAtEvt` | 3 | app.lua |
@@ -91,7 +91,7 @@
 | 37 | `isHostUartQueryBusy` | `isHUBusy` | 11 | host_uart.lua |
 | 38 | `isLowPowerFeatureEnabled` | `isLowPwrOn` | 14 | app.lua |
 | 39 | `isT31StartedForHostQuery` | `isT31HostQry` | 12 | host_uart.lua |
-| 40 | `isT3xIdleForIpcRefresh` | `isT3xIdleForIpcRef` | 4 | host_uart.lua |
+| 40 | `isT31xIdleForIpcRefresh` | `isT31xIdleForIpcRef` | 4 | host_uart.lua |
 | 41 | `is_usb_inserted` | `isUsbInse` | 6 | battery_guard.lua |
 | 42 | `lowPowerWakeupMod` | `lowPwrWakeMod` | 4 | app.lua |
 | 43 | `markStopMqttPublished` | `markStMqtt` | 11 | pir_ctrl.lua |
@@ -101,9 +101,9 @@
 | 47 | `mergeTfRecordIntoCloudStat` | `mrgTfCloudStat` | 12 | host_uart.lua |
 | 48 | `mqttConnectedEvent` | `mqttConnEvt` | 7 | net_mqtt.lua |
 | 49 | `note_host_inbound_push` | `noteHostPush` | 10 | host_uart.lua |
-| 50 | `noteT3xAwakeForHostIdle` | `noteHostIdle` | 11 | battery_guard.lua |
+| 50 | `noteT31xAwakeForHostIdle` | `noteHostIdle` | 11 | battery_guard.lua |
 | 51 | `notifyStatusReportIntervalChanged` | `notifStatIntv` | 20 | net_mqtt.lua |
-| 52 | `notifyT3xUsbHostIdlePolicy` | `notifT3xIdle` | 14 | app.lua |
+| 52 | `notifyT31xUsbHostIdlePolicy` | `notifT31xIdle` | 14 | app.lua |
 | 53 | `normalize_host_line` | `normHostLine` | 7 | host_uart.lua |
 | 54 | `normalizePirMediaConfig` | `normPirMCfg` | 12 | pir_ctrl.lua |
 | 55 | `normalizePirRecordPolicy` | `normPirRPol` | 13 | pir_ctrl.lua |
@@ -114,7 +114,7 @@
 | 60 | `onUsbRemoved` | `onUsbRm` | 5 | battery_guard.lua |
 | 61 | `overlay_live_ipc_hints` | `overLiveIpcHint` | 7 | host_uart.lua |
 | 62 | `patchHostIpcCloudStat` | `pchCloudStat` | 9 | host_uart.lua |
-| 63 | `powerOnWaitReady` | `pwrOnReady` | 6 | t3x_ctrl.lua |
+| 63 | `powerOnWaitReady` | `pwrOnReady` | 6 | t31x_ctrl.lua |
 | 64 | `publishActionEvents` | `pubActEvents` | 7 | pir_ctrl.lua |
 | 65 | `publishAppEvent` | `pubAppEvt` | 6 | app.lua |
 | 66 | `publishBootStable` | `pubBootStab` | 6 | net_mqtt.lua |
@@ -125,7 +125,7 @@
 | 71 | `publishPirRecordStop` | `pubPirStop` | 10 | net_mqtt.lua |
 | 72 | `publishPirSnapshotDone` | `pubSnapDone` | 11 | net_mqtt.lua |
 | 73 | `publishStopRecording` | `pubStopRec` | 10 | pir_ctrl.lua |
-| 74 | `publishT3xRecordStop` | `pubT3xStop` | 10 | net_mqtt.lua |
+| 74 | `publishT31xRecordStop` | `pubT31xStop` | 10 | net_mqtt.lua |
 | 75 | `publish_usb_recovery_changed` | `pubUsbRcvryChg` | 14 | host_uart.lua |
 | 76 | `push_net_led_state` | `pushNetLedSt` | 6 | host_uart.lua |
 | 77 | `push_usb_host_idle_state` | `pushUsbIdleSt` | 11 | host_uart.lua |
@@ -142,8 +142,8 @@
 | 88 | `registerRefreshDownlinkHandlers` | `regiRefDownHand` | 16 | net_mqtt.lua |
 | 89 | `requestStartFromCloud` | `reqStartCloud` | 8 | pir_ctrl.lua |
 | 90 | `requestStopFromCloud` | `reqStopCloud` | 8 | pir_ctrl.lua |
-| 91 | `requestT3xStopRecord` | `reqT3xStopRec` | 7 | pir_ctrl.lua |
-| 92 | `requestT3xWake` | `reqT3xWake` | 4 | app.lua |
+| 91 | `requestT31xStopRecord` | `reqT31xStopRec` | 7 | pir_ctrl.lua |
+| 92 | `requestT31xWake` | `reqT31xWake` | 4 | app.lua |
 | 93 | `resetConfirmStreaks` | `reseConfStre` | 7 | battery_guard.lua |
 | 94 | `resetShutdownMvStreak` | `reseShutMvStre` | 7 | battery_guard.lua |
 | 95 | `reset_uart_recovery_miss` | `rstUrtRcvryMiss` | 9 | host_uart.lua |
@@ -154,7 +154,7 @@
 | 100 | `runtimePowerMod` | `rtPwrMod` | 7 | app.lua |
 | 101 | `schedule_gb28181_refresh_if_needed` | `scheGb28RefIfNeed` | 17 | host_uart.lua |
 | 102 | `scheduleIpcCloudStatRefresh` | `scheIpcClouStatRef` | 9 | host_uart.lua |
-| 103 | `schedulePirWatchT3xSleep` | `schePirWatcT3xSlee` | 6 | app.lua |
+| 103 | `schedulePirWatchT31xSleep` | `schePirWatcT31xSlee` | 6 | app.lua |
 | 104 | `scheduleRecordReconcile` | `scheRecRec` | 13 | host_uart.lua |
 | 105 | `setStatusIntervalSec` | `setStatIntv` | 9 | net_mqtt.lua |
 | 106 | `setupOutputIfNeeded` | `setOutIfNeed` | 7 | gpio_util.lua |
@@ -162,8 +162,8 @@
 | 108 | `shouldWakeOnMqttOffline` | `shdWakeOffline` | 9 | app.lua |
 | 109 | `startNetworkBootstrap` | `startNetwBoot` | 8 | cellular_bootstrap.lua |
 | 110 | `startOptionalService` | `startOptiServ` | 7 | app.lua |
-| 111 | `syncStopFromT3x` | `syncStopT3x` | 4 | pir_ctrl.lua |
-| 112 | `t3x_recording_from_record_snap` | `t3xRecFromRecSnap` | 13 | host_uart.lua |
+| 111 | `syncStopFromT31x` | `syncStopT31x` | 4 | pir_ctrl.lua |
+| 112 | `t31x_recording_from_record_snap` | `t31xRecFromRecSnap` | 13 | host_uart.lua |
 | 113 | `uart_cmd_entry` | `uartCmdEntr` | 3 | host_uart.lua |
 | 114 | `uart_recovery_cfg` | `uartRcvryCfg` | 5 | host_uart.lua |
 | 115 | `uart_txn_acquire` | `uartTxnAcqu` | 5 | host_uart.lua |
@@ -171,7 +171,7 @@
 | 117 | `usb_blocks_host_idle` | `usbBlocHostIdle` | 5 | usb_charge.lua |
 | 118 | `validateBuildVersion` | `valBuildVer` | 9 | main.lua |
 | 119 | `wait_host_inbound_quiet_clear` | `waitHostQuiet` | 16 | host_uart.lua |
-| 120 | `wled_ensure_t3x_powered` | `wledEnsT3xPowe` | 9 | host_uart.lua |
+| 120 | `wled_ensure_t31x_powered` | `wledEnsT31xPowe` | 9 | host_uart.lua |
 | 121 | `wled_export_runtime` | `wledExpRt` | 10 | host_uart.lua |
 | 122 | `wrapHostDownlink` | `wrapHostDown` | 4 | host_uart.lua |
 
@@ -185,13 +185,13 @@
 |---|---|
 | `appendGetCfgFields` | `appCfgFields` |
 | `apply_cached_tf_to_cloud` | `aplTfToCloud` |
-| `ensure_t3x_for_host_query` | `ensT3xHostQry` |
+| `ensure_t31x_for_host_query` | `ensT31xHostQry` |
 | `export_usb_recovery_runtime` | `expUsbRcvryRt` |
 | `forward_wled_to_host` | `forwWledToHost` |
 | `getCachedHostIpcCloudStat` | `getCloudStat` |
 | `isHostUartQueryBusy` | `isHUBusy` |
 | `isT31StartedForHostQuery` | `isT31HostQry` |
-| `isT3xIdleForIpcRefresh` | `isT3xIdleForIpcRef` |
+| `isT31xIdleForIpcRefresh` | `isT31xIdleForIpcRef` |
 | `ipc_ready_from_lifecycle` | `ipcReadyFromLife` |
 | `maybe_uart_recovery_after_miss` | `maybeUartRcvryAfteMiss` |
 | `mergeHostIpcCloudCache` | `mrgHostCache` |
@@ -215,13 +215,13 @@
 | `schedule_gb28181_refresh_if_needed` | `scheGb28RefIfNeed` |
 | `scheduleIpcCloudStatRefresh` | `scheIpcClouStatRef` |
 | `scheduleRecordReconcile` | `scheRecRec` |
-| `t3x_recording_from_record_snap` | `t3xRecFromRecSnap` |
+| `t31x_recording_from_record_snap` | `t31xRecFromRecSnap` |
 | `uart_cmd_entry` | `uartCmdEntr` |
 | `uart_recovery_cfg` | `uartRcvryCfg` |
 | `uart_txn_acquire` | `uartTxnAcqu` |
 | `uart_txn_release` | `uartTxnRele` |
 | `wait_host_inbound_quiet_clear` | `waitHostQuiet` |
-| `wled_ensure_t3x_powered` | `wledEnsT3xPowe` |
+| `wled_ensure_t31x_powered` | `wledEnsT31xPowe` |
 | `wled_export_runtime` | `wledExpRt` |
 | `wrapHostDownlink` | `wrapHostDown` |
 
@@ -241,7 +241,7 @@
 | `publishPirRecordStart` | `pubPirStart` |
 | `publishPirRecordStop` | `pubPirStop` |
 | `publishPirSnapshotDone` | `pubSnapDone` |
-| `publishT3xRecordStop` | `pubT3xStop` |
+| `publishT31xRecordStop` | `pubT31xStop` |
 | `refreshAfterCellularIp` | `refAfteCellIp` |
 | `refreshAndPublishDeviceIdentity` | `refPubDeviceId` |
 | `refreshDeviceIdentity` | `refDevId` |
@@ -265,8 +265,8 @@
 | `publishStopRecording` | `pubStopRec` |
 | `requestStartFromCloud` | `reqStartCloud` |
 | `requestStopFromCloud` | `reqStopCloud` |
-| `requestT3xStopRecord` | `reqT3xStopRec` |
-| `syncStopFromT3x` | `syncStopT3x` |
+| `requestT31xStopRecord` | `reqT31xStopRec` |
+| `syncStopFromT31x` | `syncStopT31x` |
 
 ### battery_guard.lua（11 条）
 
@@ -278,7 +278,7 @@
 | `exitBatteryRest` | `extBatRest` |
 | `isBatteryDynamicRest` | `isBatDynRest` |
 | `is_usb_inserted` | `isUsbInse` |
-| `noteT3xAwakeForHostIdle` | `noteHostIdle` |
+| `noteT31xAwakeForHostIdle` | `noteHostIdle` |
 | `onBatteryUpdate` | `onBatUpd` |
 | `onUsbInserted` | `onUsbIns` |
 | `onUsbRemoved` | `onUsbRm` |
@@ -297,18 +297,18 @@
 | `hostFirstAtEvent` | `hostFirsAtEvt` |
 | `isLowPowerFeatureEnabled` | `isLowPwrOn` |
 | `lowPowerWakeupMod` | `lowPwrWakeMod` |
-| `notifyT3xUsbHostIdlePolicy` | `notifT3xIdle` |
+| `notifyT31xUsbHostIdlePolicy` | `notifT31xIdle` |
 | `onEnterLowPower` | `onEntLowPwr` |
 | `onExitLowPower` | `onExtLowPwr` |
 | `publishAppEvent` | `pubAppEvt` |
 | `publishPirFromState` | `pubPirFromSt` |
-| `requestT3xWake` | `reqT3xWake` |
+| `requestT31xWake` | `reqT31xWake` |
 | `runtimePowerMod` | `rtPwrMod` |
-| `schedulePirWatchT3xSleep` | `schePirWatcT3xSlee` |
+| `schedulePirWatchT31xSleep` | `schePirWatcT31xSlee` |
 | `shouldWakeOnMqttOffline` | `shdWakeOffline` |
 | `startOptionalService` | `startOptiServ` |
 
-### t3x_ctrl.lua（7 条）
+### t31x_ctrl.lua（7 条）
 
 | 原函数名 | → 短名 |
 |---|---|

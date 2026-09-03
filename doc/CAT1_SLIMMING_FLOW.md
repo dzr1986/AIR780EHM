@@ -1,6 +1,6 @@
 # Cat.1 工程精简流程（门球低功耗 · user / lib）
 
-> **分支**：`lowpwr_t3x_cat1`（780EHM_PJ + ipc_device_gb28181）  
+> **分支**：`lowpwr_t31x_cat1`（780EHM_PJ + ipc_device_gb28181）  
 > **关联**：[CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](./CAT1_LOWPWR_MQTT_TCP_STRATEGY.md) · [REMOTE_ENCODE_CONFIG.md](./REMOTE_ENCODE_CONFIG.md) · [CAT1_USER_LIB_SLIM.md](./CAT1_USER_LIB_SLIM.md)
 
 ---
@@ -93,7 +93,7 @@ local LOW_POWER_WAKEUP_MODE = "mqtt"  -- 默认；专有 TCP 用 "tcp"
 | `fota` | 要 OTA 则 true | 不挂 2004 OTA |
 | `sound_prompt` | 要开机音 true | 不加载提示音模块 |
 
-**不要关**（门球必需）：`mqtt`、`uart_bridge`、`t3x_app`、`low_power`、`cellular`、`battery_guard`、`gpio`。
+**不要关**（门球必需）：`mqtt`、`uart_bridge`、`t31x_app`、`low_power`、`cellular`、`battery_guard`、`gpio`。
 
 ---
 
@@ -162,7 +162,7 @@ main.lua
 1. 确认 `luatos.json`：`only_luac_code=True`  
 2. Luatools 打 `.bin`，烧录 Cat.1  
 3. 按下方 **§6 验证清单** 回归  
-4. IPC 侧同步 `lowpwr_t3x_cat1` 分支固件
+4. IPC 侧同步 `lowpwr_t31x_cat1` 分支固件
 
 ---
 
@@ -178,7 +178,7 @@ _G.MODULE_FLAGS = {
     mobile_info = false,
     mqtt = true,
     uart_bridge = true,
-    t3x_app = true,
+    t31x_app = true,
     low_power = true,
     cellular = true,
     battery_guard = true,
@@ -250,7 +250,7 @@ enable=0
 |------|------|
 | `uart_bridge` | 必需 |
 | `cellular_bootstrap` | 必需 |
-| `t3x_policy` | 必需（唤醒门禁） |
+| `t31x_policy` | 必需（唤醒门禁） |
 | `usb_charge` | 必需（USB/rest） |
 | `watchdog` | 建议保留 |
 | `fota` / `fota_svc` | 仅 OTA 时需要 |

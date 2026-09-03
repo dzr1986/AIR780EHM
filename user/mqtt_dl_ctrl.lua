@@ -90,25 +90,25 @@ function bind(C, shared)
     local function wledQuery(reply)
         sys.taskInit(function()
             local on = getWledState()
-            local hu = hostUart()
-            if hu and hu.isHostAtReady() then
-                on = hu.qryHostWled(WLED_QRY_MS) or on
+            local hif = hostUart()
+            if hif and hif.isHostAtReady() then
+                on = hif.qryHostWled(WLED_QRY_MS) or on
             end
             reply(0, "ok", "wled", { enable = on })
         end)
     end
 
     local function wledSet(reply, on)
-        local hu = hostUart()
-        if hu then
-            hu.setWledState(on, { forward = false })
+        local hif = hostUart()
+        if hif then
+            hif.setWledState(on, { forward = false })
         else
             power.setWledOn(on)
         end
         reply(0, "ok", "wled", { enable = on })
         sys.taskInit(function()
-            if hu then
-                hu.setWledState(on)
+            if hif then
+                hif.setWledState(on)
             end
         end)
     end

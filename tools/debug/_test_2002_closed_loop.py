@@ -30,7 +30,7 @@ T31_BAUD = 115200
 CAT1_KEYS = (
     "ipc_poweroff", "IPCPOWEROFF", "power off", "power on", "enter_sleep",
     "2002", "2001", "rest_enter", "rest_exit", "pir_watch", "person_detect",
-    "gpio", "t3x_ctrl", "lowPower", "workMode", "ipcReady", "wakeup",
+    "gpio", "t31x_ctrl", "lowPower", "workMode", "ipcReady", "wakeup",
     "AT+IPC", "STAGE", "graceful", "hostIpc",
 )
 
@@ -331,8 +331,8 @@ def main() -> int:
                 str(st0.get("lowPowerMode")) == "normal",
                 f"lowPowerMode={st0.get('lowPowerMode')} workMode={st0.get('workMode')} ipcReady={st0.get('ipcReady')}",
             )
-        rec = str(st0.get("recordingT3x") or "0")
-        print(f"基线 recordingT3x={rec}；不发 2011（RECORDCTRL 会堵住 T31 UART，IPCPOWEROFF 收不到）")
+        rec = str(st0.get("recordingT31x") or "0")
+        print(f"基线 recordingT31x={rec}；不发 2011（RECORDCTRL 会堵住 T31 UART，IPCPOWEROFF 收不到）")
 
         r2001a = send_and_collect(cli, cmd("2001"), 1.2)
         results.append(r2001a)

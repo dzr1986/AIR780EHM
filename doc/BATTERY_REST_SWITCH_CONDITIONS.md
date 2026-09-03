@@ -1,7 +1,7 @@
 # 电量 rest 切换条件：连续确认与最短停留
 
 > **定位**：解释 **「连续确认 + 最短常电已满」**、**「连续确认 + 最短 rest 已满」**。  
-> **关联**：[WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) · [T3X_BATTERY_USB_T3X_OSCILLATION.md](T3X_BATTERY_USB_T3X_OSCILLATION.md)
+> **关联**：[WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) · [T31X_BATTERY_USB_T31X_OSCILLATION.md](T31X_BATTERY_USB_T31X_OSCILLATION.md)
 
 **版本**：v1.0 · 2026-06-25
 

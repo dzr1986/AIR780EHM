@@ -5,7 +5,7 @@
 | 文档 | 说明 |
 |------|------|
 | [CAT1_API_NAMING.md](CAT1_API_NAMING.md) | **Lua API 真源**（134：`pub*`/`dl*`/`ntf*`/`host_uart`/`net_mqtt` 导出与别名） |
-| [T3X_NAMING.md](T3X_NAMING.md) | 协处理器系列写法（`t3x` / `T3x` / `T3X`，与 API 驼峰无关） |
+| [T31X_NAMING.md](T31X_NAMING.md) | 协处理器系列写法（`t31x` / `T31x` / `T31X`，与 API 驼峰无关） |
 | [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md) | 旧 T31 文档名迁移 |
 
 **同步脚本**：`python tools/sync_doc_naming.py`（批量刷新 `doc/` 内 API 引用）。
@@ -28,16 +28,16 @@
 | [LUA_MODULES.md](LUA_MODULES.md) | **30 个 Lua 模块逻辑分析**（职责/流程/依赖） |
 | [CAT1_API_NAMING.md](CAT1_API_NAMING.md) | **Lua API 命名真源**（135，无兼容别名） |
 | [CAT1_MODULE_FRAMEWORK.md](CAT1_MODULE_FRAMEWORK.md) | **模块框架**：`module_loader`/`config_manager`、生命周期/日志/事件约定 |
-| [modules/README.md](modules/README.md) | **模块专题**（AT / MQTT / PIR / 电量 / T3x 唤醒） |
+| [modules/README.md](modules/README.md) | **模块专题**（AT / MQTT / PIR / 电量 / T31x 唤醒） |
 | [TIME_SYNC.md](TIME_SYNC.md) | SNTP + `AT+TIMESET` 时间同步 |
 
 ### 硬件 / GPIO / 指示灯
 
 | 文档 | 说明 |
 |------|------|
-| [T3X_CAT1_GPIO.md](T3X_CAT1_GPIO.md) | 原理图级引脚；**§1.1 固件 GPIO 全表** |
+| [T31X_CAT1_GPIO.md](T31X_CAT1_GPIO.md) | 原理图级引脚；**§1.1 固件 GPIO 全表** |
 | [KEY_GPIO.md](KEY_GPIO.md) | 按键 / `config.lua` 的 `KEY_CONFIG` |
-| [T3X_BURN_MODE.md](T3X_BURN_MODE.md) | **GPIO28 长按 → T3x 烧录**（电量/关停条件） |
+| [T31X_BURN_MODE.md](T31X_BURN_MODE.md) | **GPIO28 长按 → T31x 烧录**（电量/关停条件） |
 | [LED_INDICATORS.md](LED_INDICATORS.md) | **指示灯专篇**：充电板灯 + 模组红蓝灯 |
 | [PIR_HARDWARE.md](PIR_HARDWARE.md) | PIR 硬件与流程 |
 
@@ -46,16 +46,16 @@
 | 文档 | 说明 |
 |------|------|
 | [CHARGE_BATTERY.md](CHARGE_BATTERY.md) | 充电、ADC（`vbat`）、MQTT 1003 |
-| [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) | **低电量/USB/rest/T3x**（场景流程图 + 附录） |
+| [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) | **低电量/USB/rest/T31x**（场景流程图 + 附录） |
 | [WORK_MODE_PERSON_DETECT_PIR.md](WORK_MODE_PERSON_DETECT_PIR.md) | **现行两种模式**：开机人形常电；仅 2002 才断 T31 用 PIR（已去掉低电自动进 PIR） |
 | [PERSON_CNT_UART_MQTT_FLOW.md](PERSON_CNT_UART_MQTT_FLOW.md) | **有人看哪里、PERSONCNT 30s、skipped 不是过密、检测软件读数** |
 | [WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) | **历史**：电量 20% 切动态侦测（已被上一篇取代） |
 | [LOW_POWER_ENTER_STRATEGY.md](LOW_POWER_ENTER_STRATEGY.md) | **电量 rest vs HOSTIDLE 30s 轮询**：是否矛盾、策略切换 |
 | [BATTERY_REST_SWITCH_CONDITIONS.md](BATTERY_REST_SWITCH_CONDITIONS.md) | rest 切换：连续确认、最短常电、最短 rest |
-| [T3X_LOW_POWER.md](T3X_LOW_POWER.md) | **低功耗可配置**：rest 主流程、**conack 与 1001/1002/1003** |
-| [T3X_USB_HOSTIDLE.md](T3X_USB_HOSTIDLE.md) | **USB 插入 ↔ T3x/4G 低功耗互斥** |
-| [T3X_BATTERY_USB_T3X_OSCILLATION.md](T3X_BATTERY_USB_T3X_OSCILLATION.md) | USB+低电量与 T3x 启停循环（纯分析） |
-| [POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) | 决策图、模块职责、已修复对照 |
+| [T31X_LOW_POWER.md](T31X_LOW_POWER.md) | **低功耗可配置**：rest 主流程、**conack 与 1001/1002/1003** |
+| [T31X_USB_HOSTIDLE.md](T31X_USB_HOSTIDLE.md) | **USB 插入 ↔ T31x/4G 低功耗互斥** |
+| [T31X_BATTERY_USB_T31X_OSCILLATION.md](T31X_BATTERY_USB_T31X_OSCILLATION.md) | USB+低电量与 T31x 启停循环（纯分析） |
+| [POWER_USB_BATTERY_T31X_LOGIC.md](POWER_USB_BATTERY_T31X_LOGIC.md) | 决策图、模块职责、已修复对照 |
 | [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](CAT1_LOWPWR_MQTT_TCP_STRATEGY.md) | **唤醒通道**：`LOW_POWER_WAKEUP_CFG.mode` mqtt/tcp |
 | [CAT1_SLIMMING_FLOW.md](CAT1_SLIMMING_FLOW.md) | Cat.1 精简流程（门球量产步骤） |
 | [CAT1_USER_LIB_SLIM.md](CAT1_USER_LIB_SLIM.md) | Cat.1 精简速查（`MODULE_FLAGS` / 懒加载） |
@@ -69,7 +69,7 @@
 | [MQTT_2011_T31X_STOP_EXPLAINED.md](MQTT_2011_T31X_STOP_EXPLAINED.md) | **2011 停录怎么读**：两层录像、复位掉电、1004/1011、`.part` 封口 |
 | [PIR_TRIGGER_INTERVAL.md](PIR_TRIGGER_INTERVAL.md) | PIR 冷却间隔 |
 | [PIR_COOLDOWN_AND_COUNT.md](PIR_COOLDOWN_AND_COUNT.md) | 冷却 vs 计数 |
-| [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md) | **AT+RECORD + MQTT 1010/1011** |
+| [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md) | **AT+RECORD + MQTT 1010/1011** |
 | [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md) | 开机/关机提示音 |
 
 ### MQTT / 编码 / 串口 AT
@@ -81,13 +81,14 @@
 | [MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md) | **回放上传闭环**：2013 → queued → 进度 percent → reply=0；IPC / Cat.1 / Python+Java GUI |
 | [MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md](MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md) | **回放/人形上传**：串口 `UPLOADVIDEO`/`UPLOADPROGRESS`/`UPLOADRESULT` → 1013 |
 | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) | **远程控制**：帧率/录像/人形（MQTT + AT + 时序） |
-| [T3X_IPC_CLOUD_EXCEPTION_REPORT.md](T3X_IPC_CLOUD_EXCEPTION_REPORT.md) | **T3x IPC 联网异常上报分析**（已上报 vs 缺口） |
+| [T31X_IPC_CLOUD_EXCEPTION_REPORT.md](T31X_IPC_CLOUD_EXCEPTION_REPORT.md) | **T31x IPC 联网异常上报分析**（已上报 vs 缺口） |
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | **本机 IMEI 862323084068314** MQTT 联调手册 |
 | [MQTT_DOWNLINK_862323084068124.txt](MQTT_DOWNLINK_862323084068124.txt) | **IMEI 124** MQTTX 单行 JSON 抄录（含 2024–2027） |
 | [mqtt_tfcard_format_flow.md](mqtt_tfcard_format_flow.md) | **统一入口：TF 卡格式化 2009/1009**（协议、时序、错误码、联调日志） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | 下行命令手册 |
 | [MQTT_CLIENT_E2E_TEST.md](MQTT_CLIENT_E2E_TEST.md) | **MQTT 客户端 E2E 联调**（MQTTX / mosquitto / 冒烟清单） |
 | [MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md) | **全指令流程与实机结果**（`--run-all`、Cat.1 / T31x 对照） |
+| [MQTT_231_CLOSED_LOOP_20260902.md](MQTT_231_CLOSED_LOOP_20260902.md) | **IMEI 231** 2026-09-02 烧录 + `--run-safe` / extra / 开录·rest·关机·格式化·重启（`001.000.149`） |
 | [../ota_server/docs/OTA_SERVER.md](../ota_server/docs/OTA_SERVER.md) | **自建 OTA**（固件对接 + 部署清单，不改 lua） |
 | [OTA_CONSOLE_UPGRADE.md](OTA_CONSOLE_UPGRADE.md) | **后台怎么点升级**（上传包 → 下发 OTA） |
 | [../ota_server/docs/OTA_LUAT_IOT_ADMIN_FLOW.md](../ota_server/docs/OTA_LUAT_IOT_ADMIN_FLOW.md) | **合宙 IoT 项目列表 ↔ 管理台操作流程** |
@@ -100,37 +101,38 @@
 | [T31X_SOFTPHOTO_REPEAT_SWITCH.md](T31X_SOFTPHOTO_REPEAT_SWITCH.md) | **软光敏**：重复切换、开灯仍黑白、日→夜品红闪；ISP/IRCUT 顺序 |
 | [T31X_ETH0_DHCP_SLOW_BOOT.md](T31X_ETH0_DHCP_SLOW_BOOT.md) | **重启后 eth0 有、IP 慢**：RNDIS DHCP Discover 停发 + 30s 重试 |
 | [CAT1_USB_RNDIS_CFG_CRASH_FLASH.md](CAT1_USB_RNDIS_CFG_CRASH_FLASH.md) | **开机无网**：COM10 查 `usb_rndis cfg` 崩溃 → 修代码 → `flash-script` 烧录验收 |
-| [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T3x `AT+MQTTCFG` 下发 4G MQTT |
+| [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T31x `AT+MQTTCFG` 下发 4G MQTT |
 | [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX |
-| [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) | T3x↔Cat.1 AT 一览 |
+| [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) | T31x↔Cat.1 AT 一览 |
 
-### T3x ↔ 4G 协作
+### T31x ↔ 4G 协作
 
 | 文档 | 说明 |
 |------|------|
-| [T3X_4G_FRAMEWORK.md](T3X_4G_FRAMEWORK.md) | **协作框架简图（建议先读）** |
-| [T3X_4G_AT_INTERACTION.md](T3X_4G_AT_INTERACTION.md) | AT 全量交互 |
-| [T3X_CAT1_AT_COMMAND_SPEC.md](T3X_CAT1_AT_COMMAND_SPEC.md) | T3x→4G AT 规范（MQTT + TCP） |
-| [T3X_IPC_4G_INTERACTION.md](T3X_IPC_4G_INTERACTION.md) | 分层、PIR/录像/rest 流程 |
-| [T3X_IPC_CAT1_COMM_COMPLETENESS.md](T3X_IPC_CAT1_COMM_COMPLETENESS.md) | 双向 AT 对照与缺口 |
-| [T3X_HOSTEVT_PROTOCOL.md](T3X_HOSTEVT_PROTOCOL.md) | GPIO29 低脉冲与 HOSTEVT |
-| [T3X_HOSTEVT_SLEEP.md](T3X_HOSTEVT_SLEEP.md) | HOSTEVT 四条 AT 汇总 |
+| [T31X_4G_FRAMEWORK.md](T31X_4G_FRAMEWORK.md) | **协作框架简图（建议先读）** |
+| [T31X_4G_AT_INTERACTION.md](T31X_4G_AT_INTERACTION.md) | AT 全量交互 |
+| [T31X_CAT1_AT_COMMAND_SPEC.md](T31X_CAT1_AT_COMMAND_SPEC.md) | T31x→4G AT 规范（MQTT + TCP） |
+| [T31X_IPC_4G_INTERACTION.md](T31X_IPC_4G_INTERACTION.md) | 分层、PIR/录像/rest 流程 |
+| [T31X_IPC_CAT1_COMM_COMPLETENESS.md](T31X_IPC_CAT1_COMM_COMPLETENESS.md) | 双向 AT 对照与缺口 |
+| [T31X_HOSTEVT_PROTOCOL.md](T31X_HOSTEVT_PROTOCOL.md) | GPIO29 低脉冲与 HOSTEVT |
+| [T31X_HOSTEVT_SLEEP.md](T31X_HOSTEVT_SLEEP.md) | HOSTEVT 四条 AT 汇总 |
 
 ### 发布与其它
 
 | 文档 | 说明 |
 |------|------|
-| [CAT1_FLASH_TOOL.md](CAT1_FLASH_TOOL.md) | **Cat.1 USB 烧录**：图形界面 / 命令行，对齐 Luatools 下载脚本、下载底层和脚本 |
+| [CAT1_FLASH_FLOW.md](CAT1_FLASH_FLOW.md) | **Cat.1 烧录流程**：认 COM、免 BOOT、`flash-script`、烧完验收 |
+| [CAT1_FLASH_TOOL.md](CAT1_FLASH_TOOL.md) | **Cat.1 USB 烧录工具**：图形界面 / 命令行，对齐 Luatools |
 | [CAT1_USB_RNDIS_CFG_CRASH_FLASH.md](CAT1_USB_RNDIS_CFG_CRASH_FLASH.md) | **RNDIS cfg 崩溃实机流程**：COM10 排查 → 修复 → `flash-script`（勿用 mqtt_tools_gui 烧录） |
 | [RELEASE_v1.2.md](RELEASE_v1.2.md) | v1.2 发布/备份说明 |
-| [T3X_NAMING.md](T3X_NAMING.md) | T3x 命名约定 |
+| [T31X_NAMING.md](T31X_NAMING.md) | T31x 命名约定 |
 | [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md) | 旧 T31 文档重定向表 |
 
 ---
 
 **代码真源**：[`../user/config.lua`](../user/config.lua)（硬件/开关/事件/按键单文件）、[`../user/main.lua`](../user/main.lua)（`PRODUCT_KEY`）。
 
-**模块命名**（与 `user/*.lua` 一致）：`t3x_ctrl`、`t3x_policy`、`pir_ctrl`、`host_uart`、`vbat`；`require` 使用 snake_case。
+**模块命名**（与 `user/*.lua` 一致）：`t31x_ctrl`、`t31x_policy`、`pir_ctrl`、`host_uart`、`vbat`；`require` 使用 snake_case。
 
-**外部参考**（IPC 仓，本仓库无副本）：`docs/usb_debug_en_and_t3x_sleep_timing.md`、`docs/gpio_led_config.md`。
+**外部参考**（IPC 仓，本仓库无副本）：`docs/usb_debug_en_and_t31x_sleep_timing.md`、`docs/gpio_led_config.md`。

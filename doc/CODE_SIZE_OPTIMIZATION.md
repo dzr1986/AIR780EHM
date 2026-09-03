@@ -22,7 +22,7 @@
 
 ### 2.1 `host_uart.lua`：`host_set` 通用模板
 
-对标已有 `host_query`，统一 **busy（可选）→ T3x 上电 → sendString → waitUntil → parse_rsp**：
+对标已有 `host_query`，统一 **busy（可选）→ T31x 上电 → sendString → waitUntil → parse_rsp**：
 
 | 函数 | 说明 |
 |------|------|
@@ -73,7 +73,7 @@
 
 1. 2023 recordTimeMin、2025 framerate、2027 personDetect、2029 mic、2031 softPhoto **设置** 上行 10xx
 2. 2011/2012 recordCtrl 停录/开录
-3. T3x 未就绪时设置类下行：应仍返回 `t3x_unavailable` / timeout，与改前一致
+3. T31x 未就绪时设置类下行：应仍返回 `t31x_unavailable` / timeout，与改前一致
 
 ---
 

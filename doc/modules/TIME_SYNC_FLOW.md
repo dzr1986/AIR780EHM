@@ -1,9 +1,9 @@
-# time_sync Cat.1 → T3x 对时
+# time_sync Cat.1 → T31x 对时
 
 > **代码真源**：[`user/time_sync.lua`](../../user/time_sync.lua)  
 > **配置**：`TIME_SYNC_CFG`（[`config.lua`](../../user/config.lua)）  
 > **UART**：`AT+TIMESET` · 应答 `+TIMESETACK` → `onTimesetAck`  
-> **唤醒链**：[T3X_POWER_WAKEUP.md](T3X_POWER_WAKEUP.md) · [APP_EVENT_BUS.md](APP_EVENT_BUS.md)
+> **唤醒链**：[T31X_POWER_WAKEUP.md](T31X_POWER_WAKEUP.md) · [APP_EVENT_BUS.md](APP_EVENT_BUS.md)
 
 ---
 
@@ -11,9 +11,9 @@
 
 | 路径 | 行为 |
 |------|------|
-| **SNTP** | Cat.1 对公网 NTP → `os.time()` 有效后推 T3x |
+| **SNTP** | Cat.1 对公网 NTP → `os.time()` 有效后推 T31x |
 | **唤醒前对时** | `pushBeforeNotify`：先 `AT+TIMESET` 再 `ntfHost` |
-| **唤醒后对时** | `onT3xWake`（可选，`sync_on_wake`） |
+| **唤醒后对时** | `onT31xWake`（可选，`sync_on_wake`） |
 
 `MODULE_FLAGS.time_sync=false` 或 `TIME_SYNC_CFG.enabled=false` 时全模块短路。
 
@@ -25,10 +25,10 @@
 flowchart TD
     SNTP[SNTP_SYNC_SUCCESS] --> A[onSntpSuccess]
     A --> P[pushToHostAsync force=true]
-    W[requestT3xWake] --> B[pushBeforeNotifyAsync]
-    B --> POL{t3x_policy.mayPowerT3x?}
+    W[requestT31xWake] --> B[pushBeforeNotifyAsync]
+    B --> POL{t31x_policy.mayPowerT31x?}
     POL -->|否| N[仅 ntfHost]
-    POL -->|是| T[t3xOn ensurePowered]
+    POL -->|是| T[t31xOn ensurePowered]
     T --> TS[AT+TIMESET=unix]
     TS --> ACK{+TIMESETACK?}
     ACK -->|是| NH[ntfHost sid,evt]
@@ -41,8 +41,8 @@ flowchart TD
 
 1. `isTimeValid(t)` — 默认 `t ≥ min_valid_unix`（2024-01-01）
 2. 非 `force` 时：`resync_skew_sec`（默认 2s）内跳过重复推送
-3. `t3x_ctrl.ensurePowered("time_sync")`
-4. `host_boot_wait_ms`（默认 1500ms）等待 T3x 就绪
+3. `t31x_ctrl.ensurePowered("time_sync")`
+4. `host_boot_wait_ms`（默认 1500ms）等待 T31x 就绪
 5. `uart_bridge.sendString("AT+TIMESET=" .. t)`
 6. `waitTimesetAck(ack_timeout_ms)` — 监听内部事件 `TIME_SYNC_ACK`
 7. 成功则更新 `lastPushedUnix`
@@ -53,16 +53,16 @@ flowchart TD
 
 ## 4. `pushBeforeNotify(sid, evt)`
 
-唤醒 T3x 前的**统一入口**（`t3x_policy.requestT3xWake` 与 `app.requestT3xWake` 均经此路径）：
+唤醒 T31x 前的**统一入口**（`t31x_policy.requestT31xWake` 与 `app.requestT31xWake` 均经此路径）：
 
 | 条件 | 行为 |
 |------|------|
-| `t3x_policy` 拒绝 `time_sync_notify` | 直接返回，不 notify |
+| `t31x_policy` 拒绝 `time_sync_notify` | 直接返回，不 notify |
 | `sync_before_wake=false` | 仅 `ntfHost` |
-| 时间有效且 `t3xOn()` 成功 | `pushToHost(false)` 后对时 |
+| 时间有效且 `t31xOn()` 成功 | `pushToHost(false)` 后对时 |
 | 最后 | `host_uart.ntfHost(sid, evt)` |
 
-**注意**：`app.onExitLowPower` **不再**单独调 `time_sync.onT3xWake`，避免与 `requestT3xWake` 重复脉冲。
+**注意**：`app.onExitLowPower` **不再**单独调 `time_sync.onT31xWake`，避免与 `requestT31xWake` 重复脉冲。
 
 ---
 
@@ -87,11 +87,11 @@ flowchart TD
 |----|------|------|
 | `enabled` | true | 总开关 |
 | `min_valid_unix` | 1704067200 | 有效时间下限 |
-| `sync_on_sntp` | true | SNTP 成功后推 T3x |
-| `sync_on_wake` | true | `onT3xWake` 路径 |
+| `sync_on_sntp` | true | SNTP 成功后推 T31x |
+| `sync_on_wake` | true | `onT31xWake` 路径 |
 | `sync_before_wake` | true | 唤醒前 `pushBeforeNotify` 对时 |
 | `host_boot_wait_ms` | 1500 | 发 AT 前等待 |
-| `t3x_power_wait_ms` | 800 | `ensurePowered` 等待 |
+| `t31xPowerWaitMs` | 800 | `ensurePowered` 等待 |
 | `ack_timeout_ms` | 800 | TIMESET 应答超时 |
 | `resync_skew_sec` | 2 | 去重窗口 |
 

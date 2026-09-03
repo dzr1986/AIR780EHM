@@ -1,6 +1,6 @@
 -- ================================================================
 -- Filename : mqtt_hproto.lua
--- Module   : MQTT 2020–2031 经 T3x UART 的 query/set 协议表
+-- Module   : MQTT 2020–2031 经 t31x UART 的 query/set 协议表
 -- Arch     : doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- ================================================================
 --
@@ -51,11 +51,11 @@ local function resolveTimeout(data, spec)
         or spec.defaultTimeoutMs or TIMEOUT.defaultMs
 end
 
-local function runQueryWithRetry(spec, hu, data, timeoutMs, pubReply, dlType, messageId)
-    local body, err, failBody = spec.queryFn(hu, data, timeoutMs)
+local function runQueryWithRetry(spec, hif, data, timeoutMs, pubReply, dlType, messageId)
+    local body, err, failBody = spec.queryFn(hif, data, timeoutMs)
     if not body and err ~= "timeout" then
         sys.wait(TIMEOUT.queryRetryMs)
-        body, err, failBody = spec.queryFn(hu, data, timeoutMs)
+        body, err, failBody = spec.queryFn(hif, data, timeoutMs)
     end
     if body then
         pubReply(dlType, 0, "ok", body, messageId)
@@ -64,11 +64,11 @@ local function runQueryWithRetry(spec, hu, data, timeoutMs, pubReply, dlType, me
     end
 end
 
-local function runSetWithRetry(spec, hu, data, timeoutMs, pubReply, dlType, messageId)
-    local ok, msg, extra, failBody = spec.setFn(hu, data, timeoutMs)
+local function runSetWithRetry(spec, hif, data, timeoutMs, pubReply, dlType, messageId)
+    local ok, msg, extra, failBody = spec.setFn(hif, data, timeoutMs)
     if not ok and msg == "timeout" then
         sys.wait(TIMEOUT.setRetryMs)
-        ok, msg, extra, failBody = spec.setFn(hu, data, timeoutMs)
+        ok, msg, extra, failBody = spec.setFn(hif, data, timeoutMs)
     end
     if ok then
         pubReply(dlType, 0, "ok", extra, messageId)
@@ -84,19 +84,24 @@ local function buildUartHandler(ctx, spec)
     local pubReply = buildReplyPub(ctx, spec)
     return function(data, isQuery)
         sys.taskInit(function()
-            local hu = ctx.hostUart()
+            local hif = ctx.hostUart()
             local dlType = isQuery and spec.queryDl or spec.setDl
             local messageId = ctx.dlMsgId(data)
             local timeoutMs = resolveTimeout(data, spec)
-            if not hu then
-                pubReply(dlType, -1, "no_host_uart", nil, messageId)
+            if not hif or (ctx.hostReady and not ctx.hostReady()) then
+                pubReply(dlType, -1, "t31x_not_ready", nil, messageId)
                 return
             end
-            if isQuery then
-                runQueryWithRetry(spec, hu, data, timeoutMs, pubReply, dlType, messageId)
-                return
+            local ok, err = pcall(function()
+                if isQuery then
+                    runQueryWithRetry(spec, hif, data, timeoutMs, pubReply, dlType, messageId)
+                    return
+                end
+                runSetWithRetry(spec, hif, data, timeoutMs, pubReply, dlType, messageId)
+            end)
+            if not ok then
+                pubReply(dlType, -1, "handler_error", nil, messageId)
             end
-            runSetWithRetry(spec, hu, data, timeoutMs, pubReply, dlType, messageId)
         end)
     end
 end
@@ -164,10 +169,10 @@ local function buildSpecTable(ctx)
                 end
                 return extra
             end,
-            queryFn = function(hu, data, timeoutMs)
+            queryFn = function(hif, data, timeoutMs)
                 local encCfg = cfgm.get("HOST_ENCODE_CFG")
                 timeoutMs = timeoutMs or tonumber(encCfg.query_timeout_ms) or TIMEOUT.defaultMs
-                local result, err = hu.queryHostEncode({
+                local result, err = hif.queryHostEncode({
                     scope = data.scope,
                     camera = data.camera,
                     stream = data.stream,
@@ -178,14 +183,14 @@ local function buildSpecTable(ctx)
                 end
                 return nil, err or "query_fail"
             end,
-            setFn = function(hu, data, timeoutMs)
+            setFn = function(hif, data, timeoutMs)
                 data = data or {}
                 data.timeoutMs = timeoutMs
                 local ok, msg, extra
                 if data.scope == "audio" then
-                    ok, msg, extra = hu.setHostAudioEncode(data)
+                    ok, msg, extra = hif.setHostAudioEncode(data)
                 else
-                    ok, msg, extra = hu.setHostVideoEncode(data)
+                    ok, msg, extra = hif.setHostVideoEncode(data)
                 end
                 if ok then
                     return true, "ok", extra or {}
@@ -217,8 +222,12 @@ local function buildSpecTable(ctx)
                 end
                 return extra
             end,
-            queryFn = function(hu, _data, timeoutMs)
-                local snap = hu.queryHostRecordTime(timeoutMs)
+            queryFn = function(hif, _data, timeoutMs)
+                local fn = hif.queryHostRecordTime or hif.qryRecTime
+                if type(fn) ~= "function" then
+                    return nil, "query_fail", { allowedMin = RECORD_TIME_ALLOWED }
+                end
+                local snap = fn(timeoutMs)
                 if snap and snap.parsed then
                     return {
                         minutes = snap.minutes,
@@ -227,12 +236,16 @@ local function buildSpecTable(ctx)
                 end
                 return nil, "query_fail", { allowedMin = RECORD_TIME_ALLOWED }
             end,
-            setFn = function(hu, data, timeoutMs)
+            setFn = function(hif, data, timeoutMs)
                 local min = tonumber(data.recordTimeMin or data.recTime or data.minutes or data.min)
                 if min == nil then
                     return false, "missing_min", nil, { allowedMin = RECORD_TIME_ALLOWED }
                 end
-                local ok, msg, extra = hu.setHostRecordTime({
+                local setFn = hif.setHostRecordTime or hif.setRecTime
+                if type(setFn) ~= "function" then
+                    return false, "query_fail", nil, { allowedMin = RECORD_TIME_ALLOWED }
+                end
+                local ok, msg, extra = setFn({
                     minutes = min,
                     timeoutMs = timeoutMs,
                 })
@@ -259,8 +272,8 @@ local function buildSpecTable(ctx)
                 end
                 return extra
             end,
-            queryFn = function(hu, data, timeoutMs)
-                local rows = hu.queryHostFramerate({
+            queryFn = function(hif, data, timeoutMs)
+                local rows = hif.queryHostFramerate({
                     camera = data.camera,
                     stream = data.stream,
                     timeoutMs = timeoutMs,
@@ -270,8 +283,8 @@ local function buildSpecTable(ctx)
                 end
                 return nil, "query_fail"
             end,
-            setFn = function(hu, data, timeoutMs)
-                local ok, msg, extra = hu.setHostFramerate({
+            setFn = function(hif, data, timeoutMs)
+                local ok, msg, extra = hif.setHostFramerate({
                     camera = data.camera,
                     stream = data.stream,
                     framerate = data.framerate or data.fps,
@@ -306,8 +319,8 @@ local function buildSpecTable(ctx)
                 end
                 return extra
             end,
-            queryFn = function(hu, _data, timeoutMs)
-                local snap = hu.queryHostPersonDetect(timeoutMs)
+            queryFn = function(hif, _data, timeoutMs)
+                local snap = hif.queryHostPersonDetect(timeoutMs)
                 if snap and snap.parsed then
                     return {
                         enable = snap.enable,
@@ -316,12 +329,12 @@ local function buildSpecTable(ctx)
                 end
                 return nil, "query_fail"
             end,
-            setFn = function(hu, data, timeoutMs)
+            setFn = function(hif, data, timeoutMs)
                 local enable = tonumber(data.enable)
                 if enable == nil or (enable ~= 0 and enable ~= 1) then
                     return false, "invalid_enable"
                 end
-                local ok, msg, extra = hu.setHostPersonDetect({
+                local ok, msg, extra = hif.setHostPersonDetect({
                     enable = enable,
                     timeoutMs = timeoutMs,
                 })
@@ -351,8 +364,8 @@ local function buildSpecTable(ctx)
                 end
                 return extra
             end,
-            queryFn = function(hu, data, timeoutMs)
-                local rows = hu.queryHostMic({
+            queryFn = function(hif, data, timeoutMs)
+                local rows = hif.queryHostMic({
                     camera = data.camera,
                     timeoutMs = timeoutMs,
                 })
@@ -376,13 +389,13 @@ local function buildSpecTable(ctx)
                     mics = rows,
                 }
             end,
-            setFn = function(hu, data, timeoutMs)
+            setFn = function(hif, data, timeoutMs)
                 local volume = tonumber(data.volume)
                 local gain = tonumber(data.gain)
                 if volume == nil or gain == nil then
                     return false, "missing_params"
                 end
-                local ok, msg, extra = hu.setHostMic({
+                local ok, msg, extra = hif.setHostMic({
                     camera = data.camera,
                     volume = volume,
                     gain = gain,
@@ -412,14 +425,14 @@ local function buildSpecTable(ctx)
                     "gbGainThreshold", "gbGainRecordInit", "checkTime", "checkCount",
                 })
             end,
-            queryFn = function(hu, _data, timeoutMs)
-                local snap = hu.queryHostSoftPhoto(timeoutMs)
+            queryFn = function(hif, _data, timeoutMs)
+                local snap = hif.queryHostSoftPhoto(timeoutMs)
                 if snap and snap.parsed then
                     return snap
                 end
                 return nil, "query_fail"
             end,
-            setFn = function(hu, data, timeoutMs)
+            setFn = function(hif, data, timeoutMs)
                 local fields = {
                     enable = data.enable,
                     nightModeThreshold = data.nightModeThreshold or data.night_mode_threshold,
@@ -431,7 +444,7 @@ local function buildSpecTable(ctx)
                     checkCount = data.checkCount or data.check_count,
                 }
                 fields.timeoutMs = timeoutMs
-                local ok, msg, extra = hu.setHostSoftPhoto(fields)
+                local ok, msg, extra = hif.setHostSoftPhoto(fields)
                 fields.timeoutMs = nil
                 if ok then
                     return true, "ok", fields

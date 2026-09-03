@@ -19,7 +19,7 @@ MODULES = [
     "hu_cmd_usb.lua",
     "hu_cmd_link.lua",
     "hu_cmd_pir.lua",
-    "hu_cmd_t3x.lua",
+    "hu_cmd_t31x.lua",
     "hu_cmd_wled.lua",
     "hu_ipc.lua",
     "hu_ipc_rec.lua",
@@ -42,9 +42,9 @@ CHECKS: list[tuple[str, str, str]] = [
         r'require\("hu_rx"\)\.bind\(ctx\)[\s\S]*require\("hu_ipc"\)\.bind\(ctx\)',
     ),
     (
-        "cmd 子模块 bind 顺序 usb→link→pir→t3x→wled",
+        "cmd 子模块 bind 顺序 usb→link→pir→t31x→wled",
         "user/hu_cmd.lua",
-        r'hu_cmd_usb[\s\S]*hu_cmd_link[\s\S]*hu_cmd_pir[\s\S]*hu_cmd_t3x[\s\S]*hu_cmd_wled',
+        r'hu_cmd_usb[\s\S]*hu_cmd_link[\s\S]*hu_cmd_pir[\s\S]*hu_cmd_t31x[\s\S]*hu_cmd_wled',
     ),
     (
         "ipc recovery→hostq→cloud→power",
@@ -85,6 +85,11 @@ CHECKS: list[tuple[str, str, str]] = [
         "processLine 使用 rx.tryHandlers",
         "user/host_uart.lua",
         r"RX_LINE_TRY_HANDLERS = rx\.tryHandlers",
+    ),
+    (
+        "hostq 对外保留 queryHostRecord/RecordTime",
+        "user/hu_ipc_hostq.lua",
+        r"queryHostRecord = qryRecord[\s\S]*queryHostRecordTime = qryRecTime[\s\S]*setHostRecordTime = setRecTime",
     ),
 ]
 

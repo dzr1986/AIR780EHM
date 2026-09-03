@@ -222,17 +222,16 @@ function rebind(opts)
     refreshing = true
     ipReadyRefreshing = false
     sys.publish(EVT_REFRESH_BEGIN)
+    local softOk = true
     local ok, err = pcall(function()
         if soft then
+            -- HOST_USB_CFG.usb_reset_soft_rebind：只拨 USB 电源，失败也不进飞行模式（会掐 MQTT）
             if not softReenum(waitMs) then
-                closeRndisCore(waitMs)
-                openRndis(true)
-                markRndisOn()
-                utils.waitLocalIp(IP_READY_WAIT_MS)
-                soft = false
-            else
-                markRndisOn()
+                softOk = false
+                runtime.last_error = "soft_reenum_fail"
+                return
             end
+            markRndisOn()
         else
             closeRndisCore(waitMs)
             openRndis(true)
@@ -245,6 +244,10 @@ function rebind(opts)
     if not ok then
         runtime.last_error = tostring(err)
         log.error(LOG_TAG, "rebind_fail", runtime.last_error)
+        return false, runtime.last_error
+    end
+    if not softOk then
+        log.warn(LOG_TAG, "rebind_soft_fail_no_flymode")
         return false, runtime.last_error
     end
     log.info(LOG_TAG, soft and "rebind_soft_ok" or "rebind_flymode_ok")

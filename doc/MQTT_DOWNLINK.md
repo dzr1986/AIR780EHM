@@ -83,7 +83,7 @@
 | **2005** | SIM 查询 | **1005** | `sim` |
 | **2006** | IMEI + GB28181 查询 | **1006** | `identity` |
 | **2007** | TF/SD 卡状态查询 | **1007** | `tfcard` |
-| **2008** | 固件/脚本版本查询（秒回，不依赖 T3x） | **1008** | `version` |
+| **2008** | 固件/脚本版本查询（秒回，不依赖 T31x） | **1008** | `version` |
 | **2009** | TF/SD 卡格式化 | **1009** | `tfcard_format` |
 | **2010** | PIR 策略 / 查询 | **1010** | `pir` |
 | **2011** | 设备停录 | **1011** | `event` |
@@ -233,7 +233,7 @@
 ```
 
 > **判读**：1002 = 进 rest **事件**；当前是否在 rest 看 **1003.lowPowerMode**（`normal` / `rest`）。  
-> rest 重连时 conack 发 **1002 + 1003**，**不发 1001**。详见 [T3X_LOW_POWER.md](./T3X_LOW_POWER.md)。
+> rest 重连时 conack 发 **1002 + 1003**，**不发 1001**。详见 [T31X_LOW_POWER.md](./T31X_LOW_POWER.md)。
 
 ---
 
@@ -504,7 +504,7 @@
 }
 ```
 
-周期 **1003** 另带 `wledEnable` 0/1，平台不必每次 2004 查询。4G 维护 `APP_RUNTIME.wled_on`，转发至 T3x `WLED_EN` GPIO（`syscfg.ini [gpio] wled_enable=1`，引脚 PB30）。
+周期 **1003** 另带 `wledEnable` 0/1，平台不必每次 2004 查询。4G 维护 `APP_RUNTIME.wled_on`，转发至 T31x `WLED_EN` GPIO（`syscfg.ini [gpio] wled_enable=1`，引脚 PB30）。
 
 ### 6.6 HOSTEVT 空闲轮询间隔（HOSTEVTPOLL）
 
@@ -593,7 +593,7 @@
 | `ota` | `ota_accepted` | FOTA + stage |
 | `wled` | `ret=0`, `ok`, **`enable`** | 白光灯开/关（须 `enable`） |
 | `wled_query` | `ret=0`, `ok`, **`enable`** | 查询白光灯 |
-| `hostevt_poll` | `ret=0`, `ok`, **`hostEvtPollMs`** | 设置 T3x 空闲 HOSTEVT 轮询间隔 |
+| `hostevt_poll` | `ret=0`, `ok`, **`hostEvtPollMs`** | 设置 T31x 空闲 HOSTEVT 轮询间隔 |
 | `hostevt_poll_query` | `ret=0`, `ok`, **`hostEvtPollMs`** | 查询轮询间隔 |
 | 其它 | `ret=-1`, `unknown_action` | 无操作 |
 
@@ -642,7 +642,7 @@
 
 ## 7.1 `2008` — 版本查询 → `1008`
 
-只读 Cat.1 本地版本，**不依赖 T3x**，应秒回。用于核对本机 IMEI、OTA `version`、`productKey`。
+只读 Cat.1 本地版本，**不依赖 T31x**，应秒回。用于核对本机 IMEI、OTA `version`、`productKey`。
 
 **发布**：`/panshi/device/862323084068124/`
 
@@ -677,16 +677,16 @@
 
 ---
 
-## 8. `2006` / `2007` — 为何要 T3x？为何非秒回？
+## 8. `2006` / `2007` — 为何要 T31x？为何非秒回？
 
-两条 **不同业务**，共用「T3x 未就绪 → `pendingHostQueue` 入队 → 唤醒 → UART 查询」：
+两条 **不同业务**，共用「T31x 未就绪 → `pendingHostQueue` 入队 → 唤醒 → UART 查询」：
 
 | 下行 | 上行 | 主题 | 内容 |
 |------|------|------|------|
 | **2006** | **1006** | `identity` | IMEI + GB28181 ID |
 | **2007** | **1007** | `tfcard` | TF/SD 有无与容量 |
 
-发 2006 只回 1006，发 2007 只回 1007。T3x 已在线时较快；rest/休眠时常见 **数秒后** 才应答。详见 [MQTT_PROTOCOL.md §1.2](./MQTT_PROTOCOL.md#12-平台对接须知)「2006/2007」小节。
+发 2006 只回 1006，发 2007 只回 1007。T31x 已在线时较快；rest/休眠时常见 **数秒后** 才应答。详见 [MQTT_PROTOCOL.md §1.2](./MQTT_PROTOCOL.md#12-平台对接须知)「2006/2007」小节。
 
 ---
 
@@ -702,9 +702,9 @@
 {"dataType":"2006","messageId":"id-query-001"}
 ```
 
-设备若 T3x 未上电会先 `powerOn`，经 UART 发 `AT+GB28181?` 读取 GB28181 ID，与 Cat.1 IMEI 一并上报。
+设备若 T31x 未上电会先 `powerOn`，经 UART 发 `AT+GB28181?` 读取 GB28181 ID，与 Cat.1 IMEI 一并上报。
 
-> T3x **休眠/未 AT 就绪**时：下行入 `pendingHostQueue` 并唤醒，**无秒回 1006**；数秒内 T3x 就绪后应答。超时 `gb28181Id` 空、`ret=-1`。
+> T31x **休眠/未 AT 就绪**时：下行入 `pendingHostQueue` 并唤醒，**无秒回 1006**；数秒内 T31x 就绪后应答。超时 `gb28181Id` 空、`ret=-1`。
 
 **应答主题**：`/panshi/app/862323084068124/identity`
 
@@ -720,9 +720,9 @@
 }
 ```
 
-> T3x 侧在 `client.ini` 配置 `gb28181_id`；未配置或查询超时则 `gb28181Id` 为空、`ret=-1`。
+> T31x 侧在 `client.ini` 配置 `gb28181_id`；未配置或查询超时则 `gb28181Id` 为空、`ret=-1`。
 
-**串口等价**：Cat.1 经 UART 发 `AT+GB28181?` → T3x 答 `+GB28181:<id>`。T3x 就绪且 MQTT 在线时可自动上报 1006（`HOST_IDENTITY_CFG.auto_publish_on_ready`）。
+**串口等价**：Cat.1 经 UART 发 `AT+GB28181?` → T31x 答 `+GB28181:<id>`。T31x 就绪且 MQTT 在线时可自动上报 1006（`HOST_IDENTITY_CFG.auto_publish_on_ready`）。
 
 ---
 
@@ -734,9 +734,9 @@
 {"dataType":"2007","messageId":"tf-001"}
 ```
 
-设备若 T3x 未上电会先 `powerOn`，经 UART 发 `AT+TFCARD?` 读取 TF 卡状态与容量。
+设备若 T31x 未上电会先 `powerOn`，经 UART 发 `AT+TFCARD?` 读取 TF 卡状态与容量。
 
-> 同 **2006**：T3x 未就绪时入队唤醒，**非秒回**；超时 `tfPresent=0`、`ret=-1`。
+> 同 **2006**：T31x 未就绪时入队唤醒，**非秒回**；超时 `tfPresent=0`、`ret=-1`。
 
 **应答主题**：`/panshi/app/862323084068124/tfcard`
 
@@ -754,13 +754,13 @@
 }
 ```
 
-> T3x 挂载点 `client.ini` → `tf_mount_path`（默认 `/mnt/sd`）；无卡时 `tfPresent=0`，容量为 0；查询超时 `ret=-1`。
+> T31x 挂载点 `client.ini` → `tf_mount_path`（默认 `/mnt/sd`）；无卡时 `tfPresent=0`，容量为 0；查询超时 `ret=-1`。
 
 ---
 
 ## 8.3 `2009` — TF/SD 卡格式化 → `1009`
 
-> 完整流程（停录、UART `AT+TFFORMAT`、T3x mkfs、可选 reboot）见 [mqtt_tfcard_format_flow.md](./mqtt_tfcard_format_flow.md)。
+> 完整流程（停录、UART `AT+TFFORMAT`、T31x mkfs、可选 reboot）见 [mqtt_tfcard_format_flow.md](./mqtt_tfcard_format_flow.md)。
 
 **发布**：`/panshi/device/862323084068124/`
 
@@ -772,7 +772,7 @@
 |------|------|
 | `action` | 固定 `"format"` |
 | `messageId` | 可选，1009 原样回传 |
-| `reboot` | 可选，`0` 不重启；`1` 格式化成功后 T3x 重启 |
+| `reboot` | 可选，`0` 不重启；`1` 格式化成功后 T31x 重启 |
 
 设备处理：先尝试停录（`AT+RECORDCTRL=0,tfcard_format`），再发 `AT+TFFORMAT=1,reboot=0|1`；完成后上报 `1009`。
 
@@ -795,8 +795,8 @@
 | `ok` | 格式化完成 |
 | `disabled` | 功能被配置关闭 |
 | `busy` | 已有格式化任务 |
-| `timeout` | 等待 T3x 应答超时（默认 120s） |
-| `no_uart` / `t3x_unavailable` | T3x 未唤醒或串口不可用 |
+| `timeout` | 等待 T31x 应答超时（默认 120s） |
+| `no_uart` / `t31x_unavailable` | T31x 未唤醒或串口不可用 |
 
 成功且 `reboot=0` 且 `publish_status_after=true` 时，会自动补发一次 `1007` 刷新容量。
 
@@ -881,13 +881,13 @@
 
 | 字段 | 说明 |
 |------|------|
-| `active` | 可选；`1` = T3x 首个 I 帧已写盘（常伴 `pirStatus=t3x_active`） |
-| `snapshotPath` | 可选；`pirStatus=snapshot_saved` 时 T3x SD 文件路径 |
+| `active` | 可选；`1` = T31x 首个 I 帧已写盘（常伴 `pirStatus=t31x_active`） |
+| `snapshotPath` | 可选；`pirStatus=snapshot_saved` 时 T31x SD 文件路径 |
 
 | `pirStatus` | 含义 |
 |-------------|------|
 | `detected` | 正常触发 |
-| `t3x_active` | 录像首个 I 帧写盘（常伴 `active=1`） |
+| `t31x_active` | 录像首个 I 帧写盘（常伴 `active=1`） |
 | `snapshot_saved` | 抓拍 JPEG 已写 SD（常伴 `snapshotPath`） |
 | `retrigger` | 录像中二次 PIR |
 | `query` | 应答 2010 查询 |
@@ -909,7 +909,7 @@
 }
 ```
 
-详见 [PIR_PROTOCOL.md §2.4 / §4](./PIR_PROTOCOL.md#24-配置来源与持久化迁移) · [T3X_RECORD_MQTT_FLOW.md](./T3X_RECORD_MQTT_FLOW.md)。
+详见 [PIR_PROTOCOL.md §2.4 / §4](./PIR_PROTOCOL.md#24-配置来源与持久化迁移) · [T31X_RECORD_MQTT_FLOW.md](./T31X_RECORD_MQTT_FLOW.md)。
 
 ---
 
@@ -923,7 +923,7 @@
 
 条件：正在录像且 `stopOnCloud=1`。
 
-> **无即时 1004**：`requestStopFromCloud()` → `publishStopRecording(device)` → **1011**（`reason=device`）。T3x 写盘中可能 `source=t3x`。
+> **无即时 1004**：`requestStopFromCloud()` → `publishStopRecording(device)` → **1011**（`reason=device`）。T31x 写盘中可能 `source=t31x`。
 
 **应答主题**：`/panshi/app/862323084068124/event`
 
@@ -941,8 +941,8 @@
 
 | `source` | 含义 |
 |----------|------|
-| `4g` | 4G 侧停录（timer/device/manual，T3x 未写盘） |
-| `t3x` | T3x `AT+RECORD=0` 回报后转发 |
+| `4g` | 4G 侧停录（timer/device/manual，T31x 未写盘） |
+| `t31x` | T31x `AT+RECORD=0` 回报后转发 |
 
 | `reason` | 来源 |
 |----------|------|
@@ -951,7 +951,7 @@
 | `pir_retrigger` | 二次 PIR |
 | `manual` | 本地 |
 
-**T3x 已在线时**：4G 额外发 `AT+RECORDCTRL=0,cloud`。详见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012)。
+**T31x 已在线时**：4G 额外发 `AT+RECORDCTRL=0,cloud`。详见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012)。
 
 ---
 
@@ -973,9 +973,9 @@
 | `action` | 固定 `"video"` |
 | `videoMaxDurationSec` | 最长录像秒数；省略时 4G 侧默认 60 |
 
-流程：`pir_ctrl.requestStartFromCloud()` → **1004** `pir_start` + **1012** → GPIO 唤醒 T3x → TF MP4 → **1010** `t3x_active` → 结束 **1011**。
+流程：`pir_ctrl.requestStartFromCloud()` → **1004** `pir_start` + **1012** → GPIO 唤醒 T31x → TF MP4 → **1010** `t31x_active` → 结束 **1011**。
 
-**T3x 已在线时**：`host_uart.recordCtrlStart()` → `AT+RECORDCTRL=1,<videoMaxDurationSec>`。
+**T31x 已在线时**：`host_uart.recordCtrlStart()` → `AT+RECORDCTRL=1,<videoMaxDurationSec>`。
 
 **应答主题**：`/panshi/app/862323084068124/event`（1012）· `/panshi/app/.../pir`（1010）
 
@@ -1052,12 +1052,12 @@ T31 IVS → clip_upload_on_person → 入队（已生成文件名 + person-{uplo
 | `stage` | 全部（新固件） | `queued` / `start` / `uploading` / `waiting_resp` / `uploaded` / `fail` |
 | `messageId` | 全部 | 回放=2013 原样；人形=`person-{uploadTs毫秒}` |
 | `ret` | 全部 | `0` 正常；`-1` 失败（queued 时表示未入队） |
-| `message` | 全部 | `ok` / `uploading` / `uploaded` / `extract_fail` / `upload_fail` / `file_missing` / `t3x_not_ready` … |
+| `message` | 全部 | `ok` / `uploading` / `uploaded` / `extract_fail` / `upload_fail` / `file_missing` / `t31x_not_ready` … |
 | `needUpload` | 全部 | 一般为 `1` |
 | `action` | 全部 | `"upload_video"` |
 | `videoType` | 全部 | `1` 人形 · `2` 回放 |
 | `reason` | 视路径 | 回放 `cloud`；人形 `person` |
-| `source` | 人形 / 完成 | `"t3x"` |
+| `source` | 人形 / 完成 | `"t31x"` |
 | `fileName` | 人形 queued 起；回放进度/完成 | `{国标ID}-{YYYYMMDD}-{uploadTs}.ts` |
 | `httpPath` | **仅 reply=0 成功** | 7003 返回的相对路径 |
 | `uploadTs` | 人形 queued；完成 | 毫秒时间戳，文件名第三段 |
@@ -1065,7 +1065,7 @@ T31 IVS → clip_upload_on_person → 入队（已生成文件名 + person-{uplo
 | `beginTime` / `endTime` | 有时间窗时 | 墙钟 |
 | `alarmTs` / `alarmTime` | **人形 queued** | IVS 报警时刻（窗中点，默认 ±15s） |
 | `percent` / `sentBytes` / `totalBytes` | 进度 | HTTP 进度；`waiting_resp` 时 percent=100 **仍未完成** |
-| `pirStatus` | 人形 queued | 常 `t3x_active` |
+| `pirStatus` | 人形 queued | 常 `t31x_active` |
 
 `stage=waiting_resp`：body 已发完，等 7003 JSON，**不要**当成功。
 
@@ -1108,7 +1108,7 @@ AT+UPLOADVIDEO=1,2,1755428400,1755428700,300,up-req-001
 OK
 ```
 
-`ret=-1` / `t3x_not_ready`：T31 未就绪，**仍会发** 1013 queued（`ret=-1`），不会抽片。
+`ret=-1` / `t31x_not_ready`：T31 未就绪，**仍会发** 1013 queued（`ret=-1`），不会抽片。
 
 ---
 
@@ -1140,7 +1140,7 @@ AT+UPLOADPROGRESS=pct=58,sent=16777216,total=28871327,type=2,msgId=up-req-001,fi
 **③ 完成**
 
 ```json
-{"deviceNo":"862323084068124","dataType":"1013","reply":0,"stage":"uploaded","messageId":"up-req-001","ret":0,"message":"uploaded","needUpload":1,"action":"upload_video","reason":"cloud","source":"t3x","fileName":"34020000001310267610-20260817-1755428400123.ts","httpPath":"/apps/video/playback/34020000001310267610-20260817-1755428400123.ts","uploadTs":"1755428400123","beginTime":"2026-08-17 19:00:00","endTime":"2026-08-17 19:05:00","beginTs":1755428400,"endTs":1755428700,"videoType":2,"time":"2026-08-17 19:04:12"}
+{"deviceNo":"862323084068124","dataType":"1013","reply":0,"stage":"uploaded","messageId":"up-req-001","ret":0,"message":"uploaded","needUpload":1,"action":"upload_video","reason":"cloud","source":"t31x","fileName":"34020000001310267610-20260817-1755428400123.ts","httpPath":"/apps/video/playback/34020000001310267610-20260817-1755428400123.ts","uploadTs":"1755428400123","beginTime":"2026-08-17 19:00:00","endTime":"2026-08-17 19:05:00","beginTs":1755428400,"endTs":1755428700,"videoType":2,"time":"2026-08-17 19:04:12"}
 ```
 
 UART：
@@ -1161,14 +1161,14 @@ T31 入队时**已经生成文件名和时间窗**，经串口带给 Cat.1，Cat
 UART（T31 → Cat.1）：
 
 ```
-AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=1755740015,uploadTs=1755740015123,file=34020000001310267610-20260821-1755740015123.ts,msgId=person-1755740015123,pirStatus=t3x_active
+AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=1755740015,uploadTs=1755740015123,file=34020000001310267610-20260821-1755740015123.ts,msgId=person-1755740015123,pirStatus=t31x_active
 +UPLOADNEED:ok,need=1
 ```
 
 **① 开始（带文件名 + 报警时间）**
 
 ```json
-{"deviceNo":"862323084068124","dataType":"1013","reply":1,"stage":"queued","needUpload":1,"action":"upload_video","reason":"person","source":"t3x","videoType":1,"messageId":"person-1755740015123","fileName":"34020000001310267610-20260821-1755740015123.ts","uploadTs":"1755740015123","alarmTs":1755740015,"alarmTime":"2026-08-21 15:20:15","beginTs":1755740000,"endTs":1755740030,"beginTime":"2026-08-21 15:20:00","endTime":"2026-08-21 15:20:30","pirStatus":"t3x_active","time":"2026-08-21 15:20:15"}
+{"deviceNo":"862323084068124","dataType":"1013","reply":1,"stage":"queued","needUpload":1,"action":"upload_video","reason":"person","source":"t31x","videoType":1,"messageId":"person-1755740015123","fileName":"34020000001310267610-20260821-1755740015123.ts","uploadTs":"1755740015123","alarmTs":1755740015,"alarmTime":"2026-08-21 15:20:15","beginTs":1755740000,"endTs":1755740030,"beginTime":"2026-08-21 15:20:00","endTime":"2026-08-21 15:20:30","pirStatus":"t31x_active","time":"2026-08-21 15:20:15"}
 ```
 
 | 字段 | 后台用途 |
@@ -1187,7 +1187,7 @@ AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=175
 **③ 完成**
 
 ```json
-{"deviceNo":"862323084068124","dataType":"1013","reply":0,"stage":"uploaded","messageId":"person-1755740015123","ret":0,"message":"uploaded","needUpload":1,"action":"upload_video","reason":"person","source":"t3x","videoType":1,"fileName":"34020000001310267610-20260821-1755740015123.ts","httpPath":"/apps/video/detect/34020000001310267610-20260821-1755740015123.ts","uploadTs":"1755740015123","beginTime":"2026-08-21 15:20:00","endTime":"2026-08-21 15:20:30","beginTs":1755740000,"endTs":1755740030,"time":"2026-08-21 15:21:10"}
+{"deviceNo":"862323084068124","dataType":"1013","reply":0,"stage":"uploaded","messageId":"person-1755740015123","ret":0,"message":"uploaded","needUpload":1,"action":"upload_video","reason":"person","source":"t31x","videoType":1,"fileName":"34020000001310267610-20260821-1755740015123.ts","httpPath":"/apps/video/detect/34020000001310267610-20260821-1755740015123.ts","uploadTs":"1755740015123","beginTime":"2026-08-21 15:20:00","endTime":"2026-08-21 15:20:30","beginTs":1755740000,"endTs":1755740030,"time":"2026-08-21 15:21:10"}
 ```
 
 旧固件 `AT+UPLOADNEED` 可能没有 `file=`：1013 无 `reply`/`stage`/`fileName`，须等 `reply=0`。无 `fileName` 的 need 包 Cat.1 仍 30s 节流。
@@ -1378,7 +1378,7 @@ AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=175
 }
 ```
 
-4G → T3x：`AT+FRAMERATE?` / `AT+FRAMERATE=0,0,20`。完整流程：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#3-帧率2024--2025)。
+4G → T31x：`AT+FRAMERATE?` / `AT+FRAMERATE=0,0,20`。完整流程：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#3-帧率2024--2025)。
 
 ---
 
@@ -1397,7 +1397,7 @@ AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=175
 
 **应答主题**：`/panshi/app/862323084068124/personDetect`
 
-4G → T3x：`AT+PERSONDET?` / `AT+PERSONDET=1`。需 T3x 编译 `WITH_PERSON_DETECT`。详见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §5](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#5-人形检测2026--2027)。
+4G → T31x：`AT+PERSONDET?` / `AT+PERSONDET=1`。需 T31x 编译 `WITH_PERSON_DETECT`。详见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §5](./MQTT_CLOUD_REMOTE_CTRL_FLOW.md#5-人形检测2026--2027)。
 
 ---
 
@@ -1414,8 +1414,8 @@ AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=175
 9. `2010` + `action=query` → **1010**（**rest 下仍可用**）
 10. `2004` + `reboot` → **1004** `reply=1`（设备重启）
 11. `2002` enter 断 T31 → **1004** `rest_enter` + **1002**；`2002` exit 上电 T31 → **1004** `rest_exit` + **1002**（不要用 2001）
-12. `2011`（录像中）→ **1011**（T3x 在线时另发 `AT+RECORDCTRL=0,cloud`）
-12a. `2012` → **1004** + **1012** + **1010**（T3x 在线时 `AT+RECORDCTRL=1,<sec>`）
+12. `2011`（录像中）→ **1011**（T31x 在线时另发 `AT+RECORDCTRL=0,cloud`）
+12a. `2012` → **1004** + **1012** + **1010**（T31x 在线时 `AT+RECORDCTRL=1,<sec>`）
 12b. `2013` → **1013** `queued` → `uploading percent` → `reply=0`（回放）；人形无 2013，设备主动 1013 `videoType=1` 带 `fileName`/`alarmTime`
 13. `2020` → **1020**（encode 主题）
 14. `2021` 改码率 → **1021** `needReboot=0`；改分辨率 → `needReboot=1`

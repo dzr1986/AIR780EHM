@@ -34,7 +34,7 @@ C_GROUPS: list[list[str]] = [
     ["modCall", "loader", "utils"],
     ["uartAcquire", "uartRelease"],
     ["encodeHex", "decodeHex"],
-    ["hostNowMs", "t3xSecOff"],
+    ["hostNowMs", "t31xUartOff"],
     ["usbInserted", "usbBlockHost"],
     ["uart_bridge", "CRLF"],
     ["hostUsbCfg", "usbInserted"],
@@ -45,7 +45,7 @@ H_GROUPS: list[list[str]] = [
     ["getCfg", "hostQuery", "hostSet"],
     ["defineQuery", "defineSet"],
     ["idCfgFn", "encodeCfgFn", "tfCardCfgFn"],
-    ["ensT3xHost", "hostBoot"],
+    ["ensT31xHost", "hostBoot"],
     ["qryHostStat", "qryHostRecord"],
 ]
 

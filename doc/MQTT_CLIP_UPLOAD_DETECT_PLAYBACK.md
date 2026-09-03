@@ -71,7 +71,7 @@ T31 IVS 人形上升沿
 ### 1.1 UART：T31 → Cat.1 排队通知（带文件名和时间）
 
 ```
-AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=1755740015,uploadTs=1755740015123,file=34020000001310267610-20260821-1755740015123.ts,msgId=person-1755740015123,pirStatus=t3x_active
+AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=1755740015,uploadTs=1755740015123,file=34020000001310267610-20260821-1755740015123.ts,msgId=person-1755740015123,pirStatus=t31x_active
 ```
 
 | 字段 | 说明 |
@@ -84,7 +84,7 @@ AT+UPLOADNEED=1,reason=person,type=1,start=1755740000,end=1755740030,alarmTs=175
 
 Cat.1 应答：`+UPLOADNEED:ok,need=1`
 
-旧格式 `AT+UPLOADNEED=1,reason=record_done,pirStatus=t3x_active`（无 file）仍可解析。
+旧格式 `AT+UPLOADNEED=1,reason=record_done,pirStatus=t31x_active`（无 file）仍可解析。
 
 ### 1.2 MQTT 1013 排队（后台可先建报警记录）
 
@@ -98,7 +98,7 @@ Cat.1 应答：`+UPLOADNEED:ok,need=1`
   "needUpload": 1,
   "action": "upload_video",
   "reason": "person",
-  "source": "t3x",
+  "source": "t31x",
   "videoType": 1,
   "messageId": "person-1755740015123",
   "fileName": "34020000001310267610-20260821-1755740015123.ts",
@@ -109,7 +109,7 @@ Cat.1 应答：`+UPLOADNEED:ok,need=1`
   "endTs": 1755740030,
   "beginTime": "2026-08-21 15:20:00",
   "endTime": "2026-08-21 15:20:30",
-  "pirStatus": "t3x_active",
+  "pirStatus": "t31x_active",
   "ret": 0,
   "message": "queued"
 }
@@ -150,7 +150,7 @@ Cat.1 应答：`+UPLOADRESULT:ok,ret=0`
   "needUpload": 1,
   "action": "upload_video",
   "reason": "person",
-  "source": "t3x",
+  "source": "t31x",
   "videoType": 1,
   "beginTs": 1755740000,
   "endTs": 1755740030,
@@ -167,7 +167,7 @@ Cat.1 应答：`+UPLOADRESULT:ok,ret=0`
 ```text
 平台 MQTT 2013
   → Cat.1 dispatchDl2013
-  → 校验 T31 就绪；未就绪立即 1013 reply=1 ret=-1 message=t3x_not_ready
+  → 校验 T31 就绪；未就绪立即 1013 reply=1 ret=-1 message=t31x_not_ready
   → AT+UPLOADVIDEO=<need>,<type>,<start>,<end>,<maxSec>,<messageId>
   → T31 clip_upload_request(type=2) 入队
   → +UPLOADVIDEO:OK,need=1,type=2,start=...,end=...,queued=1
@@ -252,11 +252,11 @@ OK
 |-------------------|------|
 | `0` / `ok` | T31 已排队 |
 | `0` / `cancelled` | `needUpload=0` |
-| `-1` / `t3x_not_ready` | T31 未就绪，**不会**抽片 |
+| `-1` / `t31x_not_ready` | T31 未就绪，**不会**抽片 |
 | `-1` / `no_host_uart` / `fail` | UART 失败 |
 
 GUI 若 20 秒内看不到匹配的 `reply=1`，常见原因是 **IMEI 不一致**、设备未连 MQTT、或固件没有 2013。  
-`t3x_not_ready` 时**仍会有 1013**，只是 `ret=-1`。
+`t31x_not_ready` 时**仍会有 1013**，只是 `ret=-1`。
 
 ### 2.4 MQTT 1013 完成 `reply=0`
 
@@ -342,7 +342,7 @@ USB 接到电脑时 T31 往往出不了公网：抽片会成功，HTTP 报 `Coul
 |------|------|
 | `[playback] AT+UPLOADVIDEO raw=...` | T31 收到了 Cat.1 命令 |
 | `[playback] queued ok` | 已入队；Cat.1 应已发 1013 `reply=1` |
-| **没有** `AT+UPLOADVIDEO` | Cat.1 没下发：查 IMEI、MQTT 在线、`t3x_not_ready` |
+| **没有** `AT+UPLOADVIDEO` | Cat.1 没下发：查 IMEI、MQTT 在线、`t31x_not_ready` |
 | `[playback] job start` | worker 开始抽片 |
 | `extract fail` / `no overlapping record` | TF 上该时段没有录像 |
 | `[playback] http begin` → `http fail` | 抽片成功、出网失败 |

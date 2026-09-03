@@ -47,7 +47,7 @@
 |-----|---------|------|
 | 0 | ok | 已入队 |
 | 0 | cancelled | needUpload=0 取消 |
-| -1 | t3x_not_ready / fail | 未入队，可唤醒 T31 后重发 2013 |
+| -1 | t31x_not_ready / fail | 未入队，可唤醒 T31 后重发 2013 |
 
 旧包可能没有 `stage`：`reply=1` 且无 `percent` 即本档。
 
@@ -85,7 +85,7 @@ T31 抽片 + HTTP 结束后收到。**这才是上传成功/失败的最终状�
   "message": "uploaded",
   "videoType": 2,
   "reason": "cloud",
-  "source": "t3x",
+  "source": "t31x",
   "fileName": "34020000001310989442-20260820-1787157961904.ts",
   "httpPath": "/apps/video/playback/34020000001310989442-20260820-1787157961904-20260820004636643.ts",
   "uploadTs": "1787157961904",

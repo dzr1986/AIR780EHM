@@ -79,7 +79,7 @@ USB 插入仍拒绝 2002 enter（`usb_block`）。
 PIR 在 ② 里触发后：
 
 1. **不**调用 `requestExitRestForPir`（4G 继续 rest / MQTT 30s）。
-2. `t3x_policy` 允许 rest 下 PIR 唤醒 T31。
+2. `t31x_policy` 允许 rest 下 PIR 唤醒 T31。
 3. T31 起来做人形确认 / 限时录。
 4. `AT+RECORD=0` 或会话结束 → Cat.1 再 `enterSleep`（兜底）；T31 空闲轮询发 `HOSTIDLE=1` 也会被允许。
 
@@ -164,12 +164,12 @@ T31 检出人形：`AT+PERSONCNT=n`（仅有人、30s 限流）。**不再**转 
 ### 5.1 开机 → ①
 
 ```
-main → app.start → t3x_ctrl.start → bootPowerOn → GPIO22=1
+main → app.start → t31x_ctrl.start → bootPowerOn → GPIO22=1
 pir_ctrl.startHw 仍注册 GPIO30
 onPirTriggered → t31 在电 → ignore t31_on（不 MQTT、不唤醒）
   否则 shouldIgnorePirTrigger → person_detect → return
 T31 IVS → AT+PERSONCNT（有人、30s 限流；Cat.1 不转 MQTT 1010）
-T31 AT+HOSTIDLE=1 → battery_guard.shdHostSleep=false → BUSY
+T31 AT+HOSTIDLE=1 → battery_guard.shouldHostSleep=false → BUSY
 ```
 
 ### 5.2 2002 enter → ②
@@ -179,7 +179,7 @@ net_mqtt.dispatchDl2002 enter
   → 1004 rest_enter
   → POWER_ENTER_REST
   → runtime_power.setWorkMode("pir_watch")
-  → t3x_ctrl.enterSleep → AT+IPCPOWEROFF（STAGE…OK）→ GPIO22=0
+  → t31x_ctrl.enterSleep → AT+IPCPOWEROFF（STAGE…OK）→ GPIO22=0
   → 1002 rest
 ```
 
@@ -188,7 +188,7 @@ net_mqtt.dispatchDl2002 enter
 ```
 GPIO30 → 若 T31 已上电：ignore t31_on（不上行、不再唤醒）
 GPIO30 → 仅 T31 断电：onPirTriggered（不 exit rest）
-  → PIR_WAKE_T3X → requestT3xWake(pir_media)
+  → PIR_WAKE_T31X → requestT31xWake(pir_media)
   → T31 上电 → **IVS 人形为主**；后续 PIR 丢掉
   → AT+RECORD=0 或 HOSTIDLE=1
   → Cat.1 再 enterSleep（仍 pir_watch）
@@ -203,7 +203,7 @@ GPIO30 → 仅 T31 断电：onPirTriggered（不 exit rest）
 | Cat.1 `APP_RUNTIME.work_mode` | 默认 `person_detect` |
 | `HOST_EVT_CFG.allow_host_idle_sleep` | true（真正放行看 `workMode`） |
 | `BATTERY_CFG.guard.host_idle_below_percent` | **不再驱动模式切换**（仅兼容旧字段） |
-| T31x `DEFAULT_T3X_BATTERY_ALWAYS_ON_PERCENT` | **不再用于 HOSTIDLE** |
+| T31x `DEFAULT_T31X_BATTERY_ALWAYS_ON_PERCENT` | **不再用于 HOSTIDLE** |
 | GETCFG | 增加 `workmode=` |
 
 刷机：Cat.1 `python tools/gui/flash/cat1_flash.py flash-script`；T31x 编完 `python tools/t31x/t31x_lrz_push.py --restart`。

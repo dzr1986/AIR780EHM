@@ -2,7 +2,7 @@
 
 > 适用：`lib/uart_bridge.lua`（主路径**唯一** UART 入口）  
 > **AT 指令方向与完整清单** → [`UART_AT_COMMANDS.md`](UART_AT_COMMANDS.md)（推荐阅读）  
-> T3x 主机 AT 由 `user/host_uart.uart_at_cmd` 统一处理；全量交互见 [`T3X_4G_AT_INTERACTION.md`](T3X_4G_AT_INTERACTION.md)，唤醒见 [`T3X_HOSTEVT_PROTOCOL.md`](T3X_HOSTEVT_PROTOCOL.md)。  
+> T31x 主机 AT 由 `user/host_uart.uart_at_cmd` 统一处理；全量交互见 [`T31X_4G_AT_INTERACTION.md`](T31X_4G_AT_INTERACTION.md)，唤醒见 [`T31X_HOSTEVT_PROTOCOL.md`](T31X_HOSTEVT_PROTOCOL.md)。  
 > 配置：`config.lua` → `UART_CFG.id`（默认 1）、`UART_CFG.baud`（默认 115200）  
 > 更新：2026-05-24
 
@@ -35,12 +35,12 @@ ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（hos
 | `AT+GETCFG` | `+GETCFG:version=...,online=0,power=1,...` | 由 **`user/host_uart`** 应答（版本、在线、低功耗、电量等） |
 | `AT+IMEI` / `AT+IMEI?` | `+IMEI:862323084068124` `OK` | Cat.1 模组 IMEI（与 MQTT ClientId 同源） |
 | `AT+IPCINFO?` | `+IPCINFO:imei=...,gb28181Id=...` `OK` | 设备标识汇总（见 [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) §2.8） |
-| `AT+PIRSTAT?` | `+PIRSTAT:suspended=0,recording=0,cnt_hw_accept=...` | PIR 策略与触发统计（4G 保存），见 [T3X_4G_AT_INTERACTION.md](T3X_4G_AT_INTERACTION.md) §5 |
+| `AT+PIRSTAT?` | `+PIRSTAT:suspended=0,recording=0,cnt_hw_accept=...` | PIR 策略与触发统计（4G 保存），见 [T31X_4G_AT_INTERACTION.md](T31X_4G_AT_INTERACTION.md) §5 |
 | `AT+PIRCLR` | `+PIRCLR:OK` | 清零 PIR 统计计数（不清策略） |
-| `AT+HOSTEVT?` | `+HOSTEVT:sid,evt` | 唤醒 pending（查询）+ `AT+HOSTEVTCLR`（清除），见 [T3X_HOSTEVT_PROTOCOL.md](T3X_HOSTEVT_PROTOCOL.md) |
-| `AT+HOSTEVTPOLL?` | `+HOSTEVTPOLL:<ms>` | T3x 空闲 `HOSTEVT?` 轮询间隔（毫秒）；见 [T3X_HOSTEVT_SLEEP.md](T3X_HOSTEVT_SLEEP.md) |
+| `AT+HOSTEVT?` | `+HOSTEVT:sid,evt` | 唤醒 pending（查询）+ `AT+HOSTEVTCLR`（清除），见 [T31X_HOSTEVT_PROTOCOL.md](T31X_HOSTEVT_PROTOCOL.md) |
+| `AT+HOSTEVTPOLL?` | `+HOSTEVTPOLL:<ms>` | T31x 空闲 `HOSTEVT?` 轮询间隔（毫秒）；见 [T31X_HOSTEVT_SLEEP.md](T31X_HOSTEVT_SLEEP.md) |
 | `AT+WLED?` / `AT+WLEDEN?` | `+WLED:0` 或 `+WLED:1` | 白光灯状态（4G 侧；MQTT 2004 同源） |
-| `AT+WLED=0/1` / `AT+WLEDEN=0/1` | `+WLED:0/1` + `OK` | 关/开白光灯，转发 T3x 执行 |
+| `AT+WLED=0/1` / `AT+WLEDEN=0/1` | `+WLED:0/1` + `OK` | 关/开白光灯，转发 T31x 执行 |
 
 ### 2.2 配置（`user/host_uart`）
 
@@ -49,7 +49,7 @@ ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（hos
 | `AT+SETCFG=interval,<秒>` | 设置 `APP_RUNTIME.low_power_interval_sec` |
 | `AT+SETCFG=devicemodel,<文本>` | 设置 `APP_META.device_model` |
 | `AT+SETCFG=hexrpt,1` | 开启 `host_uart` 原始数据 `+RXHEX` 回显（0/off 关闭） |
-| `AT+SERVCREATE=<sid>,<ip>,<port>,…` | **TCP 通道**（10 段逗号），`[channel]` → 见 [T3X_CAT1_AT_COMMAND_SPEC.md](T3X_CAT1_AT_COMMAND_SPEC.md) §3 |
+| `AT+SERVCREATE=<sid>,<ip>,<port>,…` | **TCP 通道**（10 段逗号），`[channel]` → 见 [T31X_CAT1_AT_COMMAND_SPEC.md](T31X_CAT1_AT_COMMAND_SPEC.md) §3 |
 | `AT+SERVCLOSE=<sid>` | 关闭 TCP 通道记录 |
 | `AT+MQTTCFG=<host>;<port>;<ssl>;<user>;<password>;<client_id>` | **MQTT Broker**（6 段分号），`[mqtt]` → §4 |
 
@@ -78,9 +78,9 @@ ub.write(binaryData)     -- 驱动层；HEX 下发请走 AT+SENDHEX / HEX:（hos
 
 未识别的 AT：由 `host_uart.uart_at_cmd` 返回 `\r\nERROR\r\n`
 
-### 2.5 Cat.1 → T3x（4G 主动发）
+### 2.5 Cat.1 → T31x（4G 主动发）
 
-T3x 侧 `cat1_host/uart_host_cmd.c` 解析。详表：[UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) §3。
+T31x 侧 `cat1_host/uart_host_cmd.c` 解析。详表：[UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) §3。
 
 | 命令 | 响应 | 说明 |
 |------|------|------|
@@ -116,7 +116,7 @@ T3x 侧 `cat1_host/uart_host_cmd.c` 解析。详表：[UART_AT_COMMANDS.md](UART
 | 函数 | 说明 |
 |------|------|
 | `start(options)` | 读 `UART_CFG` 打开串口；`options` 仅含 `onRaw`、`onLine` |
-| `setOnRaw(fn)` / `setOnLine(fn)` | 启动后单独挂载回调 |
+| `setLineHandler(fn)` | 启动后单独挂载行(整行)回调（原始 RX 经 start 的 options.onRaw 传入） |
 | `stop()` | 关闭 UART |
 | `sendString(text, withCrlf?)` | 发字符串 |
 | `write(data)` | 发原始字节 |
@@ -127,7 +127,7 @@ T3x 侧 `cat1_host/uart_host_cmd.c` 解析。详表：[UART_AT_COMMANDS.md](UART
 | 回调 | 用途 |
 |------|------|
 | `onRaw` | 原始 RX；`host_uart.onRxRaw` 内可做 hexrpt |
-| `onLine` | 拆行后交给 `host_uart`（由 `host_uart.setOnLine` 挂载） |
+| `onLine` | 拆行后交给 `host_uart`（由 `host_uart.setLineHandler` 挂载） |
 
 低功耗/重启/关机等经 `host_uart.start(opts)` 注入回调。
 
@@ -137,8 +137,8 @@ T3x 侧 `cat1_host/uart_host_cmd.c` 解析。详表：[UART_AT_COMMANDS.md](UART
 
 | 能力 | 串口 | MQTT |
 |------|------|------|
-| 设备标识 | `AT+IPCINFO?` / `AT+GB28181?`（4G→T3x） | `dataType=2006`→1006 |
-| TF/SD 卡 | `AT+TFCARD?`（4G→T3x） | `dataType=2007`→1007 |
+| 设备标识 | `AT+IPCINFO?` / `AT+GB28181?`（4G→T31x） | `dataType=2006`→1006 |
+| TF/SD 卡 | `AT+TFCARD?`（4G→T31x） | `dataType=2007`→1007 |
 | 低功耗 | `AT+LOWPOWER` | `dataType=2002` |
 | 重启 | `AT+REBOOT` | `dataType=2004` action=reboot |
 | 关机 | `AT+POWEROFF` | `dataType=2004` action=off |

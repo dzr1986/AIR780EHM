@@ -50,7 +50,7 @@ local ALERT_CLOUD_PATCH = {
 
 local CLOUD_STAT_KEYS = {
     "ipcReady", "gb28181Online", "tfPresent", "personDetectEnabled",
-    "personDetectAvailable", "timeSynced", "recordingT3x", "wledEnable", "cat1Link",
+    "personDetectAvailable", "timeSynced", "recordingt31x", "wledEnable", "cat1Link",
 }
 
 local cloudRefreshBusy = false
@@ -82,7 +82,7 @@ function ipcCloudStatFields()
         vals[i] = cloudInt(stat, CLOUD_STAT_KEYS[i])
     end
     return string.format(
-        ',"ipcReady":%d,"gb28181Online":%d,"tfPresent":%d,"personDetectEnabled":%d,"personDetectAvailable":%d,"timeSynced":%d,"recordingT3x":%d,"wledEnable":%d,"cat1Link":%d',
+        ',"ipcReady":%d,"gb28181Online":%d,"tfPresent":%d,"personDetectEnabled":%d,"personDetectAvailable":%d,"timeSynced":%d,"recordingt31x":%d,"wledEnable":%d,"cat1Link":%d',
         vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7], vals[8], vals[9])
 end
 
@@ -152,9 +152,9 @@ end
 
 local function applyAlertSideEffects(alertCode, rule)
     if rule.map1011 then
-        local uploadMode, quality = pirCtrl.syncStopT3x(alertCode)
-        if deps.pubT3xStop then
-            deps.pubT3xStop(alertCode, uploadMode, quality)
+        local uploadMode, quality = pirCtrl.syncStopT31x(alertCode)
+        if deps.pubT31xStop then
+            deps.pubT31xStop(alertCode, uploadMode, quality)
         end
     end
     if rule.reconcile and not recordReconcileBusy then

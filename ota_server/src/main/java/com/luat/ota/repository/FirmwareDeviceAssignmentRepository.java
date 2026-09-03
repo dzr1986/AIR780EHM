@@ -12,4 +12,6 @@ public interface FirmwareDeviceAssignmentRepository extends JpaRepository<Firmwa
     boolean existsByFirmwareIdAndImei(Long firmwareId, String imei);
 
     void deleteByFirmwareId(Long firmwareId);
+
+    void deleteByFirmwareIdAndImeiIn(Long firmwareId, List<String> imeis);
 }

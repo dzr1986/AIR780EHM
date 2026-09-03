@@ -13,8 +13,8 @@ local rntmPwr = require "runtime_power"
 local pirCtrl = require "pir_ctrl"
 local ipc_sup = require "ipc_supv"
 local deviceId = require "device_id"
-local t3xNotify = require "t3x_notify"
-local t3xCtrl = require "t3x_ctrl"
+local t31xNotify = require "t31x_notify"
+local t31xCtrl = require "t31x_ctrl"
 local logFuncs = utils.mkLogFns("net_mqtt")
 local mqttInfo = logFuncs.info
 local mqttWarn = logFuncs.warn
@@ -28,42 +28,42 @@ _G[_modname] = _M
 ----------------------------------------------------------------
 
 local DT = {
-    UL_WAKEUP = "1001",
-    UL_REST = "1002",
-    UL_STATUS = "1003",
-    UL_CONTROL = "1004",
-    UL_SIM = "1005",
-    UL_DEVICE_ID = "1006",
-    UL_TF_CARD = "1007",
-    UL_TF_FORMAT = "1009",
-    UL_VERSION_QUERY = "1008",
-    UL_PIR_DETECT = "1010",
-    UL_PIR_STOP = "1011",
-    UL_PIR_START = "1012",
+	UL_WAKEUP = "1001",
+	UL_REST = "1002",
+	UL_STATUS = "1003",
+	UL_CONTROL = "1004",
+	UL_SIM = "1005",
+	UL_DEVICE_ID = "1006",
+	UL_TF_CARD = "1007",
+	UL_TF_FORMAT = "1009",
+	UL_VERSION_QUERY = "1008",
+	UL_PIR_DETECT = "1010",
+	UL_PIR_STOP = "1011",
+	UL_PIR_START = "1012",
     UL_UPLOAD_VIDEO = "1013",
-    UL_ENCODE_SET = "1021",
-    UL_ENCODE_QUERY = "1020",
-    UL_RECORD_TIME_QUERY = "1022",
-    UL_RECORD_TIME_SET = "1023",
-    UL_FRAMERATE_QUERY = "1024",
-    UL_FRAMERATE_SET = "1025",
-    UL_PERSON_DETECT_QUERY = "1026",
-    UL_PERSON_DETECT_SET = "1027",
-    UL_MIC_QUERY = "1028",
-    UL_MIC_SET = "1029",
-    UL_SOFTPHOTO_QUERY = "1030",
-    UL_SOFTPHOTO_SET = "1031",
-    DL_WAKEUP = "2001",
-    DL_REST = "2002",
-    DL_STATUS = "2003",
-    DL_CONTROL = "2004",
-    DL_SIM = "2005",
-    DL_DEVICE_ID = "2006",
-    DL_TF_CARD = "2007",
-    DL_TF_FORMAT = "2009",
-    DL_VERSION_QUERY = "2008",
-    DL_PIR_CFG = "2010",
-    DL_PIR_STOP = "2011",
+	UL_ENCODE_SET = "1021",
+	UL_ENCODE_QUERY = "1020",
+	UL_RECORD_TIME_QUERY = "1022",
+	UL_RECORD_TIME_SET = "1023",
+	UL_FRAMERATE_QUERY = "1024",
+	UL_FRAMERATE_SET = "1025",
+	UL_PERSON_DETECT_QUERY = "1026",
+	UL_PERSON_DETECT_SET = "1027",
+	UL_MIC_QUERY = "1028",
+	UL_MIC_SET = "1029",
+	UL_SOFTPHOTO_QUERY = "1030",
+	UL_SOFTPHOTO_SET = "1031",
+	DL_WAKEUP = "2001",
+	DL_REST = "2002",
+	DL_STATUS = "2003",
+	DL_CONTROL = "2004",
+	DL_SIM = "2005",
+	DL_DEVICE_ID = "2006",
+	DL_TF_CARD = "2007",
+	DL_TF_FORMAT = "2009",
+	DL_VERSION_QUERY = "2008",
+	DL_PIR_CFG = "2010",
+	DL_PIR_STOP = "2011",
     DL_PIR_START = "2012",
     DL_UPLOAD_VIDEO = "2013",
     DL_ENCODE_SET = "2021",
@@ -101,29 +101,29 @@ local hookFlags = {
     hostDrainHooked = false,
 }
 local callbacks = {
-    onOffline = nil,
-    onMessage = nil,
+	onOffline = nil,
+	onMessage = nil,
 }
 local state = {
-    reconnect_count = 0,
+	reconnect_count = 0,
 }
 local hostQueue = {}
-local HOST_DL_NEEDS_T3X = {
-    [DT.DL_DEVICE_ID] = true,
-    [DT.DL_TF_CARD] = true,
-    [DT.DL_TF_FORMAT] = true,
-    [DT.DL_ENCODE_QUERY] = true,
-    [DT.DL_ENCODE_SET] = true,
-    [DT.DL_RECORD_TIME_QUERY] = true,
-    [DT.DL_RECORD_TIME_SET] = true,
-    [DT.DL_FRAMERATE_QUERY] = true,
-    [DT.DL_FRAMERATE_SET] = true,
-    [DT.DL_PERSON_DETECT_QUERY] = true,
-    [DT.DL_PERSON_DETECT_SET] = true,
-    [DT.DL_MIC_QUERY] = true,
-    [DT.DL_MIC_SET] = true,
-    [DT.DL_SOFTPHOTO_QUERY] = true,
-    [DT.DL_SOFTPHOTO_SET] = true,
+local HOST_DL_NEEDS_t31x = {
+	[DT.DL_DEVICE_ID] = true,
+	[DT.DL_TF_CARD] = true,
+	[DT.DL_TF_FORMAT] = true,
+	[DT.DL_ENCODE_QUERY] = true,
+	[DT.DL_ENCODE_SET] = true,
+	[DT.DL_RECORD_TIME_QUERY] = true,
+	[DT.DL_RECORD_TIME_SET] = true,
+	[DT.DL_FRAMERATE_QUERY] = true,
+	[DT.DL_FRAMERATE_SET] = true,
+	[DT.DL_PERSON_DETECT_QUERY] = true,
+	[DT.DL_PERSON_DETECT_SET] = true,
+	[DT.DL_MIC_QUERY] = true,
+	[DT.DL_MIC_SET] = true,
+	[DT.DL_SOFTPHOTO_QUERY] = true,
+	[DT.DL_SOFTPHOTO_SET] = true,
     [DT.DL_UPLOAD_VIDEO] = true,
 }
 local DOWNLINK_HANDLERS
@@ -187,23 +187,23 @@ local function mqttLogEnabled()
 end
 
 local function pubAppEvent(eventKey, ...)
-    local name = APP_EVENTS and APP_EVENTS[eventKey]
-    if name then
-        sys.publish(name, ...)
-    end
+	local name = APP_EVENTS and APP_EVENTS[eventKey]
+	if name then
+		sys.publish(name, ...)
+	end
 end
 
 local escJson = utils.escJson
 
 local function pubUplink(opts)
-    opts = opts or {}
-    if not isConnected then
-        mqttWarn("publish_skip_not_connected", opts.dataType or "", opts.suffix or "")
-        return false
-    end
+	opts = opts or {}
+	if not isConnected then
+		mqttWarn("publish_skip_not_connected", opts.dataType or "", opts.suffix or "")
+		return false
+	end
     local t = conn.pubTopic() .. (opts.suffix or "event")
     local payload = opts.payload or conn.fmtUplink(opts.dataType, opts.fields)
-    if opts.dataType ~= DT.UL_STATUS or mqttLogEnabled() then
+	if opts.dataType ~= DT.UL_STATUS or mqttLogEnabled() then
         mqttInfo("uplink", opts.dataType or "", t)
     end
     sys.publish("mqtt_pub", t, payload, opts.qos or 1)
@@ -214,14 +214,14 @@ local function pubUplink(opts)
     end
     if opts.onPublished then
         opts.onPublished(t, payload)
-    end
-    return true
+	end
+	return true
 end
 
 local function getWledState()
-    local hu = utils.hostUart()
-    if hu then
-        return hu.wledState() == 1 and 1 or 0
+    local hif = utils.hostUart()
+    if hif then
+        return hif.wledState() == 1 and 1 or 0
     end
     return rntmPwr.getWledOn() or 0
 end
@@ -238,10 +238,10 @@ local ctx = {
     pirCtrl = pirCtrl,
     utils = utils,
     loader = loader,
-    t3xCtrl = t3xCtrl,
-    t3xNotify = t3xNotify,
+    t31xCtrl = t31xCtrl,
+    t31xNotify = t31xNotify,
     hostQueue = hostQueue,
-    HOST_DL_NEEDS_T3X = HOST_DL_NEEDS_T3X,
+    HOST_DL_NEEDS_t31x = HOST_DL_NEEDS_t31x,
     getDeviceId = conn.getDeviceId,
     msgIdJson = conn.msgIdJson,
     ipc_sup = ipc_sup,
@@ -323,20 +323,20 @@ local function bindIpHandlers(client, cellAdp, settleMs, autoMs, loseCoolSec, tr
     end
     state.ip_ready_hdl = function(ipAdapter)
         if cellAdp ~= nil and ipAdapter ~= nil and ipAdapter ~= cellAdp then
-            return
-        end
+		return
+	end
         if client and not isConnected then
-            sys.taskInit(function()
+		sys.taskInit(function()
                 sys.wait(settleMs > 0 and settleMs or TIMEOUT.ipReadyHandlerWait)
                 pcall(function() client:autoreconn(true, autoMs) end)
                 tryMqttConn("ip_ready")
-            end)
-        end
+	end)
+end
     end
     state.ip_lose_hdl = function(ipAdapter)
         if cellAdp ~= nil and ipAdapter ~= nil and ipAdapter ~= cellAdp then
-            return
-        end
+		return
+	end
         state.ip_lose_until = os.time() + (loseCoolSec > 0 and loseCoolSec or TIMEOUT.ipLoseCooldownSec)
         isConnected = false
         rntmPwr.setOnline(false)
@@ -362,7 +362,7 @@ local function onMqttConack()
     ctx.dl.maybePubIdentity()
     pcall(function()
         ctx.pub.pubVersion({ messageId = "boot" })
-    end)
+	end)
 end
 
 local function onMqttDisconnect()
@@ -382,13 +382,13 @@ local function mqttTask()
     local mcfg = conn.mqttCfg()
     if not mcfg.host or mcfg.host == "" then
         mqttError("mqtt_no_host_config")
-        return
-    end
+		return
+	end
     local clientId = (mcfg.client_id and mcfg.client_id ~= "") and mcfg.client_id or deviceNo
     if not mqtt or not mqtt.create then
         mqttError("mqtt_no_login_config")
-        return
-    end
+		return
+	end
     local cellAdp = conn.cellAdapter()
     if cellAdp ~= nil and socket.dft then
         pcall(socket.dft, cellAdp)
@@ -404,49 +404,49 @@ local function mqttTask()
     end
     mqttClient = createMqttClient(mcfg, cellAdp, clientId, autoMs)
     if not mqttClient then
-        return
-    end
+		return
+	end
     local minConnSec = tonumber(mcfg.min_connect_interval_sec) or TIMEOUT.minConnectSec
     local loseCoolSec = tonumber(mcfg.ip_lose_cooldown_sec) or TIMEOUT.ipLoseCooldownSec
     local lastConnAt = 0
     state.ip_lose_until = 0
     local function tryMqttConn(reason)
         if not mqttClient or isConnected then
-            return
-        end
+			return
+		end
         local now = os.time()
         if now < (state.ip_lose_until or 0) then
-            return
-        end
+			return
+		end
         if minConnSec > 0 and lastConnAt > 0 and (now - lastConnAt) < minConnSec then
-            return
-        end
+				return
+			end
         if not conn.adapterReady(cellAdp) then
-            return
-        end
+			return
+		end
         lastConnAt = now
         mqttInfo("mqtt_try_connect", reason or "manual")
-        pcall(function() mqttClient:connect() end)
-    end
+			pcall(function() mqttClient:connect() end)
+		end
     mqttInfo("mqtt_connecting", mcfg.host, tonumber(mcfg.port) or 1883, clientId,
         cellAdp ~= nil and tostring(cellAdp) or "default")
     bindIpHandlers(mqttClient, cellAdp, settleMs, autoMs, loseCoolSec, tryMqttConn)
-    mqttClient:on(function(client, event, data, payload)
-        if event == "conack" then
+	mqttClient:on(function(client, event, data, payload)
+		if event == "conack" then
             onMqttConack()
             conn.subDown(client)
-        elseif event == "recv" then
+		elseif event == "recv" then
             dispatch.onServerMsg(data, payload)
-        elseif event == "disconnect" then
+		elseif event == "disconnect" then
             onMqttDisconnect()
-        elseif event == "error" or event == "connect" then
-            if event == "error" then
-                mqttWarn("mqtt_error", tostring(data or ""))
-            elseif mqttLogEnabled() then
-                mqttInfo("mqtt_event_connect")
-            end
-        end
-    end)
+		elseif event == "error" or event == "connect" then
+			if event == "error" then
+				mqttWarn("mqtt_error", tostring(data or ""))
+			elseif mqttLogEnabled() then
+				mqttInfo("mqtt_event_connect")
+			end
+		end
+	end)
     tryMqttConn("boot")
     if not statFlags.batterySubscribed then
         stat.subBatteryStatus()
@@ -455,9 +455,9 @@ local function mqttTask()
     if not statFlags.timerStarted then
         stat.startStatReporter()
     end
-    while true do
+	while true do
         local ret, pubTopicName, data, qos = sys.waitUntil("mqtt_pub", TIMEOUT.pubLoopWait)
-        if ret then
+		if ret then
             if pubTopicName == "close" then
                 break
             end
@@ -501,40 +501,40 @@ local function ensureConnectedForShutdown(waitMs)
 end
 
 function notifyPowerOff(reason, callback)
-    sys.taskInit(function()
-        reason = reason or "unknown"
+	sys.taskInit(function()
+		reason = reason or "unknown"
         local guardCfg = (cfgm.get("BATTERY_CFG") or {}).guard or {}
         local waitMs = tonumber(guardCfg.shutdown_mqtt_wait_ms) or TIMEOUT.shutdownWaitDefault
         local graceMs = tonumber(guardCfg.shutdown_mqtt_grace_ms) or TIMEOUT.shutdownGraceDefault
         if ensureConnectedForShutdown(waitMs) then
-            if reason ~= "mqtt" then
+			if reason ~= "mqtt" then
                 local msg = POWEROFF_MSG[reason] or ("shutdown_" .. tostring(reason))
                 ctx.pub.pubCtrlReply("off", 0, msg, {})
-            end
+			end
             ctx.pub.pubStatus({ skipIpcStatRefresh = true })
-            sys.wait(graceMs)
-        end
-        if type(callback) == "function" then
-            callback()
-        end
-    end)
+			sys.wait(graceMs)
+		end
+		if type(callback) == "function" then
+			callback()
+		end
+	end)
 end
 
 function pubRaw(topicSuffix, payload, qos)
-    if not isConnected or not mqttClient then
-        return false
-    end
-    if not topicSuffix or topicSuffix == "" or not payload or payload == "" then
-        return false
-    end
+	if not isConnected or not mqttClient then
+		return false
+	end
+	if not topicSuffix or topicSuffix == "" or not payload or payload == "" then
+		return false
+	end
     local t
-    if topicSuffix:sub(1, 1) == "/" then
+	if topicSuffix:sub(1, 1) == "/" then
         t = topicSuffix
-    else
+	else
         t = conn.pubTopic() .. topicSuffix
-    end
+	end
     sys.publish("mqtt_pub", t, payload, qos or 1)
-    return true
+	return true
 end
 
 function restart()
@@ -550,7 +550,7 @@ function start(options)
     if started then
         return true
     end
-    if options then
+	if options then
         if options.onOffline then
             callbacks.onOffline = options.onOffline
         end
@@ -567,11 +567,11 @@ function start(options)
     end
     bootstrapNet()
     if not mqttTaskStarted then
-        sys.taskInit(mqttTask)
+	sys.taskInit(mqttTask)
         mqttTaskStarted = true
     end
-    started = true
-    return true
+	started = true
+	return true
 end
 
 function stop()
@@ -579,45 +579,45 @@ function stop()
     if isConnected and mqttClient and rntmPwr.isLowPowerMode() then
         pcall(ctx.pub.pubRest, {
             reason = rntmPwr.getLastRestReason() or "unknown",
-            source = "reconnect",
-        })
+			source = "reconnect",
+		})
         if canWait then
             sys.wait(TIMEOUT.stopRestWait)
         end
-    end
-    if mqttClient then
-        pcall(function()
-            mqttClient:autoreconn(false)
-        end)
-        sys.publish("mqtt_pub", "close", "", 0)
+	end
+	if mqttClient then
+		pcall(function()
+			mqttClient:autoreconn(false)
+		end)
+		sys.publish("mqtt_pub", "close", "", 0)
         if canWait then
             sys.wait(TIMEOUT.stopCloseWait)
         end
-        pcall(function()
-            mqttClient:close()
-        end)
-        mqttClient = nil
-    end
-    isConnected = false
+		pcall(function()
+			mqttClient:close()
+		end)
+		mqttClient = nil
+	end
+	isConnected = false
     rntmPwr.setOnline(false)
-    started = false
+	started = false
     mqttTaskStarted = false
-    return true
+	return true
 end
 
 function getState()
-    return {
-        started = started,
-        connected = isConnected,
-        client = mqttClient ~= nil,
-        reconnect_count = state.reconnect_count,
-    }
+	return {
+		started = started,
+		connected = isConnected,
+		client = mqttClient ~= nil,
+		reconnect_count = state.reconnect_count,
+	}
 end
 
 stat.loadStatIvCfg()
 ipc_sup.bind({
     pubUplink = pubUplink,
     dtUlControl = DT.UL_CONTROL,
-    pubT3xStop = ctx.pub.pubT3xStop,
+    pubT31xStop = ctx.pub.pubT31xStop,
 })
 return _M

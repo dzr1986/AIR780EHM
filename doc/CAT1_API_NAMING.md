@@ -1,7 +1,7 @@
 # Cat.1 Lua API 命名真源（001.000.140）
 
 > **代码真源**：仓库根 `user/`、`lib/` · **版本**：`user/main.lua` → `VERSION`  
-> **协处理器系列写法**：[T3X_NAMING.md](T3X_NAMING.md)（`t3x` / `T3x` / `T3X`，与本文 API 驼峰无关）  
+> **协处理器系列写法**：[T31X_NAMING.md](T31X_NAMING.md)（`t31x` / `T31x` / `T31X`，与本文 API 驼峰无关）  
 > **优化账本**：[USER_LIB_OPTIMIZATION_NEXT.md](USER_LIB_OPTIMIZATION_NEXT.md)
 
 ---
@@ -13,12 +13,15 @@
 | `pub*` | MQTT 上行、告警、Boot | `pubUplink`、`pubStatus`、`pubCtrlReply` |
 | `dl*` | MQTT 下行 handler | `dlRest`、`dlPirCfg`、`dlMsgId` |
 | `snap*` | 快照采集 | `snapBattery`、`snapRadio`、`snapSim` |
-| `sched*` | 定时/对账调度 | `schedCloudStat`、`schedPirSleep` |
-| `ntf*` | 非 MQTT 通知、事件脉冲 | `ntfHost`、`ntfHostIdle`、`ntfStatIv` |
-| `ref*` | 刷新/对账 | `refCloudStat`、`refDevId`、`refTfCard` |
+| `sched*` | 定时/对账调度 | `schedPirSleep`、`schedStopFallback` |
+| `ref*` | 刷新/对账 | `refCloudStat1003`、`refDevId`、`refTfCard` |
 | `on*` | 事件回调 | `onFirstHostAt`、`onPmdMsg`、`onRxRaw` |
-| `bld*` | 拼装字符串/表 | `bldAtBody`、`bldSpecs` |
+| `build*` | 拼装字符串/表（151 起取代 `bld*`） | `buildStatBody`、`buildReqOpts` |
+| `notify*` | 非 MQTT 通知（151 起取代 `ntf*`） | `notifyHostIdle`、`notifyUsbIdle` |
+| `ntf*` | **仅保留** `ntfHost`（`lib/t31x_notify` 依赖） | `ntfHost` |
 | camelCase | 模块内 helper、ctx 键 | `hostQuery`、`modCall`、`patchCloud` |
+
+> `bldPirWake` / `bldHostEvtBody` 为遗留名，后续随改动迁移到 `build*`。
 
 **135 起不再挂 `_M` 兼容别名**；文档与调用只写上表真名。
 
@@ -26,7 +29,7 @@
 
 ## 2. 核心模块导出
 
-### 2.1 `host_uart`（+ `hu_cmd` / `hu_ipc`）
+### 2.1 `host_uart`（+ `hif_cmd` / `hif_ipc`）
 
 | API | 说明 |
 |-----|------|
@@ -40,7 +43,7 @@
 | `isHuBusy()` | host 查询/格式化 busy |
 | `qryIpcCloudStat(ms)` | `AT+IPCSTAT?` |
 | `mergeTfCloud()` | TF 字段并入云 stat |
-| `refCloudF1003(ms, force)` | 强制刷新并上报 1003 |
+| `refCloudStat1003(ms, force)` | 强制刷新并上报 1003 |
 | `hostQuery` / `hostSet` | ipc.bind 内 AT 查询/设置框架 |
 | `getCloudStat()` | 缓存 IPC 云 stat |
 | `queryHostEncode` 等 | **保留** `queryHost*`（选项集复杂） |
@@ -52,8 +55,8 @@
 | `busyKey` / `cacheKey` | state 互斥与缓存字段名 |
 | `busyReturn` / `defaultResult` | busy/非协程早退返回值 |
 | `timeoutMs` / `timeoutCfgKey` / `defaultTimeout` | 超时与 cfg 字段引用 |
-| `policyTag` | 传给 `ensT3xHost` 的 T3x 策略 tag |
-| `whenDisabled` / `onNoT3x` / `onNoUart` | 禁用与 T3x/UART 不可用回调 |
+| `policyTag` | 传给 `ensT31xHost` 的 T31x 策略 tag |
+| `whenDisabled` / `onNoT31x` / `onNoUart` | 禁用与 T31x/UART 不可用回调 |
 | `waitBoot` / `skipQuiet` | 等 host AT / 跳过 quiet 窗口 |
 | `beforeSend` / `atCmd` / `ackEvent` | 发送前钩子、AT 串、ACK 事件 |
 | `onResponse` / `onError` / `requireParsed` | 响应/错误/缓存 parsed 要求 |
@@ -73,13 +76,13 @@ ctx 键：`hostNowMs`、`noteUartLinkOk`、`wledGet`、`okTail`、`hexLine`、`s
 | `pubRaw(topic, payload, qos)` | 原始 publish |
 | `subDownlink(client)` | 订阅下行 topic |
 | `dispatchDl(topic, payload)` | 200x 分发 |
-| `setStatIv(sec, persist)` | 1003 间隔 |
+| `setStatInterval(sec, persist)` | 1003 间隔 |
 | `bootstrapNet()` | 等网 + 启动 MQTT |
 | `sameMqttCfg` / `setMqttCfg` | 配置比较/写入 |
 | `drainHostQueue()` / `hasHostQueue()` | host 待办队列 |
 | `notifyPowerOff(reason, cb)` | 关机前 MQTT（主文件） |
 
-`ipc_supervision.bind` 注入键：`pubUplink`、`dtUlControl`、`pubT3xStop`。
+`ipc_supervision.bind` 注入键：`pubUplink`、`dtUlControl`、`pubT31xStop`。
 
 下行 handler：`dlRest`、`dlStatus`、`dlControl`、`dlSim`、`dlTfFormat`、`dlPirCfg`、`dlPirStart`、`dlPirStop`、`dlUploadVideo`；helper `dlMsgId`、`pubReply`、`refDevId`。
 
@@ -97,7 +100,7 @@ ctx 键：`hostNowMs`、`noteUartLinkOk`、`wledGet`、`okTail`、`hexLine`、`s
 
 | API | 说明 |
 |-----|------|
-| `hostUart()` / `uartBridge()` | 懒加载模块 |
+| `getHostUart()` / `getUartBridge()` | 懒加载模块 |
 | `mkLogFns(tag)` | 日志表 |
 | `gpio_util.setupInput` / `setupInputEntry` / `setupOutput` | GPIO 封装 |
 | `gpio_util.triggerMode` | 边沿枚举（配置键仍为 `trigger_mode`） |
@@ -105,31 +108,31 @@ ctx 键：`hostNowMs`、`noteUartLinkOk`、`wledGet`、`okTail`、`hexLine`、`s
 ### 2.5 唤醒链
 
 ```text
-t3x_policy.reqT3xWake(reason, sid, evt)
-  → t3x_notify.wakeHost
+t31x_policy.reqT31xWake(reason, sid, evt)
+  → t31x_notify.wakeHost
   → providers.pushBeforeNotify (app → time_sync)
   → providers.ntfHost → host_uart.ntfHost
-  → t3x_ctrl.ensNormalPwrOn / pulseMcuInt
+  → t31x_ctrl.ensNormalPwrOn / pulseMcuInt
 ```
 
-`mayPowerT3x(reason)` PIR 类白名单：`ntfHost`、`pir_media`、`exit_low_power`、`pir_stop*`、`wled`。
+`mayPowerT31x(reason)` PIR 类白名单：`ntfHost`、`pir_media`、`exit_low_power`、`pir_stop*`、`wled`。
 
 ### 2.6 其它 user 模块（节选）
 
 | 模块 | API |
 |------|-----|
-| `pir_ctrl` | `bldAtBody()` |
-| `battery_guard` | `ntfHostIdle()`、`shdHostSleep()`、`canHostSleep()` |
-| `app` | `ntfT3xUsbIdle`、`applyUsbPower`、`setupUart` |
+| `pir_ctrl` | `buildStatBody()` |
+| `battery_guard` | `notifyHostIdle()`、`shouldHostSleep()`、`canHostSleep()` |
+| `app` | `notifyUsbIdle`、`applyUsbPower`、`setupUart` |
 | `time_sync` | `pushBeforeNotify` → `ntfHost` |
-| `fota_svc` | `bldReqOpts` |
-| `t3x_ctrl` | `ensPowOn`、`enterSleep`、`gracePowOff`、`pwrOnReady`（opts 见 §2.7） |
+| `fota_svc` | `buildReqOpts` |
+| `t31x_ctrl` | `ensPowOn`、`enterSleep`、`gracePowOff`、`pwrOnReady`（opts 见 §2.7） |
 
-### 2.7 `t3x_ctrl` opts（138 起 camelCase）
+### 2.7 `t31x_ctrl` opts（138 起 camelCase）
 
 | 函数 | opts 键 |
 |------|---------|
-| `ensPowOn` | `t3xPowerWaitMs`、`powerWaitMs` |
+| `ensPowOn` | `t31xPowerWaitMs`、`powerWaitMs` |
 | `enterSleep` | `skipPendingWorkCheck`、`ipcPoweroffSound`、`ipcPoweroffTimeoutMs`、`ipcStatusTimeoutMs`、`modemHibernate`、`reason` |
 | `gracePowOff` | `playSound`、`poweroffTimeoutMs`、`settleMs` |
 | `pwrOnReady` | `statusTimeoutMs`、`readyTimeoutMs`、`pollMs` |
@@ -163,5 +166,6 @@ t3x_policy.reqT3xWake(reason, sid, evt)
 
 - 只写 §2 真名；历史别名见 git / [FUNCTION_NAME_MAP.md](FUNCTION_NAME_MAP.md)（只读）。
 - `python tools/sync_doc_naming.py` 仅做 doc 内旧字符串 → 真名（不再生成别名）。
+- 151 批改名（代码 + 本文 + `sync_doc_naming.py` 三处同步）：`bldAtBody`→`buildStatBody`、`ntfHostIdle`→`notifyHostIdle`、`shdHostSleep`→`shouldHostSleep`、`ntfT31xUsbIdle`→`notifyUsbIdle`、`bldReqOpts`→`buildReqOpts`、`refCloudF1003`→`refCloudStat1003`、`setStatIv`/`getStatIv`/`loadStatIvCfg`→`setStatInterval`/`getStatInterval`/`loadStatCfg`。
 
-**版本**：2026-08-31 · 脚本 `001.000.140`
+**版本**：2026-09-02 · 脚本 `001.000.151`

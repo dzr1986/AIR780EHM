@@ -4,8 +4,8 @@
 > **下一刀计划**：[USER_LIB_OPTIMIZATION_PLAN_20260830.md](./USER_LIB_OPTIMIZATION_PLAN_20260830.md)  
 > 发布用 `luatos.json` → `only_luac_code=True`，或 `cat1_flash.py flash-script`。  
 > **脚本区上限 512KB**（Air780EHM）：量产压缩包约 342KB。`MODULE_FLAGS=false` **不减烧录体积**，须做等价桩文件与裁剪。  
-> **原则**：T3x 能做的放 T3x（编码 2021/2020、GB28181、录像）；4G 只做 MQTT + UART 编排。  
-> **配置真源**：单文件 `user/config.lua`（已无独立 `app_config.lua` / `key_config.lua`）。
+> **原则**：T31x 能做的放 T31x（编码 2021/2020、GB28181、录像）；4G 只做 MQTT + UART 编排。  
+> **配置真源**：`user/config.lua`（编排入口，按组拆为 `user/config/*.lua` 片段：features / cellular / gpio / led_pir / battery / host / net / flags / events / t3x_burn）；已无独立 `app_config.lua` / `key_config.lua`。
 
 ---
 
@@ -32,7 +32,7 @@
 | `rndis` | 调试 true / 量产 **false** | 不 `require usb_rndis`、不 RNDIS task |
 | `fota` | 要 OTA 则 true | 不挂 2004 OTA |
 | `sound_prompt` | 要开机音 true | 不 `require sound_prompt` |
-| `sntp` | 建议 true | 与 `time_sync` 配合给 T3x 授时 |
+| `sntp` | 建议 true | 与 `time_sync` 配合给 T31x 授时 |
 | `pmd_runtime` | **false** | USB 策略走 `usb_charge` 即可 |
 
 > **`MODULE_FLAGS` 无 `net_tcp` 字段**；TCP 由 `lib/low_power_wakeup.lua` 按 `LOW_POWER_WAKEUP_CFG.mode` 控制。
@@ -64,7 +64,7 @@
 | 删除 `encode_proxy.lua` | 2021/2020 直调 `host_uart.queryHostEncode` / `setHost*Encode` |
 | `LOW_POWER_WAKEUP_CFG.mode="mqtt"` | 进 rest 不建 TCP；`SERVCREATE` AT 在 `mode="tcp"` 时才真连网 |
 | MQTTCFG 去重 | 同参 bootstrap 不 `restart()` MQTT |
-| 编码参数 | 逻辑在 T3x `encode_remote.c`，4G 仅 UART 转发 |
+| 编码参数 | 逻辑在 T31x `encode_remote.c`，4G 仅 UART 转发 |
 
 ---
 
@@ -108,7 +108,7 @@ boot_on_cold_start = false,
 main.lua
   → user/config.lua（FEATURE_CFG / *_CFG / MODULE_FLAGS / APP_EVENTS / KEY_CONFIG）
   → cellular_bootstrap（若 cellular≠false）
-  → app.start(peripheral, net_mqtt, t3x_ctrl)
+  → app.start(peripheral, net_mqtt, t31x_ctrl)
        → module_loader.opt：flag=false 的模块不 require
        → host_uart.start（内部懒加载 net_tcp / pir_ctrl / host_event）
        → bootMqtt
@@ -125,7 +125,7 @@ main.lua
 | `uart_bridge` | 必需 |
 | `cellular_bootstrap` | 必需 |
 | `low_power_wakeup` | 必需（唤醒通道策略） |
-| `t3x_policy` | 必需（唤醒门禁） |
+| `t31x_policy` | 必需（唤醒门禁） |
 | `usb_charge` | 必需（USB/rest） |
 | `watchdog` | 建议保留 |
 | `fota` / `fota_svc` | 仅 OTA 时需要 |
@@ -139,6 +139,6 @@ main.lua
 1. `LOW_POWER_WAKEUP_CFG.mode="mqtt"`：日志无 `net_tcp` task；MQTT 2001/2010 正常
 2. `mobile_info=false`：无周期蜂窝轮询；`2005` 仍有 `1005`
 3. `rndis=false`：无 `RNDIS taskInit`；MQTT 正常
-4. USB 拔出进 rest：`1002`，MQTT 在线，T3x 断电
+4. USB 拔出进 rest：`1002`，MQTT 在线，T31x 断电
 
 详见 [CAT1_SLIMMING_FLOW.md §6](CAT1_SLIMMING_FLOW.md#6-验证清单)。

@@ -1,6 +1,6 @@
 -- ================================================================
 -- Filename : app.lua
--- Module   : 编排中心：依赖注入、事件订阅、低功耗进/出、USB 边沿、PIR→MQTT 桥、T3x 烧录模式
+-- Module   : 编排中心：依赖注入、事件订阅、低功耗进/出、USB 边沿、PIR→MQTT 桥、t31x 烧录模式
 -- Arch     : doc/modules/APP_EVENT_BUS.md
 -- ================================================================
 
@@ -11,17 +11,17 @@ local utils = require "utils"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
-local t3xPolicy = require "t3x_policy"
+local t31xPolicy = require "t31x_policy"
 local lpWake = require "lp_wakeup"
 local hostEvt = require "host_event"
-local t3xNotify = require "t3x_notify"
+local t31xNotify = require "t31x_notify"
 local deviceId = require "device_id"
 local uart_bridge = require "uart_bridge"
 local pirCtrl = require "pir_ctrl"
 local bttrGrd = require "battery_guard"
 local host_uart = require "host_uart"
 local ipcSprv = require "ipc_supv"
-local t3x_ctrl = require "t3x_ctrl"
+local t31x_ctrl = require "t31x_ctrl"
 local net_tcp = require "net_tcp"
 local batAdc = loader.opt("battery", "vbat")
 local usbCharge = loader.opt("charge", "usb_charge")
@@ -42,12 +42,12 @@ local E = APP_EVENTS
 local started = false
 local gpioModule = nil
 local netModule = nil
-local t3xModule = nil
+local t31xModule = nil
 local state = {
     mqtt_started = false,
     last_wake_event = nil,
     heartbeat_count = 0,
-    t3x_burn_active = false,
+    t31x_burn_active = false,
     heartbeat_paused = false,
     usb_insert_tick = 0,
     pir_watch_sleep_timer = nil,
@@ -55,7 +55,7 @@ local state = {
 
 local TIMEOUT = {
     rebootDelay = 500,
-    t3xSleepWait = 35000,
+    t31xSleepWait = 35000,
     usbExitRestWait = 5000,
     burnPrepWait = 300,
     bootUsbNotifyDefault = 1500,
@@ -69,8 +69,8 @@ local TIMEOUT = {
 -- 烧录态 / USB 探测
 ----------------------------------------------------------------
 local function setBurnMode(active)
-    state.t3x_burn_active = active == true
-    t3xPolicy.setBurnActive(active == true)
+    state.t31x_burn_active = active == true
+    t31xPolicy.setBurnActive(active == true)
 end
 
 local function isUsbInserted(opts)
@@ -93,18 +93,18 @@ local function isLowPowerEnabled()
     return loader.enabled("low_power")
 end
 
-local function reqT3xWake(reason, sid, evt, opts)
+local function reqT31xWake(reason, sid, evt, opts)
     sid = sid or (_G.HOST_WAKE_CFG and _G.HOST_WAKE_CFG.default_sid) or 1
     evt = evt or 0
     state.last_wake_event = evt
-    return t3xPolicy.reqT3xWake(reason, sid, evt, opts)
+    return t31xPolicy.reqT31xWake(reason, sid, evt, opts)
 end
 
 local function onMqttOffline()
-    if loader.enabled("t3x_policy") and not t3xPolicy.shdWakeOffline() then
+    if loader.enabled("t31x_policy") and not t31xPolicy.shdWakeOffline() then
         return
     end
-    reqT3xWake("mqtt_offline", 2, 0)
+    reqT31xWake("mqtt_offline", 2, 0)
 end
 
 ----------------------------------------------------------------
@@ -125,33 +125,33 @@ local function enterLowPower(reason)
     rntmPwr.setLastRestReason(reason)
     -- 低功耗已进入的扩展点（当前无订阅者，保留供调试/后续模块挂钩）
     sys.publish(E.POWER_ENTERED_REST)
-    local function cutT3x()
-        if not t3xModule then
+    local function cutT31x()
+        if not t31xModule then
             return
         end
         -- 用户 2002/AT 必须断 T31：全天写盘不得否决。4G 保持 MQTT。
-        t3xModule.enterSleep({
+        t31xModule.enterSleep({
             mdmHbrn = lpWake.getModemHibernate() == true,
             skipPendingWorkCheck = userCut,
             reason = reason,
         })
-        t3xModule.waitSleepIdle(TIMEOUT.t3xSleepWait)
+        t31xModule.waitSleepIdle(TIMEOUT.t31xSleepWait)
         if state.mqtt_started and netModule then
             netModule.pubStatus()
         end
     end
-    sys.taskInit(cutT3x)
+    sys.taskInit(cutT31x)
     if modeChanged and state.mqtt_started and netModule then
         netModule.pubRest({ reason = reason, source = "enter" })
     end
     lpWake.onEnterRest()
 end
 
-local function ntfT3xUsbIdle(inserted)
+local function ntfT31xUsbIdle(inserted)
     host_uart.pushUsbIdle(inserted == true or inserted == 1)
 end
 
--- 低功耗进/出：setLowPowerMode → t3x_ctrl.enterSleep → MQTT 1002
+-- 低功耗进/出：setLowPowerMode → t31x_ctrl.enterSleep → MQTT 1002
 local function onEnterLowPower(reason)
     reason = reason or "unknown"
     if not isLowPowerEnabled() then
@@ -204,21 +204,21 @@ local function onExitLowPower(reason)
         end
     end
     sys.taskInit(function()
-        local t3x = t3xModule or t3x_ctrl
-        if not t3x then
-            reqT3xWake("exit_low_power", nil, nil, { forceWake = true })
+        local t31x = t31xModule or t31x_ctrl
+        if not t31x then
+            reqT31xWake("exit_low_power", nil, nil, { forceWake = true })
             return
         end
-        local st = t3x.getState()
-        if state.t3x_burn_active or (st and st.in_boot_mode) then
+        local st = t31x.getState()
+        if state.t31x_burn_active or (st and st.in_boot_mode) then
             appWarn("exit_low_power_clear_burn")
-            t3x.extBootMode()
+            t31x.extBootMode()
             setBurnMode(false)
             state.heartbeat_paused = false
             pirCtrl.resume()
         end
-        t3x.ensNormalPwrOn("exit_low_power:" .. tostring(reason))
-        t3x.pulseMcuInt()
+        t31x.ensNormalPwrOn("exit_low_power:" .. tostring(reason))
+        t31x.pulseMcuInt()
     end)
 end
 
@@ -260,15 +260,15 @@ local function setupUart()
     end
     local ok = uart_bridge.start({
         onRaw = function(data)
-            if loader.enabled("t3x_app") then
+            if loader.enabled("t31x_app") then
                 host_uart.onRxRaw(data)
             end
         end,
     })
     if ok then
-        if loader.enabled("t3x_app") then
+        if loader.enabled("t31x_app") then
             host_uart.start({
-                t3x = t3xModule,
+                t31x = t31xModule,
                 onEnterLowPower = function() onEnterLowPower("at") end,
                 onExitLowPower = function() onExitLowPower("at") end,
                 onReboot = onReboot,
@@ -330,13 +330,13 @@ local function applyUsbPower(inserted, source)
     appInfo("usb_state", v, tostring(source or ""))
     sys.publish(E.GPIO_VBUS_CHANGED, v)
     if v == 0 then
-        ntfT3xUsbIdle(false)
+        ntfT31xUsbIdle(false)
         onUsbRemovedEnterRest(source)
     else
         state.usb_insert_tick = nowMs()
         cancelPwrKeyLongPress()
         onUsbInsertedExitRest(source)
-        ntfT3xUsbIdle(true)
+        ntfT31xUsbIdle(true)
     end
 end
 
@@ -375,7 +375,7 @@ stopWatchdogBeforePowerOff = function()
 end
 
 function startMqtt()
-    if state.t3x_burn_active then
+    if state.t31x_burn_active then
         appWarn("mqtt_start_skip_burn_mode")
         return false
     end
@@ -383,7 +383,7 @@ function startMqtt()
         appWarn("mqtt_module_disabled")
         return false
     end
-    if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "net_mqtt") then
+    if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "mqtt.net_mqtt") then
         appError("mqtt_module_not_ready")
         return false
     end
@@ -444,7 +444,7 @@ local function getBurnBatteryPercent()
 end
 
 local function checkBurnAttempt(attemptIndex, attemptTotal)
-    local cfg = _G.T3X_BURN_CFG or {}
+    local cfg = _G.t31x_BURN_CFG or {}
     local minPct = tonumber(cfg.min_battery_percent) or 20
     local allowRepeat = cfg.allow_repeat_enter_boot ~= false
     local failReason = nil
@@ -456,10 +456,10 @@ local function checkBurnAttempt(attemptIndex, attemptTotal)
             failReason = "batL"
         end
     end
-    if not t3xModule then
+    if not t31xModule then
         failReason = failReason or "noT3"
     else
-        local st = t3xModule.getState() or {}
+        local st = t31xModule.getState() or {}
         if st.in_boot_mode and not allowRepeat then
             failReason = failReason or "boot"
         end
@@ -471,7 +471,7 @@ local function checkBurnAttempt(attemptIndex, attemptTotal)
 end
 
 local function checkBurnAllowed()
-    local cfg = _G.T3X_BURN_CFG or {}
+    local cfg = _G.t31x_BURN_CFG or {}
     local retryCount = math.max(0, tonumber(cfg.burn_check_retry_count) or 2)
     local maxAttempts = 1 + retryCount
     local retryMs = tonumber(cfg.burn_check_retry_interval_ms) or 800
@@ -492,8 +492,8 @@ local function checkBurnAllowed()
 end
 
 local function shutdownForBurn(cfg)
-    cfg = cfg or _G.T3X_BURN_CFG or {}
-    appWarn("t3x_burn_prepare")
+    cfg = cfg or _G.t31x_BURN_CFG or {}
+    appWarn("t31x_burn_prepare")
     setBurnMode(true)
     state.heartbeat_paused = true
     if cfg.suspend_pir ~= false then
@@ -502,7 +502,7 @@ local function shutdownForBurn(cfg)
     if cfg.stop_mqtt ~= false and state.mqtt_started and netModule then
         netModule.stop()
         state.mqtt_started = false
-        appInfo("t3x_burn_mqtt_stopped")
+        appInfo("t31x_burn_mqtt_stopped")
     end
     if cfg.stop_uart ~= false then
         uart_bridge.stop()
@@ -510,9 +510,9 @@ local function shutdownForBurn(cfg)
     if cfg.stop_rndis ~= false and usbRndis then
         local rndisOk, rndisErr = usbRndis.disable()
         if rndisOk then
-            appInfo("t3x_burn_rndis_disabled")
+            appInfo("t31x_burn_rndis_disabled")
         else
-            appWarn("t3x_burn_rndis_disable_fail", tostring(rndisErr or ""))
+            appWarn("t31x_burn_rndis_disable_fail", tostring(rndisErr or ""))
         end
     end
     if cfg.turn_off_led ~= false and gpioModule then
@@ -523,39 +523,39 @@ local function shutdownForBurn(cfg)
 end
 
 local function tryEnterBurnMode()
-    local cfg = _G.T3X_BURN_CFG or {}
+    local cfg = _G.t31x_BURN_CFG or {}
     local ok, detail = checkBurnAllowed()
     if not ok then
-        appWarn("t3x_burn_denied", tostring(detail or "unknown"))
+        appWarn("t31x_burn_denied", tostring(detail or "unknown"))
         if gpioModule then
             gpioModule.runLedPattern("blink_red")
         end
         return false
     end
     shutdownForBurn(cfg)
-    if not t3xModule then
-        appError("t3x_burn_no_t3x_module")
+    if not t31xModule then
+        appError("t31x_burn_no_t31x_module")
         return false
     end
-    if not t3xModule.entBootMode() then
-        appError("t3x_burn_enter_bootmode_fail")
+    if not t31xModule.entBootMode() then
+        appError("t31x_burn_enter_bootmode_fail")
         return false
     end
-    appWarn("t3x_burn_entered")
+    appWarn("t31x_burn_entered")
     return true
 end
 
-local function wakeT3xFor(tag, sid, evt)
+local function wakeT31xFor(tag, sid, evt)
     if loader.enabled("battery_guard") then
         bttrGrd.ntfHostIdle()
     end
-    if loader.enabled("t3x_wakeup") and loader.enabled("t3x_app") then
+    if loader.enabled("t31x_wakeup") and loader.enabled("t31x_app") then
         local wakeSid = sid or cfgm.get("HOST_WAKE_CFG").default_sid or 1
         local opts = nil
         if cfgm.get("PIR_CFG").high_priority ~= false then
             opts = { forceWake = true }
         end
-        reqT3xWake(tag, wakeSid, evt or 0, opts)
+        reqT31xWake(tag, wakeSid, evt or 0, opts)
     end
 end
 
@@ -566,7 +566,7 @@ local function subscribeAll(handlers)
 end
 
 ----------------------------------------------------------------
--- PIR → MQTT / T3x 桥
+-- PIR → MQTT / t31x 桥
 ----------------------------------------------------------------
 
 local function pubPirEvent(overrides)
@@ -594,15 +594,15 @@ local function schedDelayedStat(delayMs)
 end
 
 local function onPirMediaAction(action, uploadMode, quality)
-    if state.t3x_burn_active then
+    if state.t31x_burn_active then
         return
     end
     maybePubWakeup(uploadMode)
-    wakeT3xFor("pir_media")
+    wakeT31xFor("pir_media")
 end
 
-local function isT3xRecording()
-    return host_uart.getT3xRecActive() == 1
+local function isT31xRecording()
+    return host_uart.getT31xRecActive() == 1
 end
 
 local function schedPirSleep(delayMs)
@@ -615,12 +615,12 @@ local function schedPirSleep(delayMs)
         if not rntmPwr.isPirWatch() then
             return
         end
-        if isT3xRecording() then
+        if isT31xRecording() then
             return
         end
-        if t3xModule then
+        if t31xModule then
             appInfo("pir_watch_idle_sleep")
-            t3xModule.enterSleep({ skipPendingWorkCheck = true, reason = "pir_watch_idle" })
+            t31xModule.enterSleep({ skipPendingWorkCheck = true, reason = "pir_watch_idle" })
         end
     end, tonumber(delayMs) or TIMEOUT.pirWatchSleep)
 end
@@ -643,14 +643,14 @@ local function schedMqttStopFb(reason, uploadMode, quality)
 end
 
 local function onPirStop(reason, uploadMode, quality)
-    local preferT3x = (reason == "timer" or reason == "device" or reason == "manual")
-        and isT3xRecording()
-    if not preferT3x and netModule then
+    local preferT31x = (reason == "timer" or reason == "device" or reason == "manual")
+        and isT31xRecording()
+    if not preferT31x and netModule then
         netModule.pubPirStop(reason, uploadMode, quality, { source = "4g" })
-    elseif preferT3x then
+    elseif preferT31x then
         schedMqttStopFb(reason, uploadMode, quality)
     end
-    wakeT3xFor("pir_stop")
+    wakeT31xFor("pir_stop")
     schedPirSleep(TIMEOUT.pirWatchSleep)
 end
 
@@ -669,7 +669,7 @@ local function onPirMedia(action)
 end
 
 local function onPirReqStop(reason)
-    wakeT3xFor("pir_stop_" .. tostring(reason))
+    wakeT31xFor("pir_stop_" .. tostring(reason))
 end
 
 local function onPersonCnt()
@@ -677,9 +677,9 @@ local function onPersonCnt()
     -- 人数不上 MQTT 1010，避免后台刷屏。抽片在 T31 本地完成。
 end
 
-local function onT3xRecStop(reason, uploadMode, quality)
+local function onT31xRecStop(reason, uploadMode, quality)
     if netModule then
-        netModule.pubT3xStop(reason, uploadMode, quality)
+        netModule.pubT31xStop(reason, uploadMode, quality)
     end
     schedPirSleep(3000)
 end
@@ -728,10 +728,10 @@ local function onBootKeyLong()
 end
 
 local function onCoprocReady()
-    if t3xModule then
-        t3xModule.extBootMode()
+    if t31xModule then
+        t31xModule.extBootMode()
     end
-    if state.t3x_burn_active then
+    if state.t31x_burn_active then
         pirCtrl.resume()
         setBurnMode(false)
         state.heartbeat_paused = false
@@ -760,7 +760,7 @@ local function onBatUpd(pct, mv)
 end
 
 local function onHostFirstAt()
-    ntfT3xUsbIdle(isUsbInserted())
+    ntfT31xUsbIdle(isUsbInserted())
 end
 
 ----------------------------------------------------------------
@@ -780,15 +780,15 @@ local EVNT_HNDL = {
     { E.BATTERY_UPDATE, onBatUpd },
     { E.MQTT_OFFLINE, onMqttOffline },
     { E.HOST_UART_FIRST_AT, onHostFirstAt },
-    { E.PIR_WAKE_T3X, onPirMediaAction },
+    { E.PIR_WAKE_t31x, onPirMediaAction },
     { E.PIR_MEDIA_EFFECTIVE, onPirMedia },
-    { E.PIR_REQUEST_T3X_STOP, onPirReqStop },
+    { E.PIR_REQUEST_t31x_STOP, onPirReqStop },
     { E.PIR_STOP_RECORDING, onPirStop },
-    { E.T3X_SNAPSHOT_DONE, mqttCall("pubSnapDone") },
-    { E.T3X_RECORD_ACTIVE, mqttCall("pubRecActive") },
-    { E.T3X_PERSON_CNT, onPersonCnt },
-    { E.T3X_RECORD_STOP, onT3xRecStop },
-    { E.T3X_IPC_ALERT, ipcSprv.pubAlert },
+    { E.t31x_SNAPSHOT_DONE, mqttCall("pubSnapDone") },
+    { E.t31x_RECORD_ACTIVE, mqttCall("pubRecActive") },
+    { E.t31x_PERSON_CNT, onPersonCnt },
+    { E.t31x_RECORD_STOP, onT31xRecStop },
+    { E.t31x_IPC_ALERT, ipcSprv.pubAlert },
     { E.PIR_TIMER_EXPIRED, onPirTimer },
     { E.GPIO_PIR_TRIGGERED, onGpioPir },
 }
@@ -844,7 +844,7 @@ end
 
 local function schedBootUsb()
     local usbCfg = cfgm.get("HOST_USB_CFG")
-    local notify = usbCfg.notify_t3x_usb_state
+    local notify = usbCfg.notify_t31x_usb_state
     if notify == false then
         return
     end
@@ -852,7 +852,7 @@ local function schedBootUsb()
         or tonumber(cfgm.get("TIME_SYNC_CFG").hostBootWaitMs)
         or TIMEOUT.bootUsbNotifyDefault
     sys.timerStart(function()
-        ntfT3xUsbIdle(isUsbInserted())
+        ntfT31xUsbIdle(isUsbInserted())
     end, delayMs)
 end
 
@@ -862,7 +862,7 @@ local function startHeartbeat()
         intervalMs = TIMEOUT.heartbeatMin
     end
     sys.timerLoopStart(function()
-        if state.heartbeat_paused or state.t3x_burn_active then
+        if state.heartbeat_paused or state.t31x_burn_active then
             return
         end
         state.heartbeat_count = state.heartbeat_count + 1
@@ -884,16 +884,16 @@ local function startHeartbeat()
     end, intervalMs)
 end
 
-function start(gpio, net, t3x_ctrl)
+function start(gpio, net, t31x_ctrl)
     if started then return true end
     appInfo("app_start")
-    gpioModule, netModule, t3xModule = gpio, net, t3x_ctrl
+    gpioModule, netModule, t31xModule = gpio, net, t31x_ctrl
     deviceId.setImei(deviceId.getDisplayId())
     hostEvt.bindMqttPending(function()
         return netModule and netModule.hasHostQueue() == true
     end)
     lpWake.bindNetTcp(net_tcp)
-    t3xNotify.registerProviders({
+    t31xNotify.registerProviders({
         pushBeforeNotify = function(sid, evt)
             if time_sync then
                 time_sync.pushBeforeNotifyAsync(sid, evt)
@@ -905,10 +905,10 @@ function start(gpio, net, t3x_ctrl)
             return host_uart.ntfHost(sid, evt)
         end,
         wakeHost = function()
-            return t3xModule and t3xModule.wake() ~= false
+            return t31xModule and t31xModule.wake() ~= false
         end,
         ensPowOn = function(tag, opts)
-            return t3xModule and t3xModule.ensPowOn(tag, opts)
+            return t31xModule and t31xModule.ensPowOn(tag, opts)
         end,
     })
     setupEvents()
@@ -919,14 +919,14 @@ function start(gpio, net, t3x_ctrl)
             onPowerOff = function()
                 onPowerOff("battery")
             end,
-            wakeT3x = function()
-                reqT3xWake("battery_usb", nil, nil, { forceWake = true })
+            wakeT31x = function()
+                reqT31xWake("battery_usb", nil, nil, { forceWake = true })
             end,
             isUsbInserted = function()
                 return isUsbInserted()
             end,
             isBurnActive = function()
-                return state.t3x_burn_active
+                return state.t31x_burn_active
             end,
         })
     end
@@ -934,15 +934,15 @@ function start(gpio, net, t3x_ctrl)
     if loader.enabled("uart_bridge") then setupUart() end
     initPower()
     schedBootUsb()
-    if t3xModule then t3xModule.start() end
+    if t31xModule then t31xModule.start() end
     if sound_prompt then
-        sound_prompt.start({ t3x = t3xModule })
+        sound_prompt.start({ t31x = t31xModule })
         if loader.enabled("uart_bridge") then
             sound_prompt.onAppStarted()
         end
     end
     if time_sync then
-        time_sync.start({ t3x = t3xModule })
+        time_sync.start({ t31x = t31xModule })
     end
     if loader.enabled("gpio") then setupGpio() end
     if loader.enabled("pmd_runtime") then setupPmd() end

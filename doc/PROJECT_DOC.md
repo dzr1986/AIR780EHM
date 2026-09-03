@@ -1,11 +1,11 @@
 # 780EHM_PJ 项目技术文档
 
-> Air780EHM + T3x 摄像头 · LuatOS 方案1（扁平架构）  
+> Air780EHM + T31x 摄像头 · LuatOS 方案1（扁平架构）  
 > **配置真源**：[`CONFIG.md`](CONFIG.md)（单文件 `user/config.lua`，`app_config`/`key_config` 已并入）· **调用关系**：[`CALL_GRAPH.md`](CALL_GRAPH.md)  
 > **协议专篇**：`MQTT_PROTOCOL.md` · `UART_PROTOCOL.md` · `PIR_PROTOCOL.md`  
 > **远程控制（帧率/录像/人形）**：[`MQTT_CLOUD_REMOTE_CTRL_FLOW.md`](MQTT_CLOUD_REMOTE_CTRL_FLOW.md)  
 > **代码分析**：`CODE_ANALYSIS.md`  
-> Cat.1 录像 / MQTT 1010/1011：[`T3X_RECORD_MQTT_FLOW.md`](T3X_RECORD_MQTT_FLOW.md)
+> Cat.1 录像 / MQTT 1010/1011：[`T31X_RECORD_MQTT_FLOW.md`](T31X_RECORD_MQTT_FLOW.md)
 
 ---
 
@@ -31,11 +31,11 @@
 ┌──────────────────────────────────────────────────────────┐
 │ main.lua → app.lua（编排、事件、PMD、后台服务）            │
 ├──────────────────────────────────────────────────────────┤
-│ user: net_mqtt · t3x_ctrl · pir_ctrl · peripheral         │
+│ user: net_mqtt · t31x_ctrl · pir_ctrl · peripheral         │
 │       host_uart · vbat · battery_guard · fota_svc         │
 ├──────────────────────────────────────────────────────────┤
 │ lib:  uart_bridge · gpio_util · usb_charge · usb_rndis  │
-│       cellular_bootstrap · low_power_wakeup · t3x_policy │
+│       cellular_bootstrap · low_power_wakeup · t31x_policy │
 │       host_event · watchdog · device_id · runtime_power   │
 ├──────────────────────────────────────────────────────────┤
 │ lib/archive: 旧 MQTT 栈、powerMode、演示库（不参与启动）   │
@@ -48,7 +48,7 @@
 main.lua
   require config
   [cellular_bootstrap] [rndis] net_mqtt.bootstrapNet()
-  app.start(peripheral, net_mqtt, t3x_ctrl)
+  app.start(peripheral, net_mqtt, t31x_ctrl)
   sys.run()
 ```
 
@@ -63,9 +63,9 @@ main.lua
 | 3 | `watchdog` | `setupWatchdog()` |
 | 4 | `uart_bridge` | `setupUartBridge()`：`uart_bridge` + **`host_uart`** 同启 |
 | 5 | 始终 | 订阅 `HOST_UART_FIRST_AT` |
-| 6 | 始终 | **`initPowerStatus()`**（可进 rest；**早于** t3x/GPIO/电量采样） |
+| 6 | 始终 | **`initPowerStatus()`**（可进 rest；**早于** t31x/GPIO/电量采样） |
 | 7 | 始终 | `scheduleBootUsbPolicySync()` |
-| 8 | 始终 | `t3x_ctrl.start()` |
+| 8 | 始终 | `t31x_ctrl.start()` |
 | 9 | `sound_prompt` | `sound_prompt.start()` + `onAppStarted()` |
 | 10 | `time_sync` | `time_sync.start()` |
 | 11 | `gpio` | `peripheral.start()`（LED/按键/PIR） |
@@ -79,7 +79,7 @@ main.lua
 
 MQTT 在 **`bootMqtt()`** 中等待 `net_ready` 后启动，**常电联网**；USB 拔出触发 `pubRest`，**不断开** MQTT。
 
-上电无 USB 时 **`initPowerStatus`（步骤 6）** 可能立即 `onEnterLowPower`，此时 t3x/GPIO 尚未初始化；MQTT 在步骤 16 才异步拉起，与 rest 并行，实机需验证蜂窝是否仍在线。
+上电无 USB 时 **`initPowerStatus`（步骤 6）** 可能立即 `onEnterLowPower`，此时 t31x/GPIO 尚未初始化；MQTT 在步骤 16 才异步拉起，与 rest 并行，实机需验证蜂窝是否仍在线。
 
 ### 1.4 栈选择 `APP_STACK`
 
@@ -98,9 +98,9 @@ APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 
 | 职责 | 说明 |
 |------|------|
-| 编排 | 注入 peripheral / net / t3x_ctrl，按 `MODULE_FLAGS` 启停子模块 |
+| 编排 | 注入 peripheral / net / t31x_ctrl，按 `MODULE_FLAGS` 启停子模块 |
 | 低功耗 | `onEnterLowPower` / `onExitLowPower`，更新 `APP_RUNTIME.low_power_mode` |
-| PIR 业务响应 | 订阅 `PIR_WAKE_T3X` / `PIR_STOP_RECORDING` / `T3X_RECORD_ACTIVE` / `T3X_RECORD_STOP` |
+| PIR 业务响应 | 订阅 `PIR_WAKE_T31X` / `PIR_STOP_RECORDING` / `T31X_RECORD_ACTIVE` / `T31X_RECORD_STOP` |
 | PMD | USB 插拔 → 进退低功耗；MQTT 由上电 `bootMqtt` 负责 |
 | MQTT | `bootMqtt` / `startMqtt` → `net.start` |
 | 串口 | 不直接操作 UART，经 `uart_bridge` + 回调 |
@@ -114,14 +114,14 @@ APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 | 行协议 | `STR:...`、`HEX:...`（`\r\n` 结尾） |
 | 回调 | `onRaw` → 由 `app` 转交 `host_uart.onRxRaw` |
 
-**不解析** T3x 业务 AT；AT 清单见 `host_uart`。
+**不解析** T31x 业务 AT；AT 清单见 `host_uart`。
 
-### 2.2b `user/host_uart.lua`（T3x AT 业务）
+### 2.2b `user/host_uart.lua`（T31x AT 业务）
 
 | 能力 | 说明 |
 |------|------|
 | 入站 AT | `AT_CMD_TABLE`：`GETCFG`/`SETCFG`/`LOWPOWER`/`RECORD`/`HOSTEVT`/`MQTTCFG`/`SERVCREATE` 等 → [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) |
-| 出站 AT | 4G 主动发 T3x：`AT+VENC?`/`AT+VENCSET`/`AT+AUDIO?`/`AT+GB28181?`/`AT+IPCPOWEROFF`/`AT+TFCARD?` 等 |
+| 出站 AT | 4G 主动发 T31x：`AT+VENC?`/`AT+VENCSET`/`AT+AUDIO?`/`AT+GB28181?`/`AT+IPCPOWEROFF`/`AT+TFCARD?` 等 |
 | 启动 | 在 `setupUartBridge()` 成功回调内 `host_uart.start()` |
 
 ### 2.3 `pir_ctrl.lua`
@@ -149,12 +149,12 @@ APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }
 | 连接 | `mqtt.create` + `autoreconn`；`clientId` = IMEI |
 | 下行 | 2001–2007、2010–2012、**2020–2027** → `pir_ctrl` / `host_uart` / 设备事件 |
 | 上行 | 1001–1007、1004 OTA、1010/1011、**1021/1020** 编码 |
-| 离线 | `MQTT_OFFLINE` → app `onMqttOffline` → T3x 脉冲 |
+| 离线 | `MQTT_OFFLINE` → app `onMqttOffline` → T31x 脉冲 |
 | 扩展 | `start({ onOffline, onMessage })` 可选，当前 app 未传回调 |
 
-### 2.6 `t3x_ctrl.lua`
+### 2.6 `t31x_ctrl.lua`
 
-GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3x_policy` 发脉冲唤醒 T3x。
+GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT31xWake()` 经 `t31x_ctrl`/`t31x_policy` 发脉冲唤醒 T31x。
 
 | API | 行为 |
 |-----|------|
@@ -175,10 +175,10 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 
 | 模块 | 用途 |
 |------|------|
-| `host_uart.lua` | T3x AT 业务（RECORD/HOSTEVT/编码/IPC 等） |
+| `host_uart.lua` | T31x AT 业务（RECORD/HOSTEVT/编码/IPC 等） |
 | `battery_guard.lua` | 低电量/USB 策略门禁 |
 | `vbat.lua` | 自包含 ADC 采样与电量百分比 |
-| `t3x_ctrl.lua` | T3x GPIO 供电、优雅断电 / ready 轮询 |
+| `t31x_ctrl.lua` | T31x GPIO 供电、优雅断电 / ready 轮询 |
 | `net_tcp.lua` | 专有 TCP 长连接（`LOW_POWER_WAKEUP_CFG.mode=tcp` 时懒加载） |
 | `sound_prompt.lua` / `time_sync.lua` | 提示音 / 时间同步 |
 
@@ -190,7 +190,7 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 | usb_charge, usb_rndis | 充电 / RNDIS |
 | uart_bridge | 唯一 `uart.setup` |
 | cellular_bootstrap | 蜂窝拨号引导 |
-| low_power_wakeup, t3x_policy, host_event | 唤醒通道 / T3x 门禁 / HOSTEVT |
+| low_power_wakeup, t31x_policy, host_event | 唤醒通道 / T31x 门禁 / HOSTEVT |
 | watchdog, device_id, runtime_power | WDT / IMEI / 工作模式查询 |
 
 ---
@@ -205,10 +205,10 @@ GPIO22 电源/唤醒脉冲、BOOT/休眠；`requestT3xWake()` 经 `t3x_ctrl`/`t3
 |------|--------|----------------|
 | `PIR_HW_TRIGGERED` | pir_ctrl | pir_ctrl → 业务 |
 | `GPIO_PIR_TRIGGERED` | pir_ctrl | app（日志） |
-| `PIR_WAKE_T3X` | pir_ctrl | app → 1001 + `requestT3xWake`（一次 PIR 一次唤醒） |
-| `T3X_RECORD_ACTIVE` | host_uart | app → 1010 `t3x_active` |
-| `T3X_RECORD_STOP` | host_uart | app → 1011 `source=t3x` |
-| `PIR_STOP_RECORDING` | pir_ctrl | app → 1011 `source=4g` + `requestT3xWake(pir_stop)` |
+| `PIR_WAKE_T31X` | pir_ctrl | app → 1001 + `requestT31xWake`（一次 PIR 一次唤醒） |
+| `T31X_RECORD_ACTIVE` | host_uart | app → 1010 `t31x_active` |
+| `T31X_RECORD_STOP` | host_uart | app → 1011 `source=t31x` |
+| `PIR_STOP_RECORDING` | pir_ctrl | app → 1011 `source=4g` + `requestT31xWake(pir_stop)` |
 | `PIR_TIMER_EXPIRED` | pir_ctrl | → `publishStopRecording(timer)` |
 | `UART_RX_RAW` | uart_bridge | 可选订阅 |
 | `UART_RX_STRING` | uart_bridge | 可选订阅 |
@@ -271,18 +271,18 @@ pir_ctrl 中断
   → PIR_HW_TRIGGERED
   → pir_ctrl.onPirTriggered
       → GPIO_PIR_TRIGGERED → MQTT 1010 detected
-      → pubActEvents
+      → pubActionEvents
           video/both → beginVideoSession + max_sec 定时器
-          → PIR_WAKE_T3X(action, …) 仅一次
-  → app → net.pubWakeup(1001) + requestT3xWake
-  → T3x AT+PIRSTAT? → 按 action 拍照/录像/both（同周期先拍后录）
+          → PIR_WAKE_T31X(action, …) 仅一次
+  → app → net.pubWakeup(1001) + requestT31xWake
+  → T31x AT+PIRSTAT? → 按 action 拍照/录像/both（同周期先拍后录）
 
-T3x AT+RECORD=1/0
-  → host_uart → T3X_RECORD_ACTIVE / T3X_RECORD_STOP → MQTT 1010/1011
+T31x AT+RECORD=1/0
+  → host_uart → T31X_RECORD_ACTIVE / T31X_RECORD_STOP → MQTT 1010/1011
 
 Luat 侧停止（timer / 二次PIR / 2011）
   → PIR_STOP_RECORDING
-  → app → pubPirStop(1011, source=4g) + requestT3xWake(pir_stop)
+  → app → pubPirStop(1011, source=4g) + requestT31xWake(pir_stop)
   （1011 经 pubPirStop 会话去重，每会话一条）
 ```
 
@@ -293,7 +293,7 @@ Luat 侧停止（timer / 二次PIR / 2011）
 ```
 PMD MSG_PMD (USB 拔出)
   → APP_RUNTIME.power_status=0
-  → onEnterLowPower（t3x_ctrl.enterSleep、MQTT rest）
+  → onEnterLowPower（t31x_ctrl.enterSleep、MQTT rest）
   → 若 MQTT 尚未启动则 startMqtt()（兜底；正常由上电 bootMqtt 已启）
 ```
 
@@ -338,7 +338,7 @@ peripheral pwrkey 长按 3s
 
 ## 7. GPIO 引脚
 
-与 `config.lua` → `GPIO_IN` / `GPIO_OUT` 一致（**Luat GPIO**；模组 Pin 见 [T3X_CAT1_GPIO.md §1.1](T3X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)）：
+与 `config.lua` → `GPIO_IN` / `GPIO_OUT` 一致（**Luat GPIO**；模组 Pin 见 [T31X_CAT1_GPIO.md §1.1](T31X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)）：
 
 | 配置键 | Luat GPIO | 模组 Pin | 功能 |
 |--------|-----------|----------|------|
@@ -351,10 +351,10 @@ peripheral pwrkey 长按 3s
 | `GPIO_IN.misc_pullup` | 7 | 7 | 预留 |
 | `GPIO_OUT.led_red` | 20 | 102 | 红灯（**`enabled=false` 本板未用**） |
 | `GPIO_OUT.bat_stat_led` | 21 | 107 | BAT_STAT_LED |
-| `GPIO_OUT.t3x_pwr_wake` | 22 | 19 | CPU_PWR_EN / 供电唤醒 |
-| `GPIO_OUT.t3x_boot` | **26** | **25** | `T3x_BOOT`（丝印 CAN_TXD） |
-| `GPIO_OUT.t3x_ota` | 32 | 33 | `USB_DEBUG_EN` |
-| `GPIO_OUT.t3x_mcu_int` | 29 | 30 | MCU_INT_CPU 脉冲 |
+| `GPIO_OUT.t31x_pwr_wake` | 22 | 19 | CPU_PWR_EN / 供电唤醒 |
+| `GPIO_OUT.t31x_boot` | **26** | **25** | `T31x_BOOT`（丝印 CAN_TXD） |
+| `GPIO_OUT.t31x_ota` | 32 | 33 | `USB_DEBUG_EN` |
+| `GPIO_OUT.t31x_mcu_int` | 29 | 30 | MCU_INT_CPU 脉冲 |
 
 ---
 
@@ -388,8 +388,8 @@ log.info("fota", json.encode(require("fota_svc").getState()))
 | `app.lua` | 编排中心 |
 | `net_mqtt.lua` | MQTT 上下行 |
 | `net_tcp.lua` | 专有 TCP（懒加载） |
-| `host_uart.lua` | T3x AT 业务 |
-| `t3x_ctrl.lua` | 协处理器 GPIO / IPC 断电 / ready |
+| `host_uart.lua` | T31x AT 业务 |
+| `t31x_ctrl.lua` | 协处理器 GPIO / IPC 断电 / ready |
 | `pir_ctrl.lua` | PIR 硬件+业务 / PIRSTAT 统计 |
 | `battery_guard.lua` / `vbat.lua` | 电量保护 / ADC 采样 |
 | `peripheral.lua` / `led_ctrl.lua` | 外设聚合（含按键）/ LED |
@@ -398,7 +398,7 @@ log.info("fota", json.encode(require("fota_svc").getState()))
 
 ### lib/（主路径，节选）
 
-`uart_bridge` · `gpio_util` · `usb_charge` · `usb_rndis` · `cellular_bootstrap` · `low_power_wakeup` · `t3x_policy` · `host_event` · `watchdog` · `device_id` · `runtime_power`
+`uart_bridge` · `gpio_util` · `usb_charge` · `usb_rndis` · `cellular_bootstrap` · `low_power_wakeup` · `t31x_policy` · `host_event` · `watchdog` · `device_id` · `runtime_power`
 
 ### 文档
 
@@ -414,10 +414,10 @@ log.info("fota", json.encode(require("fota_svc").getState()))
 | `UART_PROTOCOL.md` | 串口 AT / STR / HEX |
 | `MQTT_PROTOCOL.md` | MQTT 上下行 |
 | `MQTT_CLOUD_REMOTE_CTRL_FLOW.md` | 帧率/录像/人形远程控制（MQTT + AT） |
-| `T3X_IPC_CLOUD_EXCEPTION_REPORT.md` | T3x IPC 联网异常上报分析 |
+| `T31X_IPC_CLOUD_EXCEPTION_REPORT.md` | T31x IPC 联网异常上报分析 |
 | `CODE_ANALYSIS.md` | user/ 整体架构与风险分析 |
 | `PROJECT_DOC.md` | 本文档 |
 
 ---
 
-**版本**: 1.2.0 · **更新**: 2026-06-10（`app.start` 真源顺序、`uart_bridge`/`host_uart` 分工）· **平台**: Air780EHM + T3x
+**版本**: 1.2.0 · **更新**: 2026-06-10（`app.start` 真源顺序、`uart_bridge`/`host_uart` 分工）· **平台**: Air780EHM + T31x

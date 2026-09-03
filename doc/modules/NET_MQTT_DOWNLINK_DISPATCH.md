@@ -3,7 +3,7 @@
 > **代码真源**：[`user/net_mqtt.lua`](../../user/net_mqtt.lua)（`mqttTask` 连接循环、`start`/`stop`、`notifyPowerOff`）  
 > **topic / 组网 / 快照**：[`user/mqtt_conn.lua`](../../user/mqtt_conn.lua)  
 > **下行 JSON 分发 + 钩子**：[`user/mqtt_dispatch.lua`](../../user/mqtt_dispatch.lua)  
-> **200x 总线 + T3x 队列**：[`user/mqtt_downlink.lua`](../../user/mqtt_downlink.lua)（`ctx.pub` / `ctx.dl`）  
+> **200x 总线 + T31x 队列**：[`user/mqtt_downlink.lua`](../../user/mqtt_downlink.lua)（`ctx.pub` / `ctx.dl`）  
 > **子模块**：[`mqtt_dl_dev.lua`](../../user/mqtt_dl_dev.lua)（2002/2003/2006）、[`mqtt_dl_ctrl.lua`](../../user/mqtt_dl_ctrl.lua)（2004）、[`mqtt_dl_tf.lua`](../../user/mqtt_dl_tf.lua)（2007/2009）、[`mqtt_dl_upload.lua`](../../user/mqtt_dl_upload.lua)（2013）、[`mqtt_dl_pir.lua`](../../user/mqtt_dl_pir.lua)（2010–2012）  
 > **100x 上行**：[`user/mqtt_uplink.lua`](../../user/mqtt_uplink.lua)（写 `ctx.pub`，先于 downlink）  
 > **1003 interval**：[`user/mqtt_uplink.lua`](../../user/mqtt_uplink.lua)（周期上报/持久化/电量订阅）  
@@ -11,7 +11,7 @@
 > **2020–2031 表**：[`user/mqtt_hproto.lua`](../../user/mqtt_hproto.lua)  
 > **协议**：[MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) · **联调**：[MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md)
 
-对外 API 仍挂在 `net_mqtt`（`app` / `host_uart` / `t3x_ctrl` 只 `require "net_mqtt"`）。子模块经 `ctx.pub` / `ctx.dl` 注入，不 `require "net_mqtt"`。`notifyPowerOff` 留在主文件。
+对外 API 仍挂在 `net_mqtt`（`app` / `host_uart` / `t31x_ctrl` 只 `require "net_mqtt"`）。子模块经 `ctx.pub` / `ctx.dl` 注入，不 `require "net_mqtt"`。`notifyPowerOff` 留在主文件。
 
 **`mqttTask` 命名**：`IP_READY`/`IP_LOSE` 订阅回调参数须用 `ipAdapter`（LuatOS 传入的网卡 id），勿命名为 `adapter`——会与 adapter 模块表 shadow，导致 `pushNetLed` 等在 IP 丢失时误调。
 
@@ -33,7 +33,7 @@
 | 2010 / 2011 / 2012 | PIR 配置/启停 | `mqtt_dl_pir.lua` |
 | 2013 | 视频上传 | `mqtt_dl_upload.lua` |
 | 2020 / 2021 | 编码 query/set | `mqtt_hproto.lua` |
-| 2022–2031 | query/set 工厂 | `mqtt_hproto.lua` + `hu_ipc_hostq.lua` |
+| 2022–2031 | query/set 工厂 | `mqtt_hproto.lua` + `hif_ipc_hostq.lua` |
 
 ---
 
@@ -53,7 +53,7 @@ MQTT subscribe /panshi/device/{imei}/
 
 ## 2. 主分发表（`DOWNLINK_HANDLERS`）
 
-| dataType | Handler | 上行 | 需 T3x 在线 |
+| dataType | Handler | 上行 | 需 T31x 在线 |
 |----------|---------|------|-------------|
 | 2001 | `dispatchDl2001` | 1001 探活应答（主题 wakeup） | 否 |
 | 2002 | `dispatchDl2002` | 1004 rest_enter/exit + 1002 | 否 |
@@ -71,7 +71,7 @@ MQTT subscribe /panshi/device/{imei}/
 | 2021 | `dispatchDl2021` | 1021 encode set | **是** |
 | 2022–2031 | `HOST_UART_QUERY_SET_SPECS` | 1022–1031 | **是** |
 
-「需 T3x 在线」项走 `handleHostDownlink`：休眠时入 `pendingHostQueue`，唤醒后 `drainHostQueue`。
+「需 T31x 在线」项走 `handleHostDownlink`：休眠时入 `pendingHostQueue`，唤醒后 `drainHostQueue`。
 
 ---
 
@@ -84,7 +84,7 @@ MQTT subscribe /panshi/device/{imei}/
 | `reboot` | 1004 reply ok | `DEVICE_REBOOT_REQUEST` |
 | `off` | 1004 reply ok | `DEVICE_POWER_OFF_REQUEST` |
 | `ota` | 校验 version → 1004 | `DEVICE_OTA_REQUEST` |
-| `wled_query` | 异步查 T3x/缓存 | 1004 wled enable |
+| `wled_query` | 异步查 T31x/缓存 | 1004 wled enable |
 | `wled_set` | 异步 `setWled` | 1004 wled enable |
 
 别名（`normalize2004Action`）：`restart`→`reboot`；`shutdown`/`poweroff`→`off`；`upgrade`/`fota`→`ota`。
@@ -97,7 +97,7 @@ MQTT subscribe /panshi/device/{imei}/
 
 ---
 
-## 4. T3x UART query/set 工厂（2022–2031）
+## 4. T31x UART query/set 工厂（2022–2031）
 
 ### 4.1 结构
 
@@ -106,8 +106,8 @@ HOST_UART_QUERY_SET_SPECS.{name}
   ├─ queryDl / setDl / ulQuery / ulSet
   ├─ suffix / log / defaultTimeoutMs
   ├─ appendFields(body) → JSON 扩展字段
-  ├─ queryFn(hu, data, timeoutMs) → body | nil, err, failBody
-  ├─ setFn(hu, data, timeoutMs) → ok, msg, extra, failBody
+  ├─ queryFn(hif, data, timeoutMs) → body | nil, err, failBody
+  ├─ setFn(hif, data, timeoutMs) → ok, msg, extra, failBody
   └─ onSetSuccess(extra, data)  可选
 
 makeHostQuerySetHandler(spec)
@@ -132,7 +132,7 @@ makeHostQuerySetHandler(spec)
 1. 在 `host_uart` 实现 `queryHostXxx` / `setHostXxx` + `try_xxx_line`
 2. 在 `HOST_UART_QUERY_SET_SPECS` 增加一项（含 `queryFn`/`setFn`）
 3. 将 name 加入 `HOST_UART_QUERY_SET_ORDER`
-4. 在 `DT` 与 `HOST_DL_NEEDS_T3X` 增加 dataType
+4. 在 `DT` 与 `HOST_DL_NEEDS_T31X` 增加 dataType
 
 无需手写两个 handler 函数。
 
@@ -148,7 +148,7 @@ makeHostQuerySetHandler(spec)
 **2003 status**
 
 - 无 `interval`：立即 `pubStatus`
-- 有 `interval`：`setStatIvSec` 后回 1003
+- 有 `interval`：`setStatIntervalSec` 后回 1003
 - `usbRecoveryReset`：调 `host_uart.resetUsbRecoveryFromCloud`
 
 ---
@@ -167,7 +167,7 @@ makeHostQuerySetHandler(spec)
 
 | 配置 | 用途 |
 |------|------|
-| `HOST_DL_NEEDS_T3X` | 休眠时排队 dataType 集合 |
+| `HOST_DL_NEEDS_T31X` | 休眠时排队 dataType 集合 |
 | `HOST_IDENTITY_CFG` | 2006 |
 | `HOST_TFCARD_CFG` / `HOST_TFCARD_FORMAT_CFG` | 2007 / 2009 |
 | `HOST_ENCODE_CFG` | 2020/2021 超时 |

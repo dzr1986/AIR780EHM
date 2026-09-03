@@ -86,38 +86,38 @@
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | **1003 周期**     | 出厂默认 **30s**（`LOW_POWER_CFG.rest_mqtt_interval_sec` → `low_power_interval_sec`）；`mqtt_report_interval_sec=60` 仅在 `low_power_interval_sec≤0` 时回退 | 勿按 60s 验收；要 60s 请下发 `{"dataType":"2003","interval":60}` 或改 `config.lua` |
 | **rest 与 1001** | rest 下 conack **不发 1001**；PIR `uploadMode=auto` **不发 1001**（`pir_ctrl.ignore_rest` + `app.onPirMediaAction`）                                    | 以 **1003.lowPowerMode** 判态，勿用 1001 判断 rest 在线                           |
-| **2006 / 2007** | 见下节；T3x 未就绪时入队唤醒，**非秒回**                                                                                                                        | 发哪个回哪个（2006→1006，2007→1007）；勿与 2003/2005/**2008** 秒回混淆                           |
-| **2008**        | 只读 Cat.1 本地版本（`main.lua` / `rtos.version`），**不依赖 T3x**，应秒回 **1008**                                                                                | Subscribe `.../version`；`firmwareVersion` 即 OTA `version`；`deviceNo` = 本机 IMEI |
-| **2028–2031**   | 麦克风 / 软光敏；T3x 未就绪时入队唤醒（`HOST_DL_NEEDS_T3X`）                                                                                                      | Subscribe `.../mic`、`.../softPhoto`；2028/2030 查询、2029/2031 设置                 |
-| **2011 → 1011** | `requestStopFromCloud()` → `publishStopRecording(device)`；T3x 写盘中 **1011** 可能 `source=t3x`                                                      | 需正在录像且 `stopOnCloud=1`                                                  |
+| **2006 / 2007** | 见下节；T31x 未就绪时入队唤醒，**非秒回**                                                                                                                        | 发哪个回哪个（2006→1006，2007→1007）；勿与 2003/2005/**2008** 秒回混淆                           |
+| **2008**        | 只读 Cat.1 本地版本（`main.lua` / `rtos.version`），**不依赖 T31x**，应秒回 **1008**                                                                                | Subscribe `.../version`；`firmwareVersion` 即 OTA `version`；`deviceNo` = 本机 IMEI |
+| **2028–2031**   | 麦克风 / 软光敏；T31x 未就绪时入队唤醒（`HOST_DL_NEEDS_T31X`）                                                                                                      | Subscribe `.../mic`、`.../softPhoto`；2028/2030 查询、2029/2031 设置                 |
+| **2011 → 1011** | `requestStopFromCloud()` → `publishStopRecording(device)`；T31x 写盘中 **1011** 可能 `source=t31x`                                                      | 需正在录像且 `stopOnCloud=1`                                                  |
 | **2010 查询**     | 仅 `action:"query"`                                                                                                                              | 应答 **1010**，`status`/`pirStatus` 均为 `"query"`；**rest 下仍可用**             |
 | **2001 探活**     | rest 下 conack 不发 1001，但 **2001 仍应答 1001**；**不断/上 T31**                                                                                         | **不是唤醒。** 勿把 2001 当作「已出 rest」；上电用 **2002 exit**，进低功耗用 **2002 enter** |
 
 
 #### 2006 / 2007：为何有两条？为何「入队、数秒后应答」？
 
-这是 **两条不同业务**，只是 **都要问 T3x**，所以共用同一套「T3x 未就绪则入队」逻辑（`net_mqtt.lua` → `HOST_DL_NEEDS_T3X` / `pendingHostQueue`）。
+这是 **两条不同业务**，只是 **都要问 T31x**，所以共用同一套「T31x 未就绪则入队」逻辑（`net_mqtt.lua` → `HOST_DL_NEEDS_T31X` / `pendingHostQueue`）。
 
 
 | 下行       | 上行       | 主题         | 查什么                                    | 串口            |
 | -------- | -------- | ---------- | -------------------------------------- | ------------- |
-| **2006** | **1006** | `identity` | Cat.1 **IMEI**（本地）+ T3x **GB28181 ID** | `AT+GB28181?` |
-| **2007** | **1007** | `tfcard`   | T3x **TF/SD** 有无与容量                    | `AT+TFCARD?`  |
+| **2006** | **1006** | `identity` | Cat.1 **IMEI**（本地）+ T31x **GB28181 ID** | `AT+GB28181?` |
+| **2007** | **1007** | `tfcard`   | T31x **TF/SD** 有无与容量                    | `AT+TFCARD?`  |
 
 
 - 平台可 **只发 2006 或只发 2007**；不会「发一条回两条」。
-- 与 **2003/2005** 不同：那些只查 4G 模组，**可秒回**；2006/2007 的数据在 T3x（含 rest 断电时）。
+- 与 **2003/2005** 不同：那些只查 4G 模组，**可秒回**；2006/2007 的数据在 T31x（含 rest 断电时）。
 
-**T3x 已在线（AT 就绪）**：下发后通常 **1～数秒内** 收到 1006 或 1007。
+**T31x 已在线（AT 就绪）**：下发后通常 **1～数秒内** 收到 1006 或 1007。
 
-**T3x 休眠 / rest 断电**（非秒回）：
+**T31x 休眠 / rest 断电**（非秒回）：
 
 ```text
 平台 Publish 2006 或 2007
-  → 4G 发现 T3x 未就绪
+  → 4G 发现 T31x 未就绪
   → 命令入 pendingHostQueue（入队）
-  → GPIO 唤醒 T3x
-  → T3x 首条 AT 就绪 → drainHostQueue 执行队列
+  → GPIO 唤醒 T31x
+  → T31x 首条 AT 就绪 → drainHostQueue 执行队列
   → UART 查询（含超时等待）
   → 发布 1006 或 1007（常需数秒～十数秒）
 ```
@@ -195,7 +195,7 @@ app.start() → bootMqtt → net_ready → mqtt.connect
   → 周期主动 1003（low_power_interval_sec，初值见 LOW_POWER_CFG.rest_mqtt_interval_sec）
 ```
 
-进 rest 后 **MQTT 长连接保持**（`modem_hibernate=false`）；USB 拔出等本地事件在线时发 **1002**（`source=enter`）。详见 [T3X_LOW_POWER.md](./T3X_LOW_POWER.md) §MQTT conack。
+进 rest 后 **MQTT 长连接保持**（`modem_hibernate=false`）；USB 拔出等本地事件在线时发 **1002**（`source=enter`）。详见 [T31X_LOW_POWER.md](./T31X_LOW_POWER.md) §MQTT conack。
 
 ---
 
@@ -354,9 +354,9 @@ OTA 字段：`version` 须为合宙 IoT 版 **`内核号.XXX.ZZZ`**，与 **1008
 
 > 与 **2007** 的区别、入队时序见 **§1.2**「2006/2007：为何有两条」。
 
-平台下发查询后，Cat.1 **上电/唤醒 T3x**（若未上电），经 UART 发 `AT+GB28181?` 读取 T3x 侧 GB28181 设备 ID，与 Cat.1 IMEI 一并上报。
+平台下发查询后，Cat.1 **上电/唤醒 T31x**（若未上电），经 UART 发 `AT+GB28181?` 读取 T31x 侧 GB28181 设备 ID，与 Cat.1 IMEI 一并上报。
 
-T3x **未就绪**时入 `pendingHostQueue` 并唤醒，**无即时 1006**；就绪后 UART 查询再发 **1006**（失败时 `gb28181Id=""`、`ret=-1`）。
+T31x **未就绪**时入 `pendingHostQueue` 并唤醒，**无即时 1006**；就绪后 UART 查询再发 **1006**（失败时 `gb28181Id=""`、`ret=-1`）。
 
 **下行**（`/panshi/device/{imei}/`）：
 
@@ -382,14 +382,14 @@ T3x **未就绪**时入 `pendingHostQueue` 并唤醒，**无即时 1006**；就�
 | 字段          | 说明                                                 |
 | ----------- | -------------------------------------------------- |
 | `imei`      | Cat.1 模组 IMEI（与 `deviceNo` / MQTT ClientId 同源）     |
-| `gb28181Id` | T3x 返回的 GB28181 设备 ID（`client.ini` → `gb28181_id`） |
+| `gb28181Id` | T31x 返回的 GB28181 设备 ID（`client.ini` → `gb28181_id`） |
 | `ret`       | `0` 成功读到 GB28181；`-1` 超时或未配置                       |
 | `messageId` | 可选，回显下行 `messageId`                                |
 
 
-**自动上报**：T3x 首条 AT 与 MQTT 均就绪后，若 `HOST_IDENTITY_CFG.auto_publish_on_ready=true`，主动发一次 **1006**（无 `messageId`）。
+**自动上报**：T31x 首条 AT 与 MQTT 均就绪后，若 `HOST_IDENTITY_CFG.auto_publish_on_ready=true`，主动发一次 **1006**（无 `messageId`）。
 
-实现：`user/host_uart.lua`（`AT+GB28181?`）、`user/net_mqtt.lua`；T3x：`cat1_host/uart_host_cmd.c`。
+实现：`user/host_uart.lua`（`AT+GB28181?`）、`user/net_mqtt.lua`；T31x：`cat1_host/uart_host_cmd.c`。
 
 ---
 
@@ -397,7 +397,7 @@ T3x **未就绪**时入 `pendingHostQueue` 并唤醒，**无即时 1006**；就�
 
 > 入队机制同 **2006**（§1.2）；本命令只应答 **1007**，不附带 1006。
 
-平台下发后，Cat.1 上电/唤醒 T3x，经 UART 发 `AT+TFCARD?` 读取 TF 卡是否存在及容量。T3x 未就绪时入队唤醒，**非秒回**。
+平台下发后，Cat.1 上电/唤醒 T31x，经 UART 发 `AT+TFCARD?` 读取 TF 卡是否存在及容量。T31x 未就绪时入队唤醒，**非秒回**。
 
 **下行**：
 
@@ -431,13 +431,13 @@ T3x **未就绪**时入 `pendingHostQueue` 并唤醒，**无即时 1006**；就�
 | `ret`       | `0` 查询成功；`-1` 超时或无卡     |
 
 
-T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
+T31x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 
 ---
 
 ### 4.7b `2008` — 版本查询 → `1008`
 
-只读 Cat.1 本地字段，**不唤醒 T3x**，应秒回。用于核对 **IMEI / deviceNo**、OTA 目标版本、`productKey`。
+只读 Cat.1 本地字段，**不唤醒 T31x**，应秒回。用于核对 **IMEI / deviceNo**、OTA 目标版本、`productKey`。
 
 **下行**：
 
@@ -477,7 +477,7 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 
 ### 4.7a `2009` — TF/SD 卡格式化 → `1009`
 
-> 完整时序（停录、UART `AT+TFFORMAT`、T3x mkfs、可选 reboot）见 [mqtt_tfcard_format_flow.md](./mqtt_tfcard_format_flow.md)。
+> 完整时序（停录、UART `AT+TFFORMAT`、T31x mkfs、可选 reboot）见 [mqtt_tfcard_format_flow.md](./mqtt_tfcard_format_flow.md)。
 
 平台下发后，Cat.1 会先尝试停录（`AT+RECORDCTRL=0,tfcard_format`），再经 UART 执行 `AT+TFFORMAT=1,reboot=0|1`；完成后上报 `1009` 到 `.../tfcard_format`。
 
@@ -512,8 +512,8 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 | `ok` | 格式化完成 |
 | `disabled` | `HOST_TFCARD_FORMAT_CFG.enabled=false` |
 | `busy` | 已有格式化任务 |
-| `timeout` | 等待 T3x 应答超时 |
-| `no_uart` / `t3x_unavailable` | T3x 未唤醒或串口不可用 |
+| `timeout` | 等待 T31x 应答超时 |
+| `no_uart` / `t31x_unavailable` | T31x 未唤醒或串口不可用 |
 
 成功且 `publish_status_after=true` 且 `reboot=0` 时，设备会自动补发一次 `1007` 刷新 TF 容量状态。
 
@@ -559,11 +559,11 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 { "dataType": "2011", "messageId": "optional" }
 ```
 
-条件：正在录像且 `stopOnCloud=1`（**2010** 配置）。设备调用 `pir_ctrl.requestStopFromCloud()` → 结束本地录像会话并发布 `PIR_STOP_RECORDING`（`reason=device`）。**无即时 1004**。若 T3x 未在写盘，上行 **1011**（`source=4g`）；若 T3x 正在写盘，先唤醒同步停录，**1011** 可能为 `source=t3x`。
+条件：正在录像且 `stopOnCloud=1`（**2010** 配置）。设备调用 `pir_ctrl.requestStopFromCloud()` → 结束本地录像会话并发布 `PIR_STOP_RECORDING`（`reason=device`）。**无即时 1004**。若 T31x 未在写盘，上行 **1011**（`source=4g`）；若 T31x 正在写盘，先唤醒同步停录，**1011** 可能为 `source=t31x`。
 
-**T3x 已在线时**：`host_uart.recordCtrlStop()` → `AT+RECORDCTRL=0,cloud`（见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012)）。
+**T31x 已在线时**：`host_uart.recordCtrlStop()` → `AT+RECORDCTRL=0,cloud`（见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012)）。
 
-详见 [PIR_PROTOCOL.md](./PIR_PROTOCOL.md) · [T3X_RECORD_MQTT_FLOW.md](./T3X_RECORD_MQTT_FLOW.md)。
+详见 [PIR_PROTOCOL.md](./PIR_PROTOCOL.md) · [T31X_RECORD_MQTT_FLOW.md](./T31X_RECORD_MQTT_FLOW.md)。
 
 ---
 
@@ -578,9 +578,9 @@ T3x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。
 }
 ```
 
-`pir_ctrl.requestStartFromCloud()` → 即时 **1004** `pir_start` + **1012**；GPIO 唤醒 T3x → TF MP4；T3x 写盘后 **1010** `t3x_active`、结束 **1011**。
+`pir_ctrl.requestStartFromCloud()` → 即时 **1004** `pir_start` + **1012**；GPIO 唤醒 T31x → TF MP4；T31x 写盘后 **1010** `t31x_active`、结束 **1011**。
 
-**T3x 已在线时**：额外 `AT+RECORDCTRL=1,<videoMaxDurationSec>`。全流程见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012)。
+**T31x 已在线时**：额外 `AT+RECORDCTRL=1,<videoMaxDurationSec>`。全流程见 [MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#4-录像启停2011--2012)。
 
 ---
 
@@ -669,14 +669,14 @@ T31x 人形抽片排队后可主动 `AT+UPLOADNEED` → **1013**（无 `reply`�
 
 ### 4.12 `2022` / `2023` — 录像时长档位（分钟）→ `1022` / `1023`
 
-T3x 侧 `[record] rec_time` 固定档位 **5/10/15/20/30/45/60** 分钟。UART：`AT+RECORDTIME?` / `AT+RECORDTIME=<min>`。
+T31x 侧 `[record] rec_time` 固定档位 **5/10/15/20/30/45/60** 分钟。UART：`AT+RECORDTIME?` / `AT+RECORDTIME=<min>`。
 
 ```json
 {"dataType":"2022","messageId":"rt-q-001"}
 {"dataType":"2023","recordTimeMin":10,"messageId":"rt-s-001"}
 ```
 
-应答主题：`.../record`。详见 [UART_AT_COMMANDS.md §3](UART_AT_COMMANDS.md#3-cat1--t3x4g-主动发t3x-答)。
+应答主题：`.../record`。详见 [UART_AT_COMMANDS.md §3](UART_AT_COMMANDS.md#3-cat1--t31x4g-主动发t31x-答)。
 
 ---
 
@@ -689,13 +689,13 @@ T3x 侧 `[record] rec_time` 固定档位 **5/10/15/20/30/45/60** 分钟。UART�
 {"dataType":"2025","camera":0,"stream":0,"framerate":20,"messageId":"fps-s-001"}
 ```
 
-应答主题：`.../framerate`。T3x：`SetFramerate()` + `save_framerate()`。完整说明：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#3-帧率2024--2025)。
+应答主题：`.../framerate`。T31x：`SetFramerate()` + `save_framerate()`。完整说明：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md §3](MQTT_CLOUD_REMOTE_CTRL_FLOW.md#3-帧率2024--2025)。
 
 ---
 
 ### 4.14 `2026` / `2027` — 人形检测开关 → `1026` / `1027`
 
-需 T3x `WITH_PERSON_DETECT`。UART：`AT+PERSONDET?` / `AT+PERSONDET=0|1`。
+需 T31x `WITH_PERSON_DETECT`。UART：`AT+PERSONDET?` / `AT+PERSONDET=0|1`。
 
 ```json
 {"dataType":"2026","messageId":"pd-q-001"}
@@ -708,11 +708,11 @@ T3x 侧 `[record] rec_time` 固定档位 **5/10/15/20/30/45/60** 分钟。UART�
 
 ### 4.15 `2028` / `2029` — 麦克风 AI 音量/增益 → `1028` / `1029`
 
-配置 T3x 侧 **AI 采集通道**（`IMP_AI_SetVol` / `IMP_AI_SetGain`），与 **2020/2021 `scope:"audio"` 的扬声器 volume/gain** 不同。
+配置 T31x 侧 **AI 采集通道**（`IMP_AI_SetVol` / `IMP_AI_SetGain`），与 **2020/2021 `scope:"audio"` 的扬声器 volume/gain** 不同。
 
 **链路**：MQTT → `net_mqtt.lua` → `host_uart.lua` → `AT+MIC?` / `AT+MICSET=` → IPC `host_remote.c` → `syscfg.ini`（`camera0:audio_in_volume/gain`）。
 
-T3x **未就绪**时入 `pendingHostQueue` 并唤醒（同 2024–2027）。
+T31x **未就绪**时入 `pendingHostQueue` 并唤醒（同 2024–2027）。
 
 **下行查询**（`/panshi/device/{deviceNo}/`）：
 
@@ -806,11 +806,11 @@ T3x **未就绪**时入 `pendingHostQueue` 并唤醒（同 2024–2027）。
 
 ### 4.16 `2030` / `2031` — 软光敏参数 → `1030` / `1031`
 
-配置 T3x `[soft_photosensitive]` 段（IRCUT 软光敏切换阈值），**无需重启**；IPC 更新内存后检测线程下一轮生效。
+配置 T31x `[soft_photosensitive]` 段（IRCUT 软光敏切换阈值），**无需重启**；IPC 更新内存后检测线程下一轮生效。
 
 **链路**：MQTT → `net_mqtt.lua` → `host_uart.lua` → `AT+SOFTPHOTO?` / `AT+SOFTPHOTOSET=` → IPC `host_remote.c` → `save_soft_photosensitive_cfg()`。
 
-T3x **未就绪**时入队唤醒（同 2028–2029）。
+T31x **未就绪**时入队唤醒（同 2028–2029）。
 
 **下行查询**：
 
@@ -1136,7 +1136,7 @@ conack 补报示例：
 }
 ```
 
-触发：**2006** 查询；或 T3x 通讯就绪 + MQTT 在线后自动上报（可配置）。
+触发：**2006** 查询；或 T31x 通讯就绪 + MQTT 在线后自动上报（可配置）。
 
 ---
 
@@ -1200,7 +1200,7 @@ conack 补报示例：
   "deviceNo": "862323084068124",
   "dataType": "1010",
   "status": "1",
-  "pirStatus": "t3x_active",
+  "pirStatus": "t31x_active",
   "recording": 1,
   "active": 1,
   "action": "video",
@@ -1233,16 +1233,16 @@ conack 补报示例：
 | `status`       | 硬件触发常为 `"1"`；**2010 query** 应答为 `"query"`（与 `pirStatus` 同值） |
 | `pirStatus`    | 业务子状态（见下表）                                                  |
 | `recording`    | `0`/`1` 是否在录像会话中                                            |
-| `active`       | 可选；`1` 表示 T3x 首个 I 帧已写盘（与 `t3x_active` 同现）                  |
-| `snapshotPath` | 可选；`pirStatus=snapshot_saved` 时 T3x SD 路径                   |
+| `active`       | 可选；`1` 表示 T31x 首个 I 帧已写盘（与 `t31x_active` 同现）                  |
+| `snapshotPath` | 可选；`pirStatus=snapshot_saved` 时 T31x SD 路径                   |
 
 
 
 | pirStatus        | 含义                                 |
 | ---------------- | ---------------------------------- |
 | `detected`       | 正常 PIR 触发                          |
-| `t3x_active`     | T3x 首个 I 帧已写盘（常伴 `active=1`）       |
-| `snapshot_saved` | T3x JPEG 已写入 SD（常伴 `snapshotPath`） |
+| `t31x_active`     | T31x 首个 I 帧已写盘（常伴 `active=1`）       |
+| `snapshot_saved` | T31x JPEG 已写入 SD（常伴 `snapshotPath`） |
 | `retrigger`      | 录像中二次 PIR（将停录）                     |
 | `query`          | 应答 2010 状态查询                       |
 
@@ -1268,11 +1268,11 @@ conack 补报示例：
 
 | source | 含义                          |
 | ------ | --------------------------- |
-| `4g`   | 4G 定时 / 2011 设备停录（T3x 未写盘时） |
-| `t3x`  | T3x `AT+RECORD=0,reason=*`  |
+| `4g`   | 4G 定时 / 2011 设备停录（T31x 未写盘时） |
+| `t31x`  | T31x `AT+RECORD=0,reason=*`  |
 
 
-常见 T3x `reason`：`done`、`time_sync`、`no_iframe`、`open_failed`、`pir_retrigger`。详见 [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)。
+常见 T31x `reason`：`done`、`time_sync`、`no_iframe`、`open_failed`、`pir_retrigger`。详见 [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md)。
 
 ---
 
@@ -1395,7 +1395,7 @@ conack 补报示例：
 | 1003     | `status`       | 2003 / `low_power_interval_sec` 周期              |
 | 1004     | `event`        | 2004 回复 / OTA                                   |
 | 1005     | `sim`          | 2005                                            |
-| 1006     | `identity`     | 2006 / T3x 就绪自动                                 |
+| 1006     | `identity`     | 2006 / T31x 就绪自动                                 |
 | 1007     | `tfcard`       | 2007                                            |
 | 1010     | `pir`          | PIR 触发 / 2010 query                             |
 | 1011     | `event`        | 停录                                              |
@@ -1447,7 +1447,7 @@ conack 补报示例：
 | 2031 | `dispatchDl2031` | `publishSoftPhotoReply` → 1031              |
 
 
-UART / IPC 实现：`user/host_uart.lua`（`queryHostMic` / `setHostMic` / `queryHostSoftPhoto` / `setHostSoftPhoto`）；T3x：`app/host/host_at.c` · `app/host/host_remote.c` · `app/cfg_ini/sysconfig.c`。
+UART / IPC 实现：`user/host_uart.lua`（`queryHostMic` / `setHostMic` / `queryHostSoftPhoto` / `setHostSoftPhoto`）；T31x：`app/host/host_at.c` · `app/host/host_remote.c` · `app/cfg_ini/sysconfig.c`。
 
 ---
 
@@ -1464,12 +1464,12 @@ UART / IPC 实现：`user/host_uart.lua`（`queryHostMic` / `setHostMic` / `quer
 - [ ] 2004 reboot/off → 1004 `reply=1`
 - [ ] 2004 ota → 1004 回复 + stage 进度
 - [ ] 2005 → 1005
-- [ ] 2006 → 1006（含 T3x 未上电时唤醒查询）
+- [ ] 2006 → 1006（含 T31x 未上电时唤醒查询）
 - [ ] 2007 → 1007（TF 存在/总容量/已用/可用）
 - [ ] **常电** PIR 触发 → 1010（`uploadMode=auto` 时另收 1001）；2010 query → 1010
 - [ ] 2011 停录 → 1011
-- [ ] 2012 开录 → 1004 + 1012 + 1010 t3x_active
-- [ ] 2013 请求上传 → 1013 `reply=1 ret=0`（T3x 在线时 `AT+UPLOADVIDEO`）
+- [ ] 2012 开录 → 1004 + 1012 + 1010 t31x_active
+- [ ] 2013 请求上传 → 1013 `reply=1 ret=0`（T31x 在线时 `AT+UPLOADVIDEO`）
 - [ ] 2024/2025 帧率 → 1024/1025（`AT+FRAMERATE`）
 - [ ] 2026/2027 人形 → 1026/1027（`AT+PERSONDET`）
 - [ ] 2020 → 1020（`body.video` / `body.audio`）

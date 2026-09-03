@@ -149,14 +149,14 @@
   "reply": 1,
   "messageId": "q-cam0",
   "ret": -1,
-  "message": "t3x_unavailable",
+  "message": "t31x_unavailable",
   "time": "2026-06-08 12:00:00"
 }
 ```
 
 | `message` | 含义 |
 |-----------|------|
-| `t3x_unavailable` | T31x 未上电或策略拒绝唤醒 |
+| `t31x_unavailable` | T31x 未上电或策略拒绝唤醒 |
 | `timeout` | UART 无 `+VENC:END` / `+AUDIO:END` |
 | `busy` | 并发查询 |
 | `no_host_uart` | 串口模块未就绪 |
@@ -270,7 +270,7 @@
 平台 Publish 2020/2021
   → 4G net_mqtt.dispatchDl2020/2021
   → host_uart.queryHostEncode / setHostVideoEncode / setHostAudioEncode
-  → （rest 时 t3x_ctrl 上电 + 等 ready）
+  → （rest 时 t31x_ctrl 上电 + 等 ready）
   → UART: AT+VENC? / AT+VENCSET= / AT+AUDIO? / AT+AUDIOSET=
   → T31x encode_remote.c → syscfg.ini
   → Publish 1020/1021 → .../encode

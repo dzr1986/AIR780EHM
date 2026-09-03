@@ -22,8 +22,8 @@ _G.device_imei（app 联网后写入）
 | 函数 | 返回值 |
 |------|--------|
 | `getImei()` | IMEI 或 nil |
-| `getDeviceId()` | IMEI 或 `"unknown_device"` |
-| `getDisplayId()` | IMEI 或 `"unknown"` |
+| `getDeviceNo()` | IMEI 或 `"unknown_device"` |
+| `getDisplayNo()` | IMEI 或 `"unknown"` |
 
 ### 1.2 消费者
 

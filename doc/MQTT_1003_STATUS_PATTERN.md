@@ -67,7 +67,7 @@
 | personDetectEnabled | `1`×1088 |
 | personDetectAvailable | `1`×1088 |
 | timeSynced | `1`×1088 |
-| recordingT3x | `1`×1088 |
+| recordingT31x | `1`×1088 |
 | wledEnable | `0`×1088 |
 | cat1Link | `1`×1088 |
 
@@ -100,7 +100,7 @@
   "personDetectEnabled": 1,
   "personDetectAvailable": 1,
   "timeSynced": 1,
-  "recordingT3x": 1,
+  "recordingT31x": 1,
   "wledEnable": 0,
   "cat1Link": 1,
   "time": "2026-08-19 07:57:39"
@@ -109,7 +109,7 @@
 
 ## 5. 时间线（到达间隔）
 
-| # | 本机收到 | 载荷 time | 距上一条 | remainPower | csq | ipcReady | recordingT3x |
+| # | 本机收到 | 载荷 time | 距上一条 | remainPower | csq | ipcReady | recordingT31x |
 |---|----------|-----------|----------|-------------|-----|----------|--------------|
 | 1 | 23:23:04 | 2026-08-18 23:23:03 |  | 95 | 24 | 1 | 1 |
 | 2 | 23:23:34 | 2026-08-18 23:23:33 | 30.0s | 95 | 24 | 1 | 1 |

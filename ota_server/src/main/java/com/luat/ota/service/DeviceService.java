@@ -3,13 +3,18 @@ package com.luat.ota.service;
 import com.luat.ota.entity.Device;
 import com.luat.ota.entity.DeviceOtaStatus;
 import com.luat.ota.repository.DeviceRepository;
+import com.luat.ota.util.ImeiListParser;
 import com.luat.ota.util.LuatVersionUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -141,6 +146,74 @@ public class DeviceService {
     @Transactional
     public void deleteByImei(String imei) {
         deviceRepository.findByImei(imei).ifPresent(deviceRepository::delete);
+    }
+
+    @Transactional
+    public Map<String, Object> batch(String action, List<String> imeis, String projectKey) {
+        if (imeis == null || imeis.isEmpty()) {
+            throw new IllegalArgumentException("请填写 IMEI");
+        }
+        if (!StringUtils.hasText(action)) {
+            throw new IllegalArgumentException("action required");
+        }
+        String act = action.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+        int ok = 0;
+        int missing = 0;
+        List<String> errors = new ArrayList<>();
+        for (String imei : imeis) {
+            try {
+                switch (act) {
+                    case "unban", "enable_ota" -> setOtaEnabled(imei, true);
+                    case "ban", "disable_ota" -> setOtaEnabled(imei, false);
+                    case "debug_on" -> setDebugEnabled(imei, true);
+                    case "debug_off" -> setDebugEnabled(imei, false);
+                    case "delete" -> {
+                        if (deviceRepository.findByImei(imei).isEmpty()) {
+                            missing++;
+                            continue;
+                        }
+                        deleteByImei(imei);
+                    }
+                    case "transfer" -> {
+                        if (!StringUtils.hasText(projectKey)) {
+                            throw new IllegalArgumentException("转移需要目标项目 Key");
+                        }
+                        Device device = deviceRepository.findByImei(imei)
+                                .orElseThrow(() -> new IllegalArgumentException("设备不存在: " + imei));
+                        device.setProjectKey(projectKey.trim());
+                        deviceRepository.save(device);
+                    }
+                    case "create", "upsert" -> {
+                        Device input = new Device();
+                        input.setImei(imei);
+                        if (StringUtils.hasText(projectKey)) {
+                            input.setProjectKey(projectKey.trim());
+                        }
+                        input.setOtaEnabled(true);
+                        upsert(input);
+                    }
+                    default -> throw new IllegalArgumentException("unknown batch action: " + action);
+                }
+                ok++;
+            } catch (IllegalArgumentException ex) {
+                String msg = ex.getMessage() == null ? "" : ex.getMessage();
+                if (msg.startsWith("unknown batch action")) {
+                    throw ex;
+                }
+                if (msg.startsWith("设备不存在")) {
+                    missing++;
+                } else {
+                    errors.add(imei + ": " + msg);
+                }
+            }
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("action", act);
+        body.put("ok", ok);
+        body.put("missing", missing);
+        body.put("errors", errors);
+        body.put("total", imeis.size());
+        return body;
     }
 
     public Optional<String> resolveTargetVersion(String imei) {
@@ -300,6 +373,106 @@ public class DeviceService {
             clearLoopProtection(device);
             deviceRepository.save(device);
         });
+    }
+
+    @Transactional
+    public Device ensureByImei(String rawImei) {
+        String imei = ImeiListParser.requireValid(rawImei).get(0);
+        return deviceRepository.findByImei(imei).orElseGet(() -> {
+            Device device = new Device();
+            device.setImei(imei);
+            device.setDeviceName(imei);
+            device.setOtaEnabled(true);
+            device.setDebugEnabled(false);
+            device.setIpcStatus("IDLE");
+            device.setIpcEnabled(false);
+            return deviceRepository.save(device);
+        });
+    }
+
+    public static boolean isIpcUpgradeAllowed(Device device) {
+        return device != null && Boolean.TRUE.equals(device.getIpcEnabled());
+    }
+
+    @Transactional
+    public Device setIpcEnabled(String rawImei, boolean enabled) {
+        Device device = ensureByImei(rawImei);
+        device.setIpcEnabled(enabled);
+        device.setLastSeenAt(Instant.now());
+        return deviceRepository.save(device);
+    }
+
+    @Transactional
+    public Map<String, Object> batchIpcEnabled(boolean enabled, List<String> imeis) {
+        int updated = 0;
+        for (String imei : imeis) {
+            setIpcEnabled(imei, enabled);
+            updated++;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("action", enabled ? "enable" : "disable");
+        out.put("updated", updated);
+        return out;
+    }
+
+    public Device requireIpcAllowed(String rawImei) {
+        Device device = ensureByImei(rawImei);
+        if (!isIpcUpgradeAllowed(device)) {
+            throw new IllegalArgumentException("IMEI " + device.getImei() + " 未允许 IPC 升级，请先点「允许」");
+        }
+        return device;
+    }
+
+    @Transactional
+    public Device markIpcPending(String rawImei, String version, String sessionId) {
+        Device device = requireIpcAllowed(rawImei);
+        device.setIpcTargetVersion(version);
+        device.setIpcStatus("PENDING");
+        device.setIpcSessionId(sessionId);
+        device.setLastSeenAt(Instant.now());
+        return deviceRepository.save(device);
+    }
+
+    @Transactional
+    public Device markIpcResult(String rawImei, String stage, String version) {
+        Device device = ensureByImei(rawImei);
+        String st = stage == null ? "" : stage.trim().toLowerCase(Locale.ROOT);
+        if ("success".equals(st) || "ok".equals(st)) {
+            if (StringUtils.hasText(version)) {
+                device.setIpcVersion(version.trim());
+            } else if (StringUtils.hasText(device.getIpcTargetVersion())) {
+                device.setIpcVersion(device.getIpcTargetVersion());
+            }
+            device.setIpcStatus("SUCCESS");
+            device.setLastIpcUpgradeAt(Instant.now());
+        } else if ("failed".equals(st) || "fail".equals(st) || "error".equals(st)) {
+            device.setIpcStatus("FAILED");
+        } else if (StringUtils.hasText(st) && !"idle".equals(st)) {
+            device.setIpcStatus("IN_PROGRESS");
+        }
+        device.setLastSeenAt(Instant.now());
+        return deviceRepository.save(device);
+    }
+
+    public Map<String, Object> ipcView(Device device) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("imei", device.getImei());
+        m.put("deviceName", device.getDeviceName());
+        m.put("firmwareName", device.getFirmwareName());
+        m.put("currentVersion", device.getCurrentVersion());
+        m.put("ipcVersion", device.getIpcVersion());
+        m.put("ipcTargetVersion", device.getIpcTargetVersion());
+        m.put("ipcEnabled", isIpcUpgradeAllowed(device));
+        m.put("ipcStatus", device.getIpcStatus() == null ? "IDLE" : device.getIpcStatus());
+        m.put("ipcSessionId", device.getIpcSessionId());
+        m.put("lastIpcUpgradeAt", device.getLastIpcUpgradeAt());
+        m.put("lastSeenAt", device.getLastSeenAt());
+        return m;
+    }
+
+    public List<Map<String, Object>> listIpcViews() {
+        return listAll().stream().map(this::ipcView).toList();
     }
 
     private static void clearLoopProtection(Device device) {

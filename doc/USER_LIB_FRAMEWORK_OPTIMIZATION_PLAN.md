@@ -31,27 +31,27 @@
 
 ```
 host_uart.lua              657   ← 锁 / SYS_EVT / state / RX 入口 / bind 编排
-hu_at.lua            81
-hu_rx.lua           649   ← 最大子文件，URC 行分发
-hu_cmd.lua          327
-  hu_cmd_pir.lua    111
-  hu_cmd_t3x.lua    209
-  hu_cmd_link.lua   230
-  hu_cmd_wled.lua   169
-  hu_cmd_usb.lua    269
-hu_ipc.lua          348
-  hu_ipc_cloud.lua      296
-  hu_ipc_recovery.lua   155
-  hu_ipc_power.lua      145
-  hu_ipc_hostq.lua      275
-  hu_ipc_tffmt.lua      109
-  hu_ipc_encode.lua     182
+hif_at.lua            81
+hif_rx.lua           649   ← 最大子文件，URC 行分发
+hif_cmd.lua          327
+  hif_cmd_pir.lua    111
+  hif_cmd_t31x.lua    209
+  hif_cmd_link.lua   230
+  hif_cmd_wled.lua   169
+  hif_cmd_usb.lua    269
+hif_ipc.lua          348
+  hif_ipc_cloud.lua      296
+  hif_ipc_recovery.lua   155
+  hif_ipc_power.lua      145
+  hif_ipc_hostq.lua      275
+  hif_ipc_tffmt.lua      109
+  hif_ipc_encode.lua     182
 ```
 
 #### net_mqtt 族（18 文件，~3 400 行）
 
 ```
-net_mqtt.lua               574   ← mqttTask / publishRaw / notifyPowerOff / 连接状态
+net_mqtt.lua               574   ← mqttTask / pubRaw / notifyPowerOff / 连接状态
 net_mqtt_topic.lua          99
 net_mqtt_cfg.lua            71
 net_mqtt_bootstrap.lua      58
@@ -80,7 +80,7 @@ net_mqtt_host_proto.lua     432
 | `config.lua` | 681 | 配置表聚合，暂不动 |
 | `pir_ctrl.lua` | 656 | 业务闭环，非协议分发，低优先级 |
 | `battery_guard.lua` | 391 | 可接受 |
-| `t3x_ctrl.lua` | 373 | 可接受 |
+| `t31x_ctrl.lua` | 373 | 可接受 |
 
 ### 2.4 lib/ 状态
 
@@ -90,7 +90,7 @@ net_mqtt_host_proto.lua     432
 
 | 风险 | 实例 | 教训 |
 |------|------|------|
-| 生成/手工合并导致 **死代码** | `hu_rx.lua` 注册表嵌在 `tryIpcParam` 之后 | 子模块 `return M` / 注册表必须在函数块外；生成脚本需 `\nend\n` 防护 |
+| 生成/手工合并导致 **死代码** | `hif_rx.lua` 注册表嵌在 `tryIpcParam` 之后 | 子模块 `return M` / 注册表必须在函数块外；生成脚本需 `\nend\n` 防护 |
 | **模块名 shadowing** | `IP_LOSE` 回调参数 `adapter` 遮蔽 `net_mqtt_adapter` | 回调参数用 `ipAdapter` 等前缀，文档写进约束 |
 | **bind 顺序依赖** | ipc：`recovery → hostq → cloud → power` | 主文件 bind 顺序即契约，改顺序必跑回归 |
 | **文档与代码脱节** | `LUA_MODULES.md` 仍写「19 user 模块」 | 需模块树索引，而非继续堆「+N 模块」叙述 |
@@ -113,7 +113,7 @@ net_mqtt_host_proto.lua     432
 
 1. **主文件 = 编排 + 不可迁移内核**  
    - `host_uart.lua`：互斥锁、`SYS_EVT`、`state`、RX 入口、子模块 `bind` 顺序。  
-   - `net_mqtt.lua`：`mqttTask`、`publishRaw`、`notifyPowerOff`、连接生命周期。
+   - `net_mqtt.lua`：`mqttTask`、`pubRaw`、`notifyPowerOff`、连接生命周期。
 
 2. **子模块 = 按边界拆，不按行数机械拆**  
    - 合格边界：协议域（PIR / TF / cloud / encode）、连接外围（topic/cfg/bootstrap）、上下行 cmd 号段。  
@@ -141,7 +141,7 @@ net_mqtt_host_proto.lua     432
 |---|------|------|
 | P0-1 | 重写 `doc/LUA_MODULES.md` §2 为 **模块树**（host_uart / net_mqtt 子树 + 其余 user 一览） | 单页全景 |
 | P0-2 | `doc/modules/README.md` 增加 **子模块索引表**（文件名 → 职责 → 专题 doc 链接） | 与 P0-1 互链 |
-| P0-3 | `doc/CALL_GRAPH.md` 补充 bind 顺序：`hu_ipc_*`、`net_mqtt_*` 加载链 | 防顺序回归 |
+| P0-3 | `doc/CALL_GRAPH.md` 补充 bind 顺序：`hif_ipc_*`、`net_mqtt_*` 加载链 | 防顺序回归 |
 | P0-4 | `HOST_UART_AT_DISPATCH.md` / `NET_MQTT_DOWNLINK_DISPATCH.md` 各加 **文件→注册表** 对照 | 改 handler 前必查 |
 
 **验收**：任意 200x / AT 命令名，在文档中 **≤2 次点击** 定位到 `.lua` 文件。
@@ -167,14 +167,14 @@ net_mqtt_host_proto.lua     432
 
 | 候选 | 行数 | 建议 | 风险 |
 |------|------|------|------|
-| `hu_rx.lua` | 649 | 迁 **encode/framerate/mic try\*** 段 → `hu_rx_media.lua` | 中：URC 注册表分散 |
+| `hif_rx.lua` | 649 | 迁 **encode/framerate/mic try\*** 段 → `hif_rx_media.lua` | 中：URC 注册表分散 |
 | `net_mqtt_host_proto.lua` | 432 | **暂不动**（2020–2031 已独立） | — |
 | `mqtt_uplink.lua` | 345 | **暂不动** | — |
 | `pir_ctrl.lua` | 656 | 业务模块，非本计划范围 | — |
 
 **不推荐**：
 
-- 合并 `hu_cmd_pir` + `hu_cmd_t3x` 等（丢失域边界）。  
+- 合并 `hif_cmd_pir` + `hif_cmd_t31x` 等（丢失域边界）。  
 - 把 `net_mqtt_downlink_*.lua` 并回 `downlink.lua`（已按 200x 域拆分，合并反增冲突）。
 
 **若执行 P2-1（rx_media）**：
@@ -194,8 +194,8 @@ net_mqtt_host_proto.lua     432
 
 ```bash
 python tools/debug/_gen_bind_header.py --check-all          # 11 子模块 drift 校验
-python tools/debug/_gen_bind_header.py --emit hu_cmd_pir.lua
-python tools/debug/_gen_bind_header.py --scan user/hu_cmd_link.lua
+python tools/debug/_gen_bind_header.py --emit hif_cmd_pir.lua
+python tools/debug/_gen_bind_header.py --scan user/hif_cmd_link.lua
 ```
 
 **约定**：`parseIpcStat` / `parseTfCard` / `hostQuery` / `idCfg` / `pushUsbIdle` 等 ctx 上 **晚于 rx.bind 才赋值** 的字段，子模块必须用 `local function foo(...) return C.foo(...) end`，**禁止** `local foo = C.foo` 快照。
@@ -221,13 +221,13 @@ main.lua → app.lua → module_loader
                           ↓
               ┌───────────┴───────────┐
          host_uart 族            net_mqtt 族
-         (T3x 串口)               (云端 MQTT)
+         (T31x 串口)               (云端 MQTT)
               ↓                        ↓
     at / rx / cmd_* / ipc_*     topic/cfg/task↓
                                 downlink_* / uplink_* / host_proto
 ```
 
-- **找 AT/URC**：`hu_at` + `hu_rx` + `hu_cmd_*` + `hu_ipc_*`。  
+- **找 AT/URC**：`hif_at` + `hif_rx` + `hif_cmd_*` + `hif_ipc_*`。  
 - **找 200x/100x**：`net_mqtt_downlink*` / `mqtt_uplink*` / `net_mqtt_host_proto`。  
 - **找连接/重连**：只看 `net_mqtt.lua` + `net_mqtt_bootstrap` + `net_mqtt_adapter`。
 
@@ -235,9 +235,9 @@ main.lua → app.lua → module_loader
 
 | 前缀 | 含义 |
 |------|------|
-| `hu_cmd_*` | T3x **通知/设置** 类 AT（HOST→CAT1 方向为主） |
-| `hu_ipc_*` | **查询/云状态/TF/编码/上电** 等 IPC 交互 |
-| `hu_rx_*` | （若拆）纯 URC 行解析 |
+| `hif_cmd_*` | T31x **通知/设置** 类 AT（HOST→CAT1 方向为主） |
+| `hif_ipc_*` | **查询/云状态/TF/编码/上电** 等 IPC 交互 |
+| `hif_rx_*` | （若拆）纯 URC 行解析 |
 | `net_mqtt_downlink_*` | 云端 **下行** 200x 域 |
 | `mqtt_uplink_*` | 设备 **上行** 100x 域 |
 | `net_mqtt_*` 短名 | 连接外围（topic/cfg/stat/hooks），**不含** cmd handler |
@@ -260,7 +260,7 @@ main.lua → app.lua → module_loader
 | **阶段 A** | 1–2 天 | P0 文档全套 + `_module_tree.py` | 不升 | **完成** |
 | **阶段 B** | 1 天 | P1 静态检查 + 生成脚本加固 | 不升 | **完成** |
 | **阶段 C** | 冻结 2 周 | **零新拆分**；仅 bugfix；静态脚本必跑 | 按行为 | **进行中** |
-| **阶段 D** | ✅ | P2-1 `hu_rx`→`rx_dsl`+`rx_media` | 不升（纯迁） |
+| **阶段 D** | ✅ | P2-1 `hif_rx`→`rx_dsl`+`rx_media` | 不升（纯迁） |
 | **阶段 E** | 长期 | P3 bind 头生成器；`config` 仅在 &gt;800 行再评估 | 不升 | **P3 完成** |
 
 ```mermaid
@@ -320,7 +320,7 @@ python tools/gui/flash/cat1_flash.py flash-script
 |------|------|
 | 文件太多要不要合并？ | **不合并**；用文档树 + 静态检查治理 |
 | 还要不要继续拆？ | **默认冻结**；仅 &gt;500 行且边界清晰时单点动刀 |
-| 下一刀砍谁？ | 唯一候选：`hu_rx.lua` → `rx_media`（可选） |
+| 下一刀砍谁？ | 唯一候选：`hif_rx.lua` → `rx_media`（可选） |
 | app/config/pir 呢？ | app 冻结；其余低优先级 |
 | lib 呢？ | 维持 17 文件，无拆分计划 |
 | Flash 优化？ | 不靠减文件；见 `CODE_SIZE_OPTIMIZATION.md` |

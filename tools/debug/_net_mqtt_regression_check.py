@@ -76,6 +76,11 @@ CHECKS: list[tuple[str, str, str]] = [
         r"function waitNet[\s\S]*net_ready",
     ),
     (
+        "startNet 调 cell_boot.waitForNetwork",
+        "user/mqtt_conn.lua",
+        r"cell\.waitForNetwork\(\)",
+    ),
+    (
         "conn isDownTopic 供 dispatch",
         "user/mqtt_dispatch.lua",
         r"isDownTopic\(topic\)",
@@ -93,7 +98,17 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "uplink bind pir/upload + stat interval",
         "user/mqtt_uplink.lua",
-        r"mqtt_ul_pir[\s\S]*mqtt_ul_upload[\s\S]*function getStatIv[\s\S]*startStatReporter",
+        r"mqtt_ul_pir[\s\S]*mqtt_ul_upload[\s\S]*function getStatInterval[\s\S]*startStatReporter",
+    ),
+    (
+        "getStatInterval 在 pubStatus 之前定义",
+        "user/mqtt_uplink.lua",
+        r"local function getStatInterval[\s\S]*function pubStatus",
+    ),
+    (
+        "202x UART 串行队列 runHostJob",
+        "user/mqtt_downlink.lua",
+        r"function runHostJob[\s\S]*wrapHostTask[\s\S]*runHostJob",
     ),
     (
         "host_proto register 进 downlink",

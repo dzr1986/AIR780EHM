@@ -21,7 +21,7 @@ main (2100851)
 **#5 相对 #4 额外提交**（文档与重构，无冲突性逻辑分叉）：
 
 - `4bcbd09` 专题 + host_uart/net_mqtt 表驱动  
-- `b54309e` … `fa6937d` 分批补充专题（PIR/电量/T3x/USB/lib 等）
+- `b54309e` … `fa6937d` 分批补充专题（PIR/电量/T31x/USB/lib 等）
 
 ---
 
@@ -55,7 +55,7 @@ main (2100851)
 |------|------|----------|
 | 三档电量 | `battery_guard.lua` · `config.lua` | >20% 常电；5~20% 仅 HOSTIDLE；≤5% rest+关机+挂 PIR |
 | HOSTIDLE 30s | `battery_guard.lua` · `app.lua` | PIR 唤醒后 30s 内拒 HOSTIDLE |
-| USB 去重 | `app.lua` · `t3x_ctrl.lua` | 插 USB / 出 rest 不重复 `onT3xWake`；`sleep_in_progress` 互斥 |
+| USB 去重 | `app.lua` · `t31x_ctrl.lua` | 插 USB / 出 rest 不重复 `onT31xWake`；`sleep_in_progress` 互斥 |
 | 文档 | `doc/LUA_MODULES.md` 等 | 说明同步 |
 
 ### 3.2 PR #5 独有 — 表驱动（须协议回归）
@@ -80,7 +80,7 @@ main (2100851)
 
 | # | 场景 | 预期 | ☐ |
 |---|------|------|---|
-| A1 | 电量 **>20%**，T3x 发 HOSTIDLE | **拒绝** 休眠（4G 常电） | |
+| A1 | 电量 **>20%**，T31x 发 HOSTIDLE | **拒绝** 休眠（4G 常电） | |
 | A2 | 电量 **5~20%**，无 PIR | 允许 T31 HOSTIDLE；**不进** 4G rest | |
 | A3 | 电量 **5~20%**，PIR 触发 | 唤醒 T31；**30s 内** 拒 HOSTIDLE | |
 | A4 | 电量 **≤5%** | 4G rest、PIR 挂起、排程关机 | |
@@ -92,7 +92,7 @@ main (2100851)
 | # | 场景 | 预期 | ☐ |
 |---|------|------|---|
 | B1 | USB 插入 | `power_status=1`；MQTT 2002 **enter rest 被拒** | |
-| B2 | USB 插入 | T3x 收到 `+CAT1:USB,1`；**拒** HOSTIDLE | |
+| B2 | USB 插入 | T31x 收到 `+CAT1:USB,1`；**拒** HOSTIDLE | |
 | B3 | USB 插入 5s 内 PWR 长按 | **忽略** 关机（`pwrkey_grace_ms`） | |
 | B4 | USB 插入 | 取消进行中的 PWR 长按定时器 | |
 | B5 | 充电中低电 | 蓝灯 **不** 低电快闪（见 LED_INDICATORS） | |
@@ -108,11 +108,11 @@ main (2100851)
 | C2 | 2004 | `ota` + 合法 version | 1004 accepted → FOTA 流程 | |
 | C3 | 2004 | `wled_query` / `wled_on` | 1004 wled 字段正确 | |
 | C4 | 2002 | enter / exit rest | 1002 + app 低功耗（USB 插入时 enter 无效） | |
-| C5 | 2010–2012 | PIR 配置/启停 | 1010/1011/1012 与 T3x 一致 | |
-| C6 | 2022–2031 | T3x **在线** query/set | 1022–1031 字段完整 | |
-| C7 | 2022–2031 | T3x **休眠** | 入 `pendingHostQueue`，唤醒后 drain | |
+| C5 | 2010–2012 | PIR 配置/启停 | 1010/1011/1012 与 T31x 一致 | |
+| C6 | 2022–2031 | T31x **在线** query/set | 1022–1031 字段完整 | |
+| C7 | 2022–2031 | T31x **休眠** | 入 `pendingHostQueue`，唤醒后 drain | |
 
-### 4.4 UART / HOSTIDLE（PR #4+#5）— [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) · [T3X_POLICY_GATE.md](T3X_POLICY_GATE.md)
+### 4.4 UART / HOSTIDLE（PR #4+#5）— [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) · [T31X_POLICY_GATE.md](T31X_POLICY_GATE.md)
 
 | # | 场景 | 预期 | ☐ |
 |---|------|------|---|

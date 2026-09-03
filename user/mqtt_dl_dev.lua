@@ -38,10 +38,10 @@ function bind(C, shared)
         local cfg = identityCfg()
         local imei = C.getDeviceId()
         local gb28181Id
-        local hu = hostUart()
-        if hu then
-            gb28181Id = hu.qryGb28181(cfg.query_timeout_ms)
-                or hu.getCachedHostGb28181Id()
+        local hif = hostUart()
+        if hif then
+            gb28181Id = hif.qryGb28181(cfg.query_timeout_ms)
+                or hif.getCachedHostGb28181Id()
         end
         pub.pubDeviceId(imei, gb28181Id, messageId)
     end
@@ -54,8 +54,8 @@ function bind(C, shared)
         if identityPublished or not C.isConnected() then
             return
         end
-        local hu = hostUart()
-        if not hu or not hu.isHostAtReady() then
+        local hif = hostUart()
+        if not hif or not hif.isHostAtReady() then
             return
         end
         identityPublished = true
@@ -111,8 +111,8 @@ function bind(C, shared)
     end
 
     local function handleUsbRecoveryReset(data)
-        local hu = hostUart()
-        local ok = hu and hu.rstUsbRecover() or false
+        local hif = hostUart()
+        local ok = hif and hif.rstUsbRecover() or false
         pub.pubStatus({
             messageId = dlMsgId(data),
             configRet = ok and 0 or -1,

@@ -63,18 +63,18 @@ flowchart TD
 
 | | 蓝灯 | battery_guard |
 |--|------|---------------|
-| 插 USB 低电 | 充电中 **不报快闪** | **暂停** 关机/断 T3x |
+| 插 USB 低电 | 充电中 **不报快闪** | **暂停** 关机/断 T31x |
 | 数据来源 | ADC + MQTT + USB/CHG | ADC + USB |
 
 保护策略与灯态 **可以不一致**（保护更严、灯更友好）。
 
 ---
 
-## 要不要 T3x 告诉 CAT1 网络状态？
+## 要不要 T31x 告诉 CAT1 网络状态？
 
 **不要。** MQTT 在 CAT1，`online_status` 由 `net_mqtt` 更新。
 
-可选：`LED_CFG.notify_t3x_net_led` 让 CAT1 → T3x 同步 NET_STAT_LED（PB17），与 GPIO21 无关。
+可选：`LED_CFG.notify_t31x_net_led` 让 CAT1 → T31x 同步 NET_STAT_LED（PB17），与 GPIO21 无关。
 
 ---
 

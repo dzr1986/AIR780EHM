@@ -1,7 +1,7 @@
 # 全天录像 vs PIR 事件录 — 后台调度与 MQTT / GB28181 区分说明
 
 > **定位**：说明 `record_mode=1`（全天录）与 PIR / 平台 **2012** 事件录在设备侧如何叠加；**MQTT、TF 卡、GB28181** 各能区分什么；后台如何调度「PIR 录像信息」。  
-> **关联**：[record_mode_and_storage_paths.md](record_mode_and_storage_paths.md) · [cat1_pir_mqtt_action_config.md](cat1_pir_mqtt_action_config.md) · [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md) · [gb28181_livegbs_alarm_e2e.md](gb28181_livegbs_alarm_e2e.md) · [pir_person_detect_complementary_flow.md §13](pir_person_detect_complementary_flow.md#13-gb28181-融合已有什么还要改什么)
+> **关联**：[record_mode_and_storage_paths.md](record_mode_and_storage_paths.md) · [cat1_pir_mqtt_action_config.md](cat1_pir_mqtt_action_config.md) · [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md) · [gb28181_livegbs_alarm_e2e.md](gb28181_livegbs_alarm_e2e.md) · [pir_person_detect_complementary_flow.md §13](pir_person_detect_complementary_flow.md#13-gb28181-融合已有什么还要改什么)
 
 ---
 
@@ -31,28 +31,28 @@
 sequenceDiagram
     participant AD as 全天录 MP4
     participant PIR as PIR/2012
-    participant T3x as T3x IPC
+    participant T31x as T31x IPC
     participant C4G as Cat.1 MQTT
 
     Note over AD: 静默写盘，无 MQTT
     PIR->>C4G: 1010 detected
-    PIR->>T3x: GPIO 唤醒
-  T3x->>AD: stop 当前全天文件（封口）
-    T3x->>T3x: record_start_ex_ch（cat1_session）
-    T3x->>C4G: AT+RECORD=1
-    C4G->>C4G: 1010 t3x_active
-    Note over T3x: PIR 段结束 timer/done/no_person/2011
-    T3x->>C4G: AT+RECORD=0,reason=*
-    C4G->>C4G: 1011 source=t3x/4g
-    T3x->>T3x: record_on_rec_thread_exit
-    T3x->>AD: resume ALL_DAY（record_mode 仍为 1）
+    PIR->>T31x: GPIO 唤醒
+  T31x->>AD: stop 当前全天文件（封口）
+    T31x->>T31x: record_start_ex_ch（cat1_session）
+    T31x->>C4G: AT+RECORD=1
+    C4G->>C4G: 1010 t31x_active
+    Note over T31x: PIR 段结束 timer/done/no_person/2011
+    T31x->>C4G: AT+RECORD=0,reason=*
+    C4G->>C4G: 1011 source=t31x/4g
+    T31x->>T31x: record_on_rec_thread_exit
+    T31x->>AD: resume ALL_DAY（record_mode 仍为 1）
     Note over AD: 新全天 MP4，仍无 MQTT
 ```
 
 | 阶段 | TF 卡 | MQTT | 内部标志 |
 |------|-------|------|----------|
 | 全天进行中 | 长 MP4 持续增长 | **无** 1010/1011 | 无 `cat1_session` |
-| PIR 打断 | 旧文件 **提前结束** | `detected` → `t3x_active` | `record_set_cat1_session_ch(1)` |
+| PIR 打断 | 旧文件 **提前结束** | `detected` → `t31x_active` | `record_set_cat1_session_ch(1)` |
 | PIR 段结束 | **短 MP4** 封口 | **1011** + `reason`/`source` | `record_on_rec_thread_exit` |
 | 恢复全天 | **新** 长 MP4 | **仍无** | `storage_mp4_try_resume_all_day_ch` |
 
@@ -103,7 +103,7 @@ sequenceDiagram
 | 顺序 | dataType | 主题 | 关键字段 | 含义 |
 |------|----------|------|----------|------|
 | 1 | **1010** | `pir` | `pirStatus=detected` | PIR 硬件触发 |
-| 2 | **1010** | `pir` | `pirStatus=t3x_active`, `active=1` | T3x 已写盘（**可对 MP4**） |
+| 2 | **1010** | `pir` | `pirStatus=t31x_active`, `active=1` | T31x 已写盘（**可对 MP4**） |
 | 3 | **1011** | `event` | `source`, `reason` | 事件段结束 |
 
 可选：`person_update`（`personCount`）、`1001`（`uploadMode=auto` 唤醒）。
@@ -114,7 +114,7 @@ sequenceDiagram
 |----------|------|
 | **1004** | `action=pir_start` |
 | **1012** | 平台开录受理（`source=4g`） |
-| **1010** | 可选 `t3x_active` |
+| **1010** | 可选 `t31x_active` |
 | **1011** | 停录（`reason=timer/device/...`） |
 
 4G `PIRSTAT` 里 `last=cloud_start` 表示平台开录，IPC **立即开录**（不等人形宽限）。
@@ -125,8 +125,8 @@ sequenceDiagram
 
 | 值 | 含义 |
 |----|------|
-| `t3x` | T3x `AT+RECORD=0` 结束（写盘侧） |
-| `4g` | 4G 会话结束（如定时到且 T3x 未写盘） |
+| `t31x` | T31x `AT+RECORD=0` 结束（写盘侧） |
+| `4g` | 4G 会话结束（如定时到且 T31x 未写盘） |
 
 **`reason`（1011 / AT+RECORD=0）**
 
@@ -147,7 +147,7 @@ sequenceDiagram
 | `2010 query` 里 `recording=0` | **正常**：4G 会话未开，与 TF 是否在写 **可能不一致** |
 | `2011` 无 1011 | 若未开 4G 会话，**停不了** 全天录 |
 
-**调度建议**：用 **1010 `t3x_active` 时刻 ~ 1011 时刻** 框定「事件录 MP4」；无 MQTT 的连续长文件视为「全天段」（启发式）。
+**调度建议**：用 **1010 `t31x_active` 时刻 ~ 1011 时刻** 框定「事件录 MP4」；无 MQTT 的连续长文件视为「全天段」（启发式）。
 
 ---
 
@@ -221,9 +221,9 @@ sequenceDiagram
 |------|--------|------------|
 | `record_mode=1` | 配置层全天 | 配置仍可为 1 |
 | `record_set_cat1_session_ch` | 无 | 有 |
-| `AT+RECORD=1/0`（T3x→4G） | 不发 | 发 |
+| `AT+RECORD=1/0`（T31x→4G） | 不发 | 发 |
 | 4G `PIRSTAT recording=1` | 0 | 1 |
-| Host `AT+RECORD?`（4G 问 T3x） | `running=1` 可无 MQTT | 与 1010/1011 一致 |
+| Host `AT+RECORD?`（4G 问 T31x） | `running=1` 可无 MQTT | 与 1010/1011 一致 |
 
 ---
 
@@ -253,7 +253,7 @@ sequenceDiagram
 | # | 场景 | MQTT | GB28181 | TF 卡 |
 |---|------|------|---------|-------|
 | 1 | `record_mode=1` 开机 | 无 1010/1011 | 无报警 | 持续增长 MP4 |
-| 2 | PIR + video | detected → t3x_active → 1011 | Person Detect（defer=1） | 短 MP4 |
+| 2 | PIR + video | detected → t31x_active → 1011 | Person Detect（defer=1） | 短 MP4 |
 | 3 | PIR 结束后 | 无新 1010 | 无 resume 报警 | 新长 MP4 |
 | 4 | 仅 2012 | 1012 + 1011 | 无 Motion（cloud_start） | 事件段 MP4 |
 | 5 | `record_mode=3` | 仅 PIR 时有 1010/1011 | 同 PIR 列 | 无静默全天 |
@@ -278,7 +278,7 @@ sequenceDiagram
 |------|------|
 | [mqtt_2010_2012_2011_pir_flow.md](mqtt_2010_2012_2011_pir_flow.md) | 2010/2012/2011 与 PIR |
 | [cat1_pir_mqtt_action_config.md](cat1_pir_mqtt_action_config.md) | 全天 vs PIR action 配对 |
-| [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md) | 1010/1011 reason 全表 |
+| [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md) | 1010/1011 reason 全表 |
 | [pir_person_detect_complementary_flow.md](pir_person_detect_complementary_flow.md) | PIR+IVS、GB28181 §13 |
 | [gb28181_livegbs_alarm_e2e.md](gb28181_livegbs_alarm_e2e.md) | LiveGBS alarm/list |
 | [record_mode_and_storage_paths.md](record_mode_and_storage_paths.md) | record_mode 四种模式 |

@@ -62,8 +62,8 @@ flowchart TD
 
 | 边沿 | 行为 |
 |------|------|
-| **插入** | `APP_RUNTIME.power_status=1` · `battery_guard.onUsbInserted` · 退出 rest · `ntfT3xUsbIdle(true)` · 取消 PWR 长按 |
-| **拔出** | `power_status=0` · `ntfT3xUsbIdle(false)` · `battery_guard.onUsbRemoved`（按电量重评估，高电量不进 rest） |
+| **插入** | `APP_RUNTIME.power_status=1` · `battery_guard.onUsbInserted` · 退出 rest · `notifyUsbIdle(true)` · 取消 PWR 长按 |
+| **拔出** | `power_status=0` · `notifyUsbIdle(false)` · `battery_guard.onUsbRemoved`（按电量重评估，高电量不进 rest） |
 
 冷启动 `source=="boot"`：由 `bootPowerOn` 负责 T31 上电，避免与 `exitRest` 重复唤醒（见 [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)）。
 
@@ -80,7 +80,7 @@ flowchart TD
 | `blocksHostIdle()` | `block_host_idle_when_usb` | true | `host_uart` HOSTIDLE / LOWPOWER ENTER |
 | `blocks4gRest()` | `block_4g_rest_when_usb` | true | `app.onEnterLowPower`、`net_mqtt` 2002 enter |
 | `mayEnterRest()` | 上项取反 | — | 辅助判断 |
-| `isUsbInserted()` | — | 委托 `usb_charge` 或 `power_status` | `t3x_policy`、`host_uart` |
+| `isUsbInserted()` | — | 委托 `usb_charge` 或 `power_status` | `t31x_policy`、`host_uart` |
 
 ```text
 USB 插入 + block_4g_rest_when_usb
@@ -89,17 +89,17 @@ USB 插入 + block_4g_rest_when_usb
   → battery_guard 跳过低电关机评估（ignore_when_usb_inserted）
 ```
 
-### 5.1 T3x 串口通知
+### 5.1 T31x 串口通知
 
-`HOST_USB_CFG.notify_t3x_usb_state`：`host_uart.pushUsbIdle` 发 `+CAT1:USB,%d`，告知 T3x USB 期间勿 HOSTIDLE（见 [T3X_POWER_WAKEUP.md](T3X_POWER_WAKEUP.md)）。
+`HOST_USB_CFG.notify_t31x_usb_state`：`host_uart.pushUsbIdle` 发 `+CAT1:USB,%d`，告知 T31x USB 期间勿 HOSTIDLE（见 [T31X_POWER_WAKEUP.md](T31X_POWER_WAKEUP.md)）。
 
 ### 5.2 其它 HOST_USB_CFG
 
 | 键 | 说明 |
 |----|------|
 | `pwrkey_grace_ms` | USB 插入后忽略 PWR 长按（默认 5000ms） |
-| `allow_t3x_usb_reset` | 是否允许 `AT+USBRESET` |
-| `block_usb_reset_when_t3x_rest` | T3x rest 时拒绝 USB 复位 |
+| `allow_t31x_usb_reset` | 是否允许 `AT+USBRESET` |
+| `block_usb_reset_when_t31x_rest` | T31x rest 时拒绝 USB 复位 |
 | `boot_notify_delay_ms` | 冷启动 USB 状态通知延时 |
 
 ---

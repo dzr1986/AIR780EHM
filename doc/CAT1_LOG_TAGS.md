@@ -12,7 +12,7 @@
 
 | 还原后 | 旧缩略 |
 |--------|--------|
-| `host_uart` | `hu` |
+| `host_uart` | `hif` |
 | `net_mqtt` | `nm` |
 | `ipc_supervision` | `ipc_sup` |
 | `app_main` | `app` |
@@ -23,7 +23,7 @@
 | `cellular_bootstrap` | `cell` |
 | `uart_bridge` | `uartBridge` |
 
-串口前缀示例：`I/user.host_uart ipc_status_no_response`（原 `I/user.hu ipcn`）。
+串口前缀示例：`I/user.host_uart ipc_status_no_response`（原 `I/user.hif ipcn`）。
 
 ---
 

@@ -16,9 +16,9 @@ REPLS = [
     ("lib/key", "peripheral"),
     ("lib/led.lua", "led_ctrl.lua"),
     ("lib/led", "led_ctrl"),
-    ("user/t3x_ipc.lua", "t3x_ctrl.lua"),
-    ("t3x_ipc.lua", "t3x_ctrl.lua"),
-    ("t3x_ipc", "t3x_ctrl"),
+    ("user/t31x_ipc.lua", "t31x_ctrl.lua"),
+    ("t31x_ipc.lua", "t31x_ctrl.lua"),
+    ("t31x_ipc", "t31x_ctrl"),
     ("user/bat_adc.lua", "vbat.lua"),
     ("bat_adc.lua", "vbat.lua"),
     ("lib/fota.lua", "user/fota_svc.lua"),
@@ -31,7 +31,7 @@ REPLS = [
 DEDUP = [
     ("pir_ctrl.lua` + `pir_ctrl.lua`", "pir_ctrl.lua`"),
     ("pir_ctrl.lua` → `pir_ctrl.lua`", "pir_ctrl.lua`"),
-    ("t3x_ctrl.lua` + `t3x_ctrl.lua`", "t3x_ctrl.lua`"),
+    ("t31x_ctrl.lua` + `t31x_ctrl.lua`", "t31x_ctrl.lua`"),
     ("vbat → vbat", "vbat.lua"),
     ("led_ctrl` → `led_ctrl`", "led_ctrl.lua"),
     ("peripheral, pir_ctrl, led_ctrl", "led_ctrl, pir_ctrl（peripheral 聚合）"),
@@ -72,7 +72,7 @@ POWER_REPLS = [
 
 LIB_LIST = (
     "`uart_bridge` `gpio_util` `usb_charge` `usb_rndis` `cell_boot` "
-    "`lp_wakeup` `t3x_policy` `host_event` `watchdog` `device_id` `usb_policy`"
+    "`lp_wakeup` `t31x_policy` `host_event` `watchdog` `device_id` `usb_policy`"
 )
 OLD_LIB_LIST = "`uart_bridge` `gpio_util` `key` `pir` `led` `adc_lib` `bat_core`"
 

@@ -43,7 +43,7 @@
 | 项 | 工作区结论 |
 |----|------------|
 | `_G.APP_PIR_CONFIG` 等 pir 裸写 | 已收进 `pir_ctrl` 模块 local + 访问器 |
-| `_G.T3X_BURN_MODE_ACTIVE` | 已收进 `t3x_policy.setBurnActive` / `isBurnActive` |
+| `_G.T31X_BURN_MODE_ACTIVE` | 已收进 `t31x_policy.setBurnActive` / `isBurnActive` |
 | `_G.device_imei` / `aliyuncs_imei` | 已收进 `device_id.setImei` / `getImei` |
 | `_G.MQTT_CFG = normalized` | 已改模块内 `mqttCfg` 副本，不回写 |
 | `_G.usbRndis = _M` | 已删 |
@@ -82,7 +82,7 @@
 
 调用方只改读路径：
 
-- `user/app.lua` `isUsbInsr`：保留 `boot_gpio` 特例，其余走 `runtime_power`
+- `user/app.lua` `isUsbInsr`：保留 `bootGpio` 特例，其余走 `runtime_power`
 - `user/host_uart.lua` `isUsbInse`：走 `runtime_power`（`usbChrgMod` 仍给 `blocksHostIdle` / USBRESET 用）
 - `user/led_ctrl.lua` `readChrg`：USB/充电走 `runtime_power`
 - `user/net_mqtt.lua` `cllcBttr`：USB 走 `runtime_power`，充电走 `isCharging`；**保持** `power_status = usb_inserted`（1003 既有语义）
@@ -95,7 +95,7 @@
 
 | 调用方 | 改动 |
 |--------|------|
-| `t3x_policy` | 电量访问器委托 `runtime_power` |
+| `t31x_policy` | 电量访问器委托 `runtime_power` |
 | `host_event` | HOSTEVT mqtt 待办：`isOnline` + `isLowPowerMode` |
 | `net_mqtt` | 1003 电量/rest、`setOnline`、`usbBlck4G` 兜底 |
 | `host_uart` | `GETCFG` 快照、`AT+LOWPOWER`、USBRESET rest 门（**不加顶层 local**，现 190/200） |
@@ -167,13 +167,13 @@ Flash 342/512KB，访问器与事件表已收口。下一层是**语义裂缝**�
 | 2026-08-30 | 初版：复核阶段 0–3；冻结阶段 4 表外置；定义阶段 5；落地 5A USB 查询单点；版本 001.000.050 |
 | 2026-08-30 | 阶段 5B：`runtime_power` 电量/在线访问器；读路径收敛；版本 001.000.051 |
 | 2026-08-30 | 阶段 5D：去掉常驻库上的 `and fn` / pcall 防护；直接 require `runtime_power`；版本 001.000.052 |
-| 2026-08-30 | 5D 续：`app`/`t3x_ctrl`/`battery_guard`/`pir_ctrl`/`net_mqtt` 收掉「函数在不在」判断；常驻库直接 `require`；版本 001.000.053 |
-| 2026-08-30 | 5D 续：`host_uart`/`ipc_supervision`/`t3x_notify`/`main` 收掉常驻函数判断；补 `pir_ctrl.getCloudStopMessageId`；版本 001.000.054 |
-| 2026-08-30 | 5D 收尾：扫尽常驻 `and fn`（time_sync/t3x_ctrl/utils/sound/net_mqtt）；版本 001.000.055 |
-| 2026-08-30 | 5E：小文件常驻库改顶层 require（pir/t3x/ipc/mqtt/app/sound）；`host_uart` 仍懒加载避循环；版本 001.000.056 |
+| 2026-08-30 | 5D 续：`app`/`t31x_ctrl`/`battery_guard`/`pir_ctrl`/`net_mqtt` 收掉「函数在不在」判断；常驻库直接 `require`；版本 001.000.053 |
+| 2026-08-30 | 5D 续：`host_uart`/`ipc_supervision`/`t31x_notify`/`main` 收掉常驻函数判断；补 `pir_ctrl.getCloudStopMessageId`；版本 001.000.054 |
+| 2026-08-30 | 5D 收尾：扫尽常驻 `and fn`（time_sync/t31x_ctrl/utils/sound/net_mqtt）；版本 001.000.055 |
+| 2026-08-30 | 5E：小文件常驻库改顶层 require（pir/t31x/ipc/mqtt/app/sound）；`host_uart` 仍懒加载避循环；版本 001.000.056 |
 | 2026-08-30 | 5F：`host_uart` 函数体重复 `loader.load` 收进 `modCall`（顶层 local 仍 191/200）；版本 001.000.057 |
 | 2026-08-30 | 5C：`setHostEncode` 收进 `defineSet`（音/视频各一条）；查询补缺仍独立；版本 001.000.058 |
-| 2026-08-30 | MQTT `makeHostQry` 六组查询/设置去掉 `hu.fn` 存在判断；版本 001.000.059 |
+| 2026-08-30 | MQTT `makeHostQry` 六组查询/设置去掉 `hif.fn` 存在判断；版本 001.000.059 |
 | 2026-08-30 | `host_uart` 同文件函数直调（patchCloud / IPC 查询 / uart_bridge.sendString）；版本 001.000.060 |
 | 2026-08-30 | 5C：`APP_RUNTIME` 运行期写入改 `runtime_power` setter（只写表、不 publish）；版本 001.000.061 |
 | 2026-08-30 | 5B 续：直读改 getter（`getLastRestReason` / `getLowPowerInterval`）；版本 001.000.062 |

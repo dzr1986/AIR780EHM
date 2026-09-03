@@ -1,6 +1,6 @@
 # MQTT 客户端端到端联调指南
 
-> **用途**：用 MQTTX / MQTT.fx / `mosquitto_pub` 从**平台侧**向 Broker 下发 JSON，验证 **Broker → Cat.1 →（可选 T3x）→ 上行应答** 全链路。  
+> **用途**：用 MQTTX / MQTT.fx / `mosquitto_pub` 从**平台侧**向 Broker 下发 JSON，验证 **Broker → Cat.1 →（可选 T31x）→ 上行应答** 全链路。  
 > **图形客户端（推荐）**：双击 [`../tools/gui/03_MQTT测试.bat`](../tools/gui/03_MQTT测试.bat) 或 `python tools/gui/mqtt/mqtt_tools_gui.py`。  
 > **工具链总报告**：[CAT1_TOOLCHAIN_TEST_REPORT.md](CAT1_TOOLCHAIN_TEST_REPORT.md)（烧 Lua → 客户端收发 → 自动测试）  
 > **全指令流程与实机结果**：[MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md)（`--run-all`、Cat.1 / T31x 对照）  
@@ -20,14 +20,14 @@ sequenceDiagram
     participant BR as Broker
     participant C4 as Cat.1 net_mqtt
     participant APP as app 事件总线
-    participant T3 as T3x host_uart
+    participant T3 as T31x host_uart
 
     PC->>BR: Publish /panshi/device/{IMEI}/
     BR->>C4: 下行 JSON dataType=200x
     C4->>C4: DOWNLINK_HANDLERS[dataType]
     alt 仅 4G
         C4->>BR: Publish /panshi/app/{IMEI}/...
-    else 需 T3x
+    else 需 T31x
         C4->>T3: UART AT 查询/设置
         T3-->>C4: +URSP / 行应答
         C4->>BR: 102x 上行
@@ -64,7 +64,7 @@ python tools/gui/mqtt/mqtt_tools_gui.py
 | **协议文档** | 打开其它 `.md` 重新解析 200x↔100x 对照与 JSON 示例 |
 | **手动测试** | 从协议+`commands.json` 选命令，改字段后发送；危险命令需确认 |
 | **OTA闭环** | 与管理台相同的 `2004 action=ota`（带 `url`）；查 `2008/1008` → 下发 → 等 `1004 ota_accepted/stage` → 重启后再核 `firmwareVersion` |
-| **自动测试** | 默认跑安全查询集（2001/2003/2005–2008 等）；超时不一定是失败（T3x 未上电）。**不会**自动发 OTA |
+| **自动测试** | 默认跑安全查询集（2001/2003/2005–2008 等）；超时不一定是失败（T31x 未上电）。**不会**自动发 OTA |
 
 平台 **Client ID 不要填设备 IMEI**。
 
@@ -83,7 +83,7 @@ python tools/gui/mqtt/mqtt_tools_gui.py
 
 ## 2. Broker 连接参数
 
-真源：[`user/config.lua`](../user/config.lua) `MQTT_CFG`（T3x 可通过 `AT+MQTTCFG` 覆盖，联调前用 2003 确认设备实际连的 Broker）。
+真源：[`user/config.lua`](../user/config.lua) `MQTT_CFG`（T31x 可通过 `AT+MQTTCFG` 覆盖，联调前用 2003 确认设备实际连的 Broker）。
 
 | 项 | 默认值 |
 |----|--------|
@@ -159,9 +159,9 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | **S2** | `{"dataType":"2001"}` | `1001` @ `.../wakeup` | **探活，不上电。** rest 下也会答 1001，**不代表已出 rest** |
 | **S3** | `{"dataType":"2005"}` | `1005` @ `.../sim` | IMEI/ICCID/CSQ |
 | **S3a** | `{"dataType":"2008"}` | `1008` @ `.../version` | 固件版本，秒回 |
-| **S4** | `{"dataType":"2004","action":"wled_query"}` | `1004` @ `.../event`，`reply:1` | 需 T3x 或缓存 |
+| **S4** | `{"dataType":"2004","action":"wled_query"}` | `1004` @ `.../event`，`reply:1` | 需 T31x 或缓存 |
 | **S5** | `{"dataType":"2010","action":"query"}` | `1010` @ `.../pir` | 4G 侧 PIR 状态 |
-| **S6** | `{"dataType":"2020"}` | `1020` @ `.../encode` | **需 T3x 在线** |
+| **S6** | `{"dataType":"2020"}` | `1020` @ `.../encode` | **需 T31x 在线** |
 | **S7** | `{"dataType":"2002","lowPowerMode":"exit"}` | 1004 `rest_exit` + 1002 exit；`1003.lowPowerMode`→常电 | **真正给 T31 上电。** 不要用 2001 |
 
 ### 4.1 读 `1003` 关键字段
@@ -188,7 +188,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | `usbInserted` / `charging` | GPIO27 / 充电态 |
 | `interval` | 周期上报间隔（秒），2003 可改 |
 | `csq` / `rssi` / `rsrp` / `rsrq` / `snr` | 射频信号（与 1005 同源） |
-| `ipcReady` / `recordingT3x` 等 | IPC 扩展（见 IPC 专题） |
+| `ipcReady` / `recordingT31x` 等 | IPC 扩展（见 IPC 专题） |
 | `wledEnable` | 白光灯 0/1（与录像无关；亦可 2004 `wled_query`） |
 
 设备还会按 `interval`（默认 30s）**主动** Publish `1003`，不必每次手动 2003。
@@ -229,7 +229,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 |--------|------|--------|
 | `reboot` | `1004` `reply:1` `ret:0` | 设备重启 |
 | `off` | `1004` ok | 关机 |
-| `wled_query` / `wled_on` / `wled_off` | `1004` 含 `wled` 字段 | 可能唤醒 T3x |
+| `wled_query` / `wled_on` / `wled_off` | `1004` 含 `wled` 字段 | 可能唤醒 T31x |
 | `ota` | `1004` `ota_accepted`；后续 `stage` | FOTA 下载，成功重启。闭环请用 GUI「OTA闭环」，成功以重启后 `1008.firmwareVersion` 为准 |
 
 `version` 须 `xxx.yyy.zzz` 格式（见 `main.lua` `validateBuildVersion`）。
@@ -288,12 +288,12 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 |------|------|------|
 | 2010 query | 1010 | `pirStatus` 等 |
 | 2010 config | 1010 `config_ok` | 写 `pir_ctrl` 策略 |
-| 2012 | 1012 @ event + 可能唤醒 T3x | 云端开录 |
+| 2012 | 1012 @ event + 可能唤醒 T31x | 云端开录 |
 | 2011 | 1011 @ event | 云端停录 |
 
-### 5.5 T3x 查询/设置（2020–2031）
+### 5.5 T31x 查询/设置（2020–2031）
 
-**T3x 休眠时**：下行仍被接受，入 `pendingHostQueue`，唤醒 T3x 后自动 drain 再发 102x（等待可能 5–15s）。
+**T31x 休眠时**：下行仍被接受，入 `pendingHostQueue`，唤醒 T31x 后自动 drain 再发 102x（等待可能 5–15s）。
 
 查询编码：
 
@@ -307,7 +307,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 {"dataType":"2021","videoEncode":"h264","messageId":"enc-002"}
 ```
 
-| 下行 | 上行主题 suffix | 需 T3x |
+| 下行 | 上行主题 suffix | 需 T31x |
 |------|-----------------|--------|
 | 2022 / 2023 | `record` | 是 |
 | 2024 / 2025 | `framerate` | 是 |
@@ -331,7 +331,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 
 ### 5.6 设备标识 / 存储（2006–2009）
 
-**常电 + T3x 已就绪**（串口可见 `HOST_UART_FIRST_AT` / AT 已通）：
+**常电 + T31x 已就绪**（串口可见 `HOST_UART_FIRST_AT` / AT 已通）：
 
 ```json
 {"dataType":"2006","messageId":"id-001"}
@@ -346,17 +346,17 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 ```json
 {"dataType":"2008","messageId":"ver-001"}
 ```
-→ 主题 `…/version` 收 **1008**（`scriptVersion`/`firmwareVersion` 等；**不依赖 T3x**，应秒回）
+→ 主题 `…/version` 收 **1008**（`scriptVersion`/`firmwareVersion` 等；**不依赖 T31x**，应秒回）
 
 ```json
 {"dataType":"2009","messageId":"tfmt-001"}
 ```
 
-**T3x 未就绪时的 pending（2006 / 2007）**
+**T31x 未就绪时的 pending（2006 / 2007）**
 
-1. 让 T3x 断电或未出 AT（`isHostAtReady=false`），MQTT 仍在线。  
+1. 让 T31x 断电或未出 AT（`isHostAtReady=false`），MQTT 仍在线。  
 2. 下发 `2006` / `2007`：此时**不应立刻**出现 1006/1007；串口日志应见 `host_dl_pending`。  
-3. 唤醒 T3x，待首包 AT（`HOST_UART_FIRST_AT`）后约 0.5s：日志 `host_dl_drain`，再收到对应 **1006/1007**。  
+3. 唤醒 T31x，待首包 AT（`HOST_UART_FIRST_AT`）后约 0.5s：日志 `host_dl_drain`，再收到对应 **1006/1007**。  
 4. 对照：同样条件下发 `2008`，应**立刻** 1008（不进 pending）。
 
 上行：`1006` @ `identity`，`1007` @ `tfcard`，`1008` @ `version`；格式化见 OTA/TF 专题。
@@ -378,7 +378,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | 1011 / 1012 | `event` | 停录/开录 |
 | 1020–1031 | 见 [MQTT_DOWNLINK.md §2](MQTT_DOWNLINK.md#2-200x--100x-对照) | 2020–2031 |
 
-**1004 区分**：`"reply":1` 为下行应答；含 `"stage"` 为 OTA 进度；`action":"ipc_alert"` 为 T3x 告警。
+**1004 区分**：`"reply":1` 为下行应答；含 `"stage"` 为 OTA 进度；`action":"ipc_alert"` 为 T31x 告警。
 
 ---
 
@@ -391,7 +391,7 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | 插 USB | `usbInserted:1`；再发 `2002 enter` 应**无** rest |
 | 拔 USB（高电量） | 不一定立即 `lowPowerMode:rest` |
 | 电量 ≤5% | `remainPower` 低；rest + 可能关机 |
-| 5~20% PIR 后 | T3x 唤醒；30s 内 HOSTIDLE 行为（UART 侧） |
+| 5~20% PIR 后 | T31x 唤醒；30s 内 HOSTIDLE 行为（UART 侧） |
 
 ---
 
@@ -406,8 +406,8 @@ mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
 | JSON 无响应 | 缺 `dataType` 或非法 JSON | 查设备日志 `json_decode_error` / `no_data_type` |
 | `unknown_data_type` | 未实现的 200x | 查 [NET_MQTT_DOWNLINK_DISPATCH](modules/NET_MQTT_DOWNLINK_DISPATCH.md) 表 |
 | 2002 enter 无 1004 | UART/IPC 停机超时 | 看 Cat.1 日志 `IPCPOWEROFF`；USB **不拦** 2002 |
-| 202x 很久才回 | T3x 休眠 | 等唤醒 drain；或先 `2002 exit` 上电（不要用 2001） |
-| 202x 无响应 | T3x 未上电 / UART 忙 | 查 T3x 供电、host_uart 日志 |
+| 202x 很久才回 | T31x 休眠 | 等唤醒 drain；或先 `2002 exit` 上电（不要用 2001） |
+| 202x 无响应 | T31x 未上电 / UART 忙 | 查 T31x 供电、host_uart 日志 |
 | 有 1001 但仍 rest | 2001 只是探活，不上电 | 以 `1003.lowPowerMode` 为准；上电发 **2002 exit** |
 | 收不到周期 1003 | 未 conack / interval 过大 | 等 30s 或改 `2003 interval` |
 
@@ -426,7 +426,7 @@ Broker：112.86.146.218:2123
 [ ] S1 2003 → 1003
 [ ] S2 2001 探活 → 1001（不上电）
 [ ] S4 2004 wled_query → 1004
-[ ] S6 2020 → 1020（T3x 在线）
+[ ] S6 2020 → 1020（T31x 在线）
 [ ] 2002 enter/exit + 1003.lowPowerMode
 [ ] 2012 → 1012 / 2011 → 1011
 [ ] USB 插入时 2002 enter 被拒绝

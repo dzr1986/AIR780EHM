@@ -1,7 +1,7 @@
 # pir_ctrl PIR 侦测与录像会话
 
 > **代码真源**：[`user/pir_ctrl.lua`](../../user/pir_ctrl.lua) · [`user/app.lua`](../../user/app.lua)（事件桥）  
-> **协议**：[PIR_PROTOCOL.md](../PIR_PROTOCOL.md) · [T3X_RECORD_MQTT_FLOW.md](../T3X_RECORD_MQTT_FLOW.md)
+> **协议**：[PIR_PROTOCOL.md](../PIR_PROTOCOL.md) · [T31X_RECORD_MQTT_FLOW.md](../T31X_RECORD_MQTT_FLOW.md)
 
 ---
 
@@ -11,7 +11,7 @@
 |------|------|
 | **硬件** | GPIO 中断、冷却、`PIR_HW_TRIGGERED` |
 | **业务** | 录像会话、策略、云端启停、PIRSTAT 统计 |
-| **桥接** | 发布 `PIR_WAKE_T3X` / `PIR_STOP_RECORDING` → `app` → MQTT / T3x |
+| **桥接** | 发布 `PIR_WAKE_T31X` / `PIR_STOP_RECORDING` → `app` → MQTT / T31x |
 
 ---
 
@@ -42,12 +42,12 @@ flowchart TD
     IGN -->|suspend| END1[统计 ignore_suspend]
     IGN -->|rest| END2[统计 ignore_rest]
     IGN -->|通过| RET{录像中且二次 PIR?}
-    RET -->|是| STOP[handlePirRetrigger → requestT3xStopRecord]
+    RET -->|是| STOP[handlePirRetrigger → requestT31xStopRecord]
     RET -->|否| ACT{media.action}
     ACT -->|devinfo| DEV[refreshDeviceIdentity]
-    ACT -->|其它| PUB[pubActEvents]
-    PUB --> WAKE[PIR_WAKE_T3X]
-    WAKE --> APP[app.wakeT3xForPir + ntfHostIdle]
+    ACT -->|其它| PUB[pubActionEvents]
+    PUB --> WAKE[PIR_WAKE_T31X]
+    WAKE --> APP[app.wakeT31xForPir + notifyHostIdle]
 ```
 
 ### 3.1 忽略条件（`shouldIgnorePirTrigger`）
@@ -72,7 +72,7 @@ flowchart TD
 
 **开始**：`beginVideoSession`（video/both 动作）  
 **结束**：`endRecordingSession` → 可选 `PIR_STOP_RECORDING`  
-**T3x 侧停止**：`syncStopFromT3x`（`AT+RECORD=0` 上报时）
+**T31x 侧停止**：`syncStopFromT31x`（`AT+RECORD=0` 上报时）
 
 ---
 
@@ -103,15 +103,15 @@ flowchart TD
 
 | 事件 | app 动作 |
 |------|----------|
-| `PIR_WAKE_T3X` | `onPirMediaAction` → `wakeT3xForPir` |
-| `PIR_STOP_RECORDING` | `onPirStopRecording` → MQTT 1011 / T3x 停录 |
-| `PIR_REQUEST_T3X_STOP` | `wakeT3xForPir("pir_stop_*")` |
+| `PIR_WAKE_T31X` | `onPirMediaAction` → `wakeT31xForPir` |
+| `PIR_STOP_RECORDING` | `onPirStopRecording` → MQTT 1011 / T31x 停录 |
+| `PIR_REQUEST_T31X_STOP` | `wakeT31xForPir("pir_stop_*")` |
 | `PIR_TIMER_EXPIRED` | `publishStopRecording(timer)` |
 | `GPIO_PIR_TRIGGERED` | `publishPirToMqtt`（1010） |
 
 ---
 
-## 8. AT 对外（`bldAtBodyy` → `+PIRSTAT:`）
+## 8. AT 对外（`buildStatBodyy` → `+PIRSTAT:`）
 
 宽表字段：硬件统计 `cnt_*`、会话 `recording`、`has_work` 合成（经 `host_uart` / `host_event`）。
 

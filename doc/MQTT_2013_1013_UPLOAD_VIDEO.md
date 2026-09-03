@@ -149,7 +149,7 @@ cat /tmp/ipc/clip_upload.log
 |------|-----------|------|
 | 0 | `ok` | T31 已排队抽片/上传（**非 HTTP 完成**） |
 | 0 | `cancelled` | `needUpload=0` |
-| -1 | `t3x_not_ready` / `no_host_uart` / `fail` | 未排队 |
+| -1 | `t31x_not_ready` / `no_host_uart` / `fail` | 未排队 |
 
 **不另发 1004**。平台收到 **1013 `reply=1` `stage=queued`** 表示信令受理；HTTP 过程还有 `stage=uploading` + `percent`；**是否成功须等 `reply=0`**。进度 JSON 见 [闭环专题 §3.3](MQTT_CLIP_UPLOAD_CLOSED_LOOP.md#33-上传中--进度--reply1-stageuploadingstartwaiting_resp)。
 
@@ -168,7 +168,7 @@ T31 HTTP 结束（或抽片最终失败）后，经 UART `AT+UPLOADRESULT` → C
   "needUpload": 1,
   "action": "upload_video",
   "reason": "cloud",
-  "source": "t3x",
+  "source": "t31x",
   "videoType": 2,
   "beginTime": "2026-08-19 09:13:18",
   "endTime": "2026-08-19 09:18:18",

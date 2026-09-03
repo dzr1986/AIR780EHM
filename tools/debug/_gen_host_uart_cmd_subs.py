@@ -43,8 +43,8 @@ SPECS = [
     }""",
     },
     {
-        "file": "hu_cmd_t3x.lua",
-        "title": "T3x 上行 NOTIFY（RECORD/UPLOAD/IPCSTAT 等）",
+        "file": "hu_cmd_t31x.lua",
+        "title": "T31x 上行 NOTIFY（RECORD/UPLOAD/IPCSTAT 等）",
         "ranges": [(411, 519), (521, 574)],
         "header_extra": "",
         "returns": """    return {
@@ -99,7 +99,7 @@ function bind(C)
     local rspOnly, rspBody, rspFmt = C.rspOnly, C.rspBody, C.rspFmt
     local rspLine, rspLineOk, okTail = C.rspLine, C.rspLineOk, C.okTail
     local modCall, loader, utils = C.modCall, C.loader, C.utils
-    local hostNowMs, t3xSecOff = C.hostNowMs, C.t3xSecOff
+    local hostNowMs, t31xUartOff = C.hostNowMs, C.t31xUartOff
     local RSP_ERROR = C.RSP_ERROR
     local function parseSvcArgs(...)
         return C.parseSvcArgs(...)
@@ -154,7 +154,7 @@ def extract(spec):
         )
     if spec["file"] == "hu_cmd_pir.lua":
         text = text.replace("function bldHostEvtBody()", "local function bldHostEvtBody()")
-    if spec["file"] == "hu_cmd_t3x.lua":
+    if spec["file"] == "hu_cmd_t31x.lua":
         pass  # keep function uartIpc* as exported handlers
     if "post_process" in spec:
         text = spec["post_process"](text)
@@ -204,7 +204,7 @@ for i, ln in enumerate(new_lines):
 bind_lines = [
     '    local linkCmd = require("hu_cmd_link").bind(C)',
     '    local pirCmd = require("hu_cmd_pir").bind(C)',
-    '    local t3xCmd = require("hu_cmd_t3x").bind(C)',
+    '    local t31xCmd = require("hu_cmd_t31x").bind(C)',
     '    local wledCmd = require("hu_cmd_wled").bind(C)',
 ]
 if insert_at:
@@ -216,16 +216,16 @@ text = "\n".join(new_lines)
 replacements = {
     "pirstat = uartPirStatQry,": "pirstat = pirCmd.uartPirStatQry,",
     "pirclr = uartPirClr,": "pirclr = pirCmd.uartPirClr,",
-    "record = uartRecord,": "record = t3xCmd.uartRecord,",
-    "ipcstatus = uartIpcStatusNtf,": "ipcstatus = t3xCmd.uartIpcStatusNtf,",
-    "ipcstat = uartIpcStatNtf,": "ipcstat = t3xCmd.uartIpcStatNtf,",
-    "tfcard = uartTfCardNtf,": "tfcard = t3xCmd.uartTfCardNtf,",
-    "snapshot = uartSnapshot,": "snapshot = t3xCmd.uartSnapshot,",
-    "pirmedia = uartPirMedia,": "pirmedia = t3xCmd.uartPirMedia,",
-    "personcnt = uartPersonCnt,": "personcnt = t3xCmd.uartPersonCnt,",
-    "ipcalert = uartIpcAlert,": "ipcalert = t3xCmd.uartIpcAlert,",
-    "uploadneed = uartUploadNeed,": "uploadneed = t3xCmd.uartUploadNeed,",
-    "uploadresult = uartUploadResult,": "uploadresult = t3xCmd.uartUploadResult,",
+    "record = uartRecord,": "record = t31xCmd.uartRecord,",
+    "ipcstatus = uartIpcStatusNtf,": "ipcstatus = t31xCmd.uartIpcStatusNtf,",
+    "ipcstat = uartIpcStatNtf,": "ipcstat = t31xCmd.uartIpcStatNtf,",
+    "tfcard = uartTfCardNtf,": "tfcard = t31xCmd.uartTfCardNtf,",
+    "snapshot = uartSnapshot,": "snapshot = t31xCmd.uartSnapshot,",
+    "pirmedia = uartPirMedia,": "pirmedia = t31xCmd.uartPirMedia,",
+    "personcnt = uartPersonCnt,": "personcnt = t31xCmd.uartPersonCnt,",
+    "ipcalert = uartIpcAlert,": "ipcalert = t31xCmd.uartIpcAlert,",
+    "uploadneed = uartUploadNeed,": "uploadneed = t31xCmd.uartUploadNeed,",
+    "uploadresult = uartUploadResult,": "uploadresult = t31xCmd.uartUploadResult,",
     "hostevt = uartHostEvtQry,": "hostevt = pirCmd.uartHostEvtQry,",
     "hostevtclr = uartHostEvtClr,": "hostevtclr = pirCmd.uartHostEvtClr,",
     "ipcinfo = uartIpcInfoQry,": "ipcinfo = linkCmd.uartIpcInfoQry,",
@@ -239,15 +239,15 @@ replacements = {
     "C.wledState = wledState": "C.wledState = wledCmd.wledState",
     "C.wledExport = wledExport": "C.wledExport = wledCmd.wledExport",
     "C.wledGet = wledGet": "C.wledGet = wledCmd.wledGet",
-    "C.ipcReadyFrom = ipcReadyFrom": "C.ipcReadyFrom = t3xCmd.ipcReadyFrom",
+    "C.ipcReadyFrom = ipcReadyFrom": "C.ipcReadyFrom = t31xCmd.ipcReadyFrom",
     "wledState = wledState,": "wledState = wledCmd.wledState,",
     "setWledState = setWledState,": "setWledState = wledCmd.setWledState,",
     "qryHostWled = qryHostWled,": "qryHostWled = wledCmd.qryHostWled,",
     "bldHostEvtBody = bldHostEvtBody,": "bldHostEvtBody = pirCmd.bldHostEvtBody,",
     "wledGet = wledGet,": "wledGet = wledCmd.wledGet,",
-    "uartIpcStatusNtf = uartIpcStatusNtf,": "uartIpcStatusNtf = t3xCmd.uartIpcStatusNtf,",
-    "uartIpcStatNtf = uartIpcStatNtf,": "uartIpcStatNtf = t3xCmd.uartIpcStatNtf,",
-    "uartTfCardNtf = uartTfCardNtf,": "uartTfCardNtf = t3xCmd.uartTfCardNtf,",
+    "uartIpcStatusNtf = uartIpcStatusNtf,": "uartIpcStatusNtf = t31xCmd.uartIpcStatusNtf,",
+    "uartIpcStatNtf = uartIpcStatNtf,": "uartIpcStatNtf = t31xCmd.uartIpcStatNtf,",
+    "uartTfCardNtf = uartTfCardNtf,": "uartTfCardNtf = t31xCmd.uartTfCardNtf,",
 }
 
 for old, new in replacements.items():

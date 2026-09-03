@@ -176,9 +176,9 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function pushNetLed(online)
-        local ok, hu = pcall(utils.hostUart)
-        if ok and hu and hu.pushNetLedSt then
-            pcall(hu.pushNetLedSt, hu, online)
+        local ok, hif = pcall(utils.hostUart)
+        if ok and hif and hif.pushNetLedSt then
+            pcall(hif.pushNetLedSt, hif, online)
         end
     end
 
@@ -292,7 +292,7 @@ function bind(C)
             local cell = loadCell()
             local ip
             if cell and loader.enabled("cellular") then
-                _, ip = cell.waitNet()
+                _, ip = cell.waitForNetwork()
             else
                 ip = utils.waitLocalIp(WAIT_LOCAL_IP_MS)
             end

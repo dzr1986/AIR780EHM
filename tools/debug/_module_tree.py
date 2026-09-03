@@ -32,7 +32,7 @@ def collect() -> dict:
     grand = 0
     for dir_name in ("user", "lib"):
         d = ROOT / dir_name
-        rows = {f.name: line_count(f) for f in sorted(d.glob("*.lua"))}
+        rows = {f.relative_to(d).as_posix(): line_count(f) for f in sorted(d.rglob("*.lua"))}
         out[dir_name] = rows
         total = sum(rows.values())
         out["totals"][dir_name] = {"files": len(rows), "lines": total}
@@ -51,7 +51,7 @@ def print_tree(data: dict) -> None:
         seen: set[str] = set()
         if dir_name == "user":
             for prefix, _ in PREFIX_GROUPS:
-                matched = [(n, f) for f, n in rows if f.startswith(prefix)]
+                matched = [(n, f) for f, n in rows if prefix in f]
                 if not matched:
                     continue
                 sub = sum(n for n, _ in matched)

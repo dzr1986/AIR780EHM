@@ -1,6 +1,6 @@
 -- ================================================================
 -- Filename : host_event.lua
--- Module   : T3x 待处理事件汇总：wake/pir/record/mqtt → has_event 供 HOSTIDLE 与 enterSleep 门禁
+-- Module   : t31x 待处理事件汇总：wake/pir/record/mqtt → has_event 供 HOSTIDLE 与 enterSleep 门禁
 -- Arch     : doc/modules/HOST_EVENT_PENDING.md
 -- ================================================================
 
@@ -142,8 +142,8 @@ function hasPendingWork(pirBody, wakeValid, wakeSid, wakeEvt)
     return summarize(pirBody, wakeValid, wakeSid, wakeEvt).has_event == 1
 end
 
-function shouldBlockT3xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
-    if not isEnabled() or hostEvtCfg().block_t3x_sleep_when_pending == false then
+function shouldBlockT31xSleep(pirBody, wakeValid, wakeSid, wakeEvt)
+    if not isEnabled() or hostEvtCfg().block_t31x_sleep_when_pending == false then
         return false
     end
     if pirBody and (pirBody:match("has_event=1") or pirBody:match("has_work=1")) then

@@ -52,7 +52,7 @@ function bind(C, shared)
             fmtOptIntField("active", extra.active, true),
             fmtStrField("snapshotPath", extra.snapshotPath),
             fmtOptIntField("personCount", extra.personCount, false),
-            fmtOptIntField("recordingT3x", extra.recordingT3x, true),
+            fmtOptIntField("recordingt31x", extra.recordingt31x, true),
         })
     end
 
@@ -119,7 +119,7 @@ function bind(C, shared)
 
     local function pubRecActive()
         pubPirFromSt({
-            pirStatus = "t3x_active",
+            pirStatus = "t31x_active",
             recording = 1,
             active = 1,
             action = "video",
@@ -173,13 +173,13 @@ function bind(C, shared)
         })
     end
 
-    local function pubT3xStop(reason, uploadMode, quality)
+    local function pubT31xStop(reason, uploadMode, quality)
         local st = pirCtrl.getState()
         pubPirStop(
             reason or "unknown",
             uploadMode or st.uploadMode or "auto",
             quality or st.quality or "high",
-            { source = "t3x" }
+            { source = "t31x" }
         )
     end
 
@@ -191,7 +191,7 @@ function bind(C, shared)
         pubRecActive = pubRecActive,
         pubPirStart = pubPirStart,
         pubPirStop = pubPirStop,
-        pubT3xStop = pubT3xStop,
+        pubT31xStop = pubT31xStop,
     }
 end
 

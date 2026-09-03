@@ -1,7 +1,31 @@
 -- ================================================================
 -- Filename : host_uart.lua
--- Module   : T3x AT 核心：互斥、分发、RX 行解析、start/notify；handler 见 hu_cmd/ipc
+-- Module   : CAT1 ↔ T31x 协处理器 UART/AT 协议核心（L0）
 -- Arch     : doc/modules/HOST_UART_AT_DISPATCH.md
+-- ================================================================
+--
+-- ── 分层（bind(C) 注入共享上下文，自底向上组合）──────────────────
+--   L0  host_uart        : 事务锁 / AT 响应格式化 / RX 行分发 / start·stop·ntfHost
+--   L1  hif_cmd          : AT 命令分发（cmd 编排 + 内联 handler）
+--       hif_ipc          : query/set 公共路径 + defineQuery/defineSet 工厂
+--       hif_rx           : URC/RX 行解析（dsl + media 两条匹配链）
+--   L2  hif_cmd_*        : usb / link / pir / t31x / wled 各 AT handler
+--       hif_ipc_*        : rec / hostq / cloud / power / tffmt / encode
+--       hif_rx_*         : dsl（云态/TF/录制/IPC）/ media（编码行）
+--   hif_at               : 声明式 AT 命令表（精确/前缀）→ 编译为查表
+--
+-- ── 契约（所有 hif_* 模块统一）──────────────────────────────────
+--   · bind(C[, H]) 接收共享上下文 C；叶子模块返回 {fn,...} 表。
+--   · host_uart 把对外 API 挂在 C.M（即本模块 _M）；跨编排器复用的
+--     helper 挂在 C（如 C.hostQuery / C.idCfg / C.parseIpcStat）。
+--   · hif_ipc 额外构建 H（hostQuery/hostSet/defineQuery/defineSet/
+--     ensT31xHost/cfg 读取），仅传给 hif_ipc_* 叶子。
+--
+-- ── 数据流 ─────────────────────────────────────────────────────
+--   onUartLine → processLine
+--     · 行以 "AT" 开头 → runAtDispatch → AT_EXACT / AT_PREFIX（hif_at.compile）
+--     · 行以 "HEX:"/"STR:" → LINE_HANDLERS
+--     · 其余 URC        → RX_LINE_TRY_HANDLERS（hif_rx，顺序敏感）
 -- ================================================================
 
 require "sys"
@@ -96,8 +120,8 @@ local state = {
     encode_audio_rows = nil,
     encode_query_busy = false,
     encode_set_busy = false,
-    t3x_rec_active = 0,
-    t3x_last_reason = "idle",
+    t31x_rec_active = 0,
+    t31x_last_reason = "idle",
     tfcard_format_busy = false,
     ipc_uart_miss_streak = 0,
     uart_recovery_busy = false,
@@ -111,7 +135,8 @@ local E = cfgm.get("APP_EVENTS")
 local uartTxnOwner = nil
 local uartTxnDepth = 0
 local started = false
-local t3xModule = nil
+local t31xModule = nil
+local t31xFallback = nil
 local usbChargeCache = nil
 
 local hostNowMs = utils.nowMs
@@ -139,8 +164,8 @@ local function noopFalse()
     return false
 end
 
-local function t3xSecOff()
-    return not loader.enabled("t3x_app") or not loader.enabled("uart_bridge")
+local function t31xSecOff()
+    return not loader.enabled("t31x_app") or not loader.enabled("uart_bridge")
 end
 
 local function noteHostPush()
@@ -342,7 +367,7 @@ local function echoRxHex(data)
     hooks.uartWrite(CRLF .. "+RXHEX:" .. utils.encodeHex(data) .. CRLF)
 end
 
-local function writeT3xNotify(tpl, val)
+local function writeT31xNotify(tpl, val)
     local writeFn = hooks.uartWrite
     if not writeFn and package.loaded.uart_bridge then
         writeFn = package.loaded.uart_bridge.write
@@ -360,43 +385,61 @@ end
 
 function pushUsbIdle(inserted)
     local cfg = hostUsbCfg()
-    if cfg.notify_t3x_usb_state == false then
+    if cfg.notify_t31x_usb_state == false then
         return false
     end
-    return writeT3xNotify(cfg.t3x_usb_ursp or "+CAT1:USB,%d", inserted)
+    return writeT31xNotify(cfg.t31x_usb_ursp or "+CAT1:USB,%d", inserted)
 end
 
 function pushNetLedSt(online)
     local cfg = cfgm.get("LED_CFG")
-    if cfg.notify_t3x_net_led ~= true then
+    if cfg.notify_t31x_net_led ~= true then
         return false
     end
-    return writeT3xNotify(cfg.t3x_net_ursp or "+CAT1:MQTT,%d", online)
+    return writeT31xNotify(cfg.t31x_net_ursp or "+CAT1:MQTT,%d", online)
 end
 
 ----------------------------------------------------------------
--- ctx → cmd / rx / ipc
+-- 模块装配（唯一装配点）
+--   各编排器 bind(C) 返回自身对外 API / 共享 helper；host_uart 在此
+--   把 api 合并进 _M（= ctx.M），把共享 helper 回填进 ctx。
+--   · cmd / ipc 的 api → _M（host_uart 对外公开函数）
+--   · rx 的解析能力 + 各编排器回填到 ctx 的 helper → ctx（跨编排器复用）
+----------------------------------------------------------------
+
+----------------------------------------------------------------
+-- 共享上下文 ctx：注入给所有 hif_* 子模块（bind(C)）
+--   上半：host_uart 提供（子模块只读）
+--   下半：子模块在 bind 时回填（见各编排器末尾的“注册”段）
 ----------------------------------------------------------------
 
 local ctx = {
+    -- 运行时引用
     M = _M,
     state = state,
     hooks = hooks,
     SYS_EVT = SYS_EVT,
     E = E,
+    LOG_TAG = LOG_TAG,
+    hostNowMs = hostNowMs,
+
+    -- AT 响应格式化
     rspOnly = rspOnly,
     rspBody = rspBody,
     rspFmt = rspFmt,
     rspLine = rspLine,
     rspLineOk = rspLineOk,
     okTail = okTail,
+    CRLF = CRLF,
+    RSP_ERROR = RSP_ERROR,
+
+    -- 模块工具
     modCall = modCall,
     loader = loader,
     utils = utils,
     uart_bridge = uart_bridge,
-    CRLF = CRLF,
-    RSP_ERROR = RSP_ERROR,
-    LOG_TAG = LOG_TAG,
+
+    -- 业务 helper（host_uart 提供）
     setPndWake = setPendingWake,
     getHostEvtPending = getHostEvtPending,
     noopFalse = noopFalse,
@@ -405,8 +448,7 @@ local ctx = {
     usbBlockHost = usbBlockHost,
     configSnap = configSnap,
     hostUsbCfg = hostUsbCfg,
-    hostNowMs = hostNowMs,
-    t3xSecOff = t3xSecOff,
+    t31xSecOff = t31xSecOff,
     waitHostIdle = waitHostIdle,
     uartAcquire = uartAcquire,
     uartRelease = uartRelease,
@@ -414,10 +456,17 @@ local ctx = {
     noteHostPush = noteHostPush,
     parseSvcArgs = parseSvcArgs,
     pushUsbIdle = pushUsbIdle,
+
+    -- 以下由子模块在 bind 时回填到 ctx（跨编排器复用点）：
+    --   hif_rx   → parseTfCard / parseIpcStat / normIpcCloud / commitIpcStat / patchCloud
+    --   hif_ipc  → idCfg / hostQuery / hostSet / noteUartLinkOk
+    --   hif_cmd  → wledState / wledExport / wledGet / ipcReadyFrom
 }
 
-local cmd = require("hu_cmd").bind(ctx)
-local AT_EXACT, AT_PREFIX = require("hu_at").compile(cmd.at)
+local cmd = require("hif_cmd").bind(ctx)
+local AT_EXACT, AT_PREFIX = require("hif_at").compile(cmd.at)
+-- 装配 hif_cmd 对外 API → _M（唯一装配点）
+for k, fn in pairs(cmd.api) do _M[k] = fn end
 local LINE_HANDLERS = {
     HEX = cmd.hexLine,
     STR = cmd.strLine,
@@ -446,7 +495,8 @@ local function runAtDispatch(atCmd)
     return RSP_ERROR
 end
 
-local rx = require("hu_rx").bind(ctx)
+local rx = require("hif_rx").bind(ctx)
+-- 回填 hif_rx 提供的解析能力到 ctx（供 hif_cmd_t31x 等复用）
 ctx.parseTfCard = rx.parseTfCard
 ctx.parseIpcStat = rx.parseIpcStat
 ctx.normIpcCloud = rx.normIpcCloud
@@ -455,7 +505,9 @@ ctx.patchCloud = rx.patchCloud
 local normLine = rx.normLine
 local RX_LINE_TRY_HANDLERS = rx.tryHandlers
 
-require("hu_ipc").bind(ctx)
+local ipc = require("hif_ipc").bind(ctx)
+-- 装配 hif_ipc 对外 API → _M（唯一装配点）
+for k, fn in pairs(ipc) do _M[k] = fn end
 
 ----------------------------------------------------------------
 -- RX 行处理
@@ -583,7 +635,8 @@ end
 
 function start(opts)
     opts = opts or {}
-    t3xModule = opts.t3x or require "t3x_ctrl"
+    t31xModule = opts.t31x or require "t31x_ctrl"
+    t31xFallback = t31xModule
     state.host_at_ready = false
     state.first_host_at = nil
     bindStartHooks(opts)
@@ -602,19 +655,22 @@ function ntfHost(sid, evt)
     local cfg = cfgm.get("HOST_WAKE_CFG")
     sid = sid or cfg.default_sid or 1
     evt = evt or _M.EVT.SERVER_DATA
-    if modCall("t3x_policy", "mayPowerT3x", "ntfHost") == false then
+    if modCall("t31x_policy", "mayPowerT31x", "ntfHost") == false then
         return false
     end
     setPendingWake(sid, evt)
-    if not t3xModule then
-        t3xModule = require "t3x_ctrl"
+    if not t31xModule then
+        t31xModule = t31xFallback
     end
-    local t3xSt = t3xModule.getState()
-    if t3xSt and (not t3xSt.powered_on or t3xSt.in_boot_mode) then
-        t3xModule.ensNormalPwrOn("ntfHost")
+    if not t31xModule then
+        return false
     end
-    modCall("battery_guard", "markT3xWoken")
-    return t3xModule.pulseMcuInt()
+    local t31xSt = t31xModule.getState()
+    if t31xSt and (not t31xSt.powered_on or t31xSt.in_boot_mode) then
+        t31xModule.ensNormalPwrOn("ntfHost")
+    end
+    modCall("battery_guard", "markT31xWoken")
+    return t31xModule.pulseMcuInt()
 end
 
 function getState()

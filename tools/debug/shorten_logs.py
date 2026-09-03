@@ -90,17 +90,17 @@ sub('user/net_mqtt.lua', [
 ])
 
 sub('user/host_uart.lua', [
-    ('local LOG_TAG = "host_uart"', 'local LOG_TAG = "hu"'),
+    ('local LOG_TAG = "host_uart"', 'local LOG_TAG = "hif"'),
     ('"pending HOSTEVT"', '"pevt"'),
     ('"SERVCREATE disabled, wakeup_mode=mqtt"', '"scDis"'),
     ('"hostidle usb block"', '"hiUsb"'),
-    ('"T3x RECORD active"', '"rec+"'),
-    ('"T3x RECORD stop"', '"rec-"'),
-    ('"T3x PERSONCNT"', '"pcnt"'),
-    ('"T3x SNAPSHOT"', '"snap"'),
+    ('"T31x RECORD active"', '"rec+"'),
+    ('"T31x RECORD stop"', '"rec-"'),
+    ('"T31x PERSONCNT"', '"pcnt"'),
+    ('"T31x SNAPSHOT"', '"snap"'),
     ('"lowp usb block"', '"lpUsb"'),
     ('"wled no pwr"', '"wledNp"'),
-    ('"USB recovery blocked: low_power_mode=1, T3x powered_off"', '"usbBlk"'),
+    ('"USB recovery blocked: low_power_mode=1, T31x powered_off"', '"usbBlk"'),
     ('"1st AT"', '"1st"'),
     ('"host link reset"', '"lrst"'),
     ('"ipcst no rsp"', '"ipcn"'),
@@ -109,8 +109,8 @@ sub('user/host_uart.lua', [
     ('"ipcoff done"', '"ioD"'),
     ('"ipcoff timeout"', '"ioT"'),
     ('"ipcoff err"', '"ioE"'),
-    ('"t3x powering off, wait ready"', '"pwOff"'),
-    ('"t3x ready timeout"', '"rdyT"'),
+    ('"t31x powering off, wait ready"', '"pwOff"'),
+    ('"t31x ready timeout"', '"rdyT"'),
     ('"rec q timeout"', '"rqT"'),
     ('"tf q timeout"', '"tfT"'),
     ('"PIR action=devinfo"', '"pirD"'),
@@ -135,7 +135,7 @@ p.write_text(s, encoding='utf-8', newline='\n')
 sub('user/app.lua', [
     ('burnCheck("runtime.APP_RUNTIME.battery_percent"', 'burnCheck("batRt"'),
     ('"require fail"', '"rqF"'),
-    ('"t3x wake req"', '"twk"'),
+    ('"t31x wake req"', '"twk"'),
     ('"mqtt offline"', '"moff"'),
     ('"mqtt off, skip wake"', '"msk"'),
     ('"lp off, ignore enter"', '"lpXi"'),
@@ -146,8 +146,8 @@ sub('user/app.lua', [
     ('"net not ready, skip mqttcfg"', '"mcfg?"'),
     ('"mqttcfg unchanged, skip restart"', '"mcfg="'),
     ('"mqttcfg bad"', '"mcfg!"'),
-    ('"t3x mqtt cfg"', '"mcfg"'),
-    ('"mqtt t3x cfg"', '"mcfgOk"'),
+    ('"t31x mqtt cfg"', '"mcfg"'),
+    ('"mqtt t31x cfg"', '"mcfgOk"'),
     ('"uart line"', '"ux"'),
     ('"lp off, skip usb rest"', '"lpXu"'),
     ('"rndis, skip gpio rest"', '"rnX"'),
@@ -180,7 +180,7 @@ sub('user/app.lua', [
     ('"burn sum"', '"bSum"'),
     ('"burn allow"', '"bOk"'),
     ('"burn pass"', '"bPass"'),
-    ('"burn t3xst"', '"bT3"'),
+    ('"burn t31xst"', '"bT3"'),
     ('"burn pins"', '"bPin"'),
     ('"stop for burn"', '"bStop"'),
     ('"rndis stopped preburn"', '"rnOff"'),
@@ -188,18 +188,18 @@ sub('user/app.lua', [
     ('"burn mode gpio28"', '"bGo"'),
     ('"burn cond fail"', '"bCf"'),
     ('"bat ok"', '"bBat"'),
-    ('"no t3x_ctrl"', '"noT3"'),
+    ('"no t31x_ctrl"', '"noT3"'),
     ('"enterBoot fail"', '"bBoot"'),
     ('"burn seq start, wait coproc ready"', '"bSeq"'),
     ('"pir act"', '"pir"'),
     ('"rest, skip pir 1001"', '"pirX"'),
     ('"pir stop"', '"pir-"'),
-    ('"t3x rec active, 1011 to t3x"', '"recT3"'),
+    ('"t31x rec active, 1011 to t31x"', '"recT3"'),
     ('"pir media sync"', '"pirM"'),
-    ('"req t3x stop rec"', '"stopT3"'),
-    ('"t3x snap done"', '"snap"'),
-    ('"t3x person cnt"', '"pcnt"'),
-    ('"t3x rec end"', '"recE"'),
+    ('"req t31x stop rec"', '"stopT3"'),
+    ('"t31x snap done"', '"snap"'),
+    ('"t31x person cnt"', '"pcnt"'),
+    ('"t31x rec end"', '"recE"'),
     ('"PIR GPIO"', '"pirG"'),
     ('"mqtt dl"', '"mdl"'),
     ('"mqtt pub wake"', '"mpw"'),
@@ -214,7 +214,7 @@ sub('user/app.lua', [
     ('"coproc ready"', '"cop"'),
     ('"burn end, pir resume"', '"bEnd"'),
     ('"usb, re-en rndis"', '"uRn"'),
-    ('"lp off, no usb keep t3x"', '"lpT3"'),
+    ('"lp off, no usb keep t31x"', '"lpT3"'),
     ('"app start ===="', '"go"'),
     ('"app ready ===="', '"rdy"'),
     ('"stack"', '"stk"'),
@@ -225,24 +225,24 @@ sub('user/app.lua', [
     ('"req_valid=off"', '"rvOff"'),
     ('"will suspend"', '"susp"'),
     ('"no module"', '"noM"'),
-    ('failReason or "no t3x_ctrl"', 'failReason or "noT3"'),
+    ('failReason or "no t31x_ctrl"', 'failReason or "noT3"'),
     ('"repeat allowed"', '"rpt"'),
     ('"already in boot"', '"inBoot"'),
     ('"not in boot"', '"okBoot"'),
     ('failReason or "in boot"', 'failReason or "boot"'),
 ])
 
-sub('user/t3x_ctrl.lua', [
-    ('local LOG_TAG = "t3x_ctrl"', 'local LOG_TAG = "t3x"'),
-    ('"t3x_pwr_wake 未配置"', '"noPwr"'),
-    ('"t3x_mcu_int 未配置"', '"noInt"'),
-    ('"t3x_boot 未配置"', '"noBoot"'),
-    ('"t3x_ota 未配置"', '"noOta"'),
-    ('"========== T3x 控制模块启动 =========="', '"start"'),
-    ('"========== T3x 控制模块启动完成 =========="', '"ready"'),
+sub('user/t31x_ctrl.lua', [
+    ('local LOG_TAG = "t31x_ctrl"', 'local LOG_TAG = "t31x"'),
+    ('"t31x_pwr_wake 未配置"', '"noPwr"'),
+    ('"t31x_mcu_int 未配置"', '"noInt"'),
+    ('"t31x_boot 未配置"', '"noBoot"'),
+    ('"t31x_ota 未配置"', '"noOta"'),
+    ('"========== T31x 控制模块启动 =========="', '"start"'),
+    ('"========== T31x 控制模块启动完成 =========="', '"ready"'),
     ('"电源脚未初始化"', '"noPwrPin"'),
     ('"MCU_INT 未初始化"', '"noIntPin"'),
-    ('"T3x 唤醒脉冲(低)"', '"wake"'),
+    ('"T31x 唤醒脉冲(低)"', '"wake"'),
     ('"电源脚未初始化，跳过断电"', '"noPwrOff"'),
     ('"进入 BOOT 模式"', '"boot+"'),
     ('"BOOT 模式失败：GPIO 未就绪"', '"bootFail"'),
@@ -251,11 +251,11 @@ sub('user/t3x_ctrl.lua', [
     ('"退出 BOOT：GPIO 未就绪"', '"bootX"'),
     ('"退出 BOOT 模式"', '"boot-"'),
     ('"已在休眠状态"', '"sleep"'),
-    ('"HOSTEVT has_event，跳过 T3x 断电"', '"hevt"'),
+    ('"HOSTEVT has_event，跳过 T31x 断电"', '"hevt"'),
     ('"========== 进入休眠 =========="', '"sleep+"'),
     ('"整模组 hibernate（MQTT 将断开）"', '"hib"'),
-    ('"业务休眠：t3x 已断电，模组保持联网"', '"bizOff"'),
-    ('"业务休眠：t3x 已处于断电"', '"bizIdle"'),
+    ('"业务休眠：t31x 已断电，模组保持联网"', '"bizOff"'),
+    ('"业务休眠：t31x 已处于断电"', '"bizIdle"'),
     ('"========== 唤醒设备 =========="', '"wake+"'),
     ('"唤醒原因:"', '"why"'),
     ('"========== 进入深度休眠 =========="', '"deep"'),
@@ -315,13 +315,13 @@ sub('user/sound_prompt.lua', [
     ('"scene"', '"sc"'),
     ('"播放完成"', '"ok"'),
     ('"播放超时"', '"to"'),
-    ('"等待 T3x +IPCSTATUS:ready"', '"wRd"'),
-    ('"等待 T3x ready 超时，跳过开机音"', '"rdTo"'),
-    ('"T3x ready"', '"rdy"'),
-    ('"T3x 已发首条 AT"', '"1st"'),
-    ('"等待 T3x 首条 AT"', '"w1st"'),
-    ('"等待 T3x 首条 AT 超时，跳过开机音"', '"1stTo"'),
-    ('"收到 T3x 首条 AT"', '"got1st"'),
+    ('"等待 T31x +IPCSTATUS:ready"', '"wRd"'),
+    ('"等待 T31x ready 超时，跳过开机音"', '"rdTo"'),
+    ('"T31x ready"', '"rdy"'),
+    ('"T31x 已发首条 AT"', '"1st"'),
+    ('"等待 T31x 首条 AT"', '"w1st"'),
+    ('"等待 T31x 首条 AT 超时，跳过开机音"', '"1stTo"'),
+    ('"收到 T31x 首条 AT"', '"got1st"'),
 ])
 
 sub('user/battery_guard.lua', [
@@ -330,11 +330,11 @@ sub('user/battery_guard.lua', [
     ('"PIR 已暂停（低电量）"', '"pir-"'),
     ('"PIR 已恢复"', '"pir+"'),
     ('"关机前检测到 USB 插入，取消关机"', '"usbXoff"'),
-    ('"USB 插入，忽略低电量限制，保持 T3x 上电"', '"usb+"'),
+    ('"USB 插入，忽略低电量限制，保持 T31x 上电"', '"usb+"'),
     ('"USB 拔出，启用电量保护策略"', '"usb-"'),
     ('"已启动"', '"on"'),
-    ('"% ≤ 休眠阈值，请求进 rest（app 上报 1002 + 断 T3x）"', '"≤rest"'),
-    ('"% 已恢复，退出电量休眠并上电 T3x"', '">rest"'),
+    ('"% ≤ 休眠阈值，请求进 rest（app 上报 1002 + 断 T31x）"', '"≤rest"'),
+    ('"% 已恢复，退出电量休眠并上电 T31x"', '">rest"'),
     ('"% ≤ 关机阈值，"', '"≤off"'),
     ('"s 后关机"', '"s off"'),
 ])
@@ -401,8 +401,8 @@ sub('lib/pir.lua', [
     ('"已启动"', '"on"'),
 ])
 
-sub('lib/t3x_policy.lua', [
-    ('"启动跳过 T3x 上电"', '"skipPwr"'),
+sub('lib/t31x_policy.lua', [
+    ('"启动跳过 T31x 上电"', '"skipPwr"'),
 ])
 
 sub('lib/uart_bridge.lua', [
@@ -454,7 +454,7 @@ sub('lib/uart_bridge.lua', [
     ('"已关闭"', '"off"'),
 ])
 
-sub('lib/t3x_policy.lua', [
+sub('lib/t31x_policy.lua', [
     ('"跳过唤醒"', '"skW"'),
 ])
 
@@ -485,7 +485,7 @@ sub('user/vbat.lua', [
     ('"mV cell"', '"mv"'),
 ])
 
-sub('user/t3x_ipc.lua', [
+sub('user/t31x_ipc.lua', [
     ('"powerOnWaitReady 须在 task 内调用"', '"taskOnly"'),
 ])
 

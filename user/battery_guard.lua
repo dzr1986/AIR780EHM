@@ -10,7 +10,7 @@ local utils = require "utils"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
-local t3xPolicy = require "t3x_policy"
+local t31xPolicy = require "t31x_policy"
 local pir_ctrl = require "pir_ctrl"
 local _modname = ...
 module(_modname, package.seeall)
@@ -122,10 +122,10 @@ end
 
 local function isBlocked()
     if hooks.isBurnActive and hooks.isBurnActive() then
-        return true, "t3x_burn"
+        return true, "t31x_burn"
     end
-    if t3xPolicy.isBurnActive() then
-        return true, "t3x_burn"
+    if t31xPolicy.isBurnActive() then
+        return true, "t31x_burn"
     end
     return false
 end
@@ -186,14 +186,14 @@ function ntfHostIdle()
     guard.host_idle_wake_ts = os.time()
 end
 
-function markT3xWoken()
+function markT31xWoken()
     ntfHostIdle()
 end
 
 local function loadPctThresh()
     return {
         shutdown = pctThresh("shutdown_percent"),
-        rest = pctThresh("t3x_rest_percent"),
+        rest = pctThresh("t31x_rest_percent"),
         recover = pctThresh("recover_rest_percent"),
         host_idle = pctThresh("host_idle_below_percent"),
         pir_suspend = pctThresh("pir_suspend_percent"),
@@ -323,8 +323,8 @@ function onUsbIns(opts)
             exitedRest = true
         end
     end
-    if not exitedRest and source ~= "boot" and type(hooks.wakeT3x) == "function" then
-        hooks.wakeT3x()
+    if not exitedRest and source ~= "boot" and type(hooks.wakeT31x) == "function" then
+        hooks.wakeT31x()
     end
 end
 

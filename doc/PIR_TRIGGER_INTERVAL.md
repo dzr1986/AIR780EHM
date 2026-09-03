@@ -4,7 +4,7 @@
 > 配置真源：`user/config.lua`（`PIR_COOLDOWN_MS`、`PIR_CFG.cooldown_ms`）  
 > 配置索引：[`CONFIG.md`](CONFIG.md)  
 > 硬件流程：[`PIR_HARDWARE.md`](PIR_HARDWARE.md) · 协议：[`PIR_PROTOCOL.md`](PIR_PROTOCOL.md)  
-> T3x 经 UART 读冷却丢弃次数：`AT+PIRSTAT?`（`cnt_hw_ignore_cooldown`），见 [`T3X_4G_AT_INTERACTION.md`](T3X_4G_AT_INTERACTION.md)  
+> T31x 经 UART 读冷却丢弃次数：`AT+PIRSTAT?`（`cnt_hw_ignore_cooldown`），见 [`T31X_4G_AT_INTERACTION.md`](T31X_4G_AT_INTERACTION.md)  
 > **冷却与计数的概念区别**：[`PIR_COOLDOWN_AND_COUNT.md`](PIR_COOLDOWN_AND_COUNT.md)
 
 ---
@@ -125,7 +125,7 @@ flowchart LR
 | 电池/4G 省流量 | `PIR_COOLDOWN_MS.economy`（30s） |
 | 门口不能漏报 | `PIR_COOLDOWN_MS.frequent`（3s） |
 
-缩短间隔会增加：`1010` 上报、`1001` 唤醒、t3x 拍照次数与功耗。  
+缩短间隔会增加：`1010` 上报、`1001` 唤醒、t31x 拍照次数与功耗。  
 录像中若再次触发且 `stopOnSecondPir = true`，会走停录逻辑而非新一段录像，见 [`PIR_PROTOCOL.md`](PIR_PROTOCOL.md)。
 
 ---

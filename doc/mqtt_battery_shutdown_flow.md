@@ -14,7 +14,7 @@ Cat.1 在 **电芯电压 ≤3.4V（`shutdown_mv=3400`）且未插 USB** 时排�
 | 5%～20% | T31 可 HOSTIDLE；4G 仍 normal；PIR 唤醒后 30s 内拒 HOSTIDLE |
 | ≤3.4V（或无 mV 时 ≤5%） | 挂起 PIR + 4G rest（1002）+ 延时关机（默认 3s） |
 
-`hybrid` 策略另含 ≤`t3x_rest_percent` 进 4G rest。配置真源：`user/config.lua` → `BATTERY_CFG.guard`。模块逻辑见 [LUA_MODULES.md](LUA_MODULES.md)。
+`hybrid` 策略另含 ≤`t31x_rest_percent` 进 4G rest。配置真源：`user/config.lua` → `BATTERY_CFG.guard`。模块逻辑见 [LUA_MODULES.md](LUA_MODULES.md)。
 
 ---
 

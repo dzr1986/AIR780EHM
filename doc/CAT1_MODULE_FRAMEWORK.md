@@ -46,7 +46,7 @@ local loader = require "module_loader"
 local fota = loader.opt("fota", "fota_svc")
 
 -- 懒加载（不存在/失败时得 nil，且不再重试）
-local policy = loader.load("t3x_policy")
+local policy = loader.load("t31x_policy")
 
 -- 安全启动可选服务
 loader.start(batAdc, "start")
@@ -102,10 +102,10 @@ main.lua（入口守卫 isEntry）
   ├─ require config          → 全局配置就绪（_G.*_CFG / MODULE_FLAGS / APP_EVENTS）
   ├─ loader.load cellular_bootstrap → cellular.start()
   ├─ loader.load usb_rndis   → usb_rndis.open()（rndis 开时）
-  ├─ app.start(peripheral, net_mqtt, t3x_ctrl)
+  ├─ app.start(peripheral, net_mqtt, t31x_ctrl)
   │    ├─ setupEventHandlers()   订阅 APP_EVENTS
   │    ├─ battery_guard.start / setupWatchdog / setupUartBridge
-  │    ├─ t3x_ctrl.start / sound_prompt.start / time_sync.start
+  │    ├─ t31x_ctrl.start / sound_prompt.start / time_sync.start
   │    ├─ setupGpio / startBackgroundServices（vbat/usb_charge/sntp）
   │    └─ bootMqtt / setupFota / startHeartbeat
   └─ sys.run()
@@ -130,7 +130,7 @@ local logFuncs = utils.mkLogFns("my_mod")
 local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 ```
 
-- 已采用：app、battery_guard、net_mqtt、pir_ctrl、t3x_ctrl、time_sync。
+- 已采用：app、battery_guard、net_mqtt、pir_ctrl、t31x_ctrl、time_sync。
 - `host_uart` 仍保留 `LOG_TAG` 直调 `log.error`（仅 4 处崩溃日志，剥离脚本会保留 error 级）。
 - 本次已删除 **8 处**定义后从未使用的死 `LOG_TAG`（peripheral / sound_prompt / vbat / cellular_bootstrap / host_event / uart_bridge / usb_charge / watchdog）。
 
@@ -172,7 +172,7 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 | 死状态字段 | `state.last_input` 从未写入；`state.last_uart_rx` 只写不读（还常驻引用最近一帧 UART 数据，浪费 RAM） | 删除 |
 | PMD 消息双发事件 | `handlePmdMessage` 先写 `power_status` + 发 `GPIO_VBUS_CHANGED`，再调 `applyUsbPower` 又做一遍（同一次插拔广播两次） | 插拔态（state 0/1）只走 `applyUsbPower` 单入口；其余状态仅同步充电位 |
 | `isUsbInserted` 回退链 | `usbCharge` 分支出现两次（boot 与非 boot 各一），且 runtime_power 层内部同样先查 usb_charge，链路绕圈 | 收敛为：boot+无charge→GPIO VBUS；usbCharge → runtime_power（兜底）→ `power_status` |
-| T3x 唤醒链重复门禁 | `MODULE_FLAGS.t3x_policy` 在 app `requestT3xWake`/`onMqttOffline` 与 `t3x_policy.policyDisabled()` 共 3 处判断 | app 侧删除重复判断；flag 关闭时 `policyDisabled()` 使 `mayPowerT3x` 放行、仍走 `t3x_notify.wakeHost`，行为等价 |
+| T31x 唤醒链重复门禁 | `MODULE_FLAGS.t31x_policy` 在 app `requestT31xWake`/`onMqttOffline` 与 `t31x_policy.policyDisabled()` 共 3 处判断 | app 侧删除重复判断；flag 关闭时 `policyDisabled()` 使 `mayPowerT31x` 放行、仍走 `t31x_notify.wakeHost`，行为等价 |
 | setupUartBridge 空分支 | `local uc = _G.UART_CFG if ... then else end` 空 if/else（日志剥离残留） | 删除 |
 
 ### 8.2 核实后不成立 / 暂不处理的项
@@ -181,7 +181,7 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 |----|------|
 | battery_guard `onUsbInserted` 双调用 `onExitLowPower` | **不成立**：`exitedRest` 已守卫单次调用，`wasPir` 走 `resumePir()` 不触发 hook |
 | 录像停止双路径竞态（`scheduleStopMqttFallback`） | **无实际竞态**：`markStopMqttPublished` 在 `pubPirStop` 内同步置位（协程无抢占），fallback 侧 `canPublishStopMqtt` 双重防护有效 |
-| PIR 事件 `PIR_WAKE_T3X` 与 `GPIO_PIR_TRIGGERED` 合并 | **暂不做**：两者语义不同（唤醒 vs MQTT 上报）、发布时机与条件不同（retrigger 只发 GPIO 事件），合并属行为变更 |
+| PIR 事件 `PIR_WAKE_T31X` 与 `GPIO_PIR_TRIGGERED` 合并 | **暂不做**：两者语义不同（唤醒 vs MQTT 上报）、发布时机与条件不同（retrigger 只发 GPIO 事件），合并属行为变更 |
 | net_mqtt `publishPir*` 构包去重 | **暂不做**：协议热路径字符串改写回归风险大于收益（~40 行） |
 | `enterRestIfNeededAfterUsbRemove` 两分支行为不对等 | **保留**：battery_guard 启用时按电量策略评估、禁用时无条件进 rest 是设计意图（见 [WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md)） |
 
@@ -200,9 +200,9 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 | --- | --- | --- |
 | user/host_uart.lua | 33 | 全部惰性加载点统一走 loader（含 usbChargeCache 等缓存守卫简化） |
 | user/net_mqtt.lua | 7 | getDeviceId/getCellular/snapSim/usbBlocks4gRest 等 |
-| user/time_sync.lua | 3 | getUart/t3xOn/pushBeforeNotify |
-| lib/t3x_notify.lua | 4 | notifyViaTimeSync/notifyViaHostUart/fallbackGpioWake/ensurePowered |
-| 第四轮：app/battery_guard/sound_prompt/t3x_ctrl/ipc_supervision/led_ctrl/main + lib host_event/usb_charge/low_power_wakeup/usb_rndis/runtime_power | 16 | 至此全项目 pcall(require) 0 残留；另删除 mobile_info 幽灵 flag 与引用 |
+| user/time_sync.lua | 3 | getUart/t31xOn/pushBeforeNotify |
+| lib/t31x_notify.lua | 4 | notifyViaTimeSync/notifyViaHostUart/fallbackGpioWake/ensurePowered |
+| 第四轮：app/battery_guard/sound_prompt/t31x_ctrl/ipc_supervision/led_ctrl/main + lib host_event/usb_charge/low_power_wakeup/usb_rndis/runtime_power | 16 | 至此全项目 pcall(require) 0 残留；另删除 mobile_info 幽灵 flag 与引用 |
 
 等价性要点：`loader.load` 内部即 pcall + 单一缓存 + `type=="table"` 校验，故原 `ok and type(mod)=="table" and mod or false` 一律简化为 `mod or false`；失败路径（模块缺失）行为不变（负缓存返回 nil）。
 
@@ -226,7 +226,7 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 
 用 `luacheck`（W211/W231/W311/W542）全量扫描后逐项人工核实，清理三类死代码，全部为等价改动：
 
-1. **未使用的局部函数/变量**：`fota_svc.defaultFirmwareName/defaultDeviceQuery/lastRequestTime`、`net_mqtt.getSubTopic`、`t3x_ctrl.gpioLv`、`ipc_supervision` 的 `L` 常量、`sound_prompt.t3xModule`（写入后从未读取）、`time_sync` 的 `host_uart` 声明等。
+1. **未使用的局部函数/变量**：`fota_svc.defaultFirmwareName/defaultDeviceQuery/lastRequestTime`、`net_mqtt.getSubTopic`、`t31x_ctrl.gpioLv`、`ipc_supervision` 的 `L` 常量、`sound_prompt.t31xModule`（写入后从未读取）、`time_sync` 的 `host_uart` 声明等。
 2. **空 if/else 分支**（多为日志剥离残留）：net_mqtt 7 处、host_uart 3 处、app 3 处、peripheral 1 处；有副作用的条件调用（如 `startMqtt()`、`recordCtrlStop`、`ensurePins()`）均保留调用只删弃值捕获。
 3. **弃值的多返回捕获**：`local ok, err = pcall(...)` 等收敛为 `pcall(...)` 或 `local ok = ...`；`usb_rndis` 删除纯 getter `readCellularIp()` 的无效调用。
 
@@ -236,8 +236,8 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 
 luacheck 因 `module(package.seeall)` 无法识别模块导出函数是否被使用，故用脚本做全项目**全词匹配**引用扫描（覆盖 `mod.fn`、字符串动态派发、事件回调引用；已确认代码库无 `mod[var](...)` 动态索引调用），找出零引用的导出函数 47 个：
 
-- 删除 42 个死导出（约 210 行）：如 `usb_rndis.switch/enableAsync/waitForNetStable`、`host_uart.getCachedP2pCfg/getCachedGb28181Cfg/setPirActionDevinfo`、`t3x_ctrl.enterDeepSleep/pulseWakeup`、`app.setModuleFlag/getModuleFlags`、`pir_ctrl.requestStopManual/isSuspended` 等。
-- 迭代清理级联孤儿：`usb_rndis.cycleRndis`（仅被已删函数调用）、`t3x_policy.lastDenyReason`（只写不读，8 处）。
+- 删除 42 个死导出（约 210 行）：如 `usb_rndis.switch/enableAsync/waitForNetStable`、`host_uart.getCachedP2pCfg/getCachedGb28181Cfg/setPirActionDevinfo`、`t31x_ctrl.enterDeepSleep/pulseWakeup`、`app.setModuleFlag/getModuleFlags`、`pir_ctrl.requestStopManual/isSuspended` 等。
+- 迭代清理级联孤儿：`usb_rndis.cycleRndis`（仅被已删函数调用）、`t31x_policy.lastDenyReason`（只写不读，8 处）。
 - **保留** 5 个框架通用 API：`config_manager.num/bool`、`gpio_util.in_pin/out_pin/set_output`（文档承诺的公共接口）。
 
 复扫确认无新增死导出（收敛），32 文件语法全通过。注意：后续若新增代码需调用上述被删函数，从 git 历史（76ab6cb 之前）恢复即可。
@@ -274,8 +274,8 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 ```
 
 收敛 17 处调用点（fire-and-forget 通知、单/多返回值读取、`== false` 显式布尔门、`getState()` 快照读取等）。转换前均逐点核对语义等价：
-- `not modCall(...)` 仅用于"缺失视为否"语义等价的场合（如 `isRecording`）；显式拒绝门（`mayPowerT3x`、`shdHostSleep`）已核实返回严格布尔后改用 `== false` 比较——函数缺失（nil ≠ false）时保持原"放行"行为。
-- `syncStopFromT3x` 在 `reconcileHostRecordSession` 中可能返回 nil 覆盖默认值 `"auto","high"`，该处保留原守卫写法不转换（首次转换曾引入 pir_ctrl 未定义引用，经 luacheck W113 差分对比发现并修复）。
+- `not modCall(...)` 仅用于"缺失视为否"语义等价的场合（如 `isRecording`）；显式拒绝门（`mayPowerT31x`、`shouldHostSleep`）已核实返回严格布尔后改用 `== false` 比较——函数缺失（nil ≠ false）时保持原"放行"行为。
+- `syncStopFromT31x` 在 `reconcileHostRecordSession` 中可能返回 nil 覆盖默认值 `"auto","high"`，该处保留原守卫写法不转换（首次转换曾引入 pir_ctrl 未定义引用，经 luacheck W113 差分对比发现并修复）。
 - net_mqtt 等其他文件的守卫多带默认值回退，收益低于引入助手成本，不转换。
 
 验证：luacheck 告警差分与重构前完全一致，test/ 等价性测试通过，`luac5.3 -p` 通过。
@@ -286,18 +286,18 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 
 **2A 旧名 modCall 修复（行为变化，需真机回归）**：`user/host_uart.lua` 中 7 处调用仍指向缩写前的旧名，模块加载后永远命中"函数缺失"静默分支，本轮改名修复：
 - `appendGetCfgFields`→`appCfgFields`（low_power_wakeup）：恢复 AT+GETCFG 应答中的 `wakeup_mode`/`tcp_on` 字段（文档承诺）
-- `bldAtBodyy`→`bldAtBody`（pir_ctrl）、`syncStopFromT3x`→`syncStopT3x`（pir_ctrl）、`applyEffectiveMediaAction`→`applEffMedia`（pir_ctrl）
-- `shdHostSleep`→`shdHostSleep`（battery_guard，2 处）、`canHostSleep`→`canHostSleep`（battery_guard）
+- `buildStatBodyy`→`buildStatBody`（pir_ctrl）、`syncStopFromT31x`→`syncStopT31x`（pir_ctrl）、`applyEffectiveMediaAction`→`applyEffMedia`（pir_ctrl）
+- `shouldHostSleep`→`shouldHostSleep`（battery_guard，2 处）、`canHostSleep`→`canHostSleep`（battery_guard）
 
-**2B 死代码清理**：`okLp` 未定义全局的死 elseif 分支；net_mqtt `NC` 常量 + `no_conn` 实参传递链；`opts.warn`、`state.last_event`/`last_publish_topic`、`publish()` 死导出；t3x_ctrl `logGpio` 空函数及 3 处调用；battery_guard `handleRestZoneHybrid`/`handlePirZoneHybrid` 零调用函数；led_ctrl `_G[_M] = _M` 死行；fota_svc `selfUrl` 死兜底折叠；runtime_power `WORK_*` 全局零引用改 local。
+**2B 死代码清理**：`okLp` 未定义全局的死 elseif 分支；net_mqtt `NC` 常量 + `no_conn` 实参传递链；`opts.warn`、`state.last_event`/`last_publish_topic`、`publish()` 死导出；t31x_ctrl `logGpio` 空函数及 3 处调用；battery_guard `handleRestZoneHybrid`/`handlePirZoneHybrid` 零调用函数；led_ctrl `_G[_M] = _M` 死行；fota_svc `selfUrl` 死兜底折叠；runtime_power `WORK_*` 全局零引用改 local。
 
-**2C 重复 helper 提取到 utils.lua**（`nowMs`/`escKv`/`optTable`/`appEvent`/`t3xOn`/`waitT3xCmdAck`）：收敛 app/host_uart/pir_ctrl/net_mqtt/t3x_ctrl/battery_guard/fota_svc 的重复实现；time_sync/sound_prompt 的 T3x 上电等待 + ACK 等待循环跨文件去重（保留"无 `mcu.ticks` 只等一拍"语义）；`hostFirsAtEvt` 等 12 处 `_G.APP_EVENTS` fallback 统一走 `appEvent`。约 80 处 `type(x)=="table" and x or {}` 机械替换为 `optTable`。utils 保持零依赖（仅 require module_loader，sys 经全局运行时解析，避免循环 require）。
+**2C 重复 helper 提取到 utils.lua**（`nowMs`/`escKv`/`optTable`/`appEvent`/`t31xOn`/`waitT31xCmdAck`）：收敛 app/host_uart/pir_ctrl/net_mqtt/t31x_ctrl/battery_guard/fota_svc 的重复实现；time_sync/sound_prompt 的 T31x 上电等待 + ACK 等待循环跨文件去重（保留"无 `mcu.ticks` 只等一拍"语义）；`hostFirsAtEvt` 等 12 处 `_G.APP_EVENTS` fallback 统一走 `appEvent`。约 80 处 `type(x)=="table" and x or {}` 机械替换为 `optTable`。utils 保持零依赖（仅 require module_loader，sys 经全局运行时解析，避免循环 require）。
 
-**2D 样板收敛**：`_G.MODULE_FLAGS` 直查 → `loader.enabled()`（config.lua 显式定义全部键，转换安全；t3x_notify:61-62 真值语义不同，保留并注释）；battery_guard 两个逐字相同的 evaluate 函数合并；host_uart 新增 `t3xSectOff()`/`rspLineOk(tag)`/`writeT3xNotif` 本地助手；t3x_notify 三份 getGlobalOrLoad 拷贝 → `getMod()` 带负缓存；ipc_supervision 模块折叠为 `loader.load()`；usb_charge `ensureUsbDetPin` → `gpio_util.setupInput`（显式传 trigger_mode 保持原默认）；usb_rndis 补 `cfg()` 助手；uart_bridge 三个早退合并 + 布尔样板一行化；t3x_policy `reqT3xWake` 删预置默认（5 个调用点均已传非 nil reason）、`shdWakeOffline` 冷却期条件压缩；net_mqtt `identityEnabled`/`tfCardEnabled` 改 `~= false`、`midField` 复用 `msgIdPart`；cellular_bootstrap `applyApnForSim` 三分支 → 两分支（真值表已验证等价）；libfota2 云平台错误码 if/elseif 链 → `FOTA_ERR_INFO` 表驱动（文案逐字保留，1111111111111 动态参数分支保留）；usb_vuart 两处 REBOOT 命令清单提取共用（AT+RESET 仅保留带换行路径的现状差异）。
+**2D 样板收敛**：`_G.MODULE_FLAGS` 直查 → `loader.enabled()`（config.lua 显式定义全部键，转换安全；t31x_notify:61-62 真值语义不同，保留并注释）；battery_guard 两个逐字相同的 evaluate 函数合并；host_uart 新增 `t31xSectOff()`/`rspLineOk(tag)`/`writeT31xNotif` 本地助手；t31x_notify 三份 getGlobalOrLoad 拷贝 → `getMod()` 带负缓存；ipc_supervision 模块折叠为 `loader.load()`；usb_charge `ensureUsbDetPin` → `gpio_util.setupInput`（显式传 trigger_mode 保持原默认）；usb_rndis 补 `cfg()` 助手；uart_bridge 三个早退合并 + 布尔样板一行化；t31x_policy `reqT31xWake` 删预置默认（5 个调用点均已传非 nil reason）、`shdWakeOffline` 冷却期条件压缩；net_mqtt `identityEnabled`/`tfCardEnabled` 改 `~= false`、`midField` 复用 `msgIdPart`；cellular_bootstrap `applyApnForSim` 三分支 → 两分支（真值表已验证等价）；libfota2 云平台错误码 if/elseif 链 → `FOTA_ERR_INFO` 表驱动（文案逐字保留，1111111111111 动态参数分支保留）；usb_vuart 两处 REBOOT 命令清单提取共用（AT+RESET 仅保留带换行路径的现状差异）。
 
 **2E 文件头注释修正**：34 个文件头部 `Notes: 本地 helper 速查：无本地压缩 helper` 与事实不符（各文件均有大量 local helper，第九轮已压缩 122 个函数名），统一删除该占位行。
 
-**核实后不处理**：t3xPowerWaitMs 六处 fallback 链统一、battery_guard `cfg()`（有 guard fallback 与 config_manager 语义不同）、peripheral `shallowMerge`（嵌套子表整体替换 vs 逐 key 合并）、host_uart 3249/3552-3559 内联、cellular_bootstrap `waitSimInfo`、各文件零星 optTable——均有语义差异或收益过低，保持现状。
+**核实后不处理**：t31xPowerWaitMs 六处 fallback 链统一、battery_guard `cfg()`（有 guard fallback 与 config_manager 语义不同）、peripheral `shallowMerge`（嵌套子表整体替换 vs 逐 key 合并）、host_uart 3249/3552-3559 内联、cellular_bootstrap `waitSimInfo`、各文件零星 optTable——均有语义差异或收益过低，保持现状。
 
 **验证**：luatos-cli `build luac` 全量编译 user/（17 文件）+ lib/（17 文件）零错误；test_parsers.lua（44 断言）+ test_factories.lua（17 断言）经 lupa（Lua 5.5 宿主）全部通过。注：两份测试的提取锚点此前全部失效（Lua pattern `.-` 不跨行，函数均为多行定义），本轮改为"起点 marker 定界提取"后首次真正运行，并修正一处历史错误断言（mic 无收集行时 END 不发布，与 venc/audio/framerate 共用 rowsEndFlus 语义一致）。2A 的 7 处行为变化项（2001/2003/2005/2008 + HOSTIDLE + GETCFG 字段）需整机回归。
 
@@ -313,7 +313,7 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 - fota_svc：删 5 条例行 info 日志（ota_start/ota_network_ok/ota_checking/ota_callback/ota_reboot_scheduled，信息均已被 reportStatus 上报覆盖）；4 条 warn 错误路径日志全保留
 - host_uart：删 ipcpoweroff 成功路径 3 条日志（OK/STAGE/tx）与 `venc_unparsed`、连带空 if 与死变量 `sent`
 - net_mqtt：conack/disconnect 两处 8 行 pushNetLed 块提取为本地函数；4 处 `need`/`usbLogical` 的 if-nil 改 `or`（tonumber 场景，无 false 语义风险）
-- vbat/gpio_util/host_event/t3x_policy 共 6 处 if-nil 改 `or`（全部为数字/tonumber 场景）
+- vbat/gpio_util/host_event/t31x_policy 共 6 处 if-nil 改 `or`（全部为数字/tonumber 场景）
 
 **结果**：排除 sys.lua 口径 531859 → 526807B（−5052B，514.5KB）。注意：debug99 口径下 514.5KB 仍未进 512KB 线（用户侧约差 1~4KB），**治本方案是打包链改用较低 luac 调试级别**——实测同代码 `--luac-debug 1`（仅行号）= 456085B(445.4KB)、`--luac-debug 2`（仅变量名）= 393727B(384.5KB)，均稳过 512KB；量产链 pack_mass_prod.py 已用 `luac_debug = 0` + 内存压缩（≈346KB）不受影响。
 
@@ -340,18 +340,18 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 
 | 跳过项 | 原因 |
 |---|---|
-| `ntfHostIdle`（battery_guard）、`lazyRequire`（utils） | 全局导出公共 API，内联即删接口 |
+| `notifyHostIdle`（battery_guard）、`lazyRequire`（utils） | 全局导出公共 API，内联即删接口 |
 | `stpUartBrdg`（app，30+ 行）、`rdUplnFlds`（net_mqtt，16 行含嵌套函数） | 长函数展开膨胀，且 rdUplnFlds 调用点在表达式参数中间、外层已有同名 `snap` 局部变量（遮蔽风险） |
 | `makeRfrs`（net_mqtt） | 闭包工厂，展开破坏构建表可读性，收益/风险比差 |
 | `stpEvntRfrs`（led_ctrl） | 函数体含 `if not E then return end`，展开后 return 会作用于外层函数，语义不等价 |
 
 **方法**（26 处，零行为变化）：
 - 单表达式体直接替换调用表达式（如 `isVldP2PUid(uid)` → `type(uid) == "string" and #uid == 8 and ...`）
-- 多语句体在表达式上下文（if 条件）的调用点改为前置局部变量（如 `isT3XPwrdOn()` 展开为 `local st = modCall("t3x_ctrl", "getState")` + 条件，避免 modCall 求值两次；`shldMap1011(alertCode)` 同理前置 `local e = alertLookup(alertCode)`）
+- 多语句体在表达式上下文（if 条件）的调用点改为前置局部变量（如 `isT31XPwrdOn()` 展开为 `local st = modCall("t31x_ctrl", "getState")` + 条件，避免 modCall 求值两次；`shldMap1011(alertCode)` 同理前置 `local e = alertLookup(alertCode)`）
 - 参数名替换为调用点实参名（如 isVldGb 的参数 `pwd` → 实参 `password`）
 - 字符串/注释内的名字不动
 
-**结果**：520247 → 516558B（−3689B，504.5KB）→ 用户 Luatools 口径约 503KB，比 512KB 线余量 9KB。净 −107 行（10 个文件）。验证：luatos-cli 全量编译零错误；test_parsers/test_factories 全断言通过；残留回扫确认被内联名零残留（命中的均为子串同名函数：isVldGb28181/uartRcvryCfg/t3x_policy.isBurnActive，属预期保留）。提交 905ea56。
+**结果**：520247 → 516558B（−3689B，504.5KB）→ 用户 Luatools 口径约 503KB，比 512KB 线余量 9KB。净 −107 行（10 个文件）。验证：luatos-cli 全量编译零错误；test_parsers/test_factories 全断言通过；残留回扫确认被内联名零残留（命中的均为子串同名函数：isVldGb28181/uartRcvryCfg/t31x_policy.isBurnActive，属预期保留）。提交 905ea56。
 
 ### 9.12 脚本区第四轮压缩：重构式内联 + lib 侧单调用点内联（debug99 口径 −1027B）
 
@@ -361,7 +361,7 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 - `rdUplnFlds`（16 行嵌套函数）：调用点在 `string.format` 参数列表中间且外层已有局部变量 `snap` → 前置 `local rdSnp = cllcRdSnps()` + 嵌套 `local function sv(v)`（改名规避遮蔽），调用点展开为内层 `string.format` 表达式。cllcRdSnps() 求值时机从调用点提前到语句块开头，同函数内无中间写操作，行为等价
 - `makeRfrs`（闭包工厂）：唯一调用点 `map[spec.dl] = makeRfrs(spec)` 纯表达式替换，闭包体展开到赋值处（spec 为循环局部变量，upvalue 可见性不变）
 
-**lib 侧内联 8 处**（cellular_bootstrap 2、usb_charge 4、low_power_wakeup 1、t3x_policy 1）：均为 local 函数、单文件单调用点；`pblsUsbChng`/`pblsChgChng` 展开为 `local ev = utils.appEvent(...)` + `sys.publish(ev, ...)` 两行（无外层 `ev` 冲突）；`cfg()`/`usb_cfg()` 等配置读取内联为 `(_G.XXX or {})` 直查
+**lib 侧内联 8 处**（cellular_bootstrap 2、usb_charge 4、low_power_wakeup 1、t31x_policy 1）：均为 local 函数、单文件单调用点；`pblsUsbChng`/`pblsChgChng` 展开为 `local ev = utils.appEvent(...)` + `sys.publish(ev, ...)` 两行（无外层 `ev` 冲突）；`cfg()`/`usb_cfg()` 等配置读取内联为 `(_G.XXX or {})` 直查
 
 **甄别后跳过**：gpio_util.trigger_mode/pull、module_loader.enabled、usb_charge.isUsbInserted 等全局导出公共 API；`isBatDynRest` 跨 3 文件引用；`stpUartBrdg`（app，40 行，函数体 `return false` 展开后会使外层 appStart 提前返回，语义不等价）；`type(x)=="table" and x or {}` 样板 12 处中 lib 5 处受"lib 不反向依赖 user"约束、config.lua 2 处在 require 链最前端不可新增依赖，剩余收益约 20B/处放弃
 
@@ -392,7 +392,7 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 | `pir_ctrl` | `stop()` 取消 `PIR_HW_TRIGGERED` 订阅 + `clearRecTmr`；新增 `stopHw()` |
 | `fota_svc` | `sys.unsubscribe` 两个 OTA topic |
 
-`t3x_ctrl`、`usb_charge`、`cellular_bootstrap` 无持久后台任务/无标准 teardown API，不补 `stop()`（其资源均为一次性短脉冲/GPIO IRQ）。`sound_prompt` 的 `start` 为空实现、任务均一次性，不补。T3x 烧录/关机前整体停机可 `loader.stopAll()`（必须先经 `loader.start()` 启动的模块才会被登记）。
+`t31x_ctrl`、`usb_charge`、`cellular_bootstrap` 无持久后台任务/无标准 teardown API，不补 `stop()`（其资源均为一次性短脉冲/GPIO IRQ）。`sound_prompt` 的 `start` 为空实现、任务均一次性，不补。T31x 烧录/关机前整体停机可 `loader.stopAll()`（必须先经 `loader.start()` 启动的模块才会被登记）。
 
 ### 10.3 lib→user 反向依赖解耦
 
@@ -401,7 +401,7 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 | 位置 | 解耦方式 |
 |------|------|
 | `runtime_power.isBatDynRest` → `battery_guard`（环 B） | 删除 battery_guard fallback：读 `_G.APP_RUNTIME.battery_dynamic_rest` 全局即可（battery_guard 各处已同步维护该字段，语义等价） |
-| `t3x_notify` → `time_sync`/`host_uart`/`t3x_ctrl`（环 C，3 处） | `registerProviders{pushBeforeNotify, ntfHost, wakeHost, ensPowOn}`；user 层 app.lua 启动时注入，未注入时保持原懒加载路径 |
+| `t31x_notify` → `time_sync`/`host_uart`/`t31x_ctrl`（环 C，3 处） | `registerProviders{pushBeforeNotify, ntfHost, wakeHost, ensPowOn}`；user 层 app.lua 启动时注入，未注入时保持原懒加载路径 |
 | `usb_charge` → `peripheral.cancelLongPress` | 新增 `onUsbInsert(cb)` 注入钩子；app.lua 注册 |
 | `low_power_wakeup` → `net_tcp` | 新增 `bindNetTcp(mod)`；app.lua 注册 |
 
@@ -415,4 +415,4 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 
 ### 10.5 验证
 
-所有改动文件经 `luatos-cli build luac` 全量编译零错误；修改遵循行为等价原则（全局事件字符串、返回值、时序均未变）。建议整机回归：唤醒链路（time_sync/sound_prompt/t3x_notify）、USB 插入长按取消、低电量 rest 动态检测、T3x 烧录模式整体停机。
+所有改动文件经 `luatos-cli build luac` 全量编译零错误；修改遵循行为等价原则（全局事件字符串、返回值、时序均未变）。建议整机回归：唤醒链路（time_sync/sound_prompt/t31x_notify）、USB 插入长按取消、低电量 rest 动态检测、T31x 烧录模式整体停机。

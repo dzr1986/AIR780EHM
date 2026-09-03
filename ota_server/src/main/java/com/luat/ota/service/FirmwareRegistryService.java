@@ -248,6 +248,36 @@ public class FirmwareRegistryService {
                 .toList();
     }
 
+    @Transactional
+    public FirmwarePackage addAssignments(Long firmwareId, List<String> imeis) {
+        FirmwarePackage existing = firmwareRepo.findById(firmwareId)
+                .orElseThrow(() -> new IllegalArgumentException("firmware not found"));
+        if (imeis == null || imeis.isEmpty()) {
+            return existing;
+        }
+        existing.setUpgradeAll(false);
+        firmwareRepo.save(existing);
+        for (String imei : imeis) {
+            if (!assignmentRepo.existsByFirmwareIdAndImei(firmwareId, imei)) {
+                FirmwareDeviceAssignment a = new FirmwareDeviceAssignment();
+                a.setFirmwareId(firmwareId);
+                a.setImei(imei);
+                assignmentRepo.save(a);
+            }
+        }
+        return existing;
+    }
+
+    @Transactional
+    public FirmwarePackage removeAssignments(Long firmwareId, List<String> imeis) {
+        FirmwarePackage existing = firmwareRepo.findById(firmwareId)
+                .orElseThrow(() -> new IllegalArgumentException("firmware not found"));
+        if (imeis != null && !imeis.isEmpty()) {
+            assignmentRepo.deleteByFirmwareIdAndImeiIn(firmwareId, imeis);
+        }
+        return existing;
+    }
+
     /**
      * 按项目固件库匹配差分包（优先于 manifest）。
      */

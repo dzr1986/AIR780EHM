@@ -9,7 +9,7 @@ require "config"
 local utils = require "utils"
 local cfgm = require "config_manager"
 local loader = require "module_loader"
-local t3xPolicy = require "t3x_policy"
+local t31xPolicy = require "t31x_policy"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -59,8 +59,8 @@ function isTimeValid(t)
 end
 
 local function hostReady()
-    local hu = utils.hostUart()
-    return hu and hu.isHostAtReady()
+    local hif = utils.hostUart()
+    return hif and hif.isHostAtReady()
 end
 
 local function waitHostReady(timeoutMs)
@@ -73,9 +73,9 @@ local function waitHostReady(timeoutMs)
     return hostReady()
 end
 
-local function ensT3xPower(extra)
-    return utils.t3xOn("time_sync", extra, {
-        t3xPowerWaitMs = tonumber(timeCfg().t3x_power_wait_ms) or 800,
+local function ensT31xPower(extra)
+    return utils.t31xOn("time_sync", extra, {
+        t31xPowerWaitMs = tonumber(timeCfg().t31x_power_wait_ms) or 800,
     })
 end
 
@@ -102,14 +102,14 @@ function pushToHost(force)
         return false
     end
     tsInfo("sync_push", t, force == true and 1 or 0)
-    ensT3xPower()
+    ensT31xPower()
     if not waitHostReady(tonumber(cfg.hostBootWaitMs) or 1500) then
         tsWarn("host_not_ready")
         return false
     end
     ub.sendString("AT+TIMESET=" .. t, true)
     local timeoutMs = tonumber(cfg.ack_timeout_ms) or 800
-    local ok = utils.waitT3xAck(ACK_EVENT, timeoutMs)
+    local ok = utils.waitT31xAck(ACK_EVENT, timeoutMs)
     if ok then
         lastPushedAt = t
         tsInfo("sync_ack_ok", t)
@@ -134,13 +134,13 @@ function onSntpSuccess(unix, server)
 end
 
 function pushBeforeNotify(sid, evt)
-    if not t3xPolicy.mayPowerT3x("time_sync_notify") then return end
+    if not t31xPolicy.mayPowerT31x("time_sync_notify") then return end
     local cfg = timeCfg()
-    if enabled() and cfg.sync_before_wake ~= false and isTimeValid() and ensT3xPower() then
+    if enabled() and cfg.sync_before_wake ~= false and isTimeValid() and ensT31xPower() then
         pushToHost(false)
     end
-    local hu = utils.hostUart()
-    if hu then hu.ntfHost(sid, evt) end
+    local hif = utils.hostUart()
+    if hif then hif.ntfHost(sid, evt) end
 end
 
 function pushBeforeNotifyAsync(sid, evt)

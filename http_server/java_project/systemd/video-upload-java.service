@@ -1,0 +1,21 @@
+[Unit]
+Description=T31x alarm video uploadVideo API (Java)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/video_upload_java
+Environment=VIDEO_UPLOAD_HOST=0.0.0.0
+Environment=VIDEO_UPLOAD_PORT=7003
+Environment=VIDEO_UPLOAD_DIR=/home/ubuntu/video_upload_java/incoming
+ExecStart=/usr/bin/java -Xms64m -Xmx256m -jar /home/ubuntu/video_upload_java/video-upload.jar
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

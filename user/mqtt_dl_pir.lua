@@ -25,7 +25,7 @@ function bind(C, shared)
     local pubIpcAlert = C.pub.pubIpcAlert
     local dlMsgId = shared.dlMsgId
     local ctrlMsg = shared.ctrlMsg
-    local hostReady = shared.t3xHostReady
+    local hostReady = shared.t31xHostReady
 
     local TIMEOUT = {
         cloudRefresh = 2500,
@@ -41,9 +41,9 @@ function bind(C, shared)
     end
 
     local function getReadyHost()
-        local hu = hostUart()
-        if hu and hostReady() then
-            return hu
+        local hif = hostUart()
+        if hif and hostReady() then
+            return hif
         end
         return nil
     end
@@ -59,7 +59,7 @@ function bind(C, shared)
         return asNum(snap.running) == 1
             or asNum(snap.active) == 1
             or asNum(snap.recording) == 1
-            or asNum(snap.recordingT3x) == 1
+            or asNum(snap.recordingt31x) == 1
     end
 
     local function snapIsIdle(snap)
@@ -81,27 +81,27 @@ function bind(C, shared)
             or TIMEOUT.stopDefault
     end
 
-    local function queryT3xRecording()
-        local hu = getReadyHost()
-        if not hu then
+    local function queryT31xRecording()
+        local hif = getReadyHost()
+        if not hif then
             return false
         end
         ipcSupervision.refCloudStat(TIMEOUT.cloudRefresh, true)
-        if snapIsRecording(hu.queryHostRecord(TIMEOUT.recordQuery)) then
+        if snapIsRecording(hif.queryHostRecord(TIMEOUT.recordQuery)) then
             return true
         end
-        if hu.getT3xRecActive() == 1 then
+        if hif.getT31xRecActive() == 1 then
             return true
         end
-        return snapIsRecording(hu.getCloudStat())
+        return snapIsRecording(hif.getCloudStat())
     end
 
-    local function t3xRecordingFlag()
-        if queryT3xRecording() then
+    local function t31xRecordingFlag()
+        if queryT31xRecording() then
             return 1
         end
-        local hu = hostUart()
-        return (hu and hu.getT3xRecActive() == 1) and 1 or 0
+        local hif = hostUart()
+        return (hif and hif.getT31xRecActive() == 1) and 1 or 0
     end
 
     local function publishForcedPirStop(messageId)
@@ -114,23 +114,23 @@ function bind(C, shared)
         )
     end
 
-    local function stopHostRecord(hu, messageId)
-        local ok, detail = hu.recordCtrlStop({
+    local function stopHostRecord(hif, messageId)
+        local ok, detail = hif.recordCtrlStop({
             reason = "cloud",
             timeoutMs = recordStopTimeoutMs(),
         })
-        if not ok and snapIsIdle(hu.queryHostRecord(TIMEOUT.recordIdleCheck)) then
+        if not ok and snapIsIdle(hif.queryHostRecord(TIMEOUT.recordIdleCheck)) then
             ok, detail = true, "already_idle"
         end
         if ok then
-            hu.patchCloud({ recordingT3x = 0 })
+            hif.patchCloud({ recordingt31x = 0 })
             publishForcedPirStop(messageId)
         end
         return ok, detail
     end
 
-    local function requestHostRecordStop(hu)
-        return hu.recordCtrlStop({
+    local function requestHostRecordStop(hif)
+        return hif.recordCtrlStop({
             reason = "cloud",
             timeoutMs = recordStopTimeoutMs(),
         })
@@ -152,9 +152,9 @@ function bind(C, shared)
         }
     end
 
-    local function mergeT3xRecording(extra, t3xRec)
-        extra.recordingT3x = t3xRec
-        if t3xRec == 1 and (extra.recording == 0 or extra.recording == false) then
+    local function mergeT31xRecording(extra, t31xRec)
+        extra.recordingt31x = t31xRec
+        if t31xRec == 1 and (extra.recording == 0 or extra.recording == false) then
             extra.recording = 1
         end
         return extra
@@ -181,12 +181,16 @@ function bind(C, shared)
     end
 
     local function replyConfigQuery(messageId)
-        sys.taskInit(function()
-            local extra = pirDetectExtra("query", nil, nil, nil, nil)
-            extra.messageId = messageId
-            mergeT3xRecording(extra, t3xRecordingFlag())
-            pubPirDetect(extra)
-        end)
+        -- 查询必须马上回 1010，不要去等 AT+RECORD?；T31 忙碌/USB 恢复时那会吞应答。
+        local extra = pirDetectExtra("query", nil, nil, nil, nil)
+        extra.messageId = messageId
+        local rec = 0
+        local hif = hostUart()
+        if hif and hif.getT31xRecActive() == 1 then
+            rec = 1
+        end
+        mergeT31xRecording(extra, rec)
+        pubPirDetect(extra)
     end
 
     local function replyConfigOk(data, messageId)
@@ -245,19 +249,19 @@ function bind(C, shared)
                     return
                 end
                 ctrlMsg("pir_stop", messageId, 0, "ok")
-                local hu = getReadyHost()
-                if hu then
-                    requestHostRecordStop(hu)
+                local hif = getReadyHost()
+                if hif then
+                    requestHostRecordStop(hif)
                 end
                 return
             end
-            local hu = getReadyHost()
-            if not hu then
+            local hif = getReadyHost()
+            if not hif then
                 ctrlMsg("pir_stop", messageId, -1, "not_recording")
                 return
             end
-            ctrlMsg("pir_stop", messageId, 0, "t3x_stop")
-            local ok, detail = stopHostRecord(hu, messageId)
+            ctrlMsg("pir_stop", messageId, 0, "t31x_stop")
+            local ok, detail = stopHostRecord(hif, messageId)
             if not ok then
                 pubIpcAlert("recordctrl_fail", tostring(detail or "timeout"))
             end
@@ -290,12 +294,12 @@ function bind(C, shared)
                 media.quality or st.quality or "high",
                 { source = "4g", messageId = messageId }
             )
-            local hu = getReadyHost()
-            if not hu then
+            local hif = getReadyHost()
+            if not hif then
                 return
             end
             sys.taskInit(function()
-                local rok, rmsg = hu.recordCtrlStart({
+                local rok, rmsg = hif.recordCtrlStart({
                     maxSec = tonumber(data.videoMaxDurationSec) or TIMEOUT.defaultMaxSec,
                     timeoutMs = TIMEOUT.recordStart,
                 })

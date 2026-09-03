@@ -30,7 +30,7 @@ STABLE_KEYS = (
     "deviceNo", "dataType", "lowPowerMode", "workMode", "interval",
     "usbInserted", "charging", "usbLogical", "usbNetdev", "usbRecovery",
     "ipcReady", "gb28181Online", "tfPresent", "personDetectEnabled",
-    "personDetectAvailable", "timeSynced", "recordingT3x", "wledEnable", "cat1Link",
+    "personDetectAvailable", "timeSynced", "recordingT31x", "wledEnable", "cat1Link",
 )
 VARY_KEYS = ("remainPower", "batteryMv", "csq", "rssi", "rsrp", "rsrq", "snr",
              "usbRecoveryCount", "usbRecoveryLastErr")
@@ -164,7 +164,7 @@ def write_report() -> Path:
         f"| personDetectEnabled | {uniq('personDetectEnabled')} |",
         f"| personDetectAvailable | {uniq('personDetectAvailable')} |",
         f"| timeSynced | {uniq('timeSynced')} |",
-        f"| recordingT3x | {uniq('recordingT3x')} |",
+        f"| recordingT31x | {uniq('recordingT31x')} |",
         f"| wledEnable | {uniq('wledEnable')} |",
         f"| cat1Link | {uniq('cat1Link')} |",
         "",
@@ -176,7 +176,7 @@ def write_report() -> Path:
         "",
         "## 5. 时间线（到达间隔）",
         "",
-        "| # | 本机收到 | 载荷 time | 距上一条 | remainPower | csq | ipcReady | recordingT3x |",
+        "| # | 本机收到 | 载荷 time | 距上一条 | remainPower | csq | ipcReady | recordingT31x |",
         "|---|----------|-----------|----------|-------------|-----|----------|--------------|",
     ]
     prev = None
@@ -190,7 +190,7 @@ def write_report() -> Path:
         prev = ts
         lines.append(
             f"| {i} | {hh} | {p.get('time','')} | {gap} | "
-            f"{p.get('remainPower')} | {p.get('csq')} | {p.get('ipcReady')} | {p.get('recordingT3x')} |"
+            f"{p.get('remainPower')} | {p.get('csq')} | {p.get('ipcReady')} | {p.get('recordingT31x')} |"
         )
     lines += [
         "",
@@ -241,7 +241,7 @@ def run_watch() -> int:
         print(
             f"1003 #{got['n']} {data.get('time')} usb={data.get('usbInserted')} "
             f"bat={data.get('remainPower')} mode={data.get('workMode')} "
-            f"ipc={data.get('ipcReady')} rec={data.get('recordingT3x')} "
+            f"ipc={data.get('ipcReady')} rec={data.get('recordingT31x')} "
             f"csq={data.get('csq')} interval={data.get('interval')}",
             flush=True,
         )

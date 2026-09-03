@@ -13,12 +13,12 @@
 main.lua
   ├─ cell_boot / usb_rndis（可选）
   ├─ net_mqtt.bootstrapNet()
-  └─ app.start(peripheral, net_mqtt, t3x_ctrl)
+  └─ app.start(peripheral, net_mqtt, t31x_ctrl)
          ├─ battery_guard / vbat / usb_charge
-         ├─ uart_bridge → host_uart（T3x AT）
+         ├─ uart_bridge → host_uart（T31x AT）
          ├─ pir_ctrl / peripheral / led_ctrl
          ├─ net_mqtt（云端唯一入口）
-         └─ t3x_ctrl（GPIO22 供电 + GPIO29 唤醒）
+         └─ t31x_ctrl（GPIO22 供电 + GPIO29 唤醒）
 ```
 
 **设计原则**
@@ -41,26 +41,26 @@ main.lua
 
 ```
 host_uart.lua              ← 锁 / SYS_EVT / state / processLine / start
-├── hu_at.lua       ← AT_CMD_TABLE 编译
-├── hu_cmd.lua      ← AT 应答编排（bind 顺序固定）
-│   ├── hu_cmd_usb.lua
-│   ├── hu_cmd_link.lua    P2P/GB28181/MQTT/SERV
-│   ├── hu_cmd_pir.lua     HOSTEVT/PIRSTAT
-│   ├── hu_cmd_t3x.lua     RECORD/UPLOAD/IPCSTAT NOTIFY
-│   └── hu_cmd_wled.lua
-├── hu_rx.lua       ← URC 编排 + IPC 云状态 + 注册表
-│   ├── hu_rx_dsl.lua    matchFlag/rows* DSL
-│   └── hu_rx_media.lua  VENC/AUDIO/MIC/FRAMERATE 等
-└── hu_ipc.lua      ← IPC 查询/云状态/上电（bind 顺序固定）
-    ├── hu_ipc_rec.lua
-    ├── hu_ipc_hostq.lua
-    ├── hu_ipc_cloud.lua   ← 依赖 recovery + hostq
-    ├── hu_ipc_power.lua   ← 依赖 recovery
-    ├── hu_ipc_tffmt.lua
-    └── hu_ipc_encode.lua
+├── hif_at.lua       ← AT_CMD_TABLE 编译
+├── hif_cmd.lua      ← AT 应答编排（bind 顺序固定）
+│   ├── hif_cmd_usb.lua
+│   ├── hif_cmd_link.lua    P2P/GB28181/MQTT/SERV
+│   ├── hif_cmd_pir.lua     HOSTEVT/PIRSTAT
+│   ├── hif_cmd_t31x.lua     RECORD/UPLOAD/IPCSTAT NOTIFY
+│   └── hif_cmd_wled.lua
+├── hif_rx.lua       ← URC 编排 + IPC 云状态 + 注册表
+│   ├── hif_rx_dsl.lua    matchFlag/rows* DSL
+│   └── hif_rx_media.lua  VENC/AUDIO/MIC/FRAMERATE 等
+└── hif_ipc.lua      ← IPC 查询/云状态/上电（bind 顺序固定）
+    ├── hif_ipc_rec.lua
+    ├── hif_ipc_hostq.lua
+    ├── hif_ipc_cloud.lua   ← 依赖 recovery + hostq
+    ├── hif_ipc_power.lua   ← 依赖 recovery
+    ├── hif_ipc_tffmt.lua
+    └── hif_ipc_encode.lua
 ```
 
-**主文件 bind 顺序**：`ctx` → `hu_cmd.bind` → `hu_at.compile` → `hu_rx.bind` → `hu_ipc.bind`。
+**主文件 bind 顺序**：`ctx` → `hif_cmd.bind` → `hif_at.compile` → `hif_rx.bind` → `hif_ipc.bind`。
 
 ### net_mqtt 族（12 文件）
 
@@ -90,7 +90,7 @@ net_mqtt.lua               ← mqttTask / pubRaw / notifyPowerOff / 连接态
 | `config` | GPIO/电量/MQTT/低功耗阈值 |
 | `pir_ctrl` | PIR 硬件、录像会话、2010–2012 |
 | `battery_guard` | 电量三档、HOSTIDLE、关机 |
-| `t3x_ctrl` | GPIO22 供电、GPIO29 唤醒 |
+| `t31x_ctrl` | GPIO22 供电、GPIO29 唤醒 |
 | `vbat` / `peripheral` / `led_ctrl` | ADC、按键、LED |
 | `ipc_supv` | IPCALERT → 1004/1011 |
 | `time_sync` / `sound_prompt` / `fota_svc` | 对时、提示音、OTA |
@@ -105,7 +105,7 @@ net_mqtt.lua               ← mqttTask / pubRaw / notifyPowerOff / 连接态
 1. `battery_guard.start(hooks)` — 注册低电/USB 回调  
 2. `setupUartBridge` → `host_uart.start`  
 3. `initPowerStatus` — 读 GPIO27，可能 `onUsbInserted`  
-4. `t3x_ctrl.start` → `bootPowerOn`  
+4. `t31x_ctrl.start` → `bootPowerOn`  
 5. GPIO / PMD / vbat / usb_charge / MQTT / FOTA
 
 ### 2.2 核心事件（`APP_EVENTS`）
@@ -113,12 +113,12 @@ net_mqtt.lua               ← mqttTask / pubRaw / notifyPowerOff / 连接态
 | 事件 | 发布方 | 订阅方 / 作用 |
 |------|--------|----------------|
 | `GPIO_USB_DET_CHANGED` | `usb_charge` | `app` → `applyUsbPower` |
-| `GPIO_PIR_TRIGGERED` | `pir_ctrl` | `app` → MQTT / 唤醒 T3x |
-| `PIR_WAKE_T3X` | `pir_ctrl` | `app` → `wakeT3xForPir` |
+| `GPIO_PIR_TRIGGERED` | `pir_ctrl` | `app` → MQTT / 唤醒 T31x |
+| `PIR_WAKE_T31X` | `pir_ctrl` | `app` → `wakeT31xForPir` |
 | `BATTERY_UPDATE` | `vbat` | `battery_guard.evaluate` |
 | `POWER_ENTERED_REST` / `POWER_EXITED_REST` | `app` | 低功耗状态广播 |
-| `MQTT_OFFLINE` | `net_mqtt` | `app` → 可选唤醒 T3x |
-| `T3X_IPC_ALERT` | `host_uart` | `ipc_supervision` → 1004 |
+| `MQTT_OFFLINE` | `net_mqtt` | `app` → 可选唤醒 T31x |
+| `T31X_IPC_ALERT` | `host_uart` | `ipc_supervision` → 1004 |
 
 ---
 
@@ -131,7 +131,7 @@ net_mqtt.lua               ← mqttTask / pubRaw / notifyPowerOff / 连接态
 | **职责** | 版本校验、全局 OTA 版本函数、蜂窝/RNDIS 引导、`app.start`、`sys.run()` |
 | **导出** | `_G.validateBuildVersion` / `buildIotOtaVersion` / `resolveIotOtaVersion` |
 | **逻辑** | `VERSION` 须 `xxx.yyy.zzz`；RNDIS 开启时异步 `open` 后再 `bootstrapNet` |
-| **依赖** | `config`, `app_config`, `key_config`, `app`, `peripheral`, `net_mqtt`, `t3x_ctrl` |
+| **依赖** | `config`, `app_config`, `key_config`, `app`, `peripheral`, `net_mqtt`, `t31x_ctrl` |
 
 ---
 
@@ -139,7 +139,7 @@ net_mqtt.lua               ← mqttTask / pubRaw / notifyPowerOff / 连接态
 
 | 项 | 说明 |
 |----|------|
-| **职责** | 写入 `_G.GPIO_IN/OUT`、`BATTERY_CFG`、`MQTT_CFG`、`LOW_POWER_*`、`HOST_*`、`T3X_POLICY_CFG` 等 |
+| **职责** | 写入 `_G.GPIO_IN/OUT`、`BATTERY_CFG`、`MQTT_CFG`、`LOW_POWER_*`、`HOST_*`、`T31X_POLICY_CFG` 等 |
 | **逻辑** | `LOW_POWER_ENTER_STRATEGY` 决定 `battery_guard` 的 `enabled` / `block_host_idle_above_recover` |
 | **电量三档**（`battery` 策略） | >20% 常电 · 5~20% HOSTIDLE · **≤3.4V** rest+关机 |
 | **消费者** |  virtually 全部模块 |
@@ -161,25 +161,25 @@ net_mqtt.lua               ← mqttTask / pubRaw / notifyPowerOff / 连接态
 
 | 项 | 说明 |
 |----|------|
-| **职责** | 依赖注入、事件订阅、低功耗进/出、USB 边沿、PIR→MQTT 桥、T3x 烧录模式 |
+| **职责** | 依赖注入、事件订阅、低功耗进/出、USB 边沿、PIR→MQTT 桥、T31x 烧录模式 |
 | **导出** | `start`, `startMqtt`, `uartBridge`, `getState`, `setModuleFlag` |
 
 **核心流程**
 
 ```
 onEnterLowPower(reason)
-  → setLowPowerMode(1) → t3x_ctrl.enterSleep → MQTT 1002 → low_power_wakeup.onEnterRest
+  → setLowPowerMode(1) → t31x_ctrl.enterSleep → MQTT 1002 → low_power_wakeup.onEnterRest
 
 onExitLowPower(reason)
-  → setLowPowerMode(0) → requestT3xWake(force) → low_power_wakeup.onExitRest
-  ※ 不再重复调用 time_sync.onT3xWake（requestT3xWake 已含对时）
+  → setLowPowerMode(0) → requestT31xWake(force) → low_power_wakeup.onExitRest
+  ※ 不再重复调用 time_sync.onT31xWake（requestT31xWake 已含对时）
 
 applyUsbPower(inserted, source)
-  插入 → battery_guard.onUsbInserted({source}) + ntfT3xUsbIdle
+  插入 → battery_guard.onUsbInserted({source}) + notifyUsbIdle
   拔出 → battery_guard.onUsbRemoved（按电量重评估，高电量不进 rest）
 ```
 
-**PIR 桥**：`PIR_WAKE_T3X` → `ntfHostIdle` + `requestT3xWake("pir_media")`
+**PIR 桥**：`PIR_WAKE_T31X` → `notifyHostIdle` + `requestT31xWake("pir_media")`
 
 ---
 
@@ -189,7 +189,7 @@ applyUsbPower(inserted, source)
 |----|------|
 | **职责** | USB 优先；三档电量；PIR 挂起；4G rest；关机定时器；HOSTIDLE 门禁 |
 | **档位** | `normal` (>20%) · `host_idle` (5~20%) · `shutdown` (≤5%) |
-| **关键 API** | `evaluate`, `getBatteryTier`, `shdHostSleep`, `canHostSleep`, `ntfHostIdle` |
+| **关键 API** | `evaluate`, `getBatteryTier`, `shouldHostSleep`, `canHostSleep`, `notifyHostIdle` |
 
 **evaluate 阶段**（未插 USB）
 
@@ -201,9 +201,9 @@ applyUsbPower(inserted, source)
 
 - 取消关机定时器  
 - 若在 rest → `onExitLowPower("usb_insert")`（**唯一**唤醒链）  
-- 否则且 `source≠"boot"` → `wake_t3x`（冷启动由 `bootPowerOn` 负责）
+- 否则且 `source≠"boot"` → `wake_t31x`（冷启动由 `bootPowerOn` 负责）
 
-`hybrid` 策略保留 ≤`t3x_rest_percent` 进 4G rest 的旧逻辑。
+`hybrid` 策略保留 ≤`t31x_rest_percent` 进 4G rest 的旧逻辑。
 
 ---
 
@@ -219,36 +219,36 @@ applyUsbPower(inserted, source)
 
 ---
 
-### 3.7 `t3x_ctrl.lua` — 协处理器电源
+### 3.7 `t31x_ctrl.lua` — 协处理器电源
 
 | 项 | 说明 |
 |----|------|
 | **职责** | GPIO22 上/断电、GPIO29 唤醒脉冲、BOOT/OTA 引脚、优雅 IPC 关机 |
 | **休眠** | `enterSleep` → `gracefulPowerOff`（`AT+IPCPOWEROFF`）或 `powerOff`；`sleep_in_progress` 互斥 |
 | **唤醒** | `powerOn`/`wake`/`ensurePowered` 前 `waitSleepIdle`，避免与关机竞态 |
-| **策略** | `bootPowerOn` 经 `t3x_policy.mayPowerT3x("boot")` |
+| **策略** | `bootPowerOn` 经 `t31x_policy.mayPowerT31x("boot")` |
 
 ---
 
-### 3.8 `host_uart` 族 — T3x AT（主文件 ~636 行 + 15 子模块）
+### 3.8 `host_uart` 族 — T31x AT（主文件 ~636 行 + 15 子模块）
 
-> 专题：[HOST_UART_AT_DISPATCH.md](modules/HOST_UART_AT_DISPATCH.md)（含 bind 顺序、AT/URC 对照、hu_* 精简说明）  
+> 专题：[HOST_UART_AT_DISPATCH.md](modules/HOST_UART_AT_DISPATCH.md)（含 bind 顺序、AT/URC 对照、hif_* 精简说明）  
 > API：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) §2.1  
 > 静态回归：`python tools/debug/_protocol_regression_check.py`
 
 | 文件 | 职责 |
 |------|------|
 | `host_uart.lua` | 互斥锁、`SYS_EVT`、`state`、`processLine`、`uartAtCmd`、`start` |
-| `hu_at.lua` | `AT_CMD_TABLE` → `compile(at)` → `AT_EXACT` / `AT_PREFIX` |
-| `hu_cmd.lua` + `hu_cmd_*` | 主机→CAT1 **设置/通知** AT（camelCase handler） |
-| `hu_rx.lua` | URC/`+XXX:` 行解析、`tryHandlers` 函数数组 |
-| `hu_ipc.lua` + `hu_ipc_*` | IPC **查询/云状态/TF/编码/上电** |
+| `hif_at.lua` | `AT_CMD_TABLE` → `compile(at)` → `AT_EXACT` / `AT_PREFIX` |
+| `hif_cmd.lua` + `hif_cmd_*` | 主机→CAT1 **设置/通知** AT（camelCase handler） |
+| `hif_rx.lua` | URC/`+XXX:` 行解析、`tryHandlers` 函数数组 |
+| `hif_ipc.lua` + `hif_ipc_*` | IPC **查询/云状态/TF/编码/上电** |
 
 | 项 | 说明 |
 |----|------|
-| **唤醒** | `ntfHost(sid, evt)` → `ensPowOn` + `pulseMcuInt`（`mayPowerT3x`） |
+| **唤醒** | `ntfHost(sid, evt)` → `ensPowOn` + `pulseMcuInt`（`mayPowerT31x`） |
 | **首 AT** | `onFirstHostAt` → `HOST_UART_FIRST_AT` → `qryIpcCloudStat` / `mergeTfCloud` |
-| **休眠门禁** | `AT+HOSTIDLE` → `battery_guard.shdHostSleep` / `canHostSleep` |
+| **休眠门禁** | `AT+HOSTIDLE` → `battery_guard.shouldHostSleep` / `canHostSleep` |
 | **USB** | `pushUsbIdle` → `+CAT1:USB,n` |
 
 ---
@@ -280,7 +280,7 @@ applyUsbPower(inserted, source)
 | 项 | 说明 |
 |----|------|
 | **职责** | GPIO 中断、冷却、录像会话、云端启停、PIRSTAT 统计 |
-| **流程** | `PIR_HW_TRIGGERED` → `onPirTriggered` → 忽略(suspend/rest) / 发布 `PIR_WAKE_T3X` |
+| **流程** | `PIR_HW_TRIGGERED` → `onPirTriggered` → 忽略(suspend/rest) / 发布 `PIR_WAKE_T31X` |
 | **rest 中** | 动态侦测 rest 允许 PIR；否则 `requestExitRestForPir` 或忽略 |
 
 ---
@@ -346,18 +346,18 @@ applyUsbPower(inserted, source)
 
 `GPIO_IN/OUT` 配置转 `gpio.setup`：pull、边沿、防抖、输出初始化。
 
-### 4.3 `t3x_policy.lua` — T3x 唤醒门禁
+### 4.3 `t31x_policy.lua` — T31x 唤醒门禁
 
-> 专题：[T3X_POLICY_GATE.md](modules/T3X_POLICY_GATE.md) · 硬件休眠：[T3X_POWER_WAKEUP.md](modules/T3X_POWER_WAKEUP.md)
+> 专题：[T31X_POLICY_GATE.md](modules/T31X_POLICY_GATE.md) · 硬件休眠：[T31X_POWER_WAKEUP.md](modules/T31X_POWER_WAKEUP.md)
 
 ```
-mayPowerT3x(reason)
+mayPowerT31x(reason)
   USB 插入 → 允许（mqtt_offline 除外可配）
   low_power_mode=1 → 仅 PIR/WLED/exit_low_power 等白名单
   battery ≤ block_wake_below_percent → 拒绝
 
-requestT3xWake → time_sync.pushBeforeNotifyAsync → host_uart.ntfHost
-bootPowerOn → t3x_ctrl.powerOn（经 mayPowerT3x("boot")）
+requestT31xWake → time_sync.pushBeforeNotifyAsync → host_uart.ntfHost
+bootPowerOn → t31x_ctrl.powerOn（经 mayPowerT31x("boot")）
 ```
 
 ### 4.4 `usb_policy.lua` / `usb_charge.lua` / `usb_rndis.lua`
@@ -380,7 +380,7 @@ bootPowerOn → t3x_ctrl.powerOn（经 mayPowerT3x("boot")）
 
 > 专题：[HOST_EVENT_PENDING.md](modules/HOST_EVENT_PENDING.md)
 
-汇总 T3x 待处理业务（wake / pir / record / mqtt）→ `has_event` 供 HOSTIDLE 与 `enterSleep` 门禁。
+汇总 T31x 待处理业务（wake / pir / record / mqtt）→ `has_event` 供 HOSTIDLE 与 `enterSleep` 门禁。
 
 ### 4.7 `cellular_bootstrap.lua`
 
@@ -413,7 +413,7 @@ flowchart TD
     D -->|≤5%| G[rest + 关机定时器]
     H[USB 插入] --> I{在 rest?}
     I -->|是| J[onExitLowPower 唤醒一次]
-    I -->|否 非boot| K[wake_t3x]
+    I -->|否 非boot| K[wake_t31x]
     I -->|冷启动 boot| L[仅 bootPowerOn]
 ```
 
@@ -421,9 +421,9 @@ flowchart TD
 
 ```
 PIR 中断 → pir_ctrl.onPirTriggered
-  → PIR_WAKE_T3X → app.wakeT3xForPir
-  → ntfHostIdle + requestT3xWake
-  → host_uart.ntfHost → T3x 开始录像
+  → PIR_WAKE_T31X → app.wakeT31xForPir
+  → notifyHostIdle + requestT31xWake
+  → host_uart.ntfHost → T31x 开始录像
   → AT+RECORD=1 → pir_ctrl 会话 → MQTT 1010/1011
 ```
 
@@ -442,11 +442,11 @@ evaluate ≤5% → suspendPir + onEnterLowPower(battery) + scheduleShutdown(3s)
 | 模块 | 主要 require | 主要被谁调用 |
 |------|-------------|-------------|
 | `app` | uart_bridge, pir_ctrl, battery_guard, host_uart | `main` |
-| `battery_guard` | config, pir_ctrl(lazy) | `app`, host_uart, t3x_policy |
-| `host_uart` | uart_bridge, t3x_ctrl(lazy) | `app`, net_mqtt, t3x_policy |
+| `battery_guard` | config, pir_ctrl(lazy) | `app`, host_uart, t31x_policy |
+| `host_uart` | uart_bridge, t31x_ctrl(lazy) | `app`, net_mqtt, t31x_policy |
 | `net_mqtt` | pir_ctrl, ipc_supervision | `main`, `app`, host_event |
-| `t3x_ctrl` | gpio_util, t3x_policy(lazy) | `main`, `app`, host_uart |
-| `t3x_policy` | usb_policy, battery_guard(lazy) | `app`, t3x_ctrl, host_uart |
+| `t31x_ctrl` | gpio_util, t31x_policy(lazy) | `main`, `app`, host_uart |
+| `t31x_policy` | usb_policy, battery_guard(lazy) | `app`, t31x_ctrl, host_uart |
 | `pir_ctrl` | gpio_util, net_mqtt(lazy) | `app`, peripheral, net_mqtt |
 
 ---
@@ -468,10 +468,10 @@ evaluate ≤5% → suspendPir + onEnterLowPower(battery) + scheduleShutdown(3s)
 | [modules/HOST_UART_AT_DISPATCH.md](modules/HOST_UART_AT_DISPATCH.md) | host_uart AT 表与上行应答 |
 | [modules/PIR_CTRL_FLOW.md](modules/PIR_CTRL_FLOW.md) | PIR 硬件与会话 |
 | [modules/BATTERY_GUARD_TIERS.md](modules/BATTERY_GUARD_TIERS.md) | 电量三档策略 |
-| [modules/T3X_POWER_WAKEUP.md](modules/T3X_POWER_WAKEUP.md) | T3x 供电唤醒 |
+| [modules/T31X_POWER_WAKEUP.md](modules/T31X_POWER_WAKEUP.md) | T31x 供电唤醒 |
 | [CONFIG.md](CONFIG.md) | 配置字段索引 |
 | [CALL_GRAPH.md](CALL_GRAPH.md) | 启动与事件流 |
-| [POWER_USB_BATTERY_T3X_LOGIC.md](POWER_USB_BATTERY_T3X_LOGIC.md) | 电量/USB/T3x 决策 |
+| [POWER_USB_BATTERY_T31X_LOGIC.md](POWER_USB_BATTERY_T31X_LOGIC.md) | 电量/USB/T31x 决策 |
 | [LOW_POWER_ENTER_STRATEGY.md](LOW_POWER_ENTER_STRATEGY.md) | rest vs HOSTIDLE |
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) | 上下行协议 |
 | [MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md) | 全指令流程与实机结果 |

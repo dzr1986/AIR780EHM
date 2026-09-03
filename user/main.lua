@@ -6,7 +6,7 @@
 
 PROJECT = "PANSHI_CAT1"
 -- ===== 第 1 段：VERSION 格式校验 & 全局 OTA 版本函数 =====
-VERSION = "001.000.146"
+VERSION = "001.000.151"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function valBuildVer(ver)
@@ -81,15 +81,26 @@ end
 -- ===== 第 2 段：核心依赖 require 链（config → 子模块）=====
 require "config"
 local loader = require "module_loader"
--- Luatools 静态扫描锚点：以下模块仅经 loader.load 动态加载，需静态 require 才会被打包；永不执行
+-- Luatools 静态扫描锚点：动态 loader.load 与 config.lua 内嵌 require 均不被递归扫描，需在此挂名才会打包；永不执行
 if _G.__LUATOOLS_SCAN_ANCHOR__ then
+    -- config.lua 片段（见 user/config.lua 加载顺序）
+    require "features"
+    require "cellular"
+    require "t31x_burn"
+    require "gpio_cfg"
+    require "led_pir"
+    require "battery"
+    require "host"
+    require "net"
+    require "flags"
+    require "events"
     require "cell_boot"
     require "device_id"
     require "fota_svc"
     require "host_event"
-    require "hu_at"
-    require "hu_cmd"
-    require "hu_ipc"
+    require "hif_at"
+    require "hif_cmd"
+    require "hif_ipc"
     require "libfota2"
     require "mqtt_downlink"
     require "mqtt_hproto"
@@ -97,8 +108,8 @@ if _G.__LUATOOLS_SCAN_ANCHOR__ then
     require "net_tcp"
     require "runtime_power"
     require "sound_prompt"
-    require "t3x_notify"
-    require "t3x_policy"
+    require "t31x_notify"
+    require "t31x_policy"
     require "time_sync"
     require "usb_charge"
     require "usb_rndis"
@@ -111,7 +122,7 @@ end
 local app = require "app"
 local peripheral = require "peripheral"
 local net = require "net_mqtt"
-local t3x_ctrl = require "t3x_ctrl"
+local t31x_ctrl = require "t31x_ctrl"
 if not isEntry then
     return app
 end
@@ -132,7 +143,7 @@ if loader.enabled("cellular") then
 end
 
 local function strtNetw()
-    -- ===== 第 4 段：MQTT 网络引导 + app.start 编排子系统（battery/uart/pir/mqtt/t3x）=====
+    -- ===== 第 4 段：MQTT 网络引导 + app.start 编排子系统（battery/uart/pir/mqtt/t31x）=====
     if loader.enabled("mqtt") then
         net.bootstrapNet()
     end
@@ -151,6 +162,6 @@ if loader.enabled("rndis") then
 else
     strtNetw()
 end
-app.start(peripheral, net, t3x_ctrl)
+app.start(peripheral, net, t31x_ctrl)
 -- ===== 第 5 段：进入 sys.run() 事件主循环 =====
 sys.run()

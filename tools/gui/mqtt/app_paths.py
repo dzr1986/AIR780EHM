@@ -69,6 +69,10 @@ def profiles_path() -> Path:
     return app_dir() / "profiles.json"
 
 
+def ui_path() -> Path:
+    return app_dir() / "ui.json"
+
+
 def protocol_candidates() -> list[Path]:
     return [
         app_dir() / "doc" / "MQTT_PROTOCOL.md",

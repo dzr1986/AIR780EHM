@@ -85,7 +85,13 @@ IMEI 首次带 `project_key` 请求会自动归属该项目。循环升级时，
 列：IMEI、设备名、版本 `(core)`、固件名、允许/禁止、Debug、最近访问、查看/设置/删除。禁止列会显示循环保护原因。解除禁止前请确认差分包已修正。
 
 `PUT /admin/api/devices/{imei}/ota-enabled` 禁止或允许升级。  
-`PUT /admin/api/devices/{imei}/debug` 开关调试。
+`PUT /admin/api/devices/{imei}/debug` 开关调试。  
+`POST /admin/api/devices/batch` 批量操作：`unban` / `delete` / `debug_on` / `transfer` / `create`，body 为 `{action, imeis, projectKey?}`。IMEI 可一行一个。
+
+点「指定设备」打开 IMEI 列表：可搜索、勾选删除、添加（一行一个或上传文本）。  
+`GET/POST/DELETE /admin/api/firmware-packages/{id}/devices` 查询、追加、删除指定 IMEI（POST 不会覆盖已有列表）。
+
+设备列表「操作」：勾选后可解除禁止、批量转移、批量删除、批量 DEBUG、导出 CSV。
 
 ---
 

@@ -51,7 +51,7 @@ T31x IVS 人数
   ▼
 Cat.1 host_uart
   回 +PERSONCNT:ok,count=N
-  发事件 T3X_PERSON_CNT
+  发事件 T31X_PERSON_CNT
   │
   ▼
 app.lua
@@ -70,7 +70,7 @@ flowchart TD
   IVS -->|count>0 且距上次 UART 大于等于 30s| UART["AT+PERSONCNT=N"]
   IVS -->|count>0 但 30s 内| DROP[丢掉]
   UART --> CAT1[Cat.1 应答 OK]
-  CAT1 --> EVT[T3X_PERSON_CNT]
+  CAT1 --> EVT[T31X_PERSON_CNT]
   EVT --> NOMQTT[不上 MQTT 1010]
   IVS -->|上升沿且 30s 冷却| CLIP[本地抽片 HTTP 上传]
 ```
@@ -94,7 +94,7 @@ PIR 的 1010 `detected` **仅在 T31 断电值守时**允许一次叫醒；T31 �
 
 ### 3.5 T31 启动后 PIR 必须静音
 
-硬规则：`t3x_ctrl.powered_on`（GPIO22 已上电）→ Cat.1 PIR **不触发业务、不上 MQTT 1010 `detected`**。检测只认 T31 IVS。
+硬规则：`t31x_ctrl.powered_on`（GPIO22 已上电）→ Cat.1 PIR **不触发业务、不上 MQTT 1010 `detected`**。检测只认 T31 IVS。
 
 | T31 电源 | 模式 | PIR GPIO30 | MQTT 1010 detected | 谁在检 |
 |----------|------|------------|--------------------|--------|
@@ -141,7 +141,7 @@ T31x：`workmode != pir_watch` 时 GPIO 唤醒不派发 `PIRSTAT` 媒体，日�
 
 | 文件 | 行为 |
 |------|------|
-| `user/host_uart.lua` `uart_person_cnt_notify` | 解析 `AT+PERSONCNT=`，事件 `T3X_PERSON_CNT`，回 `+PERSONCNT:ok` |
+| `user/host_uart.lua` `uart_person_cnt_notify` | 解析 `AT+PERSONCNT=`，事件 `T31X_PERSON_CNT`，回 `+PERSONCNT:ok` |
 | `user/app.lua` | **不再**对人数调 `publishPirToMqtt` |
 | `user/pir_ctrl.lua` | `powered_on` → `t31_on`，不 MQTT、不唤醒 |
 | `user/net_mqtt.lua` | PIR `detected` 仅 T31 断电值守时仍可用 |

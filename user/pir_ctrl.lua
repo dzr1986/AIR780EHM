@@ -10,9 +10,9 @@ local utils = require "utils"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
 local gpio_util = require "gpio_util"
-local t3xPolicy = require "t3x_policy"
+local t31xPolicy = require "t31x_policy"
 local rntmPwr = require "runtime_power"
-local t3xCtrl = require "t3x_ctrl"
+local t31xCtrl = require "t31x_ctrl"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -120,7 +120,7 @@ local function markStat(event)
 end
 
 local function isT31PoweredOn()
-    local st = t3xCtrl.getState()
+    local st = t31xCtrl.getState()
     return st and st.powered_on == true
 end
 
@@ -136,7 +136,7 @@ end
 
 local function onHwInterrupt(level)
     bumpStat("cnt_hw_irq")
-    if t3xPolicy.isBurnActive() then
+    if t31xPolicy.isBurnActive() then
         bumpStat("cnt_hw_ignore_burn")
         markStat("ignore_burn")
         return
@@ -417,13 +417,13 @@ function getCloudStopMessageId()
     return session.cloud_stop_message_id
 end
 
-function reqT3xStopRec(reason)
+function reqT31xStopRec(reason)
     if not session.recording then
         return false
     end
     clearRecTimer()
     session.last_stop_reason = reason
-    publishEvent(APP_EVENTS.PIR_REQUEST_T3X_STOP, reason, session.uploadMode, session.quality)
+    publishEvent(APP_EVENTS.PIR_REQUEST_t31x_STOP, reason, session.uploadMode, session.quality)
     return true
 end
 
@@ -435,10 +435,10 @@ function pubStopRec(reason)
     return true
 end
 
-function syncStopT3x(reason)
+function syncStopT31x(reason)
     local _, uploadMode, quality = endRecSession(reason, {
         publishStop = false,
-        statTag = "stop_t3x_" .. tostring(reason),
+        statTag = "stop_t31x_" .. tostring(reason),
         force = session.recording,
     })
     return uploadMode, quality
@@ -457,7 +457,7 @@ function pubActEvents(cfg)
         bumpStat("cnt_biz_video")
         startVideoSession(media.uploadMode, media.quality)
     end
-    publishEvent(APP_EVENTS.PIR_WAKE_T3X, media.action, media.uploadMode, media.quality)
+    publishEvent(APP_EVENTS.PIR_WAKE_t31x, media.action, media.uploadMode, media.quality)
     return media
 end
 
@@ -530,7 +530,7 @@ function reqStopCloud(opts)
     end
     session.cloud_stop_message_id = opts.messageId
     local reason = PIR_MEDIA.STOP_REASON.DEVICE
-    reqT3xStopRec(reason)
+    reqT31xStopRec(reason)
     if not pubStopRec(reason) then
         session.cloud_stop_message_id = nil
         pirWarn("cloud_stop_failed")
@@ -565,12 +565,12 @@ end
 local function handlePirRetrigger(media)
     bumpStat("cnt_biz_retrigger")
     markStat("retrigger")
-    reqT3xStopRec(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
+    reqT31xStopRec(PIR_MEDIA.STOP_REASON.PIR_RETRIGGER)
     publishGpioPir("retrigger", media)
 end
 
 local function triggerDeviceIdUpload()
-    local net = loader.load("net_mqtt")
+    local net = loader.load("mqtt.net_mqtt")
     if net then
         net.pubDeviceIdRef(nil)
     end
@@ -662,7 +662,7 @@ function bldAtBody()
         "suspended=" .. (biz.suspended and 1 or 0),
         "recording=" .. (biz.recording and 1 or 0),
         "hw_started=" .. (hw.started and 1 or 0),
-        "burn_mode=" .. (t3xPolicy.isBurnActive() and 1 or 0),
+        "burn_mode=" .. (t31xPolicy.isBurnActive() and 1 or 0),
         "lowpower=" .. (rntmPwr.isLowPowerMode() and 1 or 0),
         "online=" .. (rntmPwr.isOnline() and 1 or 0),
         "pin=" .. (hw.pin or cfg.pin or 0),

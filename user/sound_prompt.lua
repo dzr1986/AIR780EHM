@@ -9,8 +9,8 @@ require "config"
 local utils = require "utils"
 local cfgm = require "config_manager"
 local loader = require "module_loader"
-local t3xPolicy = require "t3x_policy"
-local t3x_ctrl = require "t3x_ctrl"
+local t31xPolicy = require "t31x_policy"
+local t31x_ctrl = require "t31x_ctrl"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -50,16 +50,16 @@ local function cfgEnabled(rule, value)
 end
 
 function shouldPlay(scene)
-    if not enabled() or t3xPolicy.isBurnActive() then return false end
+    if not enabled() or t31xPolicy.isBurnActive() then return false end
     local rule = SCENES[scene]
     if not rule then return false end
     if not cfgEnabled(rule, soundCfg()[rule.key]) then return false end
     return not rule.guard or rule.guard()
 end
 
-local function ensT3xPower(extra)
-    return utils.t3xOn("sound_prompt", extra, {
-        t3xPowerWaitMs = tonumber(soundCfg().t3x_power_wait_ms) or 800,
+local function ensT31xPower(extra)
+    return utils.t31xOn("sound_prompt", extra, {
+        t31xPowerWaitMs = tonumber(soundCfg().t31x_power_wait_ms) or 800,
     })
 end
 
@@ -71,11 +71,11 @@ function playBlocking(name, scene)
     end
     local ub = utils.uartBridge()
     if not ub then return false end
-    ensT3xPower()
+    ensT31xPower()
     if scene == "boot_cold" then coldBootPlayed = true end
     ub.sendString("AT+PLAYSOUND=" .. name, true)
     local timeoutMs = tonumber(soundCfg().play_timeout_ms) or 2500
-    return utils.waitT3xAck(ACK_EVENT, timeoutMs, function(ackName)
+    return utils.waitT31xAck(ACK_EVENT, timeoutMs, function(ackName)
         return ackName == name or ackName == nil
     end)
 end
@@ -94,7 +94,7 @@ local function waitHostForBootSound(ipc, sound)
     if ipc.enabled == false or ipc.boot_sound_wait_ready == false then
         return true
     end
-    return t3x_ctrl.pwrOnReady({
+    return t31x_ctrl.pwrOnReady({
         readyTimeoutMs = bootHostTimeoutMs(sound),
         pollMs = ipc.ready_poll_ms,
     })

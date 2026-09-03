@@ -8,6 +8,7 @@ import com.luat.ota.entity.OtaTaskStatus;
 import com.luat.ota.service.DeviceService;
 import com.luat.ota.service.OtaTriggerService;
 import com.luat.ota.service.OtaTriggerService.TriggerResult;
+import com.luat.ota.util.ImeiListParser;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -73,6 +74,16 @@ public class DeviceAdminController {
     @PostMapping("/devices")
     public Device createOrUpdate(@RequestBody Device device) {
         return deviceService.upsert(device);
+    }
+
+    @PostMapping("/devices/batch")
+    public Map<String, Object> batchDevices(@RequestBody Map<String, Object> body) {
+        Object actionObj = body.get("action");
+        String action = actionObj == null ? "" : String.valueOf(actionObj);
+        Object projectObj = body.get("projectKey");
+        String projectKey = projectObj == null ? null : String.valueOf(projectObj);
+        List<String> imeis = ImeiListParser.requireValid(body.get("imeis"));
+        return deviceService.batch(action, imeis, projectKey);
     }
 
     @DeleteMapping("/devices/{imei}")

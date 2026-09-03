@@ -29,7 +29,7 @@ flowchart TD
 
 | 核对项 | 代码位置 | 对照文档 |
 |--------|----------|----------|
-| GPIO 编号 | `GPIO_IN` / `GPIO_OUT` | `CONFIG.md`、`T3X_CAT1_GPIO.md` |
+| GPIO 编号 | `GPIO_IN` / `GPIO_OUT` | `CONFIG.md`、`T31X_CAT1_GPIO.md` |
 | 电量阈值 | `BATTERY_CFG.guard` | `CONFIG.md`、`LOW_BATTERY_AND_LOW_POWER.md` |
 | `mv_scale` | `BATTERY_CFG.adc` | `CONFIG.md`、`CHARGE_BATTERY.md` |
 | OTA `product_key` | `main.lua` `PRODUCT_KEY` | `CONFIG.md`、`MQTT_*` |
@@ -42,15 +42,15 @@ flowchart TD
 |--------|----------|----------|
 | `main.lua` 入口 | `require`、RNDIS、cellular、`bootstrapNet` | `CALL_GRAPH.md` §1 |
 | `app.start()` 逐步顺序 | `app.lua` `start()` 函数体 | `CALL_GRAPH.md` §1.1、`PROJECT_DOC.md` §1.3、`CODE_ANALYSIS.md` §3.2 |
-| MQTT 异步 | `bootMqtt` → `mqttTask` → `pubConnectUplink` | `T3X_LOW_POWER.md`、`CALL_GRAPH.md` §1.2 |
+| MQTT 异步 | `bootMqtt` → `mqttTask` → `pubConnectUplink` | `T31X_LOW_POWER.md`、`CALL_GRAPH.md` §1.2 |
 
 ### 1.3 协议层
 
 | 核对项 | 代码位置 | 对照文档 |
 |--------|----------|----------|
 | MQTT dataType | `net_mqtt.lua` `DT` 表 + `dispatchDl*` | `MQTT_PROTOCOL.md`、`CALL_GRAPH.md` §6 |
-| T3x 入站 AT | `host_uart.lua` `AT_CMD_TABLE` | `UART_AT_COMMANDS.md` |
-| 4G→T3x 主动 AT | `host_uart` 内 `uart_bridge.sendString` | `UART_AT_COMMANDS.md` §编码/IPC |
+| T31x 入站 AT | `host_uart.lua` `AT_CMD_TABLE` | `UART_AT_COMMANDS.md` |
+| 4G→T31x 主动 AT | `host_uart` 内 `uart_bridge.sendString` | `UART_AT_COMMANDS.md` §编码/IPC |
 | 串口底层 | `lib/uart_bridge.lua` 唯一 `uart.setup` | `UART_PROTOCOL.md` |
 
 ### 1.4 模块清单
@@ -68,7 +68,7 @@ flowchart TD
 |------|--------|------|
 | 配置 / GPIO / 电量 | **高** | `CONFIG.md` 与 `config.lua` 一致 |
 | MQTT dataType | **高** | 2001–2007、2010–2021、2020 ↔ 1001–1007、1010–1021、1020 |
-| AT（T3x→4G 入站） | **高** | `UART_AT_COMMANDS.md` ↔ `AT_CMD_TABLE` |
+| AT（T31x→4G 入站） | **高** | `UART_AT_COMMANDS.md` ↔ `AT_CMD_TABLE` |
 | conack / 1003 周期 | **高** | `pubConnectUplink()`；初值 `low_power_interval_sec=30` |
 | Cat.1 精简 / TCP | **高** | `LOW_POWER_WAKEUP_CFG.mode`；无 `MODULE_FLAGS.net_tcp` |
 | **启动链顺序** | **曾偏低** | 已按 `app.lua` 1106–1157 修订总览文档 |
@@ -87,9 +87,9 @@ flowchart TD
 | 3 | `watchdog` | `setupWatchdog()` |
 | 4 | `uart_bridge` | `setupUartBridge()`：`uart_bridge.start()` + **`host_uart.start()`**（同函数内） |
 | 5 | 始终 | 订阅 `HOST_UART_FIRST_AT` → USB 策略同步 |
-| 6 | 始终 | **`initPowerStatus()`**（可触发 `onEnterLowPower`，**早于** t3x/GPIO） |
+| 6 | 始终 | **`initPowerStatus()`**（可触发 `onEnterLowPower`，**早于** t31x/GPIO） |
 | 7 | 始终 | `scheduleBootUsbPolicySync()` |
-| 8 | 始终 | `t3x_ctrl.start()` |
+| 8 | 始终 | `t31x_ctrl.start()` |
 | 9 | `sound_prompt` | `sound_prompt.start()` + `onAppStarted()` |
 | 10 | `time_sync` | `time_sync.start()` |
 | 11 | `gpio` | `setupGpio()` → `peripheral.start()` |
@@ -103,8 +103,8 @@ flowchart TD
 
 **注意**：
 
-- `sound_prompt` / `time_sync` 在 **t3x 上电之后、GPIO 之前** 启动，不在 `startBackgroundServices()` 内。
-- `initPowerStatus` 在 **t3x/GPIO/电量采样之前**，上电无 USB 时可能先进入 rest，MQTT 仍由后续 `bootMqtt` 异步拉起。
+- `sound_prompt` / `time_sync` 在 **t31x 上电之后、GPIO 之前** 启动，不在 `startBackgroundServices()` 内。
+- `initPowerStatus` 在 **t31x/GPIO/电量采样之前**，上电无 USB 时可能先进入 rest，MQTT 仍由后续 `bootMqtt` 异步拉起。
 
 ### 3.1 `main.lua` 入口（在 `app.start` 之前）
 
@@ -113,7 +113,7 @@ require config, app_config, key_config
 [MODULE_FLAGS.rndis]     sys.taskInit(usb_rndis.open)
 [MODULE_FLAGS.cellular]  cellular_bootstrap.start()
 [MODULE_FLAGS.mqtt]      net_mqtt.bootstrapNet()   ← 第一次
-app.start(peripheral, net_mqtt, t3x_ctrl)
+app.start(peripheral, net_mqtt, t31x_ctrl)
 sys.run()
 ```
 
@@ -123,8 +123,8 @@ sys.run()
 
 | 模块 | 职责 | 不做 |
 |------|------|------|
-| `lib/uart_bridge.lua` | 唯一 `uart.setup`；`sendString`/`write`；`STR:`/`HEX:` 行协议 | 不解析 T3x 业务 AT |
-| `user/host_uart.lua` | T3x **入站** AT（`AT_CMD_TABLE`）；**出站** `AT+VENC`/`GB28181`/`IPCPOWEROFF` 等 | 不直接 `uart.setup` |
+| `lib/uart_bridge.lua` | 唯一 `uart.setup`；`sendString`/`write`；`STR:`/`HEX:` 行协议 | 不解析 T31x 业务 AT |
+| `user/host_uart.lua` | T31x **入站** AT（`AT_CMD_TABLE`）；**出站** `AT+VENC`/`GB28181`/`IPCPOWEROFF` 等 | 不直接 `uart.setup` |
 | `user/net_mqtt.lua` | MQTT 上下行、`pubConnectUplink` | 不操作 UART |
 | `user/app.lua` | 编排、`bootMqtt`、低功耗、事件订阅 | 不直接 `uart.setup` |
 
@@ -135,7 +135,7 @@ sys.run()
 | 日期 | 动作 |
 |------|------|
 | 2026-06-10 | 首轮：修订 `CONFIG`/`CALL_GRAPH`/`PROJECT_DOC`/`CODE_ANALYSIS`/`CHARGE_BATTERY`/`README`/Cat.1 文档；归档 T31 桩 |
-| 2026-06-10 | 二轮：按 `app.start` 真源修订启动链；澄清 `uart_bridge`/`host_uart`；`T3X_CAT1_GPIO` `led_red`；本页创建 |
+| 2026-06-10 | 二轮：按 `app.start` 真源修订启动链；澄清 `uart_bridge`/`host_uart`；`T31X_CAT1_GPIO` `led_red`；本页创建 |
 
 ---
 

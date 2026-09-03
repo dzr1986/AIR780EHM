@@ -1,6 +1,6 @@
 -- ================================================================
 -- Filename : mqtt_downlink.lua
--- Module   : MQTT 2001–2013 下行总线 + 待 T3x 队列，由 net_mqtt.bind
+-- Module   : MQTT 2001–2013 下行总线 + 待 t31x 队列，由 net_mqtt.bind
 -- Arch     : doc/modules/NET_MQTT_DOWNLINK_DISPATCH.md
 -- ================================================================
 
@@ -16,10 +16,10 @@ function bind(C)
     local pubUplink = C.pubUplink
     local escJson = C.escJson
     local logInfo = C.logInfo
-    local t3xCtrl = C.t3xCtrl
-    local t3xNotify = C.t3xNotify
+    local t31xCtrl = C.t31xCtrl
+    local t31xNotify = C.t31xNotify
     local hostQueue = C.hostQueue
-    local needT3x = C.HOST_DL_NEEDS_T3X
+    local needT31x = C.HOST_DL_NEEDS_t31x
     local pub = C.pub
 
     ----------------------------------------------------------------
@@ -35,18 +35,18 @@ function bind(C)
     end
 
     local function hostReady()
-        local hu = hostUart()
-        if hu then
-            return hu.isHostAtReady() == true
+        local hif = hostUart()
+        if hif then
+            return hif.isHostAtReady() == true
         end
-        local st = t3xCtrl.getState()
+        local st = t31xCtrl.getState()
         return st ~= nil and st.powered_on == true
     end
 
     local shared = {
         dlMsgId = dlMsgId,
         ctrlMsg = ctrlMsg,
-        t3xHostReady = hostReady,
+        t31xHostReady = hostReady,
     }
 
     local devDl = require("mqtt_dl_dev").bind(C, shared)
@@ -56,7 +56,7 @@ function bind(C)
     local uploadDl = require("mqtt_dl_upload").bind(C, shared)
 
     ----------------------------------------------------------------
-    -- T3x 未就绪：入队，唤醒后再 drain
+    -- t31x 未就绪：入队，唤醒后再 drain
     ----------------------------------------------------------------
 
     local handlers
@@ -69,7 +69,7 @@ function bind(C)
         }
         logInfo("host_dl_pending", tostring(dtype), "q=" .. tostring(#hostQueue))
         sys.taskInit(function()
-            t3xNotify.wakeHost(cfgm.get("HOST_WAKE_CFG").default_sid or 1, 0)
+            t31xNotify.wakeHost(cfgm.get("HOST_WAKE_CFG").default_sid or 1, 0)
         end)
     end
 
@@ -95,7 +95,7 @@ function bind(C)
     end
 
     local function gateDl(dtype, data, runFn)
-        if needT3x[dtype] and not hostReady() then
+        if needT31x[dtype] and not hostReady() then
             deferHostDl(dtype, data)
             return
         end
@@ -103,11 +103,16 @@ function bind(C)
     end
 
     ----------------------------------------------------------------
-    -- 需 T3x：同步 handler / 异步 task
+    -- 需 t31x：同步 handler / 异步 task
     ----------------------------------------------------------------
 
     local function wrapHostDl(dlType, handler, isQuery)
         return function(data)
+            -- 查询未就绪也要立刻回 10xx，不能只入队让平台空等。
+            if needT31x[dlType] and not hostReady() and isQuery then
+                handler(data, true)
+                return
+            end
             gateDl(dlType, data, function()
                 handler(data, isQuery)
             end)
@@ -166,6 +171,7 @@ function bind(C)
     require("mqtt_hproto").register(handlers, {
         DT = DT,
         hostUart = hostUart,
+        hostReady = hostReady,
         pubReply = pubReply,
         dlMsgId = dlMsgId,
         wrapHostDl = wrapHostDl,

@@ -70,7 +70,7 @@ SPECS = [
     local tfCardCfgFn = H.tfCardCfgFn
 """,
         "returns": """    return {
-        getT3xRecActive = getT3xRecActive,
+        getT31xRecActive = getT31xRecActive,
         qryHostRecord = qryHostRecord,
         qryRecTime = qryRecTime,
         setRecTime = setRecTime,
@@ -94,7 +94,7 @@ SPECS = [
         "start": 1016,
         "end": 1097,
         "bind_args": "C, H",
-        "header_extra": """    local ensT3xHost = H.ensT3xHost
+        "header_extra": """    local ensT31xHost = H.ensT31xHost
     local hostBoot = H.hostBoot
 """,
         "returns": """    return {
@@ -120,7 +120,7 @@ function bind({bind_args})
     local uartAcquire, uartRelease = C.uartAcquire, C.uartRelease
     local waitHostIdle, hostBusy = C.waitHostIdle, C.hostBusy
     local uart_bridge, loader, utils = C.uart_bridge, C.loader, C.utils
-    local modCall, t3xSecOff = C.modCall, C.t3xSecOff
+    local modCall, t31xUartOff = C.modCall, C.t31xUartOff
     local usbInserted = C.usbInserted
     local hostNowMs = C.hostNowMs
     local noopIdle, noopFalse = C.noopIdle, C.noopFalse
@@ -179,7 +179,7 @@ bind_block = [
     "        hostSet = hostSet,",
     "        defineQuery = defineQuery,",
     "        defineSet = defineSet,",
-    "        ensT3xHost = ensT3xHost,",
+    "        ensT31xHost = ensT31xHost,",
     "        hostBoot = hostBoot,",
     "        idCfgFn = idCfgFn,",
     "        encodeCfgFn = encodeCfgFn,",
@@ -235,7 +235,7 @@ replacements = {
     "hostIpcPowerOff = hostIpcPowerOff,": "hostIpcPowerOff = power.hostIpcPowerOff,",
     "waitHostIpcReady = waitHostIpcReady,": "waitHostIpcReady = power.waitHostIpcReady,",
     "getCloudStat = getCloudStat,": "getCloudStat = cloud.getCloudStat,",
-    "getT3xRecActive = getT3xRecActive,": "getT3xRecActive = hostq.getT3xRecActive,",
+    "getT31xRecActive = getT31xRecActive,": "getT31xRecActive = hostq.getT31xRecActive,",
     "C.noteUartLinkOk = noteUartLinkOk": "C.noteUartLinkOk = recovery.noteUartLinkOk",
 }
 

@@ -67,7 +67,7 @@ flowchart TD
 
 | 场景 | 行为 |
 |------|------|
-| T3x 烧录 | `app.shutdownServicesForT3xBurn` → `usbRndis.disable()` |
+| T31x 烧录 | `app.shutdownServicesForT31xBurn` → `usbRndis.disable()` |
 | 拔 USB 进 rest | `enterRestIfNeededAfterUsbRemove`：**RNDIS 仍开则跳过** 自动进 rest |
 | 充电检测 | `usbHostPresent()` 读 `APP_RUNTIME.usb_inserted` 或 `usb_policy` |
 

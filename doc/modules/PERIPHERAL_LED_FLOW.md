@@ -34,7 +34,7 @@ flowchart TD
 | 键 | 默认长按 | 事件（`APP_EVENTS`） | app 订阅行为 |
 |----|----------|----------------------|--------------|
 | PWR | 3000ms | `GPIO_PWRKEY_SHORT` / `GPIO_PWRKEY_LONG` | 长按关机（USB 宽限期内忽略） |
-| BOOT | 2000ms | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 长按进入 T3x 烧录模式 |
+| BOOT | 2000ms | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 长按进入 T31x 烧录模式 |
 
 **防误触**：PWR 默认 `requireReleaseFirst=true`，上电若仍按住则先等释放再计时长按。
 
@@ -42,7 +42,7 @@ flowchart TD
 
 ### 2.1 coproc_ready（`setupReadySignal`）
 
-T3x 烧录完成拉高 ready 引脚 → `GPIO_COPROC_READY` → app 退出烧录、恢复 PIR/MQTT。
+T31x 烧录完成拉高 ready 引脚 → `GPIO_COPROC_READY` → app 退出烧录、恢复 PIR/MQTT。
 
 ---
 
@@ -96,9 +96,9 @@ flowchart TD
 
 ---
 
-## 5. 与 T3x 网络灯（可选）
+## 5. 与 T31x 网络灯（可选）
 
-`LED_CFG.notify_t3x_net_led`：MQTT 联网态变化时经 `host_uart` 发 `+CAT1:MQTT,%d` 驱动 T3x PB17，与 GPIO21 蓝灯独立。
+`LED_CFG.notify_t31x_net_led`：MQTT 联网态变化时经 `host_uart` 发 `+CAT1:MQTT,%d` 驱动 T31x PB17，与 GPIO21 蓝灯独立。
 
 ---
 

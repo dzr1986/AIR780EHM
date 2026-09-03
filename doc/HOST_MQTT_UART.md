@@ -1,10 +1,10 @@
-# T3x → 4G MQTT 配置（UART）
+# T31x → 4G MQTT 配置（UART）
 
-> 完整双链路规范见 [T3X_CAT1_AT_COMMAND_SPEC.md](T3X_CAT1_AT_COMMAND_SPEC.md) §4。
+> 完整双链路规范见 [T31X_CAT1_AT_COMMAND_SPEC.md](T31X_CAT1_AT_COMMAND_SPEC.md) §4。
 
 MQTT Broker 参数由 **t3x_linux** 的 `client.ini` / `client.json` 维护，上电 `bootstrap` 时经串口下发给 Air780，4G 解析后更新 `_G.MQTT_CFG` 并启动/重启 MQTT。
 
-两种产品策略（等 T3x / 上电自动连 + 覆盖）见 [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md)。
+两种产品策略（等 T31x / 上电自动连 + 覆盖）见 [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md)。
 
 ## 命令格式
 
@@ -47,7 +47,7 @@ mqtt_client_id=
 2. `app` → `net.setMqttCfg` + `net.restart()`（已运行）或 `startMqtt()`
 3. `net.mqttTask` 使用更新后的 `_G.MQTT_CFG` 连接
 
-4G 上电使用 `config.lua` 的 `MQTT_CFG` **自动连接**；T3x 在 `client.ini [mqtt]` 维护参数，`bootstrap` 或异常恢复时发 `AT+MQTTCFG` **覆盖** `_G.MQTT_CFG` 并 `net.restart()` 重连新 Broker。
+4G 上电使用 `config.lua` 的 `MQTT_CFG` **自动连接**；T31x 在 `client.ini [mqtt]` 维护参数，`bootstrap` 或异常恢复时发 `AT+MQTTCFG` **覆盖** `_G.MQTT_CFG` 并 `net.restart()` 重连新 Broker。
 
 ## 唤醒重建
 

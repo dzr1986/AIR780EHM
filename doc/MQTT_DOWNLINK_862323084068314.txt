@@ -459,10 +459,10 @@
   "time": "2026-05-19 12:04:35"
 }
 
-【4G → T3x 串口转发】
-  MQTT 开/关 → 4G 发 AT+WLED=0/1 至 T3x（config WLED_CFG.forward_to_t3x=true）
+【4G → T31x 串口转发】
+  MQTT 开/关 → 4G 发 AT+WLED=0/1 至 T31x（config WLED_CFG.forward_to_t31x=true）
   串口直控   : AT+WLED=1 / AT+WLED=0
-  串口查询   : AT+WLED?  → +WLED:0 或 +WLED:1（4G 侧缓存状态；T3x 侧 cat1_host 亦支持 AT+WLED）
+  串口查询   : AT+WLED?  → +WLED:0 或 +WLED:1（4G 侧缓存状态；T31x 侧 cat1_host 亦支持 AT+WLED）
 
 ------------------------------------------------------------------------------
 3.5  2005 — SIM 卡信息查询  →  1005
@@ -495,17 +495,17 @@
 ------------------------------------------------------------------------------
 【2006 与 2007 共用说明】— 为何两条？为何非秒回？
 ------------------------------------------------------------------------------
-  两条不同业务，都要问 T3x，故共用 pendingHostQueue 入队 + GPIO 唤醒：
+  两条不同业务，都要问 T31x，故共用 pendingHostQueue 入队 + GPIO 唤醒：
 
   下行      上行    主题        查什么
-  2006      1006    identity    Cat.1 IMEI + T3x GB28181 ID（AT+GB28181?）
-  2007      1007    tfcard      T3x TF/SD 容量（AT+TFCARD?）
+  2006      1006    identity    Cat.1 IMEI + T31x GB28181 ID（AT+GB28181?）
+  2007      1007    tfcard      T31x TF/SD 容量（AT+TFCARD?）
 
   发 2006 只回 1006，发 2007 只回 1007（不会一发回两条）。
   与 2003/2005 不同：那些只查 4G，可秒回。
 
-  T3x 已在线     → 通常 1～数秒内应答
-  T3x 休眠/rest  → 入队 → 唤醒 → UART 查询 → 数秒～十数秒后 1006/1007
+  T31x 已在线     → 通常 1～数秒内应答
+  T31x 休眠/rest  → 入队 → 唤醒 → UART 查询 → 数秒～十数秒后 1006/1007
   超时           → 2006: gb28181Id 空 ret=-1；2007: tfPresent=0 ret=-1
 
   详述见 MQTT_PROTOCOL.md §1.2
@@ -514,9 +514,9 @@
 3.6  2006 — IMEI + GB28181 标识查询  →  1006
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
-  应答 : 1006（主题 identity）；T3x 未就绪时先入队唤醒，就绪后应答（非秒回）
-  说明 : Cat.1 读本地 IMEI；经 UART 发 AT+GB28181? 读 T3x GB28181 ID
-         T3x 未上电时会先 powerOn；就绪后也可能自动上报 1006
+  应答 : 1006（主题 identity）；T31x 未就绪时先入队唤醒，就绪后应答（非秒回）
+  说明 : Cat.1 读本地 IMEI；经 UART 发 AT+GB28181? 读 T31x GB28181 ID
+         T31x 未上电时会先 powerOn；就绪后也可能自动上报 1006
 
 【下行】
 {"dataType":"2006"}
@@ -533,18 +533,18 @@
   "time": "2026-05-24 12:00:00"
 }
 
-  gb28181Id  : T3x client.ini → gb28181_id；未配置或超时为空，ret=-1
+  gb28181Id  : T31x client.ini → gb28181_id；未配置或超时为空，ret=-1
 
 【串口等价】
-  T3xx→Cat.1: AT+IPCINFO?
-  Cat.1→T3xx: AT+GB28181?
+  T31xx→Cat.1: AT+IPCINFO?
+  Cat.1→T31xx: AT+GB28181?
 
 ------------------------------------------------------------------------------
 3.7  2007 — TF/SD 卡状态查询  →  1007（机制同 3.6 说明）
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
-  应答 : 1007（主题 tfcard）；T3x 未就绪时先入队唤醒，就绪后应答
-  说明 : Cat.1 经 UART 发 AT+TFCARD? 读 T3x 挂载点容量（client.ini tf_mount_path）
+  应答 : 1007（主题 tfcard）；T31x 未就绪时先入队唤醒，就绪后应答
+  说明 : Cat.1 经 UART 发 AT+TFCARD? 读 T31x 挂载点容量（client.ini tf_mount_path）
 
 【下行】
 {"dataType":"2007","messageId":"tf-001"}
@@ -566,13 +566,13 @@
   无卡时 totalMb/usedMb/freeMb 均为 0
 
 【串口等价】
-  Cat.1→T3xx: AT+TFCARD?
+  Cat.1→T31xx: AT+TFCARD?
 
 ------------------------------------------------------------------------------
 3.7a  2008 — 固件版本查询  →  1008
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
-  应答 : 1008（主题 version）；仅查 Cat.1 固件，不需 T3x 在线，秒回
+  应答 : 1008（主题 version）；仅查 Cat.1 固件，不需 T31x 在线，秒回
 
 【下行】
 {"dataType":"2008","messageId":"ver-001"}
@@ -606,7 +606,7 @@
 【字段】
   action     string  是  固定 "format"
   messageId  string  否  原样回传到 1009
-  reboot     0/1     否  0=不重启  1=格式化成功后 T3x 重启（缺省走配置）
+  reboot     0/1     否  0=不重启  1=格式化成功后 T31x 重启（缺省走配置）
 
 【上行 — 主题 tfcard_format】
 {
@@ -619,12 +619,12 @@
   "time": "2026-06-23 14:30:00"
 }
 
-  message 常见值 : ok | disabled | busy | timeout | no_uart | t3x_unavailable
+  message 常见值 : ok | disabled | busy | timeout | no_uart | t31x_unavailable
   自动补发 1007 : publish_status_after=true 且 reboot=0 时，完成后再发 tfcard 容量
 
 【串口等价】
-  Cat.1→T3xx: AT+RECORDCTRL=0,tfcard_format
-  Cat.1→T3xx: AT+TFFORMAT=1,reboot=0|1
+  Cat.1→T31xx: AT+RECORDCTRL=0,tfcard_format
+  Cat.1→T31xx: AT+TFFORMAT=1,reboot=0|1
 
 ------------------------------------------------------------------------------
 3.8  2010 — PIR 策略 / 状态查询  →  1010
@@ -676,10 +676,10 @@
 }
 
   status        : 硬件触发常为 "1"；2010 query 应答为 "query"
-  pirStatus     : detected | t3x_active | snapshot_saved | retrigger | query
+  pirStatus     : detected | t31x_active | snapshot_saved | retrigger | query
   recording     : 0/1  是否正在录像会话中
-  active        : 可选 1  T3x 首个 I 帧已写盘（常伴 t3x_active）
-  snapshotPath  : 可选    pirStatus=snapshot_saved 时 T3x SD 路径
+  active        : 可选 1  T31x 首个 I 帧已写盘（常伴 t31x_active）
+  snapshotPath  : 可选    pirStatus=snapshot_saved 时 T31x SD 路径
 
 【PIR 硬件触发时自动 1010 示例】
 {
@@ -710,12 +710,12 @@
   "time": "2026-05-19 15:02:00"
 }
 
-【录像写盘确认 1010 示例 — t3x_active + active=1】
+【录像写盘确认 1010 示例 — t31x_active + active=1】
 {
   "deviceNo": "862323084068314",
   "dataType": "1010",
   "status": "1",
-  "pirStatus": "t3x_active",
+  "pirStatus": "t31x_active",
   "recording": 1,
   "active": 1,
   "action": "video",
@@ -729,8 +729,8 @@
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   条件 : 设备正在录像 且 stopOnCloud=1（2010 配置）
-  应答 : 停录完成后发 1011（T3x 写盘时可能延迟；经 PIR 状态机）
-  T3x 在线 : 4G 另发 AT+RECORDCTRL=0,cloud
+  应答 : 停录完成后发 1011（T31x 写盘时可能延迟；经 PIR 状态机）
+  T31x 在线 : 4G 另发 AT+RECORDCTRL=0,cloud
 
 【下行】
 {"dataType":"2011","messageId":"test-001"}
@@ -746,7 +746,7 @@
   "time": "2026-05-19 12:09:00"
 }
 
-  source        : 4g（4G 停录）| t3x（T3x AT+RECORD=0 回报）
+  source        : 4g（4G 停录）| t31x（T31x AT+RECORD=0 回报）
   reason 其它取值 : timer | pir_retrigger | manual | done | device | ...
 
   详述 : doc/mqtt_2011_1011_flow.md · doc/MQTT_CLOUD_REMOTE_CTRL_FLOW.md §4
@@ -756,8 +756,8 @@
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   条件 : 未在录像 且 startOnCloud=1（2010 配置 recordPolicy）
-  应答 : 受理后 1004 action=pir_start + 1012；T3x 写盘后 1010 t3x_active（pir）
-  T3x 在线 : 4G 另发 AT+RECORDCTRL=1,<videoMaxDurationSec>
+  应答 : 受理后 1004 action=pir_start + 1012；T31x 写盘后 1010 t31x_active（pir）
+  T31x 在线 : 4G 另发 AT+RECORDCTRL=1,<videoMaxDurationSec>
 
 【下行 — 最简】
 {"dataType":"2012","messageId":"start-001"}
@@ -849,7 +849,7 @@
   方向 : 平台 → 设备
   应答 : 主题 encode，dataType=1021
   说明 : 仅 bitrate 可热更新（needReboot=0）；分辨率/帧率/编码器等需重启 T31x
-  串口 : Cat.1→T3x AT+VENCSET= / AT+AUDIOSET=
+  串口 : Cat.1→T31x AT+VENCSET= / AT+AUDIOSET=
 
 【仅改码率（热更新）】
 {"dataType":"2021","camera":0,"stream":0,"bitrate":800,"messageId":"set-br"}
@@ -908,7 +908,7 @@
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   应答 : 主题 record
-  说明 : T3x rec_time 固定档位 5/10/15/20/30/45/60 分钟
+  说明 : T31x rec_time 固定档位 5/10/15/20/30/45/60 分钟
   串口 : AT+RECORDTIME? / AT+RECORDTIME=<min>
 
 【查询】
@@ -934,7 +934,7 @@
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   应答 : 主题 framerate
-  说明 : 仅改帧率，不含分辨率/编码器；T3x 休眠时需先唤醒
+  说明 : 仅改帧率，不含分辨率/编码器；T31x 休眠时需先唤醒
   串口 : AT+FRAMERATE? / AT+FRAMERATE=cam,stream,fps
 
 【查询 camera0 主码流】
@@ -964,7 +964,7 @@
 ------------------------------------------------------------------------------
   方向 : 平台 → 设备
   应答 : 主题 personDetect
-  说明 : 需 T3x 编译 WITH_PERSON_DETECT
+  说明 : 需 T31x 编译 WITH_PERSON_DETECT
   串口 : AT+PERSONDET? / AT+PERSONDET=0|1
 
 【查询】
@@ -998,7 +998,7 @@
   说明 : 与 2020/2021 scope:audio 不同——后者管编码+扬声器；本命令管 AI 采集 IMP_AI_SetVol/Gain
   默认 : syscfg.ini 未配置时 volume=60、gain=28（camera0:audio_in_volume/gain）
   串口 : AT+MIC? / AT+MICSET=cam,vol,gain
-  T3x  : 未就绪时入 pendingHostQueue 唤醒（同 2024-2027）
+  T31x  : 未就绪时入 pendingHostQueue 唤醒（同 2024-2027）
 
 【查询】
 {"dataType":"2028","camera":0,"messageId":"mic-q-001"}
@@ -1104,13 +1104,13 @@
   ⑧ 2004 reboot → 收 1004 reply=1（设备将重启）
   ⑨ 2002 enter → 收 1002（含 reason/source）；2002 exit → 收 1002 exit（无 1002 见 MQTT_PROTOCOL §4）
   ⑩ 2004 ota（谨慎）→ 1004 reply + stage
-  ⑪ 2012（startOnCloud=1）→ 1004 pir_start + 1012；写盘后 1010 t3x_active
+  ⑪ 2012（startOnCloud=1）→ 1004 pir_start + 1012；写盘后 1010 t31x_active
   ⑫ 2011（录像中，stopOnCloud=1）→ 1011
   ⑬ 2020 → 1020（encode 主题，body.video / body.audio）
   ⑭ 2021 改码率 → 1021 needReboot=0；改分辨率 → needReboot=1
   ⑮ 2024 → 1024（framerate 主题）
   ⑯ 2025 framerate=20 → 1025
-  ⑰ 2026 → 1026（personDetect 主题，需 T3x 人形功能）
+  ⑰ 2026 → 1026（personDetect 主题，需 T31x 人形功能）
   ⑱ 2027 enable=1 → 1027
   ⑲ 2022 → 1022（record 主题）
   ⑳ 2023 recordTimeMin=10 → 1023
@@ -1130,7 +1130,7 @@
   pub 1003              → 状态上报（status，含 lowPowerMode）
   发布控制回复(1004)    → 2004 应答
   发布 SIM(1005)        → 2005 应答
-  发布设备标识(1006)    → 2006 应答 / T3x 就绪自动
+  发布设备标识(1006)    → 2006 应答 / T31x 就绪自动
   发布 TF 卡(1007)      → 2007 应答
   发布 TF 格式化(1009)   → 2009 应答
   发布 PIR 检测(1010)   → PIR 上报
@@ -1179,7 +1179,7 @@
 
 【串口 AT — 远程控制等价】
   2024/2025 帧率     : AT+FRAMERATE? / AT+FRAMERATE=0,0,20
-  2012/2011 直连录   : AT+RECORDCTRL=1,90 / AT+RECORDCTRL=0,cloud（T3x 在线时）
+  2012/2011 直连录   : AT+RECORDCTRL=1,90 / AT+RECORDCTRL=0,cloud（T31x 在线时）
   2026/2027 人形     : AT+PERSONDET? / AT+PERSONDET=1
   2009 TF 格式化     : AT+RECORDCTRL=0,tfcard_format ; AT+TFFORMAT=1,reboot=0|1
   2028/2029 麦克风   : AT+MIC? / AT+MICSET=0,60,28

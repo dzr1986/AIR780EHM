@@ -2,7 +2,7 @@
 
 > **指示灯专篇**（两套灯规则、场景对照、调试）：[LED_INDICATORS.md](LED_INDICATORS.md)
 
-本文描述 **T3x + Air780EHM** 工程中：USB 插入检测、充电状态、**两套指示灯**、**ADC1/BAT_ADC** 采样电量，以及 **MQTT 1003** 上报的完整流程。硬件引脚详见仓库根目录 [`T3X_CAT1_GPIO.md`](../T3X_CAT1_GPIO.md) §3.1。
+本文描述 **T31x + Air780EHM** 工程中：USB 插入检测、充电状态、**两套指示灯**、**ADC1/BAT_ADC** 采样电量，以及 **MQTT 1003** 上报的完整流程。硬件引脚详见仓库根目录 [`T31X_CAT1_GPIO.md`](../T31X_CAT1_GPIO.md) §3.1。
 
 ---
 
@@ -149,7 +149,7 @@ flowchart TB
 | `sample_interval_ms` | `10000` | 采样周期（ms） |
 | `mqtt_report_interval_sec` | `60` | 1003 周期**回退**（`low_power_interval_sec` 未设时）；初值 30s 见 `LOW_POWER_CFG.rest_mqtt_interval_sec` |
 | `led.*` | 70 / 20 等 | 模组红蓝灯阈值与时序 |
-| `guard.*` | 15 / 10 / 5 等 | 未插 USB：停 PIR(≤15%) / 休眠 T3x / 关机 |
+| `guard.*` | 15 / 10 / 5 等 | 未插 USB：停 PIR(≤15%) / 休眠 T31x / 关机 |
 
 ---
 
@@ -357,7 +357,7 @@ ADC 每 **10s** 更新一次 `APP_RUNTIME.battery_percent`；MQTT 60s 上报的�
 
 ## 12. 相关文档
 
-- [`T3X_CAT1_GPIO.md`](../T3X_CAT1_GPIO.md) — 引脚与 LP4030 硬件说明  
+- [`T31X_CAT1_GPIO.md`](../T31X_CAT1_GPIO.md) — 引脚与 LP4030 硬件说明  
 - [`MQTT_PROTOCOL.md`](MQTT_PROTOCOL.md) — 1003 等数据类型  
 - [`PIR_HARDWARE.md`](PIR_HARDWARE.md) — GPIO30 / PIR_MCU_DET 人体检测  
 - [`KEY_GPIO.md`](KEY_GPIO.md) — GPIO 按键（`peripheral` + `key_config`）  

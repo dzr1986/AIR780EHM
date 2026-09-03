@@ -19,7 +19,7 @@ function bind(C, shared)
     local utils = C.utils
     local pubTfCard = C.pub.pubTfCard
     local pubTfFormat = C.pub.pubTfFormat
-    local hostReady = shared.t3xHostReady
+    local hostReady = shared.t31xHostReady
 
     local TIMEOUT = {
         queryRetryWait = 400,
@@ -53,13 +53,13 @@ function bind(C, shared)
         }, messageId)
     end
 
-    local function queryTfSnap(hu)
+    local function queryTfSnap(hif)
         local cfg = tfCfg()
-        local snap = hu.queryHostTfCard(cfg.query_timeout_ms)
+        local snap = hif.queryHostTfCard(cfg.query_timeout_ms)
         if snap == nil then
             sys.wait(TIMEOUT.queryRetryWait)
-            snap = hu.queryHostTfCard(cfg.query_timeout_ms)
-                or hu.getCachedHostTfCard()
+            snap = hif.queryHostTfCard(cfg.query_timeout_ms)
+                or hif.getCachedHostTfCard()
         end
         return snap
     end
@@ -69,8 +69,8 @@ function bind(C, shared)
             publishEmptyTf(messageId)
             return
         end
-        local hu = hostUart()
-        local snap = hu and queryTfSnap(hu) or nil
+        local hif = hostUart()
+        local snap = hif and queryTfSnap(hif) or nil
         if snap == nil then
             publishEmptyTf(messageId, true)
             return
@@ -86,9 +86,9 @@ function bind(C, shared)
         local cfg = fmtCfg()
         pirCtrl.reqStopCloud({ messageId = "tf-fmt" })
         pirCtrl.suspend()
-        local hu = hostUart()
-        if hu and hostReady() then
-            hu.recordCtrlStop({
+        local hif = hostUart()
+        if hif and hostReady() then
+            hif.recordCtrlStop({
                 reason = "tfcard_format",
                 timeoutMs = tonumber(cfg.record_stop_timeout_ms) or TIMEOUT.recordStopDefault,
             })
@@ -97,9 +97,9 @@ function bind(C, shared)
     end
 
     local function waitHostIpcReady()
-        local hu = hostUart()
-        if hu then
-            pcall(hu.waitHostIpcReady, TIMEOUT.ipcReadyWait, TIMEOUT.ipcReadyPoll)
+        local hif = hostUart()
+        if hif then
+            pcall(hif.waitHostIpcReady, TIMEOUT.ipcReadyWait, TIMEOUT.ipcReadyPoll)
         end
     end
 
@@ -109,14 +109,14 @@ function bind(C, shared)
             pubTfFormat(-1, "disabled", messageId, { reboot = reboot })
             return
         end
-        local hu = hostUart()
-        if not hu then
+        local hif = hostUart()
+        if not hif then
             pubTfFormat(-1, "no_uart", messageId, { reboot = reboot })
             return
         end
         stopRecordingBeforeFormat()
         waitHostIpcReady()
-        local ok, detail = hu.formatHostTfCard({
+        local ok, detail = hif.formatHostTfCard({
             reboot = reboot,
             timeoutMs = cfg.format_timeout_ms,
         })

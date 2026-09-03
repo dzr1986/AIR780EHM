@@ -2,7 +2,7 @@
 
 > 与代码同步：配置见 [`CONFIG.md`](CONFIG.md)；MQTT=`net_mqtt.lua`；UART=`lib/uart_bridge.lua` + `host_uart.lua`；按键=`peripheral.lua` + `key_config.KEY_CONFIG`。  
 > 深度分析见 **[CODE_ANALYSIS.md](./CODE_ANALYSIS.md)** · 核验流程 **[CODE_DOC_AUDIT.md](./CODE_DOC_AUDIT.md)**。  
-> PIR 唤醒 / 录像 MQTT： [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)
+> PIR 唤醒 / 录像 MQTT： [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md)
 
 ---
 
@@ -14,7 +14,7 @@ main.lua
   [cellular] cellular_bootstrap.start()
   [rndis]    sys.taskInit(usb_rndis.open)
   [mqtt]     net_mqtt.bootstrapNet()
-  app.start(peripheral, net_mqtt, t3x_ctrl)
+  app.start(peripheral, net_mqtt, t31x_ctrl)
   sys.run()
 ```
 
@@ -29,9 +29,9 @@ main.lua
 | 3 | `watchdog` | `setupWatchdog()` |
 | 4 | `uart_bridge` | `setupUartBridge()`：`uart_bridge` + **`host_uart`** 同启 |
 | 5 | 始终 | 订阅 `HOST_UART_FIRST_AT` |
-| 6 | 始终 | **`initPowerStatus()`**（可进 rest；**早于** t3x/GPIO） |
+| 6 | 始终 | **`initPowerStatus()`**（可进 rest；**早于** t31x/GPIO） |
 | 7 | 始终 | `scheduleBootUsbPolicySync()` |
-| 8 | 始终 | `t3x_ctrl.start()` |
+| 8 | 始终 | `t31x_ctrl.start()` |
 | 9 | `sound_prompt` | `sound_prompt.start()` + `onAppStarted()` |
 | 10 | `time_sync` | `time_sync.start()` |
 | 11 | `gpio` | `setupGpio()` → `peripheral.start()` |
@@ -64,10 +64,10 @@ bootMqtt (task)
 
 ```
 ctx 构造
-  → hu_cmd.bind(ctx)     usb → link → pir → t3x → wled
-  → hu_at.compile(cmd.at)
-  → hu_rx.bind(ctx)      dsl→media→URC tryHandlers
-  → hu_ipc.bind(ctx)     recovery → hostq → cloud(recovery,hostq) → power(recovery) → tffmt → encode
+  → hif_cmd.bind(ctx)     usb → link → pir → t31x → wled
+  → hif_at.compile(cmd.at)
+  → hif_rx.bind(ctx)      dsl→media→URC tryHandlers
+  → hif_ipc.bind(ctx)     recovery → hostq → cloud(recovery,hostq) → power(recovery) → tffmt → encode
 ```
 
 **net_mqtt**（`user/net_mqtt.lua`）
@@ -94,7 +94,7 @@ python tools/debug/_net_mqtt_regression_check.py
 app.lua
   require: uart_bridge, pir_ctrl, battery_guard, host_uart
   optMod:  vbat, usb_charge, mobile_info, fota_svc, usb_rndis, time_sync, sound_prompt
-  inject:  peripheral, net_mqtt, t3x_ctrl  (main.lua 传入)
+  inject:  peripheral, net_mqtt, t31x_ctrl  (main.lua 传入)
 
 peripheral.lua
   require: led_ctrl, pir_ctrl
@@ -104,25 +104,25 @@ net_mqtt.lua
   懒加载:  host_uart（编码/标识/TF 卡等）
 
 host_uart.lua
-  pcall:   net_tcp, pir_ctrl, host_event, low_power_wakeup, t3x_ctrl
+  pcall:   net_tcp, pir_ctrl, host_event, low_power_wakeup, t31x_ctrl
 
 pir_ctrl.lua
   require: gpio_util, sys
 
 main.lua
-  require: config, app_config, key_config, app, peripheral, net_mqtt, t3x_ctrl
+  require: config, app_config, key_config, app, peripheral, net_mqtt, t31x_ctrl
   opt:     cellular_bootstrap, usb_rndis
 ```
 
 | 模块 | 直接依赖 |
 |------|----------|
-| main | config, app_config, key_config, app, peripheral, net_mqtt, t3x_ctrl |
+| main | config, app_config, key_config, app, peripheral, net_mqtt, t31x_ctrl |
 | app | uart_bridge, pir_ctrl, battery_guard, host_uart + optMod 子模块 + 注入 |
 | peripheral | led_ctrl, pir_ctrl |
 | net_mqtt | config, pir_ctrl；运行时 host_uart |
 | host_uart | uart_bridge, config；懒加载 net_tcp 等 |
 | uart_bridge | sys |
-| t3x_ctrl | sys, config 引脚 |
+| t31x_ctrl | sys, config 引脚 |
 
 **规则**：`lib/*` 不得 `require user/*`。
 
@@ -136,16 +136,16 @@ pir_ctrl (GPIO30 rising, cooldown)
     → pir_ctrl.onPirTriggered
         录像中 + stopOnSecondPir → PIR_STOP_RECORDING(pir_retrigger)
         否则 → GPIO_PIR_TRIGGERED → MQTT 1010 detected
-             → pubActEvents
+             → pubActionEvents
                  video/both → beginVideoSession + timer
-                 → PIR_WAKE_T3X ×1（both 不双唤醒）
-    → app subscribe PIR_WAKE_T3X
-        uploadMode=auto → net.pubWakeup(1001) + requestT3xWake()
+                 → PIR_WAKE_T31X ×1（both 不双唤醒）
+    → app subscribe PIR_WAKE_T31X
+        uploadMode=auto → net.pubWakeup(1001) + requestT31xWake()
     → host_uart AT+RECORD=1/0
-        → T3X_RECORD_ACTIVE → 1010 t3x_active
-        → T3X_RECORD_STOP → 1011 source=t3x
+        → T31X_RECORD_ACTIVE → 1010 t31x_active
+        → T31X_RECORD_STOP → 1011 source=t31x
     → PIR_STOP_RECORDING / timer
-        → pubPirStop(1011, source=4g) + requestT3xWake(pir_stop)
+        → pubPirStop(1011, source=4g) + requestT31xWake(pir_stop)
         （会话去重：stop_mqtt_published）
 ```
 
@@ -164,15 +164,15 @@ pir_ctrl (GPIO30 rising, cooldown)
 BATTERY_UPDATE (vbat)
   → app 日志
   → battery_guard.evaluate (未插 USB: ≤15% 停 PIR, ≤10% onEnterLowPower+1002, ≤5% 关机)
-  → 插 USB: 忽略阈值 + t3x_ctrl.wake()
+  → 插 USB: 忽略阈值 + t31x_ctrl.wake()
 
 GPIO27 USB 拔出 (usb_charge)
   → battery_guard.onUsbRemoved()
   → onEnterLowPower (RNDIS 开时可能跳过)
-       → t3x_ctrl.enterSleep (modemHibernate=false), pubRest(1002)
+       → t31x_ctrl.enterSleep (modemHibernate=false), pubRest(1002)
 
 GPIO27 USB 插入
-  → battery_guard.onUsbInserted() → onExitLowPower + wake T3x
+  → battery_guard.onUsbInserted() → onExitLowPower + wake T31x
 ```
 
 ```
@@ -193,8 +193,8 @@ peripheral  → GPIO_BOOTKEY_SHORT / LONG, GPIO_COPROC_READY
 
 app subscribe:
   PWRKEY_LONG     → pm.shutdown()
-  BOOTKEY_LONG    → t3x_ctrl.enterBootMode()
-  t3x_STARTED     → t3x_ctrl.exitBootMode()
+  BOOTKEY_LONG    → t31x_ctrl.enterBootMode()
+  t31x_STARTED     → t31x_ctrl.exitBootMode()
 ```
 
 ---
@@ -234,7 +234,7 @@ app subscribe:
 
 ## 7. 串口
 
-仅 `uart_bridge` 调用 `uart.setup/on/write`（`UART_CFG.id` 默认 1）。T3x 业务 AT 由 `host_uart.lua` 解析。
+仅 `uart_bridge` 调用 `uart.setup/on/write`（`UART_CFG.id` 默认 1）。T31x 业务 AT 由 `host_uart.lua` 解析。
 
 | 主机行 | 处理 |
 |--------|------|
@@ -256,7 +256,7 @@ app subscribe:
 | uart_bridge | 唯一 `uart.setup` |
 | cellular_bootstrap | 蜂窝拨号引导 |
 | watchdog, device_id, usb_policy | WDT / IMEI / USB 策略 |
-| low_power_wakeup, t3x_policy, host_event | 低功耗唤醒通道 / T3x 门禁 / HOSTEVT |
+| low_power_wakeup, t31x_policy, host_event | 低功耗唤醒通道 / T31x 门禁 / HOSTEVT |
 
 PIR / 按键 / LED / 电池 / OTA / SNTP 在 `user/`（`pir_ctrl`、`peripheral`、`led_ctrl`、`vbat`、`fota_svc`、`time_sync`）。
 
@@ -277,6 +277,6 @@ PIR / 按键 / LED / 电池 / OTA / SNTP 在 `user/`（`pir_ctrl`、`peripheral`
 
 ## 10. app 事件订阅一览
 
-`setupEventHandlers` 订阅：`POWER_*`、`DEVICE_REBOOT/POWER_OFF`、`PIR_*`、`GPIO_*`、`MQTT_*`、`DEVICE_OTA_REQUEST`、`T3X_RECORD_*`。
+`setupEventHandlers` 订阅：`POWER_*`、`DEVICE_REBOOT/POWER_OFF`、`PIR_*`、`GPIO_*`、`MQTT_*`、`DEVICE_OTA_REQUEST`、`T31X_RECORD_*`。
 
 发布方汇总见 **CODE_ANALYSIS §4.5**。

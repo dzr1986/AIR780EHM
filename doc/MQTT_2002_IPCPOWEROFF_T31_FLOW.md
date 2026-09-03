@@ -3,9 +3,9 @@
 > **样机 IMEI**：`862323084068124`  
 > **原则**：平台 `2002 enter` **禁止立刻拉 GPIO22**。必须先经 UART 让 T31 IPC **一级级停干净**（封盘 / 人形 / 国标 / 网卡 / sync），收到 `+IPCPOWEROFF:OK` 后再断电。  
 > **之后**：`workMode=pir_watch`，Cat.1 用 PIR 值守；T31 在电时 PIR 业务丢弃。  
-> **代码**：Cat.1 `user/net_mqtt.lua` · `user/app.lua` · `user/t3x_ctrl.lua` · `user/host_uart.lua`  
+> **代码**：Cat.1 `user/net_mqtt.lua` · `user/app.lua` · `user/t31x_ctrl.lua` · `user/host_uart.lua`  
 > T31 `app/host/host_at.c`（`ipc_power_off_request` / `ipc_stop_services`）  
-> **关联**：[WORK_MODE_PERSON_DETECT_PIR.md](WORK_MODE_PERSON_DETECT_PIR.md) · [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md#4-2002--低功耗--1002) · [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) · [T3X_LOW_POWER.md](T3X_LOW_POWER.md)
+> **关联**：[WORK_MODE_PERSON_DETECT_PIR.md](WORK_MODE_PERSON_DETECT_PIR.md) · [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md#4-2002--低功耗--1002) · [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) · [T31X_LOW_POWER.md](T31X_LOW_POWER.md)
 
 白光灯、开停录与本流程 **无关**。USB 不拦 2002（仍拦 **2004 关机**）。USB **插入边沿**会退出值守、回到人形常电。
 
@@ -27,7 +27,7 @@ app.onEnterLowPower("mqtt_2002")
   │  lowPowerMode = rest
   │  1002 rest（reason=mqtt_2002）
   ▼
-t3x_ctrl.enterSleep（协程内，skip_pending_work：全天写盘不得否决）
+t31x_ctrl.enterSleep（协程内，skip_pending_work：全天写盘不得否决）
   │
   ▼
 host_uart.hostIpcPowerOff
@@ -129,7 +129,7 @@ sequenceDiagram
 | T31→4G | `+IPCPOWEROFF:STAGE,sync` | 正在 `sync()` |
 | T31→4G | `+IPCPOWEROFF:OK` | **全部停完**，允许断电 |
 | T31→4G | `+IPCPOWEROFF:BUSY` | 已有关机线程在跑 |
-| T31→4G | `+IPCPOWEROFF:NOT_SUPPORTED` | 未编 `WITH_T3X_LOW_POWER` |
+| T31→4G | `+IPCPOWEROFF:NOT_SUPPORTED` | 未编 `WITH_T31X_LOW_POWER` |
 
 STAGE 只表示进度，**不能**当成可以断电。唯有 `OK`（或 Cat.1 侧超时兜底）之后才拉 GPIO。
 
@@ -145,7 +145,7 @@ STAGE 只表示进度，**不能**当成可以断电。唯有 `OK`（或 Cat.1 �
 |------|------|------|
 | 解析 2002 | `user/net_mqtt.lua` `dispatchDl2002` | 立刻 1004；USB **不** `usb_block` |
 | 切模式 | `user/app.lua` `doEnterLowPowerBody` | `pir_watch` + rest；协程里 `enterSleep` |
-| 休眠入口 | `user/t3x_ctrl.lua` `enterSleep` / `gracefulPowerOff` | **先** `hostIpcPowerOff`，**再** `powerOff()` |
+| 休眠入口 | `user/t31x_ctrl.lua` `enterSleep` / `gracefulPowerOff` | **先** `hostIpcPowerOff`，**再** `powerOff()` |
 | 发 AT / 等 ACK | `user/host_uart.lua` `hostIpcPowerOff` | 等 `+IPCPOWEROFF:OK`；STAGE 只续等 |
 | 超时 | `HOST_IPC_CFG.poweroff_timeout_ms` | 默认 **30000**（封盘可 >15s） |
 | 断电前静置 | `HOST_IPC_CFG.poweroff_settle_ms` | 默认 **500** |
@@ -165,7 +165,7 @@ STAGE 只表示进度，**不能**当成可以断电。唯有 `OK`（或 Cat.1 �
 | 录像 | `cloud_remote_record_stop("poweroff")` | 走 `media_sched` 封盘，再清残留通道 |
 | 完成 | `+IPCPOWEROFF:OK` | 日志：`Host module may cut T31x power` |
 
-编译：`WITH_T3X_LOW_POWER=yes`（`build/config.global.mk` 默认 yes）。为 no 时回 `NOT_SUPPORTED`，Cat.1 超时后仍会兜底断电。
+编译：`WITH_T31X_LOW_POWER=yes`（`build/config.global.mk` 默认 yes）。为 no 时回 `NOT_SUPPORTED`，Cat.1 超时后仍会兜底断电。
 
 ---
 

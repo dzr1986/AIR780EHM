@@ -13,23 +13,23 @@
 | 文件 | 职责 | 专题 |
 |------|------|------|
 | `host_uart.lua` | 锁、`SYS_EVT`、`processLine`、`start` | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) |
-| `hu_at.lua` | AT 表编译 | 同上 |
-| `hu_cmd.lua` | cmd 编排 | 同上 |
-| `hu_cmd_usb.lua` | USB 相关 AT | 同上 |
-| `hu_cmd_link.lua` | P2P/GB28181/MQTT/SERV | 同上 |
-| `hu_cmd_pir.lua` | HOSTEVT/PIRSTAT | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) |
-| `hu_cmd_t3x.lua` | RECORD/UPLOAD/IPCSTAT NOTIFY | 同上 |
-| `hu_cmd_wled.lua` | WLED | 同上 |
-| `hu_rx.lua` | URC 编排、`patchCloud`、注册表 | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) |
-| `hu_rx_dsl.lua` | URC 行匹配 DSL | 同上 |
-| `hu_rx_media.lua` | VENC/AUDIO/MIC/FRAMERATE URC | 同上 |
-| `hu_ipc.lua` | IPC 编排 | 同上 |
-| `hu_ipc_rec.lua` | UART 恢复、`qryHostStat` | 同上 |
-| `hu_ipc_hostq.lua` | RECORD/MIC/SOFTPHOTO query/set | 同上 |
-| `hu_ipc_cloud.lua` | 云状态/GB28181 | 同上 |
-| `hu_ipc_power.lua` | IPC 上电/关机/ready | 同上 |
-| `hu_ipc_tffmt.lua` | TF format | 同上 |
-| `hu_ipc_encode.lua` | 编码参数 | 同上 |
+| `hif_at.lua` | AT 表编译 | 同上 |
+| `hif_cmd.lua` | cmd 编排 | 同上 |
+| `hif_cmd_usb.lua` | USB 相关 AT | 同上 |
+| `hif_cmd_link.lua` | P2P/GB28181/MQTT/SERV | 同上 |
+| `hif_cmd_pir.lua` | HOSTEVT/PIRSTAT | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) |
+| `hif_cmd_t31x.lua` | RECORD/UPLOAD/IPCSTAT NOTIFY | 同上 |
+| `hif_cmd_wled.lua` | WLED | 同上 |
+| `hif_rx.lua` | URC 编排、`patchCloud`、注册表 | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) |
+| `hif_rx_dsl.lua` | URC 行匹配 DSL | 同上 |
+| `hif_rx_media.lua` | VENC/AUDIO/MIC/FRAMERATE URC | 同上 |
+| `hif_ipc.lua` | IPC 编排 | 同上 |
+| `hif_ipc_rec.lua` | UART 恢复、`qryHostStat` | 同上 |
+| `hif_ipc_hostq.lua` | RECORD/MIC/SOFTPHOTO query/set | 同上 |
+| `hif_ipc_cloud.lua` | 云状态/GB28181 | 同上 |
+| `hif_ipc_power.lua` | IPC 上电/关机/ready | 同上 |
+| `hif_ipc_tffmt.lua` | TF format | 同上 |
+| `hif_ipc_encode.lua` | 编码参数 | 同上 |
 
 回归：`python tools/debug/_protocol_regression_check.py`（或单独跑 `_host_uart_regression_check.py`）
 
@@ -64,7 +64,7 @@
 | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) | `pir_ctrl.lua` | PIR 硬件→录像会话→MQTT 2010–2012 |
 | [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md) | `battery_guard.lua` | 电量三档、evaluate、USB、HOSTIDLE、关机 |
 | [VBAT_FILTER.md](VBAT_FILTER.md) | `vbat.lua` | ADC 采样、EMA 滤波、`BATTERY_UPDATE` |
-| [T3X_POWER_WAKEUP.md](T3X_POWER_WAKEUP.md) | `t3x_ctrl.lua` | GPIO 供电/休眠、`enterSleep`、`sleep_in_progress` |
+| [T31X_POWER_WAKEUP.md](T31X_POWER_WAKEUP.md) | `t31x_ctrl.lua` | GPIO 供电/休眠、`enterSleep`、`sleep_in_progress` |
 | [IPC_SUPERVISION_FLOW.md](IPC_SUPERVISION_FLOW.md) | `ipc_supervision.lua` | IPCALERT → 1004/1011/对账/IPCSTAT |
 | [PERIPHERAL_LED_FLOW.md](PERIPHERAL_LED_FLOW.md) | `peripheral.lua` · `led_ctrl.lua` | PWR/BOOT 按键、蓝灯状态机 |
 | [TIME_SYNC_FLOW.md](TIME_SYNC_FLOW.md) | `time_sync.lua` | SNTP、`AT+TIMESET`、`pushBeforeNotify` |
@@ -79,8 +79,8 @@
 
 | 专题 | 主要代码 | 说明 |
 |------|----------|------|
-| [T3X_POLICY_GATE.md](T3X_POLICY_GATE.md) | `t3x_policy.lua` | `mayPowerT3x`、`requestT3xWake` 门禁与分发 |
-| [HOST_EVENT_PENDING.md](HOST_EVENT_PENDING.md) | `host_event.lua` | HOSTEVT 待处理汇总、`shouldBlockT3xSleep` |
+| [T31X_POLICY_GATE.md](T31X_POLICY_GATE.md) | `t31x_policy.lua` | `mayPowerT31x`、`requestT31xWake` 门禁与分发 |
+| [HOST_EVENT_PENDING.md](HOST_EVENT_PENDING.md) | `host_event.lua` | HOSTEVT 待处理汇总、`shouldBlockT31xSleep` |
 | [USB_CHARGE_POLICY.md](USB_CHARGE_POLICY.md) | `usb_charge.lua` · `usb_policy.lua` | GPIO27/17、rest/HOSTIDLE USB 门禁 |
 | [LOW_POWER_WAKEUP.md](LOW_POWER_WAKEUP.md) | `low_power_wakeup.lua` · `net_tcp.lua` | mqtt/tcp 唤醒通道、rest 进/出钩子 |
 | [LIB_UART_GPIO.md](LIB_UART_GPIO.md) | `uart_bridge.lua` · `gpio_util.lua` | 串口层、GPIO 封装 |
@@ -92,7 +92,7 @@
 
 ## 协议与 AT/MQTT 分发
 
-面向云端下行与 T3x 串口协议，真源在 `user/host_uart.lua`（+ at/cmd/ipc）/ `user/net_mqtt.lua`（+ downlink/uplink/`host_proto`）：
+面向云端下行与 T31x 串口协议，真源在 `user/host_uart.lua`（+ at/cmd/ipc）/ `user/net_mqtt.lua`（+ downlink/uplink/`host_proto`）：
 
 | 专题 / 文档 | 说明 |
 |-------------|------|

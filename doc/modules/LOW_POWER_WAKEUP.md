@@ -72,7 +72,7 @@ flowchart LR
 |------|-------------|
 | MQTT | **保持**，上报 1002 + 周期 1003 |
 | TCP | **关闭**（`SERVCREATE` → DISABLED） |
-| T3x | **断电**（`t3x_ctrl.enterSleep`） |
+| T31x | **断电**（`t31x_ctrl.enterSleep`） |
 | 蜂窝 | 在线 |
 
 `net_mqtt.lua` 模块头注释标明其为 mqtt 模式下的唤醒主通道。
@@ -85,7 +85,7 @@ flowchart LR
 |------|-------------|
 | TCP | **保持**（`onEnterRest` 不关） |
 | MQTT | 可仍运行（业务上报），**非唤醒主通道** |
-| T3x | **断电** |
+| T31x | **断电** |
 | 蜂窝 | 在线 |
 
 完整 TCP 实现需在 `user/net_tcp.lua` 扩展；当前仓库为 **桩模块**。

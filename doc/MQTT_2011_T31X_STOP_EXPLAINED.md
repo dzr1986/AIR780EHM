@@ -2,7 +2,7 @@
 
 > **样机 IMEI**：`862323084068124`  
 > **目的**：把「平台发 2011 → 设备停 TF 写盘」拆成能对照日志的步骤。  
-> **专题协议**：[mqtt_2011_1011_flow.md](mqtt_2011_1011_flow.md) · [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md)
+> **专题协议**：[mqtt_2011_1011_flow.md](mqtt_2011_1011_flow.md) · [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md)
 
 ---
 
@@ -32,9 +32,9 @@ Host AT 的 TX/RX 写在 T31 上：**`/tmp/ipc/cat1_uart.log`**（`tail -f /tmp/
 | 层 | 谁维护 | 1010 / 1003 字段 | 含义 |
 |----|--------|------------------|------|
 | **PIR / 平台会话** | Cat.1 `pir_ctrl` | **`recording`** | 4G 认为「这一段事件录」还开着（PIR 或 2012 开的） |
-| **TF 全天写盘** | T31x `record_*` | **`recordingT3x`** | IPC 正在往卡上写 `ch0_开始.ts.part` |
+| **TF 全天写盘** | T31x `record_*` | **`recordingT31x`** | IPC 正在往卡上写 `ch0_开始.ts.part` |
 
-现场常见：`record_mode=1` 开机就全天写盘 → **`recordingT3x=1`**。  
+现场常见：`record_mode=1` 开机就全天写盘 → **`recordingT31x=1`**。  
 这时若没有 PIR 会话，旧脚本只看 `recording`，会误报 `not_recording`。现行逻辑：没有 PIR 会话也会对 T31x 发停录。
 
 TF 上的文件：
@@ -80,7 +80,7 @@ sequenceDiagram
 | **1004 `ret=-1` `timeout`** | Cat.1 在等 T31x 的 `+RECORDCTRL`，超时了（旧脚本 8 秒） |
 | **1004 `ret=-1` `not_recording`** | 两层都没在录 |
 | **随后 1011** | 停录这件事对平台结案 |
-| **1010 `recordingT3x=0` 且卡上无 `.part`** | T31x 真正停写并封盘 |
+| **1010 `recordingT31x=0` 且卡上无 `.part`** | T31x 真正停写并封盘 |
 | **只有 1004、没有 1011** | 可能已停盘，但 4G 没把 1011 发出去（见 §6） |
 
 `message` 常见值：
@@ -88,7 +88,7 @@ sequenceDiagram
 | 1004 `message` | 含义 |
 |----------------|------|
 | `ok` | 当时有 **PIR 会话**，先结束会话再去停 T31x |
-| `t3x_stop` / `t3x_stopped` | 没有 PIR 会话，停的是 **T31x 全天写盘** |
+| `t31x_stop` / `t31x_stopped` | 没有 PIR 会话，停的是 **T31x 全天写盘** |
 
 工具里不要用会先命中 `2011pre` 的 `--send 2011`（`dataType` 相同，id 却在 extra 里）。按命令 **id=`2011`** 发。
 
@@ -112,7 +112,7 @@ Host AT（停录用）和 COM7（调试用）仍然是两条串口。
 
 ## 4. 复位后 2011 曾经失败的原因
 
-当时链路已经通：2007 能查到卡，2010q 显示 `recordingT3x=1`。  
+当时链路已经通：2007 能查到卡，2010q 显示 `recordingT31x=1`。  
 2011 却变成 **1004 `ret=-1 timeout`，没有 1011**，卡上 `.part` 写了一小段就停涨。
 
 根因叠了三层：
@@ -132,7 +132,7 @@ Cat.1 旧逻辑：先等 +RECORDCTRL，默认只等 8 秒，再回 1004
 若锁永远拿不到 → Host UART 一直堵死，连 +RECORDCTRL 都没有
 ```
 
-`.part` 停涨但 `recordingT3x` 仍为 1：T31x **以为还在录**，泵其实已经不写了。
+`.part` 停涨但 `recordingT31x` 仍为 1：T31x **以为还在录**，泵其实已经不写了。
 
 ---
 
@@ -169,7 +169,7 @@ Cat.1 旧逻辑：先等 +RECORDCTRL，默认只等 8 秒，再回 1004
 | 13:39:11 | 2011 → **1004 `pir_stop ret=0 message=ok`**（当时有 PIR 会话） |
 | 13:39:11 | 卡上文件封成 `ch0_20260817133846_20260817133911.ts` |
 | 13:39:17 | PIR `media_sync`，4G 又认为在录 |
-| 13:39:37 | 2010q：**`recording=0` 且 `recordingT3x=0`**，无 `.part` |
+| 13:39:37 | 2010q：**`recording=0` 且 `recordingT31x=0`**，无 `.part` |
 
 结论（当时）：
 
@@ -182,13 +182,13 @@ Cat.1 旧逻辑：先等 +RECORDCTRL，默认只等 8 秒，再回 1004
 
 | 时刻 | 现象 |
 |------|------|
-| 13:54:52 | 2010q：`recording=1` 且 `recordingT3x=1` |
-| 13:54:52 | 2011 → **1004 `pir_stop ret=0 message=t3x_stop`**（当时没有 PIR 会话，停的是 T31x 全天写盘） |
+| 13:54:52 | 2010q：`recording=1` 且 `recordingT31x=1` |
+| 13:54:52 | 2011 → **1004 `pir_stop ret=0 message=t31x_stop`**（当时没有 PIR 会话，停的是 T31x 全天写盘） |
 | 13:54:52 | **1011** `reason=device source=4g`，`messageId` 与 2011 相同 |
 | 13:54:52 | 立刻再 2010q：两层仍可能是 1（T31x **先 ACK 再封盘**，状态还没刷完） |
-| 13:55:39 | 2010q：**`recording=0` 且 `recordingT3x=0`** |
+| 13:55:39 | 2010q：**`recording=0` 且 `recordingT31x=0`** |
 
-结论：Cat.1 `011` + 新 ipc 后，2011 会立刻 1004+1011，不再 timeout；停录是否完成以 **数秒后的 `recordingT3x`** 为准。
+结论：Cat.1 `011` + 新 ipc 后，2011 会立刻 1004+1011，不再 timeout；停录是否完成以 **数秒后的 `recordingT31x`** 为准。
 
 ---
 
@@ -196,15 +196,15 @@ Cat.1 旧逻辑：先等 +RECORDCTRL，默认只等 8 秒，再回 1004
 
 1. 2008：确认脚本版（目标 `001.000.011`）。
 2. 2007：`tfPresent=1`。
-3. 2010q：看 `recording` / `recordingT3x`。
+3. 2010q：看 `recording` / `recordingT31x`。
 4. 按 **id=`2011`** 发停录（加 `--danger`），等 1004；再等最多约 20 秒看 1011。
-5. 再 2010q：希望 `recordingT3x=0`。
+5. 再 2010q：希望 `recordingT31x=0`。
 6. COM7：`ls /mnt/sdcard/media/vi0/当天/`，不应再有正在涨的 `.part`。
 
 测复位闭环时：2004 reboot → 等 1001 → 2007 / 2010q → 再 2011。  
 不要用 `--run-all` 里会先发 `2011pre` 的路径。不要随手 2009 格式化、2004 off。
 
-PIR 很勤时，2011 刚停、几秒后又会 `detected` / `retrigger`。看停录成不成功，以 **`recordingT3x` 和 `.ts` 封口** 为准，不要只看瞬间的 `recording=1`。
+PIR 很勤时，2011 刚停、几秒后又会 `detected` / `retrigger`。看停录成不成功，以 **`recordingT31x` 和 `.ts` 封口** 为准，不要只看瞬间的 `recording=1`。
 
 ---
 
@@ -215,4 +215,4 @@ PIR 很勤时，2011 刚停、几秒后又会 `detected` / `retrigger`。看停�
 | 本文 | 两层录像、复位掉电、超时原因、1004/1011 怎么判、联调结论 |
 | [mqtt_2011_1011_flow.md](mqtt_2011_1011_flow.md) | 2011/1011 字段与 PIR 会话代码路径 |
 | [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) | `AT+RECORDCTRL` 与 2011/2012 |
-| [T3X_RECORD_MQTT_FLOW.md](T3X_RECORD_MQTT_FLOW.md) | 术语：停的是 TF 本地写盘，不是「云端录像」 |
+| [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md) | 术语：停的是 TF 本地写盘，不是「云端录像」 |

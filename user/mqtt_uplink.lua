@@ -29,6 +29,7 @@ function bind(C)
     local function idEnabled(...) return C.dl.idEnabled(...) end
     local function refDevId(...) return C.dl.refDevId(...) end
     local function pirDetectExtra(...) return C.dl.pirDetectExtra(...) end
+    local getStatIv
 
     local pirUl = require("mqtt_ul_pir").bind(C, { pirDetectExtra = pirDetectExtra })
     local uploadUl = require("mqtt_ul_upload").bind(C)
@@ -381,7 +382,7 @@ function bind(C)
     pub.pubUploadNeed = uploadUl.pubUploadNeed
     pub.pubPirStart = pirUl.pubPirStart
     pub.pubPirStop = pirUl.pubPirStop
-    pub.pubT3xStop = pirUl.pubT3xStop
+    pub.pubT31xStop = pirUl.pubT31xStop
     pub.pubVersion = pubVersion
 
     ----------------------------------------------------------------
@@ -436,7 +437,7 @@ function bind(C)
         sys.publish(APP_EVENTS.MQTT_STATUS_INTERVAL_CHANGED)
     end
 
-    local function getStatIv()
+    function getStatIv()
         local sec = clampInterval(power.getLowPowerInterval())
         if sec then
             return sec
