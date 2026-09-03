@@ -3,7 +3,7 @@
 > **代码真源**：[`user/host_event.lua`](../../user/host_event.lua)  
 > **配置**：`HOST_EVT_CFG`（[`config.lua`](../../user/config.lua)）  
 > **消费者**：[`user/host_uart.lua`](../../user/host_uart.lua) · [`user/t31x_ctrl.lua`](../../user/t31x_ctrl.lua) · [`user/net_mqtt.lua`](../../user/net_mqtt.lua)  
-> **IPC 对照**：[T31X_IPC_4G_INTERACTION.md](../T31X_IPC_4G_INTERACTION.md)
+> **IPC 对照**：[T31X_IPC_4G_INTERACTION.md](../t31x/T31X_IPC_4G_INTERACTION.md)
 
 ---
 

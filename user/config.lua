@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : config.lua
 -- Module   : 硬件与策略总配置编排（配置片段见 config/ 子目录）
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- Note     : 本文件仅按依赖顺序 require 各片段；所有配置以 _G.X_CFG 暴露，
 --            由 config_manager 统一读取。新增配置请归入对应 config/<group>.lua。
 --            加载顺序必须保持：features 最先（定义 FEATURE_CFG），其余按依赖排列。

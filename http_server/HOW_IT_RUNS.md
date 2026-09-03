@@ -2,14 +2,14 @@
 
 本目录有两套实现，**协议相同**，端口都是 **7003**，不能同时听：
 
-| | [python_project](python_project/) | [java_project](java_project/) |
+| | [python_project](python_project) | [java_project](java_project) |
 |--|-------------------------------|-----------------------------|
 | 现网状态 | 2026-08-20 正在跑（见 `RUNTIME.txt`） | 仓库新增，用来替换 Python |
 | 进程 | `python3 app.py` | `java -jar video-upload.jar` |
 | systemd | `python_project/systemd/video-upload.service` | `java_project/systemd/video-upload-java.service` |
 | 落盘 | `incoming/dynamic/`、`incoming/playback/` | 同左（目录用环境变量指） |
 
-OTA / Nginx / MySQL 不在这里，见仓库 `ota_server/`。协议与现网库存：[doc/VIDEO_UPLOAD_SERVER.md](../doc/VIDEO_UPLOAD_SERVER.md)
+OTA / Nginx / MySQL 不在这里，见仓库 `ota_server/`。协议与现网库存：[doc/mqtt/VIDEO_UPLOAD_SERVER.md](../doc/mqtt/VIDEO_UPLOAD_SERVER.md)
 
 ---
 

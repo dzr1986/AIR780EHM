@@ -1,6 +1,6 @@
 # MQTT 下行文档 vs Cat.1 Lua 差异
 
-对照：`doc/MQTT_DOWNLINK_862323084068124.txt`（2026-08-10）  
+对照：`doc/mqtt/MQTT_DOWNLINK_862323084068124.txt`（2026-08-10）  
 实现：`user/net_mqtt.lua`、`user/main.lua`、`user/config.lua`  
 测试客户端按 **Lua 实际行为** 组包；文档仅作命令清单。
 

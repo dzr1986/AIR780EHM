@@ -3,7 +3,7 @@
 
 REPLACEMENTS 含历批 rename 映射；「151 批」段（bldAtBody->buildStatBody、ntfHostIdle->
 notifyHostIdle、shdHostSleep->shouldHostSleep、setStatIv->setStatInterval 等 30 组）已于
-2026-09-04 在代码实施（doc/CAT1_API_NAMING.md §4），本脚本恢复启用。
+2026-09-04 在代码实施（doc/overview/CAT1_API_NAMING.md §4），本脚本恢复启用。
 """
 
 from __future__ import annotations
@@ -106,7 +106,7 @@ REPLACEMENTS: list[tuple[str, str]] = [
     ("high_ms", "highMs"),
     ("app_event", "appEvent"),
     ("boot_gpio", "bootGpio"),
-    # 151 批（与 doc/CAT1_API_NAMING.md §4 同步；2026-09-04 起代码已实施，可安全运行）
+    # 151 批（与 doc/overview/CAT1_API_NAMING.md §4 同步；2026-09-04 起代码已实施，可安全运行）
     ("bldReqOpts", "buildReqOpts"),
     ("refCloudF1003", "refCloudStat1003"),
     ("setStatIv", "setStatInterval"),

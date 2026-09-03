@@ -2,7 +2,7 @@
 
 > **代码真源**：[`user/lp_wakeup.lua`](../../user/lp_wakeup.lua) · [`user/net_tcp.lua`](../../user/net_tcp.lua)  
 > **配置**：`LOW_POWER_WAKEUP_CFG.mode`（[`config.lua`](../../user/config.lua)）  
-> **详述**：[CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](../CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)  
+> **详述**：[CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](../power/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)  
 > **关联**：[NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) · [APP_EVENT_BUS.md](APP_EVENT_BUS.md)
 
 ---
@@ -115,7 +115,7 @@ local LOW_POWER_WAKEUP_MODE = "mqtt"  -- 或 "tcp"
 _G.LOW_POWER_WAKEUP_CFG = { mode = LOW_POWER_WAKEUP_MODE }
 ```
 
-切换模式后需与 `host_uart` GETCFG/SETCFG、云端下行策略一致；详见 [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](../CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)。
+切换模式后需与 `host_uart` GETCFG/SETCFG、云端下行策略一致；详见 [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](../power/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)。
 
 ---
 

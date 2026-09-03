@@ -2,7 +2,7 @@
 
 > **代码真源**：[`user/peripheral.lua`](../../user/peripheral.lua) · [`lib/led_ctrl.lua`](../../lib/led_ctrl.lua) · [`user/gpio_cfg.lua`](../../user/gpio_cfg.lua)（`KEY_CONFIG`）  
 > **配置**：`KEY_CONFIG`（`gpio_cfg.lua`）· `LED_CFG`（[`config.lua`](../../user/config.lua) 编排）  
-> **用户说明**：[LED_INDICATORS.md](../LED_INDICATORS.md) · [KEY_GPIO.md](../KEY_GPIO.md)  
+> **用户说明**：[LED_INDICATORS.md](../hardware/LED_INDICATORS.md) · [KEY_GPIO.md](../hardware/KEY_GPIO.md)  
 > **事件订阅**：[APP_EVENT_BUS.md](APP_EVENT_BUS.md)
 
 ---
@@ -68,7 +68,7 @@ flowchart TD
 | `ok` / `charging_ok` | 正常或充电中已联网 | 常亮 |
 | `unknown` | 尚无有效 ADC | 等待 |
 
-**充电抑制**：`suppress_low_when_charging=true` 时，USB 插入且 `isCharging()==1` 不因低电快闪（详见 [LED_INDICATORS.md](../LED_INDICATORS.md)）。
+**充电抑制**：`suppress_low_when_charging=true` 时，USB 插入且 `isCharging()==1` 不因低电快闪（详见 [LED_INDICATORS.md](../hardware/LED_INDICATORS.md)）。
 
 ### 3.1 开机序列
 

@@ -2,7 +2,7 @@
 
 > **代码真源**：[`user/t31x_ctrl.lua`](../../user/t31x_ctrl.lua) · [`user/t31x_policy.lua`](../../user/t31x_policy.lua) · [`user/app.lua`](../../user/app.lua)  
 > **策略详述**：[T31X_POLICY_GATE.md](T31X_POLICY_GATE.md) · **待处理业务**：[HOST_EVENT_PENDING.md](HOST_EVENT_PENDING.md)  
-> **关联**：[T31X_HOSTEVT_SLEEP.md](../T31X_HOSTEVT_SLEEP.md) · [BOOT_SHUTDOWN_SOUND.md](../BOOT_SHUTDOWN_SOUND.md)
+> **关联**：[T31X_HOSTEVT_SLEEP.md](../t31x/T31X_HOSTEVT_SLEEP.md) · [BOOT_SHUTDOWN_SOUND.md](../pir/BOOT_SHUTDOWN_SOUND.md)
 
 ---
 

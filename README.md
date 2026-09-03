@@ -1,13 +1,13 @@
 # 780EHM_PJ
 
-技术文档：**[`doc/README.md`](doc/README.md)** · 模块树：**[`doc/LUA_MODULES.md`](doc/LUA_MODULES.md)** · 命名约定：**[`doc/T31X_NAMING.md`](doc/T31X_NAMING.md)** · API 真源：**[`doc/CAT1_API_NAMING.md`](doc/CAT1_API_NAMING.md)**
+技术文档：**[`doc/README.md`](doc/README.md)** · 模块树：**[`doc/overview/LUA_MODULES.md`](doc/overview/LUA_MODULES.md)** · 命名约定：**[`doc/overview/T31X_NAMING.md`](doc/overview/T31X_NAMING.md)** · API 真源：**[`doc/overview/CAT1_API_NAMING.md`](doc/overview/CAT1_API_NAMING.md)**
 
 Air780EHM + T31x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`，真源共 **58 + 15 = 73** 个模块，2026-09-03 实测）。
 
 ## 架构一览
 
 ```
-main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/CODE_DOC_AUDIT.md §3）
+main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE_DOC_AUDIT.md §3）
   ├─ config.lua          26 行编排 → require 10 个 config 片段（全量 _G.X_CFG，见下）
   ├─ cell_boot.start()   [loader.enabled("cellular")] 蜂窝 SIM/APN 引导（lib/）
   ├─ usb_rndis.open()    [loader.enabled("rndis")] 可选 USB RNDIS
@@ -20,15 +20,15 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/CODE_DOC_AUDI
        └─ t31x_ctrl / t31x_policy / t31x_notify / ipc_supv   协处理器电源门禁 / IPC 告警对账
 ```
 
-> 完整族树与职责见 [`doc/LUA_MODULES.md`](doc/LUA_MODULES.md) §1.1（模块树为真源，勿手工复制清单）。
+> 完整族树与职责见 [`doc/overview/LUA_MODULES.md`](doc/overview/LUA_MODULES.md) §1.1（模块树为真源，勿手工复制清单）。
 
 | 项 | 值 |
 |----|-----|
 | 配置真源 | `user/config.lua` 编排 → 片段 `features`/`cellular`/`t31x_burn`/`gpio_cfg`/`led_pir`/`battery`/`host`/`net`/`flags`/`events`（均在 `user/` 顶层，全部 `_G.X_CFG`） |
-| 文档 | [`doc/`](doc/)（[doc/README.md](doc/README.md) 全量索引） |
+| 文档 | [`doc/`](doc)（[doc/README.md](doc/README.md) 全量索引） |
 | 栈选择 | `APP_STACK = { mqtt = "net_mqtt", uart = "uart_bridge" }` |
 | 核心固件 | `luatos.json` → Air780EHM SOC |
-| 脚本区 | 量产约 **342KB / 512KB** 上限；可选裁剪见 [doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md) |
+| 脚本区 | 量产约 **342KB / 512KB** 上限；可选裁剪见 [doc/power/CAT1_USER_LIB_SLIM.md](doc/power/CAT1_USER_LIB_SLIM.md) |
 
 ## 目录
 
@@ -36,7 +36,7 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/CODE_DOC_AUDI
 |------|------|
 | `user/` | 入口 / 编排 / config 片段 / MQTT 族 / T31x `hif_*` 族 / PIR / 外设 / FOTA / 授时（58 文件） |
 | `lib/` | 驱动与公共库：串口 / GPIO / USB / 蜂窝引导 / 唤醒策略 / 加载器 / 系统（15 文件） |
-| `doc/` | 协议、硬件、配置、架构说明（Markdown 索引见 [doc/README.md](doc/README.md)） |
+| `doc/` | 文档库（按主题分目录：`overview/` `hardware/` `power/` `pir/` `mqtt/` `t31x/` `release/` `modules/`，`_audit/` 历史留档、`archive/` 迁移 stub；索引见 [doc/README.md](doc/README.md)） |
 | `archive/` | 历史归档（已删模块留档、旧文档迁移表） |
 | `firmware/` `量产/` | 发布固件产物（`.soc` / `.binpkg`） |
 | `ota_server/` `http_server/` `video_upload_server/` `patch_server/` | 服务端（Java / Python，独立文档） |
@@ -76,7 +76,7 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/CODE_DOC_AUDI
 | `vbat.lua` / `battery_guard.lua` | 电池 ADC 采样 / 电量保护 |
 | `lp_wakeup.lua` / `host_event.lua` / `fota_svc.lua` / `sound_prompt.lua` / `time_sync.lua` | rest 唤醒通道 / HOSTEVT / MQTT 2004 OTA / 提示音 / 授时 |
 
-精简与开关说明：[doc/CAT1_SLIMMING_FLOW.md](doc/CAT1_SLIMMING_FLOW.md) · [doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md) · 低功耗策略 [doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)
+精简与开关说明：[doc/power/CAT1_SLIMMING_FLOW.md](doc/power/CAT1_SLIMMING_FLOW.md) · [doc/power/CAT1_USER_LIB_SLIM.md](doc/power/CAT1_USER_LIB_SLIM.md) · 低功耗策略 [doc/power/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](doc/power/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)
 
 ## GPIO 配置速查
 
@@ -87,11 +87,11 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/CODE_DOC_AUDI
 | `init_level` | `gpio.setup` 初始电平（0/1），默认灭/断电多为 **0** |
 | `on_level` | 逻辑开启电平（LED 亮、T31x 供电多为 **1**） |
 
-`GPIO_IN` 使用 `pull`、`trigger_mode`、`debounce_ms`、`active_level`（见 [doc/CONFIG.md](doc/CONFIG.md)）。
+`GPIO_IN` 使用 `pull`、`trigger_mode`、`debounce_ms`、`active_level`（见 [doc/overview/CONFIG.md](doc/overview/CONFIG.md)）。
 
 ## 功能开关
 
-`user/flags.lua` → `MODULE_FLAGS` 裁剪服务；`FEATURE_CFG` 见 `user/features.lua`（[doc/CAT1_USER_LIB_SLIM.md](doc/CAT1_USER_LIB_SLIM.md)）。
+`user/flags.lua` → `MODULE_FLAGS` 裁剪服务；`FEATURE_CFG` 见 `user/features.lua`（[doc/power/CAT1_USER_LIB_SLIM.md](doc/power/CAT1_USER_LIB_SLIM.md)）。
 
 ## 打包
 

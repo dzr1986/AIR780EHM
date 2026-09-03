@@ -1,6 +1,6 @@
 # 日常只用这个目录里的界面
 
-双击即可。烧录步骤见 [`doc/CAT1_FLASH_FLOW.md`](../../doc/CAT1_FLASH_FLOW.md)。
+双击即可。烧录步骤见 [`doc/release/CAT1_FLASH_FLOW.md`](../../doc/release/CAT1_FLASH_FLOW.md)。
 
 | 文件 | 做什么 |
 |------|--------|

@@ -1,7 +1,7 @@
 # ipc_supv IPC 异常监督
 
 > **代码真源**：[`user/ipc_supv.lua`](../../user/ipc_supv.lua)（调度 + `alertCode`/`map1011`/`reconcile` 契约表，原 `ipc_supervision.lua` / `ipc_alert_contract.lua` 已并入）  
-> **契约**：[T31X_IPC_ALERT_CONTRACT.md](../T31X_IPC_ALERT_CONTRACT.md)  
+> **契约**：[T31X_IPC_ALERT_CONTRACT.md](../t31x/T31X_IPC_ALERT_CONTRACT.md)  
 > **关联**：[HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md)（`AT+IPCALERT`）· [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md)（1011 停录）
 
 ---

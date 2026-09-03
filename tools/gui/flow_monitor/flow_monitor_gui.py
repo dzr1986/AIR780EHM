@@ -3,7 +3,7 @@
 """人形 / PIR / UART / MQTT 流程检测界面。
 
 通讯展示按 3GPP AT 习惯：命令 / 参数 / 结果码成对；相同帧合并计数，避免刷屏。
-对照 doc/PERSON_CNT_UART_MQTT_FLOW.md。不发 2011 / 2002 enter / 2004。
+对照 doc/power/PERSON_CNT_UART_MQTT_FLOW.md。不发 2011 / 2002 enter / 2004。
 """
 from __future__ import annotations
 

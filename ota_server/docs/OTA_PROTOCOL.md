@@ -1,13 +1,13 @@
 # OTA 升级功能与协议分析
 
-本文描述 [`ota_server/`](../) 的固件升级能力与协议，并对照 780EHM_PJ 固件侧实现。
+本文描述 [`ota_server/`](..) 的固件升级能力与协议，并对照 780EHM_PJ 固件侧实现。
 
 相关文档：
 
 - **完整流程与代码完整性**：[OTA_FLOW.md](OTA_FLOW.md) ← 推荐先看
 - 部署手册：[../README.md](../README.md)
 - 固件对接（不改 lua）：[OTA_SERVER.md](OTA_SERVER.md)
-- MQTT 2004/1004：[MQTT_DOWNLINK.md](../../doc/MQTT_DOWNLINK.md) §6.3 / §6.6
+- MQTT 2004/1004：[MQTT_DOWNLINK.md](../../doc/mqtt/MQTT_DOWNLINK.md) §6.3 / §6.6
 
 ---
 
@@ -44,7 +44,7 @@ sequenceDiagram
   MQTT->>OTA: Subscribe event 更新任务
 ```
 
-**固件无需改 lua**：MQTT 2004 带 `url` 时，现有 `user/fota_svc.lua` 直接交给 libfota2（[MQTT_DOWNLINK.md](../../doc/MQTT_DOWNLINK.md) §6.6）。
+**固件无需改 lua**：MQTT 2004 带 `url` 时，现有 `user/fota_svc.lua` 直接交给 libfota2（[MQTT_DOWNLINK.md](../../doc/mqtt/MQTT_DOWNLINK.md) §6.6）。
 
 ---
 
@@ -145,7 +145,7 @@ Host: ota.example.com
 
 ## 3. MQTT 协议（触发与状态）
 
-与 [MQTT_PROTOCOL.md](../../doc/MQTT_PROTOCOL.md) / [MQTT_DOWNLINK.md](../../doc/MQTT_DOWNLINK.md) 一致。`ota_server` 作 MQTT 桥接，**不改变**设备协议。
+与 [MQTT_PROTOCOL.md](../../doc/mqtt/MQTT_PROTOCOL.md) / [MQTT_DOWNLINK.md](../../doc/mqtt/MQTT_DOWNLINK.md) 一致。`ota_server` 作 MQTT 桥接，**不改变**设备协议。
 
 ### 3.1 下行：OTA 服务器 → 设备（2004）
 

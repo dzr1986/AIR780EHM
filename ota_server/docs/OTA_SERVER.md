@@ -1,6 +1,6 @@
 # 自建 OTA 服务器（780EHM_PJ 对接说明）
 
-本项目使用 [`../`](../) 作为 **自建 HTTP OTA 服务端**（差分包、MySQL、MQTT 2004 触发、Nginx）。
+本项目使用 [`../`](..) 作为 **自建 HTTP OTA 服务端**（差分包、MySQL、MQTT 2004 触发、Nginx）。
 
 端到端说明：[OTA_CHANNELS.md](OTA_CHANNELS.md)。部署：[../README.md](../README.md)。管理台：[OTA_ADMIN.md](OTA_ADMIN.md)。
 
@@ -21,7 +21,7 @@ FOTA_CFG.self_url = "http://43.136.55.143/api/site/firmware_upgrade?"
 
 无 `url` 且未配 `self` 时，模组走 `libfota2` 默认地址，**不经过本服务器**。
 
-对应协议：[MQTT_DOWNLINK.md](../../doc/MQTT_DOWNLINK.md) **§6.7**。
+对应协议：[MQTT_DOWNLINK.md](../../doc/mqtt/MQTT_DOWNLINK.md) **§6.7**。
 
 ---
 
@@ -104,8 +104,8 @@ OTA 服务器下发的 MQTT 载荷示例：
 | [OTA_FLOW.md](OTA_FLOW.md) | **完整流程**（创建固件→MQTT 触发→HTTP 拉包→1004 回传）+ 代码完整性 |
 | [OTA_PROTOCOL.md](OTA_PROTOCOL.md) | 协议字段详解 |
 | [../README.md](../README.md) | 服务端部署、manifest、故障排查 |
-| [MQTT_DOWNLINK.md](../../doc/MQTT_DOWNLINK.md) §6.6 | 固件已支持的「自建 url」2004 格式 |
-| [MQTT_PROTOCOL.md](../../doc/MQTT_PROTOCOL.md) §4.4 | 2004 / 1004 OTA 协议 |
+| [MQTT_DOWNLINK.md](../../doc/mqtt/MQTT_DOWNLINK.md) §6.6 | 固件已支持的「自建 url」2004 格式 |
+| [MQTT_PROTOCOL.md](../../doc/mqtt/MQTT_PROTOCOL.md) §4.4 | 2004 / 1004 OTA 协议 |
 
 ---
 

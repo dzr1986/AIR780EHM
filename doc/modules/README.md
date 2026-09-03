@@ -1,12 +1,12 @@
 # Lua 模块专题文档
 
-> 总览：[LUA_MODULES.md](../LUA_MODULES.md)（§1.1 **模块树真源**：user 58 + lib 15 = 73）· 拆分后治理：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](../USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)
-> API 命名：[CAT1_API_NAMING.md](../CAT1_API_NAMING.md) · 合并与实机回归：[PR_MERGE_REGRESSION.md](PR_MERGE_REGRESSION.md)
-> 协议真源：[MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) · [UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md)
+> 总览：[LUA_MODULES.md](../overview/LUA_MODULES.md)（§1.1 **模块树真源**：user 58 + lib 15 = 73）· 拆分后治理：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](../overview/USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)
+> API 命名：[CAT1_API_NAMING.md](../overview/CAT1_API_NAMING.md) · 合并与实机回归：[PR_MERGE_REGRESSION.md](PR_MERGE_REGRESSION.md)
+> 协议真源：[MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md) · [UART_AT_COMMANDS.md](../mqtt/UART_AT_COMMANDS.md)
 
 本目录按 **host_uart 族 / net_mqtt 族 / user 业务 / lib 策略与底层** 四类索引，共 **20** 份专题 + 1 份合并回归清单。
 
-> **2026-09-03 更新**：表内文件名已对齐 `user/`（58）/ `lib/`（15）真实文件。**子模块名仅作语义分组**，行数/bind 顺序真源见 [LUA_MODULES.md](../LUA_MODULES.md) §1.1。
+> **2026-09-03 更新**：表内文件名已对齐 `user/`（58）/ `lib/`（15）真实文件。**子模块名仅作语义分组**，行数/bind 顺序真源见 [LUA_MODULES.md](../overview/LUA_MODULES.md) §1.1。
 
 ---
 
@@ -45,13 +45,13 @@
 | `mqtt_conn.lua` | topic / 配置 / 组网 / 快照（连接外围合一） | 同上 |
 | `mqtt_uplink.lua` | 100x 上行 + 1003 interval | 同上 |
 | `mqtt_ul_pir.lua` | PIR 上行 1010–1012 | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) |
-| `mqtt_ul_upload.lua` | 上传上行 1013 | [MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](../MQTT_CLIP_UPLOAD_CLOSED_LOOP.md) |
+| `mqtt_ul_upload.lua` | 上传上行 1013 | [MQTT_CLIP_UPLOAD_CLOSED_LOOP.md](../mqtt/MQTT_CLIP_UPLOAD_CLOSED_LOOP.md) |
 | `mqtt_downlink.lua` | 2001–2013 下行总线 + 待 T31x 队列 | [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) |
 | `mqtt_dl_ctrl.lua` | 2004 控制（reboot/off/ota/wled） | 同上 |
 | `mqtt_dl_dev.lua` | 2002 rest / 2003 status / 2006 identity | 同上 |
 | `mqtt_dl_pir.lua` | PIR 下行 2010/2011/2012 | [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md) |
 | `mqtt_dl_tf.lua` | TF 卡查询与格式化 | 同上 |
-| `mqtt_dl_upload.lua` | 2013 上传视频下行 | [MQTT_2013_1013_UPLOAD_VIDEO.md](../MQTT_2013_1013_UPLOAD_VIDEO.md) |
+| `mqtt_dl_upload.lua` | 2013 上传视频下行 | [MQTT_2013_1013_UPLOAD_VIDEO.md](../mqtt/MQTT_2013_1013_UPLOAD_VIDEO.md) |
 | `mqtt_dispatch.lua` | 下行 JSON 分发 + HOSTEVT/USB 钩子 | [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) |
 | `mqtt_hproto.lua` | 2020–2031 host query/set（经 T31x UART） | 同上 |
 
@@ -78,7 +78,7 @@
 | [SOUND_PROMPT_FLOW.md](SOUND_PROMPT_FLOW.md) | `sound_prompt.lua` | `AT+PLAYSOUND` 冷启动/关机提示音 |
 | [LOW_POWER_WAKEUP.md](LOW_POWER_WAKEUP.md) | `lp_wakeup.lua` · `net_tcp.lua` | rest 期 mqtt/tcp 唤醒通道进/出钩子 |
 
-无独立专题的 user 模块（树/职责见 [LUA_MODULES.md](../LUA_MODULES.md) §1.1）：`main` · `config`（编排 + 10 片段）· `t31x_notify`（host_uart 族另见上表）。
+无独立专题的 user 模块（树/职责见 [LUA_MODULES.md](../overview/LUA_MODULES.md) §1.1）：`main` · `config`（编排 + 10 片段）· `t31x_notify`（host_uart 族另见上表）。
 
 ---
 
@@ -93,7 +93,7 @@
 | [LIB_RUNTIME_UTILS.md](LIB_RUNTIME_UTILS.md) | `lib/device_id.lua` · `lib/watchdog.lua` | IMEI、硬件 WDT |
 | [T31X_POLICY_GATE.md](T31X_POLICY_GATE.md) | `user/t31x_policy.lua` | 见上（user/ 业务节） |
 
-其余常驻库（无独立专题）：`sys` · `runtime_power` · `config_manager` · `module_loader` · `utils`，职责见 [LUA_MODULES.md](../LUA_MODULES.md) §4。
+其余常驻库（无独立专题）：`sys` · `runtime_power` · `config_manager` · `module_loader` · `utils`，职责见 [LUA_MODULES.md](../overview/LUA_MODULES.md) §4。
 
 ---
 
@@ -103,9 +103,9 @@
 |-------------|------|
 | [HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md) | `AT_CMD_TABLE`、URC 注册表、HOSTIDLE 门禁、bind 顺序 |
 | [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) | `DOWNLINK_HANDLERS`、`DL2004_ACTIONS`、`mqtt_conn.*` 约束 |
-| [MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md) | 平台 MQTT 客户端联调（MQTTX、冒烟、mosquitto） |
-| [MQTT_ALL_CMD_FLOW_TEST.md](../MQTT_ALL_CMD_FLOW_TEST.md) | 全指令流程与实机结果（`--run-all`、Cat.1 / T31x） |
-| [MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) | 下行 200x 字段全集 · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) |
+| [MQTT_CLIENT_E2E_TEST.md](../mqtt/MQTT_CLIENT_E2E_TEST.md) | 平台 MQTT 客户端联调（MQTTX、冒烟、mosquitto） |
+| [MQTT_ALL_CMD_FLOW_TEST.md](../mqtt/MQTT_ALL_CMD_FLOW_TEST.md) | 全指令流程与实机结果（`--run-all`、Cat.1 / T31x） |
+| [MQTT_DOWNLINK.md](../mqtt/MQTT_DOWNLINK.md) | 下行 200x 字段全集 · [MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md) |
 
 ---
 

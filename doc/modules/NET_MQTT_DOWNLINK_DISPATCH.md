@@ -9,7 +9,7 @@
 > **1003 interval**：[`user/mqtt_uplink.lua`](../../user/mqtt_uplink.lua)（周期上报/持久化/电量订阅）  
 > **上行子模块**：[`mqtt_ul_pir.lua`](../../user/mqtt_ul_pir.lua)（1010–1012）、[`mqtt_ul_upload.lua`](../../user/mqtt_ul_upload.lua)（1013）  
 > **2020–2031 表**：[`user/mqtt_hproto.lua`](../../user/mqtt_hproto.lua)  
-> **协议**：[MQTT_DOWNLINK.md](../MQTT_DOWNLINK.md) · [MQTT_PROTOCOL.md](../MQTT_PROTOCOL.md) · **联调**：[MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md)
+> **协议**：[MQTT_DOWNLINK.md](../mqtt/MQTT_DOWNLINK.md) · [MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md) · **联调**：[MQTT_CLIENT_E2E_TEST.md](../mqtt/MQTT_CLIENT_E2E_TEST.md)
 
 对外 API 仍挂在 `net_mqtt`（`app` / `host_uart` / `t31x_ctrl` 只 `require "net_mqtt"`）。子模块经 `ctx.pub` / `ctx.dl` 注入，不 `require "net_mqtt"`。`notifyPowerOff` 留在主文件。
 

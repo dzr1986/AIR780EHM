@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : config/features.lua
 -- Module   : 功能开关宏 + RNDIS/低功耗唤醒/低功耗/USB_HOST_EVT/APP 元信息/运行态种子
--- Arch     : 拆分自 config.lua（见 doc/LUA_MODULES.md）。由 config.lua 按顺序 require。
+-- Arch     : 拆分自 config.lua（见 doc/overview/LUA_MODULES.md）。由 config.lua 按顺序 require。
 -- Note     : 必须最先加载，其余片段依赖 _G.FEATURE_CFG。
 -- ================================================================
 

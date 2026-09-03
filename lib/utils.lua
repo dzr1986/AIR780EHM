@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : utils.lua
 -- Module   : 通用工具函数：JSON 辅助、表操作、类型检查、字符串转义等基础 helper
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 local loader = require "module_loader"

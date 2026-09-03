@@ -1,6 +1,6 @@
 # 现网 Python 快照（uploadVideo :7003）
 
-本目录对应 `http_server/python_project`，从腾讯云 `/home/ubuntu/video_upload` 克隆。运行方式见 [../HOW_IT_RUNS.md](../HOW_IT_RUNS.md)。Java 替换件在 [../java_project](../java_project/)。
+本目录对应 `http_server/python_project`，从腾讯云 `/home/ubuntu/video_upload` 克隆。运行方式见 [../HOW_IT_RUNS.md](../HOW_IT_RUNS.md)。Java 替换件在 [../java_project](../java_project)。
 
 监听 `http://43.136.55.143:7003/admin/api/v1/uploadVideo`，协议与南京后台
 `http://112.86.146.218:7003/admin/api/v1/uploadVideo` 一致。

@@ -56,7 +56,7 @@ main (2100851)
 | 三档电量 | `battery_guard.lua` · `config.lua` | >20% 常电；5~20% 仅 HOSTIDLE；≤5% rest+关机+挂 PIR |
 | HOSTIDLE 30s | `battery_guard.lua` · `app.lua` | PIR 唤醒后 30s 内拒 HOSTIDLE |
 | USB 去重 | `app.lua` · `t31x_ctrl.lua` | 插 USB / 出 rest 不重复 `onT31xWake`；`sleep_in_progress` 互斥 |
-| 文档 | `doc/LUA_MODULES.md` 等 | 说明同步 |
+| 文档 | `doc/overview/LUA_MODULES.md` 等 | 说明同步 |
 
 ### 3.2 PR #5 独有 — 表驱动（须协议回归）
 
@@ -97,10 +97,10 @@ main (2100851)
 | B4 | USB 插入 | 取消进行中的 PWR 长按定时器 | |
 | B5 | 充电中低电 | 蓝灯 **不** 低电快闪（见 LED_INDICATORS） | |
 
-### 4.3 MQTT 下行（PR #5）— [MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md) · [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md)
+### 4.3 MQTT 下行（PR #5）— [MQTT_CLIENT_E2E_TEST.md](../mqtt/MQTT_CLIENT_E2E_TEST.md) · [NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md)
 
 用 **平台 MQTT 客户端** Publish 到 `/panshi/device/{IMEI}/`，Subscribe `/panshi/app/{IMEI}/#` 收上行。  
-详细步骤、mosquitto 命令与 JSON 模板见 [MQTT_CLIENT_E2E_TEST.md](../MQTT_CLIENT_E2E_TEST.md) §4–§5。
+详细步骤、mosquitto 命令与 JSON 模板见 [MQTT_CLIENT_E2E_TEST.md](../mqtt/MQTT_CLIENT_E2E_TEST.md) §4–§5。
 
 | # | dataType | 场景 | 预期 | ☐ |
 |---|----------|------|------|---|

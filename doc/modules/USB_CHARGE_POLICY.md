@@ -2,7 +2,7 @@
 
 > **代码真源**：[`lib/usb_charge.lua`](../../lib/usb_charge.lua)（含 `blocksHostIdle`/`blocks4gRest` 门禁，原 `usb_policy` 已并入）  
 > **配置**：`GPIO_IN.usb_det` / `chg_state` · `HOST_USB_CFG`（[`config.lua`](../../user/config.lua) 编排 · [`features.lua`](../../user/features.lua) 定义）  
-> **用户说明**：[CHARGE_BATTERY.md](../CHARGE_BATTERY.md) · [LED_INDICATORS.md](../LED_INDICATORS.md)  
+> **用户说明**：[CHARGE_BATTERY.md](../power/CHARGE_BATTERY.md) · [LED_INDICATORS.md](../hardware/LED_INDICATORS.md)  
 > **编排**：[APP_EVENT_BUS.md](APP_EVENT_BUS.md) · [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)
 
 ---

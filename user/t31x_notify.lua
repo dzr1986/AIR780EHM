@@ -2,7 +2,7 @@
 -- Filename : t31x_notify.lua
 -- Module   : T31x 通知辅助：AT 指令封装、URC 解析、IPC 事件上报桥
 -- Layer    : L2 协处理器服务（被 t31x_ctrl / t31x_policy 依赖）
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 require "sys"

@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : module_loader.lua
 -- Module   : 模块加载器：按需懒加载、依赖解耦、MODULE_FLAGS 裁剪开关
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 require "config"

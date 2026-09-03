@@ -1,12 +1,12 @@
 -- ================================================================
 -- Filename : config_manager.lua
 -- Module   : 配置管理：JSON 持久化读写、默认值合并、配置热更新
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 -- config_manager: 统一配置访问框架
 -- 替代各模块散落的 cfg() + 手工 merge 默认值逻辑
--- 约定见 doc/CAT1_MODULE_FRAMEWORK.md
+-- 约定见 doc/overview/CAT1_MODULE_FRAMEWORK.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M

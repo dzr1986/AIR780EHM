@@ -26,7 +26,7 @@
 - 需要 **T31 新固件**（`AT+UPLOADPROGRESS`）+ **Cat.1 新脚本**；
   旧固件仍只有 `queued + reply=0`，无进度字段
 
-协议细节见 `doc/MQTT_2013_1013_UPLOAD_VIDEO.md`、`doc/MQTT_CLIP_UPLOAD_CLOSED_LOOP.md`。
+协议细节见 `doc/mqtt/MQTT_2013_1013_UPLOAD_VIDEO.md`、`doc/mqtt/MQTT_CLIP_UPLOAD_CLOSED_LOOP.md`。
 
 ---
 
@@ -182,7 +182,7 @@ tools/mqtt_tools_gui.bat --tab playback
 
 ## 10. 相关文档
 
-- `doc/MQTT_2013_1013_UPLOAD_VIDEO.md` —— 2013/1013 协议定义
-- `doc/MQTT_CLIP_UPLOAD_CLOSED_LOOP.md` —— 上传完成闭环
-- `doc/MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md` —— 检测回放链路
+- `doc/mqtt/MQTT_2013_1013_UPLOAD_VIDEO.md` —— 2013/1013 协议定义
+- `doc/mqtt/MQTT_CLIP_UPLOAD_CLOSED_LOOP.md` —— 上传完成闭环
+- `doc/mqtt/MQTT_CLIP_UPLOAD_DETECT_PLAYBACK.md` —— 检测回放链路
 - `tools/gui/mqtt/mqtt_tools_gui.py` —— Python 版工具（含 playback 页签）

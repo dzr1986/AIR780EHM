@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : runtime_power.lua
 -- Module   : 工作模式 + USB/充电/电量/在线访问器（嵌套 APP_RUNTIME 唯一读写入口）
--- Arch     : 见 doc/LUA_MODULES.md、doc/USER_LIB_OPTIMIZATION_NEXT.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md、doc/overview/USER_LIB_OPTIMIZATION_NEXT.md
 -- ================================================================
 
 require "config"

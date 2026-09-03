@@ -5,7 +5,7 @@
 > **AT handler**：[`user/hif_cmd.lua`](../../user/hif_cmd.lua) + `hif_cmd_*`  
 > **URC/RX**：[`user/hif_rx.lua`](../../user/hif_rx.lua) + `hif_rx_dsl.lua` / `hif_rx_media.lua`  
 > **IPC query/set**：[`user/hif_ipc.lua`](../../user/hif_ipc.lua) + `hif_ipc_*`  
-> **协议对照**：[UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../UART_PROTOCOL.md)  
+> **协议对照**：[UART_AT_COMMANDS.md](../mqtt/UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../mqtt/UART_PROTOCOL.md)  
 > **bind 头**：`python tools/debug/_gen_bind_header.py --check-all` · spec：`tools/debug/bind_header_specs.json`  
 > **回归**：`python tools/debug/_protocol_regression_check.py`
 

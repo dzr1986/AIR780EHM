@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""平台侧 MQTT 测试客户端（对齐 doc/MQTT_DOWNLINK_862323084068124.txt + Lua 实现）。
+"""平台侧 MQTT 测试客户端（对齐 doc/mqtt/MQTT_DOWNLINK_862323084068124.txt + Lua 实现）。
 
 账号密码、Broker、IMEI 均在同目录 config.json。
-差异说明：doc/MQTT_LUA_DOC_DIFF.md
+差异说明：doc/_audit/MQTT_LUA_DOC_DIFF.md
 
   pip install -r tools/gui/mqtt/requirements-mqtt.txt
   python tools/gui/mqtt/mqtt_tools_client.py

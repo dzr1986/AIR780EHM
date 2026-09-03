@@ -1,7 +1,7 @@
 # battery_guard 电量分档策略
 
 > **代码真源**：[`user/battery_guard.lua`](../../user/battery_guard.lua) · [`user/config.lua`](../../user/config.lua)  
-> **关联**：[POWER_USB_BATTERY_T31X_LOGIC.md](../POWER_USB_BATTERY_T31X_LOGIC.md) · [LOW_POWER_ENTER_STRATEGY.md](../LOW_POWER_ENTER_STRATEGY.md)
+> **关联**：[POWER_USB_BATTERY_T31X_LOGIC.md](../power/POWER_USB_BATTERY_T31X_LOGIC.md) · [LOW_POWER_ENTER_STRATEGY.md](../power/LOW_POWER_ENTER_STRATEGY.md)
 
 ---
 

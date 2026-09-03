@@ -1,7 +1,7 @@
 # app.lua 事件总线
 
 > **代码真源**：[`user/events.lua`](../../user/events.lua)（`APP_EVENTS`）· [`user/app.lua`](../../user/app.lua)（订阅表）  
-> **总览**：[LUA_MODULES.md](../LUA_MODULES.md) §2
+> **总览**：[LUA_MODULES.md](../overview/LUA_MODULES.md) §2
 
 ---
 

@@ -348,6 +348,6 @@ com.luat.ota
 
 - [OTA_PROTOCOL.md](OTA_PROTOCOL.md) — 协议字段详解
 - [OTA_SERVER.md](OTA_SERVER.md) — 固件兼容说明
-- [MQTT_DOWNLINK.md](../../doc/MQTT_DOWNLINK.md) §6.6 — 2004 自建 url
+- [MQTT_DOWNLINK.md](../../doc/mqtt/MQTT_DOWNLINK.md) §6.6 — 2004 自建 url
 - [../README.md](../README.md) — 部署
 - [../deploy/nginx/README.md](../deploy/nginx/README.md) — HTTPS

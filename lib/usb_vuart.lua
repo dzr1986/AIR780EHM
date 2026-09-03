@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : usb_vuart.lua
 -- Module   : USB 虚拟串口：VCOM 枚举、AT 透传通道、USB→UART 桥接
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 require "sys"

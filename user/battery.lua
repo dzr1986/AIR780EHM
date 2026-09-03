@@ -4,7 +4,7 @@
 -- Arch     : 拆分自 config.lua。依赖 config.features 的 LOW_POWER_CFG。
 -- ================================================================
 
--- 仅关机保护；工作模式见 doc/WORK_MODE_PERSON_DETECT_PIR.md
+-- 仅关机保护；工作模式见 doc/power/WORK_MODE_PERSON_DETECT_PIR.md
 local LOW_POWER_ENTER_STRATEGY = "battery"
 
 -- ===== 电量 ADC + 滤波 + guard 三档保护（vbat 采样 / LED 阈值 / guard 策略） =====

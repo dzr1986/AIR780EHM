@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : sys.lua
 -- Module   : LuatOS 协程调度核心：sys.wait/run/publish/subscribe、定时器、事件消息
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 --- 模块功能：Luat协程调度框架

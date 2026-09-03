@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : main.lua
 -- Module   : 固件入口：版本校验、蜂窝/RNDIS 引导、app.start 编排、sys.run 主循环
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 PROJECT = "PANSHI_CAT1"
