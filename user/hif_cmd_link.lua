@@ -138,7 +138,7 @@ function bind(C)
             qryGb28181(cfg.query_timeout_ms)
             state.gb28181_refresh_scheduled = false
             if pubAfter then
-                modCall("mqtt.net_mqtt", "pubDeviceIdRef", nil)
+                modCall("net_mqtt", "pubDeviceIdRef", nil)
             end
         end)
     end
@@ -151,7 +151,7 @@ function bind(C)
             scheduleGb281Refresh(cfg, cfg.publish_on_ipcinfo_query == true)
         elseif cfg.publish_on_ipcinfo_query == true then
             sys.taskInit(function()
-                modCall("mqtt.net_mqtt", "pubDeviceIdRef", nil)
+                modCall("net_mqtt", "pubDeviceIdRef", nil)
             end)
         end
         return rspBody("IPCINFO", string.format(
@@ -169,7 +169,7 @@ function bind(C)
         if not suffix or not body or body == "" then
             return rspLine("MQTTPUB", false)
         end
-        return rspLine("MQTTPUB", modCall("mqtt.net_mqtt", "pubRaw", suffix, body, 1) == true)
+        return rspLine("MQTTPUB", modCall("net_mqtt", "pubRaw", suffix, body, 1) == true)
     end
 
     local function uartMqttCfg(cmd)

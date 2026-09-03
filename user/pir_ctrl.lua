@@ -570,7 +570,7 @@ local function handlePirRetrigger(media)
 end
 
 local function triggerDeviceIdUpload()
-    local net = loader.load("mqtt.net_mqtt")
+    local net = loader.load("net_mqtt")
     if net then
         net.pubDeviceIdRef(nil)
     end

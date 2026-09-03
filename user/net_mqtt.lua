@@ -537,6 +537,20 @@ function pubRaw(topicSuffix, payload, qos)
 	return true
 end
 
+-- 门面：T31x/UART 侧经 modCall("net_mqtt", ...) 的发布入口，
+-- 实际实现位于 bind 进来的 ctx.pub（mqtt_uplink / mqtt_ul_upload）
+function pubDeviceIdRef(messageId)
+    return ctx.pub.pubDeviceIdRef(messageId)
+end
+
+function pubUploadNeed(opts)
+    return ctx.pub.pubUploadNeed(opts)
+end
+
+function pubUploadDone(retCode, messageId, extra)
+    return ctx.pub.pubUploadDone(retCode, messageId, extra)
+end
+
 function restart()
     sys.taskInit(function()
         stop()

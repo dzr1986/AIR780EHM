@@ -120,7 +120,7 @@ function bind(C)
             return RSP_ERROR
         end
         local need = tonumber(arg:match("^(%d+)")) or 1
-        modCall("mqtt.net_mqtt", "pubUploadNeed", {
+        modCall("net_mqtt", "pubUploadNeed", {
             needUpload = need,
             action = "upload_video",
             reason = arg:match("reason=([^,]+)") or "record_done",
@@ -137,7 +137,7 @@ function bind(C)
             return RSP_ERROR
         end
         local ret = tonumber(kvFromArg(arg, "ret")) or -1
-        modCall("mqtt.net_mqtt", "pubUploadDone", ret, kvFromArg(arg, "msgId"), {
+        modCall("net_mqtt", "pubUploadDone", ret, kvFromArg(arg, "msgId"), {
             videoType = tonumber(kvFromArg(arg, "type")) or 1,
             beginTs = tonumber(kvFromArg(arg, "start")) or 0,
             endTs = tonumber(kvFromArg(arg, "end")) or 0,

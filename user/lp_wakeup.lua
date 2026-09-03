@@ -57,7 +57,7 @@ local function netTcp()
     if not isTcpMode() then return nil end
     if boundNetTcp then return boundNetTcp end
     if netTcpMod == nil then
-        local mod = loader.load("mqtt.net_tcp")
+        local mod = loader.load("net_tcp")
         netTcpMod = mod or false
     end
     return netTcpMod or nil

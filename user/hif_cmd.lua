@@ -255,7 +255,7 @@ function bind(C)
             return rspLine("SETCFG", false)
         end
         if key == "interval" and tonumber(val) then
-            local ok = modCall("mqtt.net_mqtt", "setStatIv", tonumber(val), true)
+            local ok = modCall("net_mqtt", "setStatIv", tonumber(val), true)
             if ok == nil then
                 modCall("runtime_power", "setLowPowerInterval", tonumber(val))
                 sys.publish(E.MQTT_STATUS_INTERVAL_CHANGED)

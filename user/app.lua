@@ -383,7 +383,7 @@ function startMqtt()
         appWarn("mqtt_module_disabled")
         return false
     end
-    if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "mqtt.net_mqtt") then
+    if not netModule or not (_G.APP_STACK and _G.APP_STACK.mqtt == "net_mqtt") then
         appError("mqtt_module_not_ready")
         return false
     end

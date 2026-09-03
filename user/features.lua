@@ -71,7 +71,7 @@ _G.APP_META = {
     device_model = "awake_normal",
 }
 _G.APP_STACK = {
-    mqtt = "mqtt.net_mqtt",
+    mqtt = "net_mqtt",
     uart = "uart_bridge",
 }
 -- 嵌套运行态种子；真表由 runtime_power 持有，_G.APP_RUNTIME 指向同一张表（调试用）
