@@ -29,6 +29,13 @@
 | [CAT1_MODULE_FRAMEWORK.md](CAT1_MODULE_FRAMEWORK.md) | **模块框架**：`module_loader`/`config_manager`、生命周期/日志/事件约定 |
 | [modules/README.md](modules/README.md) | **模块专题**（AT / MQTT / PIR / 电量 / T31x 唤醒） |
 | [TIME_SYNC.md](TIME_SYNC.md) | SNTP + `AT+TIMESET` 时间同步 |
+| [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) | **系统级架构总览**：子系统 / 核心模块 / 数据流（入口建议先读） |
+| [CODE_LAYERING_ARCHITECTURE.md](CODE_LAYERING_ARCHITECTURE.md) | **分层架构真源**：`lib/`（L0–L2）与 `user/`（L3–L4）切割，已执行 |
+| [FUNCTIONAL_ARCHITECTURE.md](FUNCTIONAL_ARCHITECTURE.md) | 功能架构与分层优化：**特性域 → 层 → 模块**（与分层文档互补） |
+| [ARCHITECTURE_REVIEW_20260903.md](ARCHITECTURE_REVIEW_20260903.md) | **架构体检报告与四主题裁决**（2026-09-03 冻结观察期） |
+| [USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md) | **user/lib 框架优化计划书**（拆分后治理版，08-31 冻结） |
+| [FUNCTION_NAME_MAP.md](FUNCTION_NAME_MAP.md) | ⚠ **历史**：旧缩写实验记录（新符号请引用 `CAT1_API_NAMING`） |
+| [CAT1_LOG_TAGS.md](CAT1_LOG_TAGS.md) | Cat.1 日志标签还原说明（`/mnt/share/user/` 镜像） |
 
 ### 硬件 / GPIO / 指示灯
 
@@ -59,6 +66,7 @@
 | [CAT1_SLIMMING_FLOW.md](CAT1_SLIMMING_FLOW.md) | Cat.1 精简流程（门球量产步骤） |
 | [CAT1_USER_LIB_SLIM.md](CAT1_USER_LIB_SLIM.md) | Cat.1 精简速查（`MODULE_FLAGS` / 懒加载） |
 | [CAT1_LOGIC_SLIM.md](CAT1_LOGIC_SLIM.md) | **逻辑精简规划**（`cat1_slim_logic` 分支，不减功能） |
+| [mqtt_battery_shutdown_flow.md](mqtt_battery_shutdown_flow.md) | **MQTT 低电量关机**：≤3.4V 关机前上 1004 + 1003 |
 
 ### PIR / 录像 / 提示音
 
@@ -70,6 +78,9 @@
 | [PIR_COOLDOWN_AND_COUNT.md](PIR_COOLDOWN_AND_COUNT.md) | 冷却 vs 计数 |
 | [T31X_RECORD_MQTT_FLOW.md](T31X_RECORD_MQTT_FLOW.md) | **AT+RECORD + MQTT 1010/1011** |
 | [BOOT_SHUTDOWN_SOUND.md](BOOT_SHUTDOWN_SOUND.md) | 开机/关机提示音 |
+| [mqtt_2010_2012_2011_pir_flow.md](mqtt_2010_2012_2011_pir_flow.md) | **2010 策略 / 2012 平台开录 / 2011 停录 与 PIR 协作** + 联调实操 |
+| [mqtt_2011_1011_flow.md](mqtt_2011_1011_flow.md) | **2011 停录 → 1011 上行**（4G ↔ T31x 协作） |
+| [mqtt_2012_1012_flow.md](mqtt_2012_1012_flow.md) | **2012 开录 → 1012 上行**（4G ↔ T31x 协作） |
 
 ### MQTT / 编码 / 串口 AT
 
@@ -103,6 +114,13 @@
 | [HOST_MQTT_UART.md](HOST_MQTT_UART.md) | T31x `AT+MQTTCFG` 下发 4G MQTT |
 | [MQTT_HOST_CONFIG_MODES.md](MQTT_HOST_CONFIG_MODES.md) | MQTT 配置两种思路 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX |
+| [MQTT_1003_STATUS_PATTERN.md](MQTT_1003_STATUS_PATTERN.md) | **1003 状态上报规律**（IMEI 124 实测 1088 条 / interval=30s） |
+| [MQTT_1013_BACKEND_GUIDE.md](MQTT_1013_BACKEND_GUIDE.md) | **1013 上传视频后台对接**（业务平台/后台同事读） |
+| [MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md) | **2002 进低功耗**：先 UART 逐级停 IPC，再断 T31 供电 |
+| [MQTT_MIC_SOFTPHOTO_REMOTE_FLOW.md](MQTT_MIC_SOFTPHOTO_REMOTE_FLOW.md) | 远程配置：**麦克风 AI / 软光敏 / 音频编码**（Cat.1 → UART → IPC） |
+| [CLIP_UPLOAD_CLOSED_LOOP_TEST.md](CLIP_UPLOAD_CLOSED_LOOP_TEST.md) | **人形录像上传闭环实测**（T31 TF ↔ 腾讯云 uploadVideo） |
+| [allday_pir_record_backend_dispatch.md](allday_pir_record_backend_dispatch.md) | **全天录 vs PIR 事件录**：后台调度与 MQTT / GB28181 区分 |
+| [VIDEO_UPLOAD_SERVER.md](VIDEO_UPLOAD_SERVER.md) | **视频上传服务现网**：7003 进程 / 分目录落盘 / 运维（2026-08 快照） |
 | [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) | T31x↔Cat.1 AT 一览 |
 
 ### T31x ↔ 4G 协作
@@ -116,6 +134,11 @@
 | [T31X_IPC_CAT1_COMM_COMPLETENESS.md](T31X_IPC_CAT1_COMM_COMPLETENESS.md) | 双向 AT 对照与缺口 |
 | [T31X_HOSTEVT_PROTOCOL.md](T31X_HOSTEVT_PROTOCOL.md) | GPIO29 低脉冲与 HOSTEVT |
 | [T31X_HOSTEVT_SLEEP.md](T31X_HOSTEVT_SLEEP.md) | HOSTEVT 四条 AT 汇总 |
+| [T31X_IPC_ALERT_CONTRACT.md](T31X_IPC_ALERT_CONTRACT.md) | **IPC ↔ Cat.1 `alertCode` 共享契约**（`ipc_alert_contract.h` 真源） |
+| [T31X_IPC_SUPERVISION_MODULE.md](T31X_IPC_SUPERVISION_MODULE.md) | **IPC ↔ Cat.1 监督模块架构**（两侧独立 + 契约对齐） |
+| [T31X_IPC_CAT1_SUPERVISION.md](T31X_IPC_CAT1_SUPERVISION.md) | **Cat.1 ↔ IPC 联合异常监督机制**（读者：固件/联调/平台） |
+| [T31X_IPC_EXCEPTION_MQTT_UPLINK.md](T31X_IPC_EXCEPTION_MQTT_UPLINK.md) | **IPC 异常 → MQTT 后台上行协议**与恢复态 |
+| [T31X_IPC_ALERT_CODE_INDEX.md](T31X_IPC_ALERT_CODE_INDEX.md) | IPC_ALERT / `alertCode` **源码行号速查** |
 
 ### 发布与其它
 
@@ -125,6 +148,8 @@
 | [CAT1_FLASH_TOOL.md](CAT1_FLASH_TOOL.md) | **Cat.1 USB 烧录工具**：图形界面 / 命令行，对齐 Luatools |
 | [CAT1_USB_RNDIS_CFG_CRASH_FLASH.md](CAT1_USB_RNDIS_CFG_CRASH_FLASH.md) | **RNDIS cfg 崩溃实机流程**：COM10 排查 → 修复 → `flash-script`（勿用 mqtt_tools_gui 烧录） |
 | [RELEASE_v1.2.md](RELEASE_v1.2.md) | v1.2 发布/备份说明 |
+| [CAT1_TOOLCHAIN_TEST_REPORT.md](CAT1_TOOLCHAIN_TEST_REPORT.md) | **工具链与 MQTT 自动化测试报告**（2026-08-17，IMEI 124） |
+| [MQTT_AUTOTEST_LOG_862323084068124_20260818.md](MQTT_AUTOTEST_LOG_862323084068124_20260818.md) | 自动测试 **GUI「日志」页抄录**（IMEI 124，2026-08-18） |
 | [T31X_NAMING.md](T31X_NAMING.md) | T31x 命名约定 |
 | [archive/T31_MIGRATION.md](archive/T31_MIGRATION.md) | 旧 T31 文档重定向表 |
 
