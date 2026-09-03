@@ -9,9 +9,9 @@
 
 | 目标 | 说明 |
 |------|------|
-| 两侧对称 | IPC `ipc_supervision.*` ↔ Cat.1 `ipc_supervision.lua` |
+| 两侧对称 | IPC `ipc_supervision.*` ↔ Cat.1 `ipc_supv.lua` |
 | 职责清晰 | **检测**留在业务模块；**上报 / 重试 / 对账 / MQTT 策略**收拢到监督模块 |
-| 契约单一真源 | `ipc_alert_contract.h`（C）↔ `ipc_alert_contract.lua`（镜像） |
+| 契约单一真源 | `ipc_alert_contract.h`（C）↔ `ipc_supv.lua`（镜像） |
 | 可演进 | `ipc_cloud_report.h` 保留为兼容宏，新代码用 `ipc_supervision.h` |
 
 ---
@@ -34,8 +34,8 @@ flowchart LR
   end
   subgraph CAT1["Cat.1 Lua"]
     B2[host_uart / pir_ctrl / encode ...]
-    L1[ipc_supervision.lua]
-    C2[ipc_alert_contract.lua]
+    L1[ipc_supv.lua]
+    C2[ipc_supv.lua]
     MQTT[net_mqtt 上行]
     B2 -->|T31X_IPC_ALERT| L1
     L1 --> MQTT
@@ -65,10 +65,10 @@ flowchart LR
 
 | 文件 | 职责 |
 |------|------|
-| `ipc_alert_contract.lua` | alertCode 表 + `map1011` / `reconcile` 策略 |
-| `ipc_supervision.lua` | `pubAlert`、`ipcCloudStatFields`、对账/刷新调度 |
+| `ipc_supv.lua` | alertCode 表 + `map1011` / `reconcile` 策略 |
+| `ipc_supv.lua` | `pubAlert`、`ipcCloudStatFields`、对账/刷新调度 |
 | `net_mqtt.lua` | MQTT 传输；`bind()` 注入上行依赖；`pubIpcAlert` 薄封装 |
-| `app.lua` | `E.T31X_IPC_ALERT` → `ipc_supervision.pubAlert()` |
+| `app.lua` | `E.T31X_IPC_ALERT` → `ipc_supv.pubAlert()` |
 | `host_uart.lua` | UART 解析 `AT+IPCALERT`，发布 `T31X_IPC_ALERT` 事件（传输层） |
 
 ---
@@ -79,7 +79,7 @@ flowchart LR
 
 同步规则：
 
-1. 新增/修改 alertCode 时，**先改** `ipc_alert_contract.h`，再改 `ipc_alert_contract.lua`
+1. 新增/修改 alertCode 时，**先改** `ipc_alert_contract.h`，再改 `ipc_supv.lua`
 2. Cat.1 独有码（如 `encode_runtime_fail`）只写在 `CAT1_ONLY` 段
 3. `map1011` / `reconcile` 仅 Cat.1 侧实现，但须在契约 Lua 中声明以便联调对照
 
@@ -92,15 +92,15 @@ flowchart LR
 1. 业务检测失败 → `ipc_supervision_alert(client, IPC_ALERT_*, detail)`
 2. IPC 发 `AT+IPCALERT=<code>[,<detail>]`
 3. `host_uart.lua` 解析 → `sys.publish(T31X_IPC_ALERT, code, detail)`
-4. `app.lua` → `ipc_supervision.pubAlert()`
-5. `ipc_supervision.publishAlert()` → MQTT **1004** `action=ipc_alert`
+4. `app.lua` → `ipc_supv.pubAlert()`
+5. `ipc_supv.publishAlert()` → MQTT **1004** `action=ipc_alert`
 6. 按契约：部分码 → **1011** `publishT31xRecordStop`；部分码 → `scheduleRecordReconcile`
 
 ### 4.2 状态型（IPCSTAT → 1003）
 
 1. Cat.1 `qryIpcCloudStat` → `AT+IPCSTAT?`
 2. IPC `ipc_supervision_build_stat()` 填 8 字段
-3. `host_uart` 缓存 → `ipc_supervision.ipcCloudStatFields()` 拼入 **1003** 周期状态
+3. `host_uart` 缓存 → `ipc_supv.ipcCloudStatFields()` 拼入 **1003** 周期状态
 
 ### 4.3 UART 通知重试（record_notify）
 
@@ -132,7 +132,7 @@ ipc_supervision_build_stat(buf, sizeof(buf));
 ### Cat.1（Lua）
 
 ```lua
-local ipc_sup = require "ipc_supervision"
+local ipc_sup = require "ipc_supv"
 ipc_sup.pubAlert(code, detail)           -- 事件总线入口
 ipc_sup.publishAlert(code, detail)      -- 直接 MQTT（需已 bind）
 ipc_sup.ipcCloudStatFields()            -- 1003 扩展字段
@@ -158,8 +158,8 @@ ipc_sup.bind({
 | `ipc_cloud_report.h` 内宏定义 | `ipc_alert_contract.h` |
 | `record_notify.c` `uart_notify_request` | `ipc_supervision_uart.c` |
 | `runtime.c` / `host_event.c` 内联 dispatch 重试 | `ipc_supervision_dispatch.c` |
-| `net_mqtt.lua` `pubIpcAlert` 主体 | `ipc_supervision.lua` |
-| `net_mqtt.lua` `map1011` / reconcile 表 | `ipc_alert_contract.lua` |
+| `net_mqtt.lua` `pubIpcAlert` 主体 | `ipc_supv.lua` |
+| `net_mqtt.lua` `map1011` / reconcile 表 | `ipc_supv.lua` |
 
 ---
 
@@ -168,8 +168,8 @@ ipc_sup.bind({
 | 原缺口 | 措施 |
 | --- | --- |
 | IPCALERT Cat.1 未就绪丢失 | `ipc_supervision.c` 待发队列（8 条）+ `flush_pending` |
-| IPCSTAT 告警后仍滞后 | `ipc_supervision.lua` 在 **1004** 后 `scheduleIpcCloudStatRefresh(force=true)` |
-| 监督逻辑分散 | 两侧 `ipc_supervision.*` + `ipc_alert_contract` 契约 |
+| IPCSTAT 告警后仍滞后 | `ipc_supv.lua` 在 **1004** 后 `scheduleIpcCloudStatRefresh(force=true)` |
+| 监督逻辑分散 | 两侧 `ipc_supervision.*`（C）↔ `ipc_supv.lua`（Lua）契约 |
 | 电池电压读低 | `mv_calibration = 3812/3608`（见 [T31X_IPC_CAT1_SUPERVISION.md §10](./T31X_IPC_CAT1_SUPERVISION.md)） |
 
 **仍待产品/平台**：运行期 TF 事件、磁盘预警、IPC crash 上报、WLED ack 时序、无 cleared 的告警生命周期。

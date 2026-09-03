@@ -115,7 +115,7 @@ flowchart TB
 | 文件 | 职责 |
 |------|------|
 | `user/config.lua` | `GPIO_IN`/`GPIO_OUT`、`BATTERY_CFG` |
-| `../user/app_config.lua` | `MODULE_FLAGS` |
+| `../user/flags.lua` | `MODULE_FLAGS` |
 | `lib/usb_charge.lua` | USB_DET / CHG_STATE 双边沿中断、发布应用事件 |
 | `vbat.lua` | `adc.setRange` / `adc.open` / 读引脚 mV、`mv_scale`（导出 `_G.adcLib`） |
 | `vbat.lua` | mV→%、耗电率、写入 `APP_RUNTIME.battery_percent` / `APP_RUNTIME.battery_mv` |
@@ -125,7 +125,7 @@ flowchart TB
 | `user/led_ctrl.lua` | GPIO20/21 电量图案（读 `BATTERY_CFG.led`） |
 | `user/net_mqtt.lua` | `pubStatus()` → 上行 **1003** |
 
-### 4.2 模块开关（`app_config.lua` → `MODULE_FLAGS`）
+### 4.2 模块开关（`flags.lua` → `MODULE_FLAGS`）
 
 | 标志 | 建议 | 说明 |
 |------|------|------|
@@ -360,5 +360,5 @@ ADC 每 **10s** 更新一次 `APP_RUNTIME.battery_percent`；MQTT 60s 上报的�
 - [`T31X_CAT1_GPIO.md`](../T31X_CAT1_GPIO.md) — 引脚与 LP4030 硬件说明  
 - [`MQTT_PROTOCOL.md`](MQTT_PROTOCOL.md) — 1003 等数据类型  
 - [`PIR_HARDWARE.md`](PIR_HARDWARE.md) — GPIO30 / PIR_MCU_DET 人体检测  
-- [`KEY_GPIO.md`](KEY_GPIO.md) — GPIO 按键（`peripheral` + `key_config`）  
+- [`KEY_GPIO.md`](KEY_GPIO.md) — GPIO 按键（`peripheral` + `gpio_cfg` `KEY_CONFIG`）  
 - [`CONFIG.md`](CONFIG.md) — 配置分层与引脚总表  

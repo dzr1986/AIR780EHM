@@ -483,8 +483,8 @@ PIR / 2012 开录
 | GB28181   | `app/network/network_module.c`           | 注册失败 alert + SIP 报警                      |
 | USB 恢复    | `app/cat1/cat1_usb_reenum.c`             | EXHAUSTED → IPCALERT + 4G 1003             |
 | Host AT   | `app/cat1/uart_host_cmd.c`               | IPCSTAT/TIMESET/IPCPOWEROFF                |
-| MQTT 代发   | `docs/4g_lua/user/net_mqtt.lua`          | 1003/1004/1011/102x；`ipc_supervision.bind` |
-| Cat.1 监督  | `docs/4g_lua/user/ipc_supervision.lua` | publishAlert / IPCSTAT 调度 |
+| MQTT 代发   | `docs/4g_lua/user/net_mqtt.lua`          | 1003/1004/1011/102x；`ipc_supv.bind` |
+| Cat.1 监督  | `docs/4g_lua/user/ipc_supv.lua` | publishAlert / IPCSTAT 调度 |
 | Cat.1 UART | `docs/4g_lua/user/host_uart.lua`       | IPCALERT/RECORD? 解析           |
 | 电池 ADC   | `docs/4g_lua/user/vbat.lua` + `config.lua` | `mv_calibration` 板级校准 |
 

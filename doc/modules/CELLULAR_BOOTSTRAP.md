@@ -1,7 +1,7 @@
-# cellular_bootstrap 蜂窝入网引导
+# cell_boot 蜂窝入网引导
 
-> **代码真源**：[`lib/cellular_bootstrap.lua`](../../lib/cellular_bootstrap.lua)  
-> **配置**：`CELLULAR_CFG`（[`config.lua`](../../user/config.lua)）  
+> **代码真源**：[`lib/cell_boot.lua`](../../lib/cell_boot.lua)  
+> **配置**：`CELLULAR_CFG`（[`user/cellular.lua`](../../user/cellular.lua) config 片段）  
 > **启动**：[`user/main.lua`](../../user/main.lua) · **MQTT**：[`net_mqtt.lua`](../../user/net_mqtt.lua) `bootstrapNet`
 
 ---
@@ -22,7 +22,7 @@
 ## 2. 启动顺序（main.lua）
 
 ```text
-cellular_bootstrap.start()
+cell_boot.start()
   → subscribe SIM_IND
   → mobile.setAuto(...)
   → task: waitSimInfo → applyApnForSim

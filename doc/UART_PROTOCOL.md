@@ -155,7 +155,7 @@ T31x 侧 `cat1_host/uart_host_cmd.c` 解析。详表：[UART_AT_COMMANDS.md](UAR
 | 驱动 | `lib/uart_bridge.lua`（`UART_CFG`，无协议） |
 | 协议 | `host_uart.uart_at_cmd` / HEX·STR 简写行 |
 | 启动 | `app.setupUartBridge` → `uart_bridge.start` → `host_uart.start` |
-| 配置 | `config.lua` → `UART_CFG.id`、`UART_CFG.baud`；`app_config.lua` → `MODULE_FLAGS.uart_bridge` |
+| 配置 | `config.lua` → `UART_CFG.id`、`UART_CFG.baud`；`flags.lua` → `MODULE_FLAGS.uart_bridge` |
 | 事件名 | `APP_EVENTS.UART_RX_*` |
 
 ---

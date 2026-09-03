@@ -14,7 +14,7 @@
 |--------|--------|
 | `host_uart` | `hif` |
 | `net_mqtt` | `nm` |
-| `ipc_supervision` | `ipc_sup` |
+| `ipc_supv` | `ipc_supv` |
 | `app_main` | `app` |
 | `battery_adc` | `vbat` |
 | `pir_ctrl` | `pirc` |
@@ -80,7 +80,7 @@
 | `record_start` / `record_stop` | `rec+` / `rec-` |
 | `ipc_alert_uart` | `ipcal` |
 
-完整表见源码 `host_uart.lua`、`ipc_supervision.lua`。
+完整表见源码 `host_uart.lua`、`ipc_supv.lua`。
 
 ---
 

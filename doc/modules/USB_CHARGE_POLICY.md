@@ -1,18 +1,17 @@
-# usb_charge / usb_policy 充电与 USB 策略
+# usb_charge 充电与 USB 策略
 
-> **代码真源**：[`lib/usb_charge.lua`](../../lib/usb_charge.lua) · [`lib/usb_policy.lua`](../../lib/usb_policy.lua)  
-> **配置**：`GPIO_IN.usb_det` / `chg_state` · `HOST_USB_CFG`（[`config.lua`](../../user/config.lua)）  
+> **代码真源**：[`lib/usb_charge.lua`](../../lib/usb_charge.lua)（含 `blocksHostIdle`/`blocks4gRest` 门禁，原 `usb_policy` 已并入）  
+> **配置**：`GPIO_IN.usb_det` / `chg_state` · `HOST_USB_CFG`（[`config.lua`](../../user/config.lua) 编排 · [`features.lua`](../../user/features.lua) 定义）  
 > **用户说明**：[CHARGE_BATTERY.md](../CHARGE_BATTERY.md) · [LED_INDICATORS.md](../LED_INDICATORS.md)  
 > **编排**：[APP_EVENT_BUS.md](APP_EVENT_BUS.md) · [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)
 
 ---
 
-## 1. 模块分工
+## 1. 模块职责
 
 | 模块 | 职责 |
 |------|------|
-| **`usb_charge`** | GPIO27 `USB_DET` + GPIO17 `CHG_STATE` 中断采样；发布插入/充电事件 |
-| **`usb_policy`** | 读 `HOST_USB_CFG`，在 USB 插入时门禁 HOSTIDLE / 4G rest |
+| **`usb_charge`** | GPIO27 `USB_DET` + GPIO17 `CHG_STATE` 中断采样；发布插入/充电事件；读 `HOST_USB_CFG` 提供 `blocksHostIdle`/`blocks4gRest` 门禁（原 `usb_policy`） |
 
 `MODULE_FLAGS.charge=false` 时不启动 `usb_charge`；`app` 可退化为 PMD `VBUS` 或 `gpio.VBUS` 轮询。
 
@@ -55,6 +54,8 @@ flowchart TD
 | `isUsbInserted()` | GPIO27 是否插入 |
 | `isCharging()` | 未插入返回 `0`；插入且 CHG 有效返回 `1` |
 | `getState()` | `usb_inserted`、`charging`、`mode=irq` |
+| `blocksHostIdle()` | USB 插入且 `HOST_USB_CFG.block_host_idle_when_usb` 时返回 true |
+| `blocks4gRest()` | USB 插入且 `HOST_USB_CFG.block_4g_rest_when_usb` 时返回 true |
 
 ---
 
@@ -71,16 +72,15 @@ flowchart TD
 
 ---
 
-## 5. usb_policy 策略门禁
+## 5. 策略门禁（原 usb_policy 段）
 
 读 `HOST_USB_CFG`，仅在 **USB 插入** 且对应开关非 `false` 时生效：
 
-| 函数 | 配置键 | 默认 | 消费者 |
+| 门禁 | 配置键 | 默认 | 消费者 |
 |------|--------|------|--------|
 | `blocksHostIdle()` | `block_host_idle_when_usb` | true | `host_uart` HOSTIDLE / LOWPOWER ENTER |
 | `blocks4gRest()` | `block_4g_rest_when_usb` | true | `app.onEnterLowPower`、`net_mqtt` 2002 enter |
-| `mayEnterRest()` | 上项取反 | — | 辅助判断 |
-| `isUsbInserted()` | — | 委托 `usb_charge` 或 `power_status` | `t31x_policy`、`host_uart` |
+| `isUsbInserted()` | — | 由 `usb_charge` 或 `power_status`（PMD 回退）提供 | `t31x_policy`、`host_uart` |
 
 ```text
 USB 插入 + block_4g_rest_when_usb

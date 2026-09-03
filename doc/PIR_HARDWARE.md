@@ -156,7 +156,7 @@ sequenceDiagram
 2. `setupGpio()` → `peripheral.start()` → `pir.start()`
 3. `peripheral` → `pir.start()`
 
-模块开关：`app_config.lua` → `MODULE_FLAGS.gpio = true`（PIR 随 GPIO 外设包启动）。
+模块开关：`flags.lua` → `MODULE_FLAGS.gpio = true`（PIR 随 GPIO 外设包启动）。
 
 ---
 

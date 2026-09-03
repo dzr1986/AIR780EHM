@@ -1,10 +1,10 @@
 # T31x IPC ↔ Cat.1 alertCode 共享契约
 
 > **真源**：IPC `app/cat1/ipc_alert_contract.h`  
-> **镜像**：Cat.1 `user/ipc_alert_contract.lua`  
+> **镜像**：Cat.1 [`user/ipc_supv.lua`](../user/ipc_supv.lua)（原 `ipc_alert_contract.lua` 契约表已并入）  
 > **架构**：见 [T31X_IPC_SUPERVISION_MODULE.md](T31X_IPC_SUPERVISION_MODULE.md)
 
-修改任一侧 alertCode 时，必须同步三处：`.h`、`.lua`、本表。
+修改任一侧 alertCode 时，必须同步三处：`.h`、`ipc_supv.lua`、本表。
 
 ---
 
@@ -47,7 +47,7 @@
 
 ## 3. IPCSTAT 状态字段（§6.2）
 
-`ipc_supervision_build_stat()` / `ipc_supervision.ipcCloudStatFields()` 对齐：
+`ipc_supervision_build_stat()`（C）/ `ipc_supv.ipcCloudStatFields()`（Lua）对齐：
 
 | 字段 | 含义 |
 |------|------|

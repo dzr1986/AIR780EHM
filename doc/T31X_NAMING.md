@@ -1,7 +1,7 @@
 # t31x / t31x / T31x / T31X 命名说明
 
 > 本文约定 **4G 门球（Air780EHM）+ 协处理器 IPC** 工程中的写法，避免把「芯片型号」和「产品系列」混用。  
-> 代码真源：`../user/app_config.lua`、`../user/config.lua`；IPC 编译：`ipc_device_gb28181` 的 `build/config.mk`。
+> 代码真源：`../user/config.lua`（编排）、`../user/events.lua`（`APP_EVENTS`）；IPC 编译：`ipc_device_gb28181` 的 `build/config.mk`。
 
 ---
 
@@ -213,4 +213,4 @@ flowchart TD
 
 ---
 
-**版本**：2026-06 · **维护**：命名变更时请同步更新本文与 `app_config.lua` 事件表。
+**版本**：2026-06 · **维护**：命名变更时请同步更新本文与 `events.lua` 事件表。

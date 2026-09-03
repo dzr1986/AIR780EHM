@@ -1,0 +1,137 @@
+== [需修复] 现状/模块专题文档孤儿引用 ==
+
+== [对照允许] 历史命名对照/修订记录/审计档案 ==
+doc\LUA_MODULES.md:330  ipc_alert_contract.lua  -> 建议: ipc_supv
+    | **历史命名** | 旧称 `ipc_supervision.lua`（8-31 前）/ `ipc_alert_contract.lua` 已合并，真源为 `ipc_supv.lua` |
+doc\LUA_MODULES.md:330  ipc_supervision.lua  -> 建议: ipc_supv
+    | **历史命名** | 旧称 `ipc_supervision.lua`（8-31 前）/ `ipc_alert_contract.lua` 已合并，真源为 `ipc_supv.lua` |
+doc\LUA_MODULES.md:349  low_power_wakeup.lua  -> 建议: lp_wakeup
+    | `lp_wakeup` | rest 期间 `onEnterRest`/`onExitRest` 钩子；抽象 mqtt/tcp 通道（旧称 `low_power_wakeup.lua`） |
+doc\LUA_MODULES.md:411  cellular_bootstrap.lua  -> 建议: cell_boot
+    SIM/APN 探测、`IP_READY` 等待、运营商映射。`main` 与 `net_mqtt` 共用（旧称 `cellular_bootstrap.lua`）。
+doc\T31X_IPC_ALERT_CONTRACT.md:4  ipc_alert_contract.lua  -> 建议: ipc_supv
+    > **镜像**：Cat.1 [`user/ipc_supv.lua`](../user/ipc_supv.lua)（原 `ipc_alert_contract.lua` 契约表已并入）
+doc\T31X_IPC_CAT1_SUPERVISION.md:208  ipc_alert_contract.lua  -> 建议: ipc_supv
+    | `ipc_supv.lua` | `pubAlert` / `publishAlert` / `ipcCloudStatFields` / 对账与 IPCSTAT 调度；alertCode + `map1011`/`reconcile` 契约表（原 `ipc_supervision.lua` +
+doc\T31X_IPC_CAT1_SUPERVISION.md:208  ipc_supervision.lua  -> 建议: ipc_supv
+    | `ipc_supv.lua` | `pubAlert` / `publishAlert` / `ipcCloudStatFields` / 对账与 IPCSTAT 调度；alertCode + `map1011`/`reconcile` 契约表（原 `ipc_supervision.lua` +
+doc\USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md:176  net_mqtt_host_proto.lua  
+    | `net_mqtt_host_proto.lua` | ✅ 已更名 | → `mqtt_hproto.lua`(473)，保持独立（2020–2031） |
+doc\USER_LIB_OPTIMIZATION_NEXT.md:174  net_mqtt_downlink_pir.lua  -> 建议: mqtt_dl_pir
+    | 2026-08-31 | downlink 结构：`net_mqtt_downlink_pir.lua`（2010–2012）；`pubVersion`/`snapVersion` 迁 uplink；downlink ~616 行（纯重构，未升 VERSION） |
+doc\modules\IPC_SUPERVISION_FLOW.md:3  ipc_alert_contract.lua  -> 建议: ipc_supv
+    > **代码真源**：[`user/ipc_supv.lua`](../../user/ipc_supv.lua)（调度 + `alertCode`/`map1011`/`reconcile` 契约表，原 `ipc_supervision.lua` / `ipc_alert_contract.lua
+doc\modules\IPC_SUPERVISION_FLOW.md:3  ipc_supervision.lua  -> 建议: ipc_supv
+    > **代码真源**：[`user/ipc_supv.lua`](../../user/ipc_supv.lua)（调度 + `alertCode`/`map1011`/`reconcile` 契约表，原 `ipc_supervision.lua` / `ipc_alert_contract.lua
+
+    (注: 历史措辞行 —— 原/旧称/已并入/更名 等史实描述 —— 自动降级于此)
+
+== [历史账本] 只读账本中的旧名(保留) ==
+doc\CAT1_LOGIC_SLIM.md:107  usb_policy.lua  -> 建议: usb_charge
+    | `lib/usb_policy.lua` | `isUsbInserted()`、`mayEnterRest()`（读 `HOST_USB_CFG.block_4g_rest_when_usb`） |
+doc\CAT1_LOGIC_SLIM.md:145  low_power_wakeup.lua  -> 建议: lp_wakeup
+    | `low_power_wakeup.lua` | 已是良好 consolidation 范例，**勿再拆** |
+doc\CAT1_LOGIC_SLIM.md:147  led.lua  -> 建议: lib/led_ctrl.lua
+    | `led.lua` | 门球 `LED_CFG.mode=single_blue` 仅用部分 API；dual/呼吸路径可迁 `archive/slim`（SKU 裁剪） |
+doc\CAT1_LOGIC_SLIM.md:186  net_tcp_full.lua  
+    | 0.3 | 修正 `archive/slim/README.md`：TCP 完整版为 `archive/slim/user/net_tcp.lua`（非 `net_tcp_full.lua`） | `archive/slim/README.md` |
+doc\CAT1_LOGIC_SLIM.md:200  usb_policy.lua  -> 建议: usb_charge
+    | 2.1 | 新增 `lib/usb_policy.lua` |
+doc\CAT1_LOGIC_SLIM.md:217  led.lua  -> 建议: lib/led_ctrl.lua
+    | 4.2 | `led.lua` single_blue SKU 裁 dual 路径 |
+doc\CAT1_LOGIC_SLIM.md:269  usb_policy.lua  -> 建议: usb_charge
+    | 2026-06-10 | **已落地阶段 2**：`lib/usb_policy.lua`、`lib/device_id.lua`、`t31x_ctrl.ensurePowered` |
+doc\CAT1_LOGIC_SLIM.md:286  usb_policy.lua  -> 建议: usb_charge
+    | 2 | `lib/usb_policy.lua` USB/rest 门禁单点 | `lib/usb_policy.lua`，`app`/`net_mqtt`/`host_uart` |
+doc\CAT1_LOGIC_SLIM.md:286  usb_policy.lua  -> 建议: usb_charge
+    | 2 | `lib/usb_policy.lua` USB/rest 门禁单点 | `lib/usb_policy.lua`，`app`/`net_mqtt`/`host_uart` |
+doc\CAT1_LOGIC_SLIM.md:288  usb_policy.lua  -> 建议: usb_charge
+    > **更正（2026-08-29）**：`lib/usb_policy.lua` 当前已不在 lib/ 中——USB/rest 门禁职责现分布于 `usb_charge.lua`（`blocksHostIdle`/`blocks4gRest`）、`t31x_policy.lua`（上电门禁）、`r
+doc\CAT1_LOGIC_SLIM.md:297  led_ctrl_dual.lua  
+    | 4 | `led_dual` 归档，single_blue 减 Flash | `led_ctrl.lua` → `archive/slim/led_ctrl_dual.lua` |
+doc\CAT1_LOGIC_SLIM.md:298  cellular_bootstrap.lua  -> 建议: cell_boot
+    | 4 | `cellular_bootstrap` 按需 `startCellInfoRefresh` | `lib/cellular_bootstrap.lua` |
+doc\CAT1_SLIMMING_FLOW.md:77  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    **效果**：`mode="mqtt"` 时进 rest 关 T31x 电、不建 `net_tcp` 长连接；MQTT 保持；T31x bootstrap 不重复推 `MQTTCFG`（配合步骤 4）。`net_tcp.lua` 由 `lib/low_power_wakeup.lua` 在 `mod
+doc\CAT1_SLIMMING_FLOW.md:77  low_power_wakeup.lua  -> 建议: lp_wakeup
+    **效果**：`mode="mqtt"` 时进 rest 关 T31x 电、不建 `net_tcp` 长连接；MQTT 保持；T31x bootstrap 不重复推 `MQTTCFG`（配合步骤 4）。`net_tcp.lua` 由 `lib/low_power_wakeup.lua` 在 `mod
+doc\CAT1_SLIMMING_FLOW.md:85  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    编辑 `user/app_config.lua`：
+doc\CAT1_SLIMMING_FLOW.md:128  encode_proxy.lua  
+    **已删除** `user/encode_proxy.lua`：`net_mqtt` 直接调 `host_uart.queryHostEncode` / `setHostVideoEncode` / `setHostAudioEncode`。
+doc\CAT1_SLIMMING_FLOW.md:171  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    ### 4G `app_config.lua`（摘录）
+doc\CAT1_SLIMMING_FLOW.md:229  cellular_bootstrap.lua  -> 建议: cell_boot
+    | `lib/cellular_bootstrap.lua` | 16K | 蜂窝/APN |
+doc\CAT1_SLIMMING_FLOW.md:245  encode_proxy.lua  
+    | `user/encode_proxy.lua` | 仅 2 行转发，已并入 `net_mqtt` |
+doc\CAT1_SLIMMING_FLOW.md:292  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    | 模块开关 | `user/app_config.lua` | — |
+doc\CAT1_USER_LIB_SLIM.md:8  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    > **配置真源**：`user/config.lua`（编排入口，按组拆为 `user/config/*.lua` 片段：features / cellular / gpio / led_pir / battery / host / net / flags / events / t3x_burn）
+doc\CAT1_USER_LIB_SLIM.md:8  key_config.lua  -> 建议: gpio_cfg.lua(KEY_CONFIG)
+    > **配置真源**：`user/config.lua`（编排入口，按组拆为 `user/config/*.lua` 片段：features / cellular / gpio / led_pir / battery / host / net / flags / events / t3x_burn）
+doc\CAT1_USER_LIB_SLIM.md:20  cellular_bootstrap.lua  -> 建议: cell_boot
+    | `lib/cellular_bootstrap.lua` | 11KB / 445 行 | 蜂窝/APN |
+doc\CAT1_USER_LIB_SLIM.md:38  low_power_wakeup.lua  -> 建议: lp_wakeup
+    > **`MODULE_FLAGS` 无 `net_tcp` 字段**；TCP 由 `lib/low_power_wakeup.lua` 按 `LOW_POWER_WAKEUP_CFG.mode` 控制。
+doc\CAT1_USER_LIB_SLIM.md:55  mobile_info.lua  
+    3. 需恢复 mobile_info 周期调试时，从历史提交恢复 `lib/mobile_info.lua`，并将 `mobile_info=true`。
+doc\CAT1_USER_LIB_SLIM.md:64  encode_proxy.lua  
+    | 删除 `encode_proxy.lua` | 2021/2020 直调 `host_uart.queryHostEncode` / `setHost*Encode` |
+doc\CODE_ANALYSIS.md:74  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    | 配置分层 | `config.lua` 编排 + `config/*.lua` 片段：硬件引脚 / `*_CFG` / `MODULE_FLAGS` / `APP_EVENTS` / `KEY_CONFIG`（原 `app_config.lua`、`key_config.lua` 已并入；按功能
+doc\CODE_ANALYSIS.md:74  key_config.lua  -> 建议: gpio_cfg.lua(KEY_CONFIG)
+    | 配置分层 | `config.lua` 编排 + `config/*.lua` 片段：硬件引脚 / `*_CFG` / `MODULE_FLAGS` / `APP_EVENTS` / `KEY_CONFIG`（原 `app_config.lua`、`key_config.lua` 已并入；按功能
+doc\CODE_ANALYSIS.md:357  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    | 6 | ~~`MQTT_CONNECTED` 未入 APP_EVENTS~~ | 已修复：`app_config.lua` 含 `MQTT_CONNECTED` | 订阅方仍少，可按需扩展 |
+doc\CODE_DOC_AUDIT.md:4  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    > **代码真源**：`user/config.lua`、`user/app_config.lua`、`user/main.lua`、`user/app.lua`（启动顺序以 `app.start` 为准）。
+doc\CODE_DOC_AUDIT.md:21  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    S1[config.lua / app_config.lua]
+doc\CODE_DOC_AUDIT.md:36  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    | `MODULE_FLAGS` | `app_config.lua` | `CONFIG.md`、`CAT1_*` |
+doc\FUNCTION_NAME_MAP.md:133  cellular_bootstrap.lua  -> 建议: cell_boot
+    | 79 | `readCellularIp` | `readCellIp` | 4 | cellular_bootstrap.lua |
+doc\FUNCTION_NAME_MAP.md:163  cellular_bootstrap.lua  -> 建议: cell_boot
+    | 109 | `startNetworkBootstrap` | `startNetwBoot` | 8 | cellular_bootstrap.lua |
+doc\FUNCTION_NAME_MAP.md:344  cellular_bootstrap.lua  -> 建议: cell_boot
+    | `readCellularIp` | `readCellIp` | cellular_bootstrap.lua |
+doc\FUNCTION_NAME_MAP.md:346  cellular_bootstrap.lua  -> 建议: cell_boot
+    | `startNetworkBootstrap` | `startNetwBoot` | cellular_bootstrap.lua |
+doc\OPTIMIZATION_PLAN.md:60  ipc_supervision.lua  -> 建议: ipc_supv
+    | user | `fota_svc.lua` / `ipc_supervision.lua` | MQTT 2004 OTA / IPC 告警对账（1004/1011） |
+doc\OPTIMIZATION_PLAN.md:67  cellular_bootstrap.lua  -> 建议: cell_boot
+    | lib | `cellular_bootstrap.lua` | 蜂窝拨号引导：SIM/APN 探测、运营商映射 |
+doc\OPTIMIZATION_PLAN.md:68  low_power_wakeup.lua  -> 建议: lp_wakeup
+    | lib | `low_power_wakeup.lua` / `t31x_policy.lua` / `t31x_notify.lua` | 唤醒通道 mqtt/tcp / T31x 上电门禁 / 唤醒三级链 |
+doc\OPTIMIZATION_PLAN.md:101  cellular_bootstrap.lua  -> 建议: cell_boot
+    | `gpio_util.lua` / `cellular_bootstrap.lua` / `t31x_policy.lua` / `usb_charge.lua` / `host_event.lua` | `require "config"`（即 user/config.lua） |
+doc\OPTIMIZATION_PLAN.md:125  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    | `app_config.lua` / `key_config.lua` 不存在 | 已并入 `user/config.lua`（665 行），但 CODE_ANALYSIS.md / README.md 仍按三文件描述 |
+doc\OPTIMIZATION_PLAN.md:125  key_config.lua  -> 建议: gpio_cfg.lua(KEY_CONFIG)
+    | `app_config.lua` / `key_config.lua` 不存在 | 已并入 `user/config.lua`（665 行），但 CODE_ANALYSIS.md / README.md 仍按三文件描述 |
+doc\OPTIMIZATION_PLAN.md:126  usb_policy.lua  -> 建议: usb_charge
+    | `lib/usb_policy.lua` 不存在 | CAT1_LOGIC_SLIM.md §10 记载"已落地"，实际 lib/ 中无此文件（USB/rest 门禁现落在 usb_charge / t31x_policy / runtime_power） |
+doc\OPTIMIZATION_PLAN.md:128  led.lua  -> 建议: lib/led_ctrl.lua
+    | `lib/mobile_info.lua`、`lib/led.lua`、`lib/pir.lua` 等引用 | 均已归档/合并，旧文档仍提及 |
+doc\OPTIMIZATION_PLAN.md:128  mobile_info.lua  
+    | `lib/mobile_info.lua`、`lib/led.lua`、`lib/pir.lua` 等引用 | 均已归档/合并，旧文档仍提及 |
+doc\OPTIMIZATION_PLAN.md:128  pir.lua  
+    | `lib/mobile_info.lua`、`lib/led.lua`、`lib/pir.lua` 等引用 | 均已归档/合并，旧文档仍提及 |
+doc\OPTIMIZATION_PLAN.md:169  usb_policy.lua  -> 建议: usb_charge
+    | 修正 `usb_policy.lua` 条目：标注"已回退/职责并入 usb_charge、t31x_policy、runtime_power" | CAT1_LOGIC_SLIM.md §10 |
+doc\OPTIMIZATION_PLAN.md:173  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    **验收**：grep `app_config.lua` / `key_config.lua` / `usb_policy` 不再有错误指向。
+doc\OPTIMIZATION_PLAN.md:173  key_config.lua  -> 建议: gpio_cfg.lua(KEY_CONFIG)
+    **验收**：grep `app_config.lua` / `key_config.lua` / `usb_policy` 不再有错误指向。
+doc\OPTIMIZATION_PLAN.md:223  hif_at_tbl.lua  
+    | A. 数据表外置 | `AT_CMD_TABLE` / `DOWNLINK_HANDLERS` 等纯数据表拆到独立 `.lua`（如 `hif_at_tbl.lua`），运行时 require 合并 | 低风险、不触 200 local 上限；推荐先做 |
+doc\OPTIMIZATION_PLAN.md:227  net_mqtt_host_proto.lua  
+    **2026-08-30 已做 A**：`hif_at.lua`（AT 表）+ `net_mqtt_host_proto.lua`（2020–2031）。方案 B（按协议族拆 handler / 互斥锁）仍冻结。`APP_RUNTIME` 改为嵌套表，见 [USER_LIB_OPTIMIZATION
+doc\RELEASE_v1.2.md:13  cellular_bootstrap.lua  -> 建议: cell_boot
+    | 蜂窝 | `lib/cellular_bootstrap.lua` — IMSI/ICCID 运营商识别、联通 APN、`mobile.reset` 重试 |
+doc\USER_LIB_OPTIMIZATION_PLAN_20260830.md:16  app_config.lua  -> 建议: config.lua(编排)/events.lua|flags.lua 片段
+    | [CAT1_USER_LIB_SLIM.md](CAT1_USER_LIB_SLIM.md) | 开关速查、勿合并大文件 | 口径已过期处（`app_config.lua`、384KB、体积数字）以本文 + 修订为准 |
+
+== [历史区] doc/archive 与 doc/_audit ==

@@ -1,8 +1,8 @@
 # GPIO 按键与就绪信号（peripheral）
 
-> 引脚：`user/config.lua` → `GPIO_IN`  
-> 按键策略：`../user/key_config.lua` → `KEY_CONFIG`  
-> 实现：`peripheral.lua` · 聚合启动：`user/peripheral.lua`
+> 引脚：`user/config.lua` 编排 → [`gpio_cfg.lua`](../user/gpio_cfg.lua)（`GPIO_IN` / `GPIO_OUT`）  
+> 按键策略：`gpio_cfg.lua` → `KEY_CONFIG`（事件键名见 [`events.lua`](../user/events.lua) `APP_EVENTS`）  
+> 实现：`user/peripheral.lua`（按键状态机，`cfgm.get("KEY_CONFIG")`）
 
 ---
 
@@ -10,35 +10,35 @@
 
 ```mermaid
 flowchart LR
-    CFG[key_config.lua<br/>KEY_CONFIG]
-    PIN[config.lua<br/>GPIO_IN]
+    CFG[gpio_cfg.lua<br/>KEY_CONFIG]
+    PIN[gpio_cfg.lua<br/>GPIO_IN]
     PIN --> CFG
     APP[app.lua<br/>扁平引脚]
     PER[peripheral.lua<br/>normalizeConfig]
     KEY[peripheral.lua]
-    EVT[APP_EVENTS]
+    EVT[events.lua<br/>APP_EVENTS]
     APP --> PER
     CFG --> KEY
-    PER -->|key.start| KEY
+    PER -->|长短按状态机| KEY
     KEY -->|sys.publish| EVT
 ```
 
 | 层级 | 文件 | 作用 |
 |------|------|------|
-| 引脚 | `config.lua` | `GPIO_IN.pwr_key` / `boot_key` / `coproc_ready` |
-| 策略 | `key_config.lua` | `KEY_CONFIG`（防抖、长短按、`APP_EVENTS` 键名） |
-| 聚合 | `peripheral.lua` | `require "key"`，`key.start(sub.key)` |
-| 驱动 | `peripheral.lua` | `gpio_util` 中断、长短按判定、就绪边沿 |
+| 引脚 | `gpio_cfg.lua` | `GPIO_IN.pwr_key` / `boot_key` / `coproc_ready` |
+| 策略 | `gpio_cfg.lua` | `KEY_CONFIG`（防抖、长短按、`APP_EVENTS` 键名） |
+| 聚合 | `peripheral.lua` | `cfgm.get("KEY_CONFIG")` 归一化，内置长短按状态机 |
+| 驱动 | `gpio_util` | 输入中断接线 |
 | 业务 | `app.lua` | 订阅 `GPIO_PWRKEY_*`、`GPIO_BOOTKEY_*`、`GPIO_COPROC_READY` |
 
 **已移除**：`user/powerKey.lua`、`user/t31xKey.lua`（逻辑并入 `peripheral.lua`）。
 
 ---
 
-## 2. KEY_CONFIG 结构（`key_config.lua`）
+## 2. KEY_CONFIG 结构（`gpio_cfg.lua`）
 
 ```lua
--- 引脚来自 GPIO_IN；事件键名对应 app_config.APP_EVENTS
+-- 引脚来自 GPIO_IN；事件键名对应 events.lua 的 APP_EVENTS
 _G.KEY_CONFIG = {
     pwrkey = {
         pin = GPIO_IN.pwr_key.pin,    -- 46 = gpio.PWR_KEY
@@ -89,7 +89,7 @@ gpioModule.start({
 | `bootkeyPin` / `onBootkeyShort` / `onBootkeyLong` | `bootkey` |
 | `readyPin` / `onReady` | `ready` |
 
-未传扁平字段时，`key.start({})` 仍使用 `key_config.lua` 中的 `KEY_CONFIG`。
+未传扁平字段时，仍使用 `gpio_cfg.lua` 中的 `KEY_CONFIG`。
 
 ---
 

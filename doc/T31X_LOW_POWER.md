@@ -53,7 +53,7 @@ _G.HOST_IPC_CFG = {
 }
 ```
 
-`app_config.lua`：`MODULE_FLAGS.low_power` 与 `FEATURE_CFG.low_power` 同步。
+`flags.lua`（`MODULE_FLAGS`）与 `features.lua`（`FEATURE_CFG`）中 `low_power` 开关同步。
 
 ---
 
@@ -413,6 +413,6 @@ T31x 可保持 `WITH_T31X_LOW_POWER=yes`（其它场景仍可用 IPCSTATUS）；
 | [T31X_NAMING.md](T31X_NAMING.md) | `t31x` / `T31x` / `T31X` 命名 |
 | IPC [T31X_LOW_POWER.md](../../ipc_device_gb28181/docs/T31X_LOW_POWER.md) | IPC 编译侧精简说明 |
 
-**代码真源**：`user/config.lua`、`user/app.lua`、`user/app_config.lua`、`user/battery_guard.lua`、`user/pir_ctrl.lua`、`user/host_uart.lua`；IPC `build/config.mk`、`app/cat1/ipc_power_off.c`、`app/cat1/uart_host_cmd.c`。
+**代码真源**：`user/config.lua`、`user/app.lua`、`user/battery_guard.lua`、`user/pir_ctrl.lua`、`user/host_uart.lua`；IPC `build/config.mk`、`app/cat1/ipc_power_off.c`、`app/cat1/uart_host_cmd.c`。
 
 **版本**：v1.0 · 2026-06-06

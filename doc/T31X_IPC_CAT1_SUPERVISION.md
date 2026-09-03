@@ -40,7 +40,7 @@
 │    AT+RECORD?                    4G 对账 T31x 真实写盘        │
 ├─────────────────────────────────────────────────────────────┤
 │ ③ 上报层（Cat.1 Lua → MQTT）                                 │
-│    host_uart 解析 → ipc_supervision.pubAlert → net_mqtt      │
+│    host_uart 解析 → ipc_supv.pubAlert → net_mqtt             │
 │    → 1004 ipc_alert / 1011 / 1003 / 102x                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -73,7 +73,7 @@ flowchart TB
     end
     subgraph CAT1["Cat.1"]
         HU[host_uart.lua]
-        SUP[ipc_supervision.lua]
+        SUP[ipc_supv.lua]
         MQ[net_mqtt.lua]
         UART --> HU
         UART2 --> HU
@@ -94,7 +94,7 @@ sequenceDiagram
     participant Hub as ipc_supervision.c
     participant UART as 串口
     participant HU as host_uart.lua
-    participant SUP as ipc_supervision.lua
+    participant SUP as ipc_supv.lua
     participant MQ as net_mqtt.lua
     participant BE as MQTT 后台
 
@@ -205,11 +205,10 @@ MP4 写盘失败 / 正常停录
 
 | 文件（真源 `/mnt/share/user/`） | 角色 |
 | --- | --- |
-| `ipc_supervision.lua` | `publishAlert` / `pubAlert` / `ipcCloudStatFields` / 对账与 IPCSTAT 调度 |
-| `ipc_alert_contract.lua` | alertCode + `map1011` / `reconcile` 策略表 |
+| `ipc_supv.lua` | `pubAlert` / `publishAlert` / `ipcCloudStatFields` / 对账与 IPCSTAT 调度；alertCode + `map1011`/`reconcile` 契约表（原 `ipc_supervision.lua` + `ipc_alert_contract.lua` 合一） |
 | `host_uart.lua` | 解析 `IPCALERT` / `IPCSTAT` / `RECORD`；`reconcileHostRecordSession()` |
 | `net_mqtt.lua` | MQTT 传输；`ipc_sup.bind()`；`pubIpcAlert` 薄封装 |
-| `app.lua` | `T31X_IPC_ALERT` → `ipc_supervision.pubAlert()` |
+| `app.lua` | `T31X_IPC_ALERT` → `ipc_supv.pubAlert()` |
 | `vbat.lua` + `config.lua` | 电池 ADC；`mv_calibration` 实测校准 |
 
 IPC 仓库镜像：`docs/4g_lua/user/`（与 `/mnt/share/user/` 同步）
@@ -242,9 +241,9 @@ IPC 仓库镜像：`docs/4g_lua/user/`（与 `/mnt/share/user/` 同步）
 | `usb_recovery_fail` | ✓ | `cat1_usb_reenum.c` | 否 |
 | `recordctrl_fail` | ✓ | `cloud_remote_ctrl.c`；4G `net_mqtt.lua` | 是 |
 | `ipcpoweroff_busy` | ✓ | `uart_host_cmd.c` | 否 |
-| `encode_runtime_fail` | Cat.1 `ipc_alert_contract.lua` | `net_mqtt.lua` | 否 |
+| `encode_runtime_fail` | Cat.1 `ipc_supv.lua` | `net_mqtt.lua` | 否 |
 
-统一发送：`ipc_supervision.c` `ipc_supervision_alert()` → Cat.1 `host_uart.lua` → `ipc_supervision.lua` `publishAlert`。
+统一发送：`ipc_supervision.c` `ipc_supervision_alert()` → Cat.1 `host_uart.lua` → `ipc_supv.lua` `publishAlert`。
 
 ---
 

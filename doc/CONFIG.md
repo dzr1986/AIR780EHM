@@ -1,11 +1,11 @@
 # 配置说明（命名规范与索引）
 
-> **硬件**：[`../user/config.lua`](../user/config.lua)  
-> **开关/事件**：[`../user/app_config.lua`](../user/app_config.lua)  
-> **按键策略**：[`../user/key_config.lua`](../user/key_config.lua)  
+> **硬件/编排**：[`../user/config.lua`](../user/config.lua)（require `features`/`cellular`/`t31x_burn`/`gpio_cfg`/`led_pir`/`battery`/`host`/`net`/`flags`/`events`）  
+> **开关**：`MODULE_FLAGS` → [`../user/flags.lua`](../user/flags.lua) · **特性**：`FEATURE_CFG` → [`../user/features.lua`](../user/features.lua)  
+> **事件**：`APP_EVENTS` → [`../user/events.lua`](../user/events.lua) · **引脚/按键**：`GPIO_IN`/`GPIO_OUT`/`KEY_CONFIG` → [`../user/gpio_cfg.lua`](../user/gpio_cfg.lua)  
 > **PIR 媒体**：[`../user/pir_ctrl.lua`](../user/pir_ctrl.lua)  
 > **T31x 协处理器**：[`../user/t31x_ctrl.lua`](../user/t31x_ctrl.lua)  
-> **加载**：`main.lua` → `config` → `app_config` → `key_config`
+> **加载**：`main.lua` → `config`（编排 → 各片段）
 
 ## 命名约定
 
@@ -99,7 +99,7 @@
 - `PIR_CFG`：由 `GPIO_IN.pir_det` 自动带出中断参数 + `PIR_COOLDOWN_MS.frequent`
 - `BATTERY_CFG`：ADC 采样、模组灯、电量保护（真源 [`config.lua`](../user/config.lua)）；行为见 [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md)
 - `T31X_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
-- `MODULE_FLAGS.battery_guard`：[`app_config.lua`](../user/app_config.lua)，`false` 可关闭电量保护
+- `MODULE_FLAGS.battery_guard`：[`flags.lua`](../user/flags.lua)，`false` 可关闭电量保护
 
 ### `BATTERY_CFG` 字段一览
 

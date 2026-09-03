@@ -1,6 +1,6 @@
 # app.lua 事件总线
 
-> **代码真源**：[`user/app_config.lua`](../../user/app_config.lua)（`APP_EVENTS`）· [`user/app.lua`](../../user/app.lua)（订阅表）  
+> **代码真源**：[`user/events.lua`](../../user/events.lua)（`APP_EVENTS`）· [`user/app.lua`](../../user/app.lua)（订阅表）  
 > **总览**：[LUA_MODULES.md](../LUA_MODULES.md) §2
 
 ---
@@ -53,7 +53,7 @@
 | `T31X_RECORD_ACTIVE` | `host_uart` | `pubRecActive` |
 | `T31X_RECORD_STOP` | `host_uart` | `publishT31xRecordStop` |
 | `T31X_PERSON_CNT` | `host_uart` | **不**转 MQTT（人数不上 1010） |
-| `T31X_IPC_ALERT` | `host_uart` | `ipc_supervision.pubAlert` |
+| `T31X_IPC_ALERT` | `host_uart` | `ipc_supv.pubAlert` |
 
 ---
 
@@ -78,16 +78,16 @@ flowchart TD
 
 ### 5.1 进入 rest（`onEnterLowPower`）
 
-1. `usb_policy.blocks4gRest()` 门禁  
+1. `usb_charge.blocks4gRest()` 门禁  
 2. 可选低电提示音  
-3. `doEnterLowPowerBody`：`POWER_ENTERED_REST` → `t31x_ctrl.enterSleep` → `pubRest` → `low_power_wakeup.onEnterRest`
+3. `doEnterLowPowerBody`：`POWER_ENTERED_REST` → `t31x_ctrl.enterSleep` → `pubRest` → `lp_wakeup.onEnterRest`
 
 ### 5.2 退出 rest（`onExitLowPower`）
 
 1. `setLowPowerMode(false)` → `POWER_EXITED_REST`  
 2. `exitRestIfNeededAfterUsbInsert`（USB 去重唤醒）  
 3. `requestT31xWake`（**不再**重复 `time_sync.onT31xWake`）  
-4. `low_power_wakeup.onExitRest`
+4. `lp_wakeup.onExitRest`
 
 ### 5.3 USB 插入（`applyUsbPower`）
 
@@ -112,7 +112,7 @@ flowchart TD
 | `HOST_UART_FIRST_AT` | 首条 AT 后自动身份上报 |
 | `UART_RX_*` | `uart_bridge` 原始数据（可选） |
 
-完整常量列表见 `user/app_config.lua` 中 `_G.APP_EVENTS`。
+完整常量列表见 `user/events.lua` 中 `_G.APP_EVENTS`。
 
 ---
 

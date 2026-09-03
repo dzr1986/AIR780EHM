@@ -8,16 +8,16 @@
 
 ## 1. 核心结论
 
-低功耗 **云端唤醒** 只有两套机制，**二选一**，由 `lib/low_power_wakeup.lua` 统一调度：
+低功耗 **云端唤醒** 只有两套机制，**二选一**，由 `user/lp_wakeup.lua` 统一调度：
 
 | 模式 | 配置 | 长连接 | 唤醒方式 |
 |------|------|--------|----------|
 | **MQTT**（推荐） | `LOW_POWER_WAKEUP_CFG.mode = "mqtt"` | `net_mqtt.lua` rest 下保持 | 下行 2001/2002、PIR |
 | **TCP** | `mode = "tcp"` | `net_tcp.lua` SERVCREATE rest 下保持 | 服务器 `wake_hex` |
 
-1. **策略真源**：`user/config.lua` → `LOW_POWER_WAKEUP_CFG.mode`（仅此一处切换）。
+1. **策略真源**：`user/features.lua` → `LOW_POWER_WAKEUP_CFG.mode`（`config.lua` 编排；仅此一处切换）。
 2. **MQTT 只在 4G 建一条连接** — 单 Broker、client_id=IMEI；T31x 不必再建 MQTT。
-3. **TCP 与 MQTT 执行分离** — `net_tcp.lua` / `net_mqtt.lua` 各管连接；门禁全在 `low_power_wakeup`。
+3. **TCP 与 MQTT 执行分离** — `net_tcp.lua` / `net_mqtt.lua` 各管连接；门禁全在 `lp_wakeup`。
 4. **进 rest 共性**：断 T31x 电（`graceful_ipc`）、蜂窝保持在线（`modem_hibernate=false`）。
 
 ---
@@ -28,7 +28,7 @@
 config.lua  LOW_POWER_WAKEUP_CFG.mode  ("mqtt" | "tcp")
        │
        ▼
-lib/low_power_wakeup.lua   ← 唯一策略模块
+user/lp_wakeup.lua   ← 唯一策略模块
        ├─ allowTcpChannel / onEnterRest / onExitRest
        │
        ├─► net_mqtt.lua     MQTT 长连接（mode=mqtt 时 rest 保持）
@@ -110,13 +110,13 @@ T31x bootstrap 可能发送与 `MQTT_CFG` 相同的 `AT+MQTTCFG`。4G 在 `app.l
 
 ```text
 mode=mqtt 进 rest:
-  onEnterLowPower → enterSleep → 1002 → low_power_wakeup.onEnterRest(关TCP) → MQTT 保持
+  onEnterLowPower → enterSleep → 1002 → lp_wakeup.onEnterRest(关TCP) → MQTT 保持
 
 mode=tcp 进 rest:
-  onEnterLowPower → enterSleep → (可选1002) → low_power_wakeup.onEnterRest(保持TCP)
+  onEnterLowPower → enterSleep → (可选1002) → lp_wakeup.onEnterRest(保持TCP)
 
 出 rest:
-  唤醒 → onExitLowPower → requestT31xWake → low_power_wakeup.onExitRest → 1001(MQTT模式)
+  唤醒 → onExitLowPower → requestT31xWake → lp_wakeup.onExitRest → 1001(MQTT模式)
 ```
 
 ---
@@ -132,4 +132,4 @@ mode=tcp 进 rest:
 | 日期 | 说明 |
 |------|------|
 | 2026-06-08 | 与 IPC 策略文档同步首版 |
-| 2026-06-10 | 收敛为 `low_power_wakeup` 双模式架构 |
+| 2026-06-10 | 收敛为 `lp_wakeup` 双模式架构 |

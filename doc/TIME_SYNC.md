@@ -90,7 +90,7 @@ sequenceDiagram
 | `ack_timeout_ms` | 800 | 等待 `+TIMESET:OK` |
 | `resync_skew_sec` | 2 | 重复推送节流 |
 
-模块开关：`app_config.lua` → `MODULE_FLAGS.time_sync`
+模块开关：`flags.lua` → `MODULE_FLAGS.time_sync`
 
 ---
 

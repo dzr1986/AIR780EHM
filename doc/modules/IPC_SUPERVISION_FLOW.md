@@ -1,6 +1,6 @@
-# ipc_supervision IPC 异常监督
+# ipc_supv IPC 异常监督
 
-> **代码真源**：[`user/ipc_supervision.lua`](../../user/ipc_supervision.lua) · [`user/ipc_alert_contract.lua`](../../user/ipc_alert_contract.lua)  
+> **代码真源**：[`user/ipc_supv.lua`](../../user/ipc_supv.lua)（调度 + `alertCode`/`map1011`/`reconcile` 契约表，原 `ipc_supervision.lua` / `ipc_alert_contract.lua` 已并入）  
 > **契约**：[T31X_IPC_ALERT_CONTRACT.md](../T31X_IPC_ALERT_CONTRACT.md)  
 > **关联**：[HOST_UART_AT_DISPATCH.md](HOST_UART_AT_DISPATCH.md)（`AT+IPCALERT`）· [PIR_CTRL_FLOW.md](PIR_CTRL_FLOW.md)（1011 停录）
 
@@ -10,11 +10,11 @@
 
 | 层级 | 职责 |
 |------|------|
-| **契约** | `ipc_alert_contract` 定义 `alertCode` → `map1011` / `reconcile` |
+| **契约** | `ipc_supv` 内定义 `alertCode` → `map1011` / `reconcile` |
 | **上行** | T31x `AT+IPCALERT` → 1004 `action=ipc_alert` |
 | **副作用** | 补丁 1003 缓存、可选 1011、录像对账、IPCSTAT 刷新 |
 
-`net_mqtt` 在加载后通过 `ipc_supervision.bind(deps)` 注入 `pubUplink`、`esc_json`、`pubT31xStop` 等，避免循环依赖。
+`net_mqtt` 在加载后通过 `ipc_supv.bind(deps)` 注入 `pubUplink`、`esc_json`、`pubT31xStop` 等，避免循环依赖。
 
 ---
 
@@ -35,7 +35,7 @@ flowchart TD
 
 入口：
 
-- `host_uart` 解析 `AT+IPCALERT` → `sys.publish(T31X_IPC_ALERT)` → `app` → `ipc_supervision.pubAlert`
+- `host_uart` 解析 `AT+IPCALERT` → `sys.publish(T31X_IPC_ALERT)` → `app` → `ipc_supv.pubAlert`
 - 直接调用 `publishAlert`（测试或内部）
 
 ---
@@ -72,7 +72,7 @@ flowchart TD
 
 ## 5. 1011 映射（`handleMap1011`）
 
-`ipc_alert_contract.shouldMap1011(code)` 为真时：
+`ipc_supv.shouldMap1011(code)` 为真时：
 
 1. `pir_ctrl.syncStopFromT31x(alertCode)` 同步 4G 会话
 2. `pubT31xStop` → 1011（`source=t31x`）

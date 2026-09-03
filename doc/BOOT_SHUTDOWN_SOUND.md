@@ -182,7 +182,7 @@ _G.SOUND_CFG = {
 }
 ```
 
-开关也可放 `app_config.lua` → `MODULE_FLAGS.sound_prompt`。
+开关也可放 `flags.lua` → `MODULE_FLAGS.sound_prompt`。
 
 ### 6.2 修改点一览
 
@@ -317,7 +317,7 @@ T31x 连发:  AT → AT+XXX → AT+YYY   （同一启动窗口）
 
 | 名称 | 说明 |
 |------|------|
-| `APP_HOST_UART_FIRST_AT` | `app_config.lua` → `APP_EVENTS.HOST_UART_FIRST_AT`；首条 AT 到达时发布，载荷为首条命令字符串 |
+| `APP_HOST_UART_FIRST_AT` | `events.lua`（`APP_EVENTS.HOST_UART_FIRST_AT`）；首条 AT 到达时发布，载荷为首条命令字符串 |
 | `host_uart.isHostAtReady()` | 是否已收到 T31x 首条 AT |
 | `host_uart.getHostFirstAt()` | 首条 AT 原文（调试用） |
 

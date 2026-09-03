@@ -1,6 +1,6 @@
-# low_power_wakeup / net_tcp 低功耗唤醒通道
+# lp_wakeup / net_tcp 低功耗唤醒通道
 
-> **代码真源**：[`lib/low_power_wakeup.lua`](../../lib/low_power_wakeup.lua) · [`user/net_tcp.lua`](../../user/net_tcp.lua)  
+> **代码真源**：[`user/lp_wakeup.lua`](../../user/lp_wakeup.lua) · [`user/net_tcp.lua`](../../user/net_tcp.lua)  
 > **配置**：`LOW_POWER_WAKEUP_CFG.mode`（[`config.lua`](../../user/config.lua)）  
 > **详述**：[CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](../CAT1_LOWPWR_MQTT_TCP_STRATEGY.md)  
 > **关联**：[NET_MQTT_DOWNLINK_DISPATCH.md](NET_MQTT_DOWNLINK_DISPATCH.md) · [APP_EVENT_BUS.md](APP_EVENT_BUS.md)
@@ -16,7 +16,7 @@
 | **MQTT**（默认） | `"mqtt"` | `net_mqtt` 保持 | 下行 2001/2002、PIR |
 | **TCP** | `"tcp"` | `net_tcp` SERVCREATE 保持 | 服务器 `wake_hex` |
 
-`lib/low_power_wakeup.lua` 是**唯一策略模块**；`net_mqtt` / `net_tcp` 各管连接实现。
+`user/lp_wakeup.lua` 是**唯一策略模块**；`net_mqtt` / `net_tcp` 各管连接实现。
 
 ---
 
@@ -39,10 +39,10 @@
 
 ```mermaid
 flowchart LR
-    EN[app.onEnterLowPower] --> LPW1[low_power_wakeup.onEnterRest]
+    EN[app.onEnterLowPower] --> LPW1[lp_wakeup.onEnterRest]
     LPW1 -->|mqtt| CLOSE[net_tcp.closeChannel]
     LPW1 -->|tcp| SKIP1[不关 TCP]
-    EX[app.onExitLowPower] --> LPW2[low_power_wakeup.onExitRest]
+    EX[app.onExitLowPower] --> LPW2[lp_wakeup.onExitRest]
     LPW2 -->|tcp| REST[net_tcp.applyChannel NET_TCP_CHANNEL]
     LPW2 -->|mqtt| SKIP2[不恢复 TCP]
 ```
@@ -59,8 +59,8 @@ flowchart LR
 
 `app.setupUartBridge` 注入：
 
-- `on_servcreate(ch)` → `low_power_wakeup.applyTcpChannel(ch)`
-- `on_servclose(sid)` → `low_power_wakeup.closeTcpChannel(sid)`
+- `on_servcreate(ch)` → `lp_wakeup.applyTcpChannel(ch)`
+- `on_servclose(sid)` → `lp_wakeup.closeTcpChannel(sid)`
 
 `host_uart` `SERVCREATE`/`SERVCLOSE` 前查 `allowTcpChannel()`；`AT+GETCFG` 附加 `wakeup_mode` 与 `tcp_on` 字段（`appendGetCfgFields`）。
 
@@ -103,7 +103,7 @@ flowchart LR
 | `appendGetCfgFields()` | `",tcp_on=0"` |
 | `getState()` | `configured=false` |
 
-启用 tcp 模式前需实现：`SERVCREATE` 长连接、`wake_hex` 解析、与 `low_power_wakeup` 的 `applyChannel`/`closeChannel` 对接。策略门禁已在 `low_power_wakeup` 就绪。
+启用 tcp 模式前需实现：`SERVCREATE` 长连接、`wake_hex` 解析、与 `lp_wakeup` 的 `applyChannel`/`closeChannel` 对接。策略门禁已在 `lp_wakeup` 就绪。
 
 ---
 

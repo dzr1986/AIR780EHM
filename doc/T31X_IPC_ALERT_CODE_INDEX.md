@@ -18,7 +18,7 @@
 | Cat.1 解析 | `user/host_uart.lua` | 658–668 | `uart_ipc_alert_notify` |
 | 命令注册 | `user/host_uart.lua` | 1210 | `AT+IPCALERT=` 表项 |
 | 事件发布 | `user/host_uart.lua` | 667 | `sys.publish(T31X_IPC_ALERT, code, detail)` |
-| 事件名 | `user/app_config.lua` | 60 | `T31X_IPC_ALERT = "t31x_ipc_alert"` |
+| 事件名 | `user/events.lua` | 41 | `t31x_IPC_ALERT = "t31x_ipc_alert"` |
 | app 订阅 | `user/app.lua` | 669–672 | → `net_mqtt.pubIpcAlert` |
 | MQTT 1004 | `user/net_mqtt.lua` | 1785–1798 | `action=ipc_alert` |
 | map1011 | `user/net_mqtt.lua` | 1799–1815 | 部分码追加 **1011** `source=t31x` |
