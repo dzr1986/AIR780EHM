@@ -1,6 +1,6 @@
 # t31x_policy T31x 唤醒门禁
 
-> **代码真源**：[`lib/t31x_policy.lua`](../../lib/t31x_policy.lua)  
+> **代码真源**：[`user/t31x_policy.lua`](../../user/t31x_policy.lua)  
 > **配置**：`T31X_POLICY_CFG`（[`config.lua`](../../user/config.lua)）  
 > **硬件与休眠**：[T31X_POWER_WAKEUP.md](T31X_POWER_WAKEUP.md) · **对时**：[TIME_SYNC_FLOW.md](TIME_SYNC_FLOW.md)
 

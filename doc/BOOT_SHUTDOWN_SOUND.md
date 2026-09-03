@@ -153,7 +153,7 @@ T31x → 4G: \r\n+SOUNDACK:shutdown\r\nOK\r\n   （可选）
 | **4** | 播开机提示 | 4G `ntfHost(sid, 4)` |
 | **5** | 播关机提示 | 播完 T31x 可主动断电准备（仍建议 4G 等 ACK） |
 
-T31x `runtime_worker` 收到后调 `media_play_prompt()`，与 [MEDIA_OPS.md](../t3x_linux/MEDIA_OPS.md) 扩展一致。
+T31x `runtime_worker` 收到后调 `media_play_prompt()`，与 [MEDIA_OPS.md](../../t3x_linux/MEDIA_OPS.md) 扩展一致。
 
 ### 5.3 T31x 侧实现要点
 
@@ -372,7 +372,7 @@ T31x 连发:  AT → AT+XXX → AT+YYY   （同一启动窗口）
 |------|------|
 | GPIO / 音频引脚 | [T31X_CAT1_GPIO.md](T31X_CAT1_GPIO.md) §2.4 |
 | 唤醒与 AT | [T31X_HOSTEVT_PROTOCOL.md](T31X_HOSTEVT_PROTOCOL.md)、[UART_PROTOCOL.md](UART_PROTOCOL.md) |
-| T31x 媒体扩展 | [../t3x_linux/MEDIA_OPS.md](../t3x_linux/MEDIA_OPS.md) |
+| T31x 媒体扩展 | [MEDIA_OPS.md](../../t3x_linux/MEDIA_OPS.md) |
 | 低功耗 / 电量 | [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) |
 | 4G 电源控制 | `user/t31x_ctrl.lua`、`user/app.lua` |
 | 串口 AT | `user/host_uart.lua` |

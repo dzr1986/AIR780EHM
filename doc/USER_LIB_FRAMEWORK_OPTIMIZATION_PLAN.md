@@ -291,6 +291,7 @@ python tools/debug/_ref_name_check.py              # 引用名护栏（loader/mo
 python tools/debug/_module_tree.py --diff          # 行数/文件漂移（对照 baseline）
 python tools/debug/_protocol_regression_check.py   # host_uart + net_mqtt + bind header 一次跑完
 python tools/debug/_doc_module_ref_check.py        # doc↔代码 .lua 引用一致性
+python tools/debug/_doc_md_link_check.py           # doc/ 内部 md 互链断链（外部/待补走 EXEMPT）
 ```
 
 ### 8.2 实机 smoke（合并前 / 发版前）

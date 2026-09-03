@@ -109,7 +109,7 @@
 
 | 模块 | 体量/问题 | 建议拆分 |
 |------|-----------|----------|
-| `user/app.lua` | 横跨烧录模式、USB 边沿/电源、低功耗进出、PIR→MQTT 桥、心跳、FOTA、RNDIS、事件订阅、GPIO | **冻结中**（[ARCHITECTURE_REVIEW_2026-09-03](ARCHITECTURE_REVIEW_2026-09-03.md) §6 S2）：纯迁移 `app_power` / `app_pir_bridge` / `app_burn` + ctx 注入，`EVNT_HNDL` 仍集中；解锁后执行 |
+| `user/app.lua` | 横跨烧录模式、USB 边沿/电源、低功耗进出、PIR→MQTT 桥、心跳、FOTA、RNDIS、事件订阅、GPIO | **冻结中**（[ARCHITECTURE_REVIEW_20260903](ARCHITECTURE_REVIEW_20260903.md) §6 S2）：纯迁移 `app_power` / `app_pir_bridge` / `app_burn` + ctx 注入，`EVNT_HNDL` 仍集中；解锁后执行 |
 | `user/pir_ctrl.lua` | 含 GPIO 中断、冷却、录像会话、云端启停、PIRSTAT 统计、多事件发布 | 受 app 冻结连带；解锁后视需要再评估 `pir_hw`(中断/触发) / `pir_session`(录像会话/冷却) / `pir_report`(PIRSTAT/上行桥) |
 | `user/config.lua` | ✅ 已完成：config 片段拆分（`features`/`cellular`/`gpio_cfg`/`led_pir`/`battery`/`host`/`net`/`flags`/`events`） | `config.lua` 仅保留编排 |
 
@@ -145,7 +145,7 @@
 |--------|------|----------|------|
 | P0 | 目录分组 `hif/cmd` `hif/rx` `hif/ipc` `mqtt/`（纯移动 + 更新扫描锚点） | 全部 `hif_*` `mqtt_*` `net_tcp` `main.lua` | 低 |
 | P0 | `host_uart` 改为启动期注入 `opts.t31x`，去除运行期 `require` | `host_uart.lua` `app.lua` | 低 |
-| P1 | 拆分 `app.lua`（冻结：见 [ARCHITECTURE_REVIEW_2026-09-03](ARCHITECTURE_REVIEW_2026-09-03.md) §6 S2） | `app.lua` | 中 |
+| P1 | 拆分 `app.lua`（冻结：见 [ARCHITECTURE_REVIEW_20260903](ARCHITECTURE_REVIEW_20260903.md) §6 S2） | `app.lua` | 中 |
 | P1 | 拆分 `pir_ctrl.lua`（hw/session/report） | `pir_ctrl.lua` | 中 |
 | P1 | 归并/标注 `t31x_*` 为 L2 服务（文档 + 可选 `lib/t31x/`） | `t31x_*` `host_uart.lua` | 低–中 |
 | P2 | 标注/删除未启用的 `net_tcp.lua` 桩 | `net_tcp.lua` | 低 |

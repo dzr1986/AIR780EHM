@@ -421,7 +421,7 @@ PIR / 按键 / LED / 电池 / OTA 已合并至 `user/pir_ctrl`、`user/periphera
 | [PIR_PROTOCOL.md](./PIR_PROTOCOL.md) | PIR 策略与停录 |
 | [CONFIG.md](./CONFIG.md) | 配置分层索引（勿与历史 projectConfig 混用） |
 | [../README.md](../README.md) | 工程总览 |
-| [../archive/README.md](../archive/README.md) | 归档库 |
+| `archive/`（代码归档目录） | 归档库 |
 
 ---
 

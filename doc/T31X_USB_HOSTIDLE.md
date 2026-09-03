@@ -147,7 +147,7 @@ _G.HOST_USB_CFG = {
 
 ## 7. USB 恢复与 4G rest / T31x 休眠
 
-> T31x 侧全文：[usb_4g_recovery.md](usb_4g_recovery.md) §11（IPC 仓库 `docs/`）
+> T31x 侧全文：[usb_4g_recovery.md](../../ipc_device_ini/docs/usb_4g_recovery.md) §11（IPC 仓库 `docs/`）
 
 ### 7.1 结论
 

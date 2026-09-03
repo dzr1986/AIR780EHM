@@ -262,10 +262,10 @@ flowchart TD
 
 ## 9. 相关文档
 
-- [`T31X_CAT1_GPIO.md`](../T31X_CAT1_GPIO.md) §2.9 — 原理图网络名  
+- [`T31X_CAT1_GPIO.md`](T31X_CAT1_GPIO.md) §2.9 — 原理图网络名  
 - [`PIR_PROTOCOL.md`](PIR_PROTOCOL.md) — 2010 / 2011 / 1010 / 1011  
 - [`MQTT_DOWNLINK.md`](MQTT_DOWNLINK.md) §8 — 下行 PIR 配置示例  
 - [`CONFIG.md`](CONFIG.md) — 配置分层  
-- [`config.lua`](config.lua) — `PIR_CFG`  
-- [`pir_ctrl.lua`](pir_ctrl.lua) — 媒体/录像默认策略  
+- [`config.lua`](../user/config.lua) — `PIR_CFG`  
+- [`pir_ctrl.lua`](../user/pir_ctrl.lua) — 媒体/录像默认策略  
 - [`PIR_TRIGGER_INTERVAL.md`](PIR_TRIGGER_INTERVAL.md) — **触发间隔分析（可视门铃参考）**  

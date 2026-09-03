@@ -135,6 +135,6 @@ flowchart LR
 - [`PIR_HARDWARE.md`](PIR_HARDWARE.md) — GPIO30、启动顺序、事件流  
 - [`PIR_PROTOCOL.md`](PIR_PROTOCOL.md) — 2010/2011、1010/1011  
 - [`CONFIG.md`](CONFIG.md) — 配置分层  
-- [`config.lua`](config.lua) — `PIR_COOLDOWN_MS`、`PIR_CFG`
+- [`config.lua`](../user/config.lua) — `PIR_COOLDOWN_MS`、`PIR_CFG`
 
 **文档版本**：2026-05-20

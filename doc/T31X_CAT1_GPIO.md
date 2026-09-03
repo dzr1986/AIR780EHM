@@ -295,8 +295,8 @@ gpio.get(26)   # T31x_BOOT，烧录时同为 1
 | 模组电源     | `CPU_PWR_EN`               | 电源使能网络                         |
 | 烧录模式     | `T31x_BOOT`、`USB_DEBUG_EN`  | **GPIO26**（Pin25 `CAN_TXD`）、**GPIO32**（Pin33） |
 | 电池 ADC   | `BAT_ADC`                  | 模组/分压网络（按 Sheet6）               |
-| PIR 人体检测 | `PIR_MCU_DET`              | **GPIO30**，见 [`user/PIR_HARDWARE.md`](user/PIR_HARDWARE.md) |
-| 电池状态灯（4G 侧） | 子板 FPC **BATSTAT_LED**（Sheet6→M1） | **GPIO21**（Pin107，`LED_BLUE`），见 [`user/CHARGE_BATTERY.md`](user/CHARGE_BATTERY.md) |
+| PIR 人体检测 | `PIR_MCU_DET`              | **GPIO30**，见 [`PIR_HARDWARE.md`](PIR_HARDWARE.md) |
+| 电池状态灯（4G 侧） | 子板 FPC **BATSTAT_LED**（Sheet6→M1） | **GPIO21**（Pin107，`LED_BLUE`），见 [`CHARGE_BATTERY.md`](CHARGE_BATTERY.md) |
 | 网络状态灯 | **NET_STAT_LED**（Sheet3 **T31x**） | **不由 Air780 驱动**；子板 J1 Pin5 经主板到 T31x，非 GPIO21 |
 
 ### 3.1 充电与指示灯（LP4030 + 本工程固件）

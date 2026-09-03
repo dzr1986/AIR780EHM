@@ -59,7 +59,7 @@ loader.start(time_sync, "startSntp")
 |------|------|
 | [user/app.lua](../user/app.lua) | 删除 `optMod()`；8 个可选模块改 `loader.opt`；`lazyMod`/`startOptionalService` 委托 loader |
 | [user/main.lua](../user/main.lua) | `cellular_bootstrap`、`usb_rndis` 改 `loader.load` |
-| [user/utils.lua](../user/utils.lua) | `lazyRequire` 委托 `loader.load`（消除双缓存），旧调用方无需改动 |
+| [lib/utils.lua](../lib/utils.lua) | `lazyRequire` 委托 `loader.load`（消除双缓存），旧调用方无需改动 |
 
 **打包注意**：Luatools 只打包从 main.lua 静态 `require` 可达的文件；仅经 `loader.load/opt` 动态加载的模块会被漏掉。main.lua 中的 `__LUATOOLS_SCAN_ANCHOR__` 死代码块列出全部动态模块作为扫描锚点（运行时永不执行）。**新增动态加载模块时必须同步加入该锚点块**。
 
@@ -152,8 +152,8 @@ local info, warn, err = logFuncs.info, logFuncs.warn, logFuncs.error
 | [lib/config_manager.lua](../lib/config_manager.lua) | 新增 | 配置访问框架（~65 行） |
 | [user/app.lua](../user/app.lua) | 改造 | 删 `optMod`；`loader.opt/load/start` 接管；`E.BATTERY_UPDATE` |
 | [user/main.lua](../user/main.lua) | 改造 | cellular/rndis 加载走 loader |
-| [user/utils.lua](../user/utils.lua) | 改造 | `lazyRequire` 委托 loader（API 不变） |
-| [user/led_ctrl.lua](../user/led_ctrl.lua) | 改造 | `applyConfigs` 用 `cfgman.merge`；`E.BATTERY_UPDATE` |
+| [lib/utils.lua](../lib/utils.lua) | 改造 | `lazyRequire` 委托 loader（API 不变） |
+| [lib/led_ctrl.lua](../lib/led_ctrl.lua) | 改造 | `applyConfigs` 用 `cfgman.merge`；`E.BATTERY_UPDATE` |
 | [user/config.lua](../user/config.lua) | 改造 | `APP_EVENTS.BATTERY_UPDATE` 收编 |
 | [user/net_mqtt.lua](../user/net_mqtt.lua) / [user/vbat.lua](../user/vbat.lua) | 改造 | BATTERY_UPDATE 改用 `APP_EVENTS` |
 | peripheral / sound_prompt / vbat / 5 个 lib 模块 | 清理 | 删死 `LOG_TAG` |

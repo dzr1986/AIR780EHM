@@ -3,7 +3,7 @@
 > **只读分析文档**（描述当前固件行为，不涉及改代码建议实现）  
 > 代码：`user/battery_guard.lua` · `lib/t31x_policy.lua` · `user/app.lua` · `user/config.lua`  
 > 关联：[LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) · [POWER_USB_BATTERY_T31X_LOGIC.md](POWER_USB_BATTERY_T31X_LOGIC.md) · [CONFIG.md](CONFIG.md)  
-> **20% 阈值防徘徊实现**（本仓库当前固件）：[BATTERY_20PCT_DYNAMIC_DETECT_FLOW.md](BATTERY_20PCT_DYNAMIC_DETECT_FLOW.md) §8
+> **20% 阈值防徘徊实现**（本仓库当前固件）：[WORK_MODE_BATTERY_20PCT.md](WORK_MODE_BATTERY_20PCT.md) §4（边界反复启停处理）
 
 **版本**：v1.0 · 2026-06-10（阈值说明以 v1.0 为准；20% 产品见上链文档）
 
