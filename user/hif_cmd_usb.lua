@@ -118,7 +118,11 @@ function bind(C)
             usbRcvrGrd.busy = false
             usbRcvrGrd.last_sec = os.time()
             usbRcvrGrd.count = (usbRcvrGrd.count or 0) + 1
-            if not ok then
+            if ok then
+                -- 本地复位执行成功：置 ok。netdev 是否真正恢复由 T31 watchdog 复查，
+                -- 仍未恢复会再次下发 AT+USBRESET（recovering → 重新计数）
+                pushRecover("ok")
+            else
                 pushRecover("idle", { err = "rebind_failed" })
             end
         end)
