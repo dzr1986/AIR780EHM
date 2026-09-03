@@ -281,10 +281,16 @@ flowchart LR
 ### 8.1 静态（每次提交）
 
 ```bash
-python tools/debug/_protocol_regression_check.py   # 推荐：host_uart + net_mqtt 一次跑完
-python tools/debug/_net_mqtt_regression_check.py
-python tools/debug/_host_uart_regression_check.py
-python tools/debug/_module_tree.py                  # 可选，对比行数漂移
+python tools/debug/run_all_checks.py   # ★ 一键：引用名 + 模块树漂移 + 协议族回归 + doc 引用，全绿才可提交
+```
+
+明细（等价单跑，任选其一）：
+
+```bash
+python tools/debug/_ref_name_check.py              # 引用名护栏（loader/modCall/require 错名）
+python tools/debug/_module_tree.py --diff          # 行数/文件漂移（对照 baseline）
+python tools/debug/_protocol_regression_check.py   # host_uart + net_mqtt + bind header 一次跑完
+python tools/debug/_doc_module_ref_check.py        # doc↔代码 .lua 引用一致性
 ```
 
 ### 8.2 实机 smoke（合并前 / 发版前）
