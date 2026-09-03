@@ -115,7 +115,7 @@ local function resetConfirm()
     guard.exit_confirm_streak = 0
 end
 
-local function cancelShutdownTmr()
+local function cancelShutdownTimer()
     if guard.shutdown_timer then sys.timerStop(guard.shutdown_timer) end
     guard.shutdown_timer = nil
 end
@@ -171,23 +171,23 @@ function isBatDynRest()
     return dynDetectOn() and guard.rest_by_battery
 end
 
-function shdHostSleep()
+function shouldHostSleep()
     return rntmPwr.isPirWatch()
 end
 
 function canHostSleep()
-    if not shdHostSleep() then return false end
+    if not shouldHostSleep() then return false end
     local minAwake = intCfg("host_idle_min_awake_sec", 30)
     if minAwake <= 0 or guard.host_idle_wake_ts <= 0 then return true end
     return (os.time() - guard.host_idle_wake_ts) >= minAwake
 end
 
-function ntfHostIdle()
+function notifyHostIdle()
     guard.host_idle_wake_ts = os.time()
 end
 
 function markT31xWoken()
-    ntfHostIdle()
+    notifyHostIdle()
 end
 
 local function loadPctThresh()
@@ -264,7 +264,7 @@ local function evalTiers(pct, thresholds, mv)
     if guard.shutdown_timer and not shouldRecover(pct, mv, thresholds.shutdown) then
         return
     end
-    cancelShutdownTmr()
+    cancelShutdownTimer()
     if guard.pir_suspended then resumePir() end
     if guard.rest_by_battery then exitBatRest() end
 end
@@ -280,7 +280,7 @@ function evaluate(pct, mv)
     if mv ~= nil then guard.last_mv = mv end
     if isUsbInserted() then
         resetMvStreak()
-        cancelShutdownTmr()
+        cancelShutdownTimer()
         if guard.rest_by_battery or guard.pir_suspended then
             onUsbIns()
         end
@@ -303,7 +303,7 @@ function onUsbIns(opts)
     opts = utils.optTable(opts)
     local source = opts.source
     bgInfo("usb_inserted", tostring(source or ""))
-    cancelShutdownTmr()
+    cancelShutdownTimer()
     resetMvStreak()
     local wasRest = guard.rest_by_battery
     local wasPir = guard.pir_suspended
@@ -328,7 +328,7 @@ function onUsbIns(opts)
     end
 end
 
-function onUsbRm()
+function onUsbRemove()
     bgInfo("usb_removed")
     local pct = guard.last_percent
     if pct == nil then pct = rntmPwr.getBatteryPercent() end
@@ -363,7 +363,7 @@ end
 function stop()
     if not started then return true end
     started = false
-    cancelShutdownTmr()
+    cancelShutdownTimer()
     hooks = {}
     return true
 end

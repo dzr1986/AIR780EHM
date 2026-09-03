@@ -201,7 +201,7 @@ end
 -- 配置归一化 / 持久化
 ----------------------------------------------------------------
 
-function normPirMCfg(config)
+function normMediaCfg(config)
     local input = utils.optTable(config)
     local A, U, Q, D = PIR_MEDIA.ACTION, PIR_MEDIA.UPLOAD_MODE, PIR_MEDIA.QUALITY, PIR_MEDIA.DEFAULT_CONFIG
     local action = input.action
@@ -219,7 +219,7 @@ function normPirMCfg(config)
     return { action = action, uploadMode = uploadMode, quality = quality }
 end
 
-function normPirRPol(policy)
+function normRecPolicy(policy)
     local input = utils.optTable(policy)
     local maxSec = math.min(3600, math.max(1,
         tonumber(input.maxDurationSec) or DEFAULT_RECORD_POLICY.maxDurationSec))
@@ -241,8 +241,8 @@ local persistPending = false
 local function savePersist()
     local payload = json.encode({
         schemaVersion = persistSchemaVer,
-        mediaConfig = normPirMCfg(pirMediaConfig),
-        recordPolicy = normPirRPol(pirRecordPolicy),
+        mediaConfig = normMediaCfg(pirMediaConfig),
+        recordPolicy = normRecPolicy(pirRecordPolicy),
     })
     if not payload then
         return
@@ -277,7 +277,7 @@ local function migratePersist(data)
     end
     if pirMediaConfig.action == PIR_MEDIA.ACTION.PHOTO then
         local old = pirMediaConfig
-        pirMediaConfig = normPirMCfg({
+        pirMediaConfig = normMediaCfg({
             action = PIR_MEDIA.ACTION.VIDEO,
             uploadMode = old.uploadMode,
             quality = old.quality,
@@ -302,30 +302,30 @@ local function loadPersist()
         return
     end
     if data.mediaConfig then
-        pirMediaConfig = normPirMCfg(data.mediaConfig)
+        pirMediaConfig = normMediaCfg(data.mediaConfig)
     end
     if data.recordPolicy then
-        pirRecordPolicy = normPirRPol(data.recordPolicy)
+        pirRecordPolicy = normRecPolicy(data.recordPolicy)
     end
     if migratePersist(data) then
         schedPersist()
     end
 end
 
-pirMediaConfig = normPirMCfg(PIR_MEDIA.DEFAULT_CONFIG)
-pirRecordPolicy = normPirRPol(DEFAULT_RECORD_POLICY)
+pirMediaConfig = normMediaCfg(PIR_MEDIA.DEFAULT_CONFIG)
+pirRecordPolicy = normRecPolicy(DEFAULT_RECORD_POLICY)
 loadPersist()
 
 local function currentRecordPolicy()
-    return normPirRPol(pirRecordPolicy)
+    return normRecPolicy(pirRecordPolicy)
 end
 
 function setMediaConfig(cfg)
-    pirMediaConfig = normPirMCfg(cfg)
+    pirMediaConfig = normMediaCfg(cfg)
 end
 
 function getMediaConfig()
-    return normPirMCfg(pirMediaConfig)
+    return normMediaCfg(pirMediaConfig)
 end
 
 function setRecordPolicy(cfg)
@@ -339,7 +339,7 @@ function setRecordPolicy(cfg)
         end
         return cfg[key]
     end
-    pirRecordPolicy = normPirRPol({
+    pirRecordPolicy = normRecPolicy({
         maxDurationSec = cfg.maxDurationSec or cfg.videoMaxDurationSec or old.maxDurationSec,
         stopOnSecondPir = fld("stopOnSecondPir"),
         stopOnCloud = fld("stopOnCloud"),
@@ -360,7 +360,7 @@ clearRecTimer = function()
     session.timerId = nil
 end
 
-function clrEffMedia()
+function clearEffMedia()
     effectiveMediaAction = nil
 end
 
@@ -373,7 +373,7 @@ local function endRecSession(reason, opts)
     if wasRecording or opts.force then
         session.recording = false
         session.last_stop_reason = reason
-        clrEffMedia()
+        clearEffMedia()
         local statKey = STOP_STAT_KEY[reason]
         if statKey then
             bumpStat(statKey)
@@ -409,7 +409,7 @@ function canStopMqtt()
     return not session.stop_mqtt_published
 end
 
-function markStMqtt()
+function markStopPublished()
     session.stop_mqtt_published = true
 end
 
@@ -444,8 +444,8 @@ function syncStopT31x(reason)
     return uploadMode, quality
 end
 
-function pubActEvents(cfg)
-    local media = normPirMCfg(cfg)
+function pubActionEvents(cfg)
+    local media = normMediaCfg(cfg)
     local A = PIR_MEDIA.ACTION
     if media.action == A.DEVINFO then
         return media
@@ -461,8 +461,8 @@ function pubActEvents(cfg)
     return media
 end
 
-function applEffMedia(action)
-    local media = normPirMCfg({ action = action })
+function applyEffMedia(action)
+    local media = normMediaCfg({ action = action })
     local A = PIR_MEDIA.ACTION
     effectiveMediaAction = media.action
     if (effectiveMediaAction == A.VIDEO or effectiveMediaAction == A.BOTH) and not session.recording then
@@ -493,7 +493,7 @@ function reqStartCloud(opts)
         return false, "busy"
     end
     local cur = getMediaConfig()
-    local media = normPirMCfg({
+    local media = normMediaCfg({
         action = opts.action or cur.action,
         uploadMode = opts.uploadMode or cur.uploadMode,
         quality = opts.quality or cur.quality,
@@ -514,7 +514,7 @@ function reqStartCloud(opts)
     bumpStat("cnt_start_cloud")
     markStat("cloud_start")
     pirInfo("cloud_start", media.action, media.uploadMode, media.quality)
-    pubActEvents(media)
+    pubActionEvents(media)
     return true, media
 end
 
@@ -577,7 +577,7 @@ local function triggerDeviceIdUpload()
 end
 
 function onPirTriggered()
-    clrEffMedia()
+    clearEffMedia()
     local block = pirBlockReason()
     if block then
         pirInfo("trigger_ignored", block)
@@ -588,7 +588,7 @@ function onPirTriggered()
         end
         return nil
     end
-    local media = normPirMCfg(pirMediaConfig)
+    local media = normMediaCfg(pirMediaConfig)
     if session.recording and currentRecordPolicy().stopOnSecondPir then
         handlePirRetrigger(media)
         return nil
@@ -601,7 +601,7 @@ function onPirTriggered()
         triggerDeviceIdUpload()
         return media
     end
-    return pubActEvents(media)
+    return pubActionEvents(media)
 end
 
 ----------------------------------------------------------------
@@ -649,7 +649,7 @@ end
 
 local escVal = utils.escKv
 
-function bldAtBody()
+function buildStatBody()
     local hw = getHwState()
     local biz = getState()
     local cfg = cfgm.get("PIR_CFG")
@@ -715,7 +715,7 @@ function getState()
         last_stop_reason = session.last_stop_reason,
         stop_mqtt_published = session.stop_mqtt_published,
         recordPolicy = currentRecordPolicy(),
-        mediaConfig = normPirMCfg(pirMediaConfig),
+        mediaConfig = normMediaCfg(pirMediaConfig),
     }
 end
 

@@ -98,12 +98,12 @@ CHECKS: list[tuple[str, str, str]] = [
     (
         "uplink bind pir/upload + stat interval 上报链",
         "user/mqtt_uplink.lua",
-        r"mqtt_ul_pir[\s\S]*mqtt_ul_upload[\s\S]*function getStatIv[\s\S]*startStatReporter",
+        r"mqtt_ul_pir[\s\S]*mqtt_ul_upload[\s\S]*function getStatInterval[\s\S]*startStatReporter",
     ),
     (
-        "pubStatus 读取 upvalue getStatIv（声明于文件首）",
+        "pubStatus 读取 upvalue getStatInterval（声明于文件首）",
         "user/mqtt_uplink.lua",
-        r"local getStatIv\s*[\s\S]*function pubStatus[\s\S]*intervalSec = getStatIv\(\)",
+        r"local getStatInterval\s*[\s\S]*function pubStatus[\s\S]*intervalSec = getStatInterval\(\)",
     ),
     (
         "下行需 T31x 未就绪 deferHostDl 入队 → drainHostQueue",

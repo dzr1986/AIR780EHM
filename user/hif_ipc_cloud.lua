@@ -4,7 +4,7 @@
 -- Arch     : doc/modules/HOST_UART_AT_DISPATCH.md
 -- ================================================================
 --
--- 云态缓存 / IPCSTAT 刷新 / 录像对账 recHostSess
+-- 云态缓存 / IPCSTAT 刷新 / 录像对账 reconcileRecord
 --
 
 require "sys"
@@ -160,7 +160,7 @@ function bind(C, H)
         return finalizeCloud(defaultCloudSkeleton())
     end
 
-    local function isT31HostQry()
+    local function canQueryT31()
         if state.host_at_ready then
             return true
         end
@@ -173,7 +173,7 @@ function bind(C, H)
         if life == "ready" or life == "shutting_down" then
             return false
         end
-        return isT31HostQry()
+        return canQueryT31()
     end
 
     local function mergeTfCloud()
@@ -230,14 +230,14 @@ function bind(C, H)
         })
     end
 
-    local function refCloudF1003(timeoutMs, force)
+    local function refCloudStat1003(timeoutMs, force)
         timeoutMs = tonumber(timeoutMs) or TIMEOUT.cloudStatQuery
         force = force == true
         mergeTfCloud()
         if not coroutine.running() then
             return cloudCacheReady()
         end
-        if not isT31HostQry() or isHuBusy() then
+        if not canQueryT31() or isHuBusy() then
             return cloudCacheReady()
         end
         if not force and not isIpcCloudStatStale() then
@@ -255,14 +255,14 @@ function bind(C, H)
     -- PIR 录像对账
     ----------------------------------------------------------------
 
-    local function recHostSess(timeoutMs)
+    local function reconcileRecord(timeoutMs)
         if not modCall("pir_ctrl", "isRecording") then
             return false
         end
         if not coroutine.running() or not state.host_at_ready then
             return false
         end
-        if isHuBusy() or not isT31HostQry() then
+        if isHuBusy() or not canQueryT31() then
             return false
         end
         local snap = qryHostRecord(timeoutMs or TIMEOUT.recordReconcile)
@@ -292,13 +292,13 @@ function bind(C, H)
         qryGb28181 = qryGb28181,
         isIpcCloudStatStale = isIpcCloudStatStale,
         getCloudStat = getCloudStat,
-        isT31HostQry = isT31HostQry,
-        shouldQryIpcStat = isT31HostQry,
+        canQueryT31 = canQueryT31,
+        shouldQryIpcStat = canQueryT31,
         needsIpcStatRefresh = needsIpcStatRefresh,
         mergeTfCloud = mergeTfCloud,
-        refCloudF1003 = refCloudF1003,
+        refCloudStat1003 = refCloudStat1003,
         isHuBusy = isHuBusy,
-        recHostSess = recHostSess,
+        reconcileRecord = reconcileRecord,
         qryIpcCloudStat = qryIpcCloudStat,
         cachedTfCard = cachedTfCard,
     }

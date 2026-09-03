@@ -75,7 +75,7 @@ function bind(C)
     end
 
     local function hostIdleAllowed()
-        return not usbBlockHost() and modCall("battery_guard", "shdHostSleep") == true
+        return not usbBlockHost() and modCall("battery_guard", "shouldHostSleep") == true
     end
 
     local function checkHostIdleGate()
@@ -147,7 +147,7 @@ function bind(C)
         if cmd == HOST_IDLE.exit then
             return hostIdleOk()
         end
-        if modCall("battery_guard", "shdHostSleep") == false
+        if modCall("battery_guard", "shouldHostSleep") == false
             or modCall("battery_guard", "canHostSleep") == false then
             return rspOnly("HOSTIDLE", "BUSY")
         end
@@ -255,7 +255,7 @@ function bind(C)
             return rspLine("SETCFG", false)
         end
         if key == "interval" and tonumber(val) then
-            local ok = modCall("net_mqtt", "setStatIv", tonumber(val), true)
+            local ok = modCall("net_mqtt", "setStatInterval", tonumber(val), true)
             if ok == nil then
                 modCall("runtime_power", "setLowPowerInterval", tonumber(val))
                 sys.publish(E.MQTT_STATUS_INTERVAL_CHANGED)

@@ -15,7 +15,7 @@ function bind(C)
     local modCall, loader = C.modCall, C.loader
     local uart_bridge, CRLF = C.uart_bridge, C.CRLF
     local hostUsbCfg, usbInserted = C.hostUsbCfg, C.usbInserted
-    local t31xSecOff = C.t31xSecOff
+    local t31xUartOff = C.t31xUartOff
     local RSP_ERROR, LOG_TAG = C.RSP_ERROR, C.LOG_TAG
     local pushUsbIdle = C.pushUsbIdle
 
@@ -29,7 +29,7 @@ function bind(C)
         rebindWaitMs = 500,
     }
 
-    local usbRcvrGrd = {
+    local usbRecoveryGuard = {
         busy = false,
         last_sec = 0,
         count = 0,
@@ -43,7 +43,7 @@ function bind(C)
         extra = extra or {}
         return {
             state = st,
-            count = extra.count or usbRcvrGrd.count or 0,
+            count = extra.count or usbRecoveryGuard.count or 0,
             last_err = extra.err or "",
             usb_logical = extra.logical ~= nil and extra.logical or (usbInserted() and 1 or 0),
             usb_netdev = extra.netdev or 0,
@@ -62,11 +62,11 @@ function bind(C)
         return st ~= nil and st.powered_on == false
     end
 
-    local function usbRcvrAllow(cfg)
+    local function checkUsbReset(cfg)
         if cfg.allow_t31x_usb_reset == false then
             return false, "DISABLED"
         end
-        if usbRcvrGrd.busy then
+        if usbRecoveryGuard.busy then
             return false, "BUSY"
         end
         -- 开机保护：未 stable 或上电未满 guard 秒，禁止 USBRESET
@@ -82,7 +82,7 @@ function bind(C)
         end
         local min_iv = tonumber(cfg.usb_reset_min_interval_sec) or LIMITS.minIntervalSec
         local now = os.time()
-        if usbRcvrGrd.last_sec > 0 and (now - usbRcvrGrd.last_sec) < min_iv then
+        if usbRecoveryGuard.last_sec > 0 and (now - usbRecoveryGuard.last_sec) < min_iv then
             return false, "BUSY"
         end
         if t31xRestBlock() then
@@ -96,8 +96,8 @@ function bind(C)
         sys.publish(E.MQTT_USB_RECOVERY_CHANGED)
     end
 
-    local function usbRcvrExec(tag, cfg, do_fn)
-        usbRcvrGrd.busy = true
+    local function execUsbReset(tag, cfg, do_fn)
+        usbRecoveryGuard.busy = true
         pushRecover("recovering")
         sys.taskInit(function()
             local notify_ms = tonumber(cfg.usb_reset_notify_after_ms) or TIMEOUT.notifyAfterMs
@@ -115,9 +115,9 @@ function bind(C)
                 sys.wait(notify_ms)
                 pushUsbIdle(1)
             end
-            usbRcvrGrd.busy = false
-            usbRcvrGrd.last_sec = os.time()
-            usbRcvrGrd.count = (usbRcvrGrd.count or 0) + 1
+            usbRecoveryGuard.busy = false
+            usbRecoveryGuard.last_sec = os.time()
+            usbRecoveryGuard.count = (usbRecoveryGuard.count or 0) + 1
             if ok then
                 -- 本地复位执行成功：置 ok。netdev 是否真正恢复由 T31 watchdog 复查，
                 -- 仍未恢复会再次下发 AT+USBRESET（recovering → 重新计数）
@@ -137,15 +137,15 @@ function bind(C)
         if cmd == "AT+USBRESET?" then
             return string.format(
                 CRLF .. "+USBRESET:busy=%d,count=%d,last=%d" .. CRLF,
-                usbRcvrGrd.busy and 1 or 0,
-                usbRcvrGrd.count or 0,
-                usbRcvrGrd.last_sec or 0
+                usbRecoveryGuard.busy and 1 or 0,
+                usbRecoveryGuard.count or 0,
+                usbRecoveryGuard.last_sec or 0
             )
         end
         if cmd ~= "AT+USBRESET" then
             return RSP_ERROR
         end
-        local allowed, deny = usbRcvrAllow(cfg)
+        local allowed, deny = checkUsbReset(cfg)
         if not allowed then
             if deny == "REST" then
                 pushRecover("blocked_rest", { err = "blocked_rest" })
@@ -156,7 +156,7 @@ function bind(C)
         if not usb_rndis then
             return rspLine("USBRESET", false)
         end
-        usbRcvrExec("USBRESET", cfg, function()
+        execUsbReset("USBRESET", cfg, function()
             local pulse_ms = 0
             -- 软重枚举只拨 USB 电源，不要拉 USB_DEBUG_EN（会把 PC 调试口从合宙 USB 上拔掉）
             if cfg.usb_reset_soft_rebind == false then
@@ -202,11 +202,11 @@ function bind(C)
 
     local function markIdleRecover()
         pushRecover("idle", { count = 0 })
-        usbRcvrGrd.count = 0
+        usbRecoveryGuard.count = 0
     end
 
     local function rstUsbRecover()
-        if t31xSecOff() then
+        if t31xUartOff() then
             markIdleRecover()
             return false
         end

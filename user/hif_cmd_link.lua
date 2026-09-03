@@ -20,7 +20,7 @@ function bind(C)
         return C.M.qryGb28181(...)
     end
 
-    local escIpcFld = utils.escKv
+    local escIpcField = utils.escKv
 
     ----------------------------------------------------------------
     -- parse helpers
@@ -108,7 +108,7 @@ function bind(C)
         sys.publish(E.HOST_NET_ID_P2P, uid, product)
         return rspFmt(
             "P2PCFG", "OK,uid=%s,product=%s",
-            escIpcFld(uid), escIpcFld(product))
+            escIpcField(uid), escIpcField(product))
     end
 
     local function uartGb28181(cmd)
@@ -126,7 +126,7 @@ function bind(C)
         state.gb28181_password = password
         state.gb28181_imei = (imei and imei ~= "") and imei or nil
         sys.publish(E.HOST_NET_ID_GB28181, device_id, password, state.gb28181_imei)
-        return rspFmt("GB28181CFG", "OK,id=%s", escIpcFld(device_id))
+        return rspFmt("GB28181CFG", "OK,id=%s", escIpcField(device_id))
     end
 
     local function scheduleGb281Refresh(cfg, pubAfter)
@@ -156,8 +156,8 @@ function bind(C)
         end
         return rspBody("IPCINFO", string.format(
             "imei=%s,gb28181Id=%s",
-            escIpcFld(imei),
-            escIpcFld(gb28181Id)))
+            escIpcField(imei),
+            escIpcField(gb28181Id)))
     end
 
     ----------------------------------------------------------------

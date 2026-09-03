@@ -15,7 +15,7 @@ function bind(C, shared)
     local pub = C.pub
     local dlMsgId = shared.dlMsgId
     local ctrlMsg = shared.ctrlMsg
-    local setStatIv = C.setStatIv
+    local setStatInterval = C.setStatInterval
 
     local ID_DELAY_MS = 500
 
@@ -126,7 +126,7 @@ function bind(C, shared)
             return
         end
         local configRet, configMsg = 0, "ok"
-        if data.interval ~= nil and not setStatIv(data.interval, true) then
+        if data.interval ~= nil and not setStatInterval(data.interval, true) then
             configRet, configMsg = -1, "invalid_interval"
         end
         pub.pubStatus({

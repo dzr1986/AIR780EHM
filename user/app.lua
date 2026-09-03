@@ -147,7 +147,7 @@ local function enterLowPower(reason)
     lpWake.onEnterRest()
 end
 
-local function ntfT31xUsbIdle(inserted)
+local function notifyUsbIdle(inserted)
     host_uart.pushUsbIdle(inserted == true or inserted == 1)
 end
 
@@ -311,7 +311,7 @@ local function onUsbRemovedEnterRest(source)
         return
     end
     if loader.enabled("battery_guard") then
-        bttrGrd.onUsbRm()
+        bttrGrd.onUsbRemove()
     elseif not rntmPwr.isLowPowerMode() then
         onEnterLowPower("usb_remove")
     end
@@ -330,13 +330,13 @@ local function applyUsbPower(inserted, source)
     appInfo("usb_state", v, tostring(source or ""))
     sys.publish(E.GPIO_VBUS_CHANGED, v)
     if v == 0 then
-        ntfT31xUsbIdle(false)
+        notifyUsbIdle(false)
         onUsbRemovedEnterRest(source)
     else
         state.usb_insert_tick = nowMs()
         cancelPwrKeyLongPress()
         onUsbInsertedExitRest(source)
-        ntfT31xUsbIdle(true)
+        notifyUsbIdle(true)
     end
 end
 
@@ -547,7 +547,7 @@ end
 
 local function wakeT31xFor(tag, sid, evt)
     if loader.enabled("battery_guard") then
-        bttrGrd.ntfHostIdle()
+        bttrGrd.notifyHostIdle()
     end
     if loader.enabled("t31x_wakeup") and loader.enabled("t31x_app") then
         local wakeSid = sid or cfgm.get("HOST_WAKE_CFG").default_sid or 1
@@ -760,7 +760,7 @@ local function onBatUpd(pct, mv)
 end
 
 local function onHostFirstAt()
-    ntfT31xUsbIdle(isUsbInserted())
+    notifyUsbIdle(isUsbInserted())
 end
 
 ----------------------------------------------------------------
@@ -852,7 +852,7 @@ local function schedBootUsb()
         or tonumber(cfgm.get("TIME_SYNC_CFG").hostBootWaitMs)
         or TIMEOUT.bootUsbNotifyDefault
     sys.timerStart(function()
-        ntfT31xUsbIdle(isUsbInserted())
+        notifyUsbIdle(isUsbInserted())
     end, delayMs)
 end
 

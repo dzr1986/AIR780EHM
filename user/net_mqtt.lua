@@ -260,8 +260,8 @@ local ctx = {
     dl = {},
 }
 local stat = require("mqtt_uplink").bind(ctx)
-function setStatIv(sec, persist)
-    return stat.setStatIv(sec, persist)
+function setStatInterval(sec, persist)
+    return stat.setStatInterval(sec, persist)
 end
 DOWNLINK_HANDLERS = require("mqtt_downlink").bind(ctx)
 for name, fn in pairs(ctx.pub) do
@@ -628,7 +628,7 @@ function getState()
 	}
 end
 
-stat.loadStatIvCfg()
+stat.loadStatCfg()
 ipc_sup.bind({
     pubUplink = pubUplink,
     dtUlControl = DT.UL_CONTROL,

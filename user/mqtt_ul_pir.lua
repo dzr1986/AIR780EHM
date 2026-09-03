@@ -158,7 +158,7 @@ function bind(C, shared)
                 return
             end
         end
-        pirCtrl.markStMqtt()
+        pirCtrl.markStopPublished()
         local mid = opts.messageId or pirCtrl.getCloudStopMessageId()
         pubUplink({
             suffix = "event",

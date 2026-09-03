@@ -97,7 +97,7 @@ function bind(C)
         if not action then
             return RSP_ERROR
         end
-        modCall("pir_ctrl", "applEffMedia", action)
+        modCall("pir_ctrl", "applyEffMedia", action)
         return rspFmt("PIRMEDIA", "ok,action=%s", action)
     end
 

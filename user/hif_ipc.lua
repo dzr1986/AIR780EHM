@@ -76,7 +76,7 @@ function bind(C)
     -- query / set 公共：锁 → 上电 → 等静 → AT（失败再发一次）
     ----------------------------------------------------------------
 
-    local function qryFallback(opts)
+    local function queryFallback(opts)
         if opts.cacheKey and state[opts.cacheKey] ~= nil then
             return state[opts.cacheKey]
         end
@@ -132,12 +132,12 @@ function bind(C)
     local function hostQuery(waitMs, opts)
         opts.timeoutMs = waitMs
         if not coroutine.running() or state[opts.busyKey] then
-            return qryFallback(opts)
+            return queryFallback(opts)
         end
         local cfg = opts.cfg or idCfg()
         waitMs = timeoutMs(cfg, opts)
         if not uartAcquire(waitMs) then
-            return qryFallback(opts)
+            return queryFallback(opts)
         end
         state[opts.busyKey] = true
         local result = opts.defaultResult

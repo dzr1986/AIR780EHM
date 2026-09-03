@@ -29,7 +29,7 @@ function bind(C)
     local function idEnabled(...) return C.dl.idEnabled(...) end
     local function refDevId(...) return C.dl.refDevId(...) end
     local function pirDetectExtra(...) return C.dl.pirDetectExtra(...) end
-    local getStatIv
+    local getStatInterval
 
     local pirUl = require("mqtt_ul_pir").bind(C, { pirDetectExtra = pirDetectExtra })
     local uploadUl = require("mqtt_ul_upload").bind(C)
@@ -145,7 +145,7 @@ function bind(C)
     function pubStatus(opts)
         opts = utils.optTable(opts)
         local snap = battSnap()
-        local intervalSec = getStatIv()
+        local intervalSec = getStatInterval()
         local usbRecovery, usbRcvrCnt, usbRcvrLast, usbLogical, usbNetdev = power.getUsbRecovery()
         usbLogical = tonumber(usbLogical) or snap.usb_inserted
         usbNetdev = tonumber(usbNetdev) or 0
@@ -437,7 +437,7 @@ function bind(C)
         sys.publish(APP_EVENTS.MQTT_STATUS_INTERVAL_CHANGED)
     end
 
-    function getStatIv()
+    function getStatInterval()
         local sec = clampInterval(power.getLowPowerInterval())
         if sec then
             return sec
@@ -449,7 +449,7 @@ function bind(C)
         return clampInterval(cfgm.get("BATTERY_CFG").mqtt_report_interval_sec) or LIMITS.intervalDefault
     end
 
-    local function setStatIv(sec, persist)
+    local function setStatInterval(sec, persist)
         sec = clampInterval(sec)
         if not sec then
             return false, "invalid_interval"
@@ -463,7 +463,7 @@ function bind(C)
         return true
     end
 
-    local function loadStatIvCfg()
+    local function loadStatCfg()
         local f = io.open(INTERVAL_CFG, "r")
         if not f then
             return
@@ -487,7 +487,7 @@ function bind(C)
         statFlags.timerStarted = true
         sys.taskInit(function()
             while true do
-                local intervalSec = getStatIv()
+                local intervalSec = getStatInterval()
                 local changed = sys.waitUntil(
                     APP_EVENTS.MQTT_STATUS_INTERVAL_CHANGED,
                     intervalSec * 1000)
@@ -504,7 +504,7 @@ function bind(C)
             if not isConnected() then
                 return
             end
-            local intervalSec = getStatIv()
+            local intervalSec = getStatInterval()
             local minSec = tonumber(cfgm.get("BATTERY_CFG").mqtt_battery_report_min_sec) or LIMITS.batteryMinSec
             if intervalSec > minSec then
                 minSec = intervalSec
@@ -520,13 +520,13 @@ function bind(C)
         end)
     end
 
-    C.setStatIv = setStatIv
-    C.getStatIv = getStatIv
+    C.setStatInterval = setStatInterval
+    C.getStatInterval = getStatInterval
 
     return {
-        setStatIv = setStatIv,
-        getStatIv = getStatIv,
-        loadStatIvCfg = loadStatIvCfg,
+        setStatInterval = setStatInterval,
+        getStatInterval = getStatInterval,
+        loadStatCfg = loadStatCfg,
         startStatReporter = startStatReporter,
         subBatteryStatus = subBatteryStatus,
     }

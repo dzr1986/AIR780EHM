@@ -164,7 +164,7 @@ local function noopFalse()
     return false
 end
 
-local function t31xSecOff()
+local function t31xUartOff()
     return not loader.enabled("t31x_app") or not loader.enabled("uart_bridge")
 end
 
@@ -440,7 +440,7 @@ local ctx = {
     uart_bridge = uart_bridge,
 
     -- 业务 helper（host_uart 提供）
-    setPndWake = setPendingWake,
+    setPendingWake = setPendingWake,
     getHostEvtPending = getHostEvtPending,
     noopFalse = noopFalse,
     noopIdle = noopIdle,
@@ -448,7 +448,7 @@ local ctx = {
     usbBlockHost = usbBlockHost,
     configSnap = configSnap,
     hostUsbCfg = hostUsbCfg,
-    t31xSecOff = t31xSecOff,
+    t31xUartOff = t31xUartOff,
     waitHostIdle = waitHostIdle,
     uartAcquire = uartAcquire,
     uartRelease = uartRelease,
@@ -528,7 +528,7 @@ local function onFirstHostAt(atLine)
     ctx.patchCloud({ cat1Link = 1 })
     sys.taskInit(function()
         sys.wait(TIMEOUT.firstAtCloudWait)
-        if not ctx.M.isT31HostQry() then
+        if not ctx.M.canQueryT31() then
             return
         end
         ctx.M.qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)

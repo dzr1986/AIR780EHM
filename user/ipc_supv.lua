@@ -62,7 +62,7 @@ local recordReconcileBusy = false
 ----------------------------------------------------------------
 
 local function hostReady()
-    return hostUart.isT31HostQry() == true
+    return hostUart.canQueryT31() == true
 end
 
 local function cloudInt(stat, key)
@@ -95,7 +95,7 @@ function refCloudStat(timeoutMs, force)
         hostUart.mergeTfCloud()
         return false
     end
-    return hostUart.refCloudF1003(timeoutMs, force) == true
+    return hostUart.refCloudStat1003(timeoutMs, force) == true
 end
 
 ----------------------------------------------------------------
@@ -130,7 +130,7 @@ local function scheduleRecordReconcile()
         sys.wait(TIMEOUT.reconcileDebounce)
         recordReconcileBusy = false
         if pirCtrl.isRecording() and hostReady() and not hostUart.isHuBusy() then
-            hostUart.recHostSess(TIMEOUT.reconcileQuery)
+            hostUart.reconcileRecord(TIMEOUT.reconcileQuery)
         end
     end)
 end

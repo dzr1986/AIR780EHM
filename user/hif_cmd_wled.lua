@@ -14,7 +14,7 @@ function bind(C)
     local SYS_EVT = C.SYS_EVT
     local rspFmt = C.rspFmt
     local modCall, utils = C.modCall, C.utils
-    local hostNowMs, t31xSecOff = C.hostNowMs, C.t31xSecOff
+    local hostNowMs, t31xUartOff = C.hostNowMs, C.t31xUartOff
     local RSP_ERROR = C.RSP_ERROR
 
     local TIMEOUT = {
@@ -42,7 +42,7 @@ function bind(C)
         return on
     end
 
-    local function wledEnsPow()
+    local function wledEnsurePower()
         local wc = wledCfg()
         return modCall("t31x_ctrl", "ensPowOn", "wled", {
             t31xPowerWaitMs = tonumber(wc.t31x_power_wait_ms) or TIMEOUT.t31xPowerWaitMs,
@@ -95,7 +95,7 @@ function bind(C)
         ev = SYS_EVT.WLED_ACK,
         skipQuiet = true,
         prep = function(o)
-            if t31xSecOff() or not wledEnsPow() then
+            if t31xUartOff() or not wledEnsurePower() then
                 return false
             end
             return true, nil, string.format("AT+WLED=%d", o.on)
@@ -111,7 +111,7 @@ function bind(C)
     -- forward / query / set
     ----------------------------------------------------------------
 
-    local function fwdWledTo(on, timeoutMs)
+    local function forwardWled(on, timeoutMs)
         if wledCfg().forward_to_t31x == false then
             return true
         end
@@ -119,7 +119,7 @@ function bind(C)
     end
 
     local function qryHostWled(timeoutMs)
-        if wledCfg().forward_to_t31x == false or not wledEnsPow() then
+        if wledCfg().forward_to_t31x == false or not wledEnsurePower() then
             return wledGet()
         end
         return wledQry(timeoutMs)
@@ -139,12 +139,12 @@ function bind(C)
             if not coroutine.running() then
                 return false
             end
-            local ok = fwdWledTo(on, opts.timeoutMs)
+            local ok = forwardWled(on, opts.timeoutMs)
             wledRt.lastForwardMs = hostNowMs()
             return ok
         end
         sys.taskInit(function()
-            if fwdWledTo(on, opts.timeoutMs) then
+            if forwardWled(on, opts.timeoutMs) then
                 wledRt.lastForwardMs = hostNowMs()
             end
         end)

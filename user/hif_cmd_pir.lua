@@ -60,7 +60,7 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function collectPirWakeCtx()
-        local pirBody = modCall("pir_ctrl", "bldAtBody") or ""
+        local pirBody = modCall("pir_ctrl", "buildStatBody") or ""
         local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
         local sum = modCall("host_event", "summarize", pirBody, wakeValid, wakeSid, wakeEvt)
         return pirBody, wakeValid, wakeSid, wakeEvt, sum

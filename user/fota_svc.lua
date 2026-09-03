@@ -72,14 +72,14 @@ local function localIotVer()
     return (v and v ~= "") and v or ver
 end
 
-local function selfSrvUrl()
+local function selfServerUrl()
     if _G.resFotaUrl then
         return _G.resFotaUrl() or ""
     end
     return ""
 end
 
-local function useSelfSrv(data)
+local function useSelfServer(data)
     data = utils.optTable(data)
     local url = data.url or data.otaUrl or data.firmwareUrl
     if url and url ~= "" then return true end
@@ -87,7 +87,7 @@ local function useSelfSrv(data)
     return mode == "self" or mode == "custom"
 end
 
-local function bldReqOpts(data)
+local function buildReqOpts(data)
     data = utils.optTable(data)
     local timeout = tonumber(data.timeout) or runtime.timeout_ms
     local currentVer = localIotVer()
@@ -107,8 +107,8 @@ local function bldReqOpts(data)
         firmware_name = (fw and fw ~= "") and fw or nil,
         imei = (imei and imei ~= "") and imei or nil,
     }
-    if useSelfSrv(data) then
-        req.url = data.url or data.otaUrl or data.firmwareUrl or selfSrvUrl()
+    if useSelfServer(data) then
+        req.url = data.url or data.otaUrl or data.firmwareUrl or selfServerUrl()
         local full = data.url_no_query or data.full_url == true or data.full_url == 1
         req.full_url = full and true or nil
     end
@@ -167,7 +167,7 @@ local function autoOta(data)
         data = utils.optTable(data)
         lastPayload = data
         requestCount = requestCount + 1
-        local opts = bldReqOpts(data)
+        local opts = buildReqOpts(data)
         local ip = utils.waitLocalIp(runtime.network_wait_ms)
         if not ip then
             if log and log.warn then

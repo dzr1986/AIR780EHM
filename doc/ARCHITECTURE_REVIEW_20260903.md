@@ -128,7 +128,7 @@ hif_ipc_hostq 339 · mqtt_dl_pir 321 · lib/usb_rndis 311 · hif_ipc_cloud 307
 | 项 | 动作 | 说明 |
 |---|---|---|
 | 护栏基线 | `tools/debug/_module_tree_baseline.json` 由 08-31 `hu_*` 时代刷新为 09-04 `hif_*` 现值（58 / 15 / 16 112 行） | 恢复 `_module_tree.py --diff` 护栏（此前基线名旧，diff 全部误报） |
-| 回归口径 | `_host_uart_regression_check.py` 改为 `hif_*` 18 文件 + 12 项静态；`_net_mqtt_regression_check.py` 3 项对齐现值；`_gen_bind_header.py`/spec 11 模块键与字段对齐（`t31xSecOff`、wled/hostq 惰性 `defineQuery/defineSet`） | `_protocol_regression_check.py` 全绿 |
+| 回归口径 | `_host_uart_regression_check.py` 改为 `hif_*` 18 文件 + 12 项静态；`_net_mqtt_regression_check.py` 3 项对齐现值；`_gen_bind_header.py`/spec 11 模块键与字段对齐（`t31xUartOff`、wled/hostq 惰性 `defineQuery/defineSet`） | `_protocol_regression_check.py` 全绿 |
 | 死工具归档 | hu 时代一次性生成器 6 个（读已删 `hu_*.lua` 源、被 `_gen_bind_header.py` 取代）→ `archive/tools_hu_era/` | git mv，留档不删 |
 | 文档真源 | `SYSTEM_ARCHITECTURE.md` §4.2/§5 文件名对齐（`cellular(cell_boot)`→`cell_boot`、删不存在的 `low_power_wakeup`/`sysplus`、补 `led_ctrl`） | 全文 `.lua` 引用 40 处经验证全部命中真源 |
 | 保留不动 | `_patch_t31_*`（远程 T31 C 源码工具）、`_rename_lua_modules.py`（改名账本）、doc 中「旧称/对照」表 | 非漂移，有意保留 |

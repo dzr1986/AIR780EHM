@@ -29,7 +29,7 @@
         "CRLF",
         "hostUsbCfg",
         "usbInserted",
-        "t31xSecOff",
+        "t31xUartOff",
         "RSP_ERROR",
         "LOG_TAG",
         "pushUsbIdle"
@@ -57,7 +57,7 @@
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xSecOff", "RSP_ERROR", "defineQuery", "defineSet"]
+      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xUartOff", "RSP_ERROR", "defineQuery", "defineSet"]
     },
     "hif_ipc_rec.lua": {
       "bind_args": "C, H",
@@ -88,7 +88,7 @@
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xSecOff", "hostNowMs"],
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs"],
       "h": ["ensT31xHost", "hostBoot"]
     },
     "hif_ipc_encode.lua": {

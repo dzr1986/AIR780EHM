@@ -15,7 +15,7 @@ function bind(C, H)
     local waitHostIdle = C.waitHostIdle
     local uart_bridge = C.uart_bridge
     local utils = C.utils
-    local t31xSecOff = C.t31xSecOff
+    local t31xUartOff = C.t31xUartOff
     local hostNowMs = C.hostNowMs
     local ensT31xHost = H.ensT31xHost
     local hostBoot = H.hostBoot
@@ -67,7 +67,7 @@ function bind(C, H)
         if state.tfcard_format_busy then
             return false, "busy"
         end
-        if t31xSecOff() then
+        if t31xUartOff() then
             return false, "no_uart"
         end
         if not ensT31xHost("host_tfcard_format", cfg) then
