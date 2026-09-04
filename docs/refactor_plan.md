@@ -128,7 +128,7 @@
 
 **改动范围**（6）：`user/host_uart.lua`（`state.uart_session = nil|"tfformat"|"poweroff"|"usb_recovery"` + `enterSession/leaveSession`）、`user/hif_ipc.lua`（`hostQuery/hostSet` 准入：`state.uart_session ~= nil` → 与 busyKey 同路径 fallback）、`user/hif_ipc_cloud.lua`（`HU_BUSY_KEYS` 缩为 per-query 键 + `uart_session`）、`user/hif_ipc_tffmt.lua`、`user/hif_ipc_power.lua`、`user/hif_cmd_usb.lua`（三处 `xxx_busy = true` 改 `enterSession`）。
 
-**执行步骤**：① 加 `uart_session` 与 enter/leave（旧 busy 键并行保留）→ ② `hostQuery/hostSet` 准入加会话判定 → ③ `isCloudBusy` 切到会话态 + per-query 键 → ④ 删 `tfcard_format_busy`/`ipc_poweroff_busy`/`uart_recovery_busy` 三个旧键及其 `AT+GETCFG` 快照字段（若被 T31x 读取则保留只读别名——**查 `hif_cmd.getCnfgSnps`**）。
+**执行步骤**：① 加 `uart_session` 与 enter/leave（旧 busy 键并行保留）→ ② `hostQuery/hostSet` 准入加会话判定 → ③ `isCloudBusy` 切到会话态 + per-query 键 → ④ 删 `tfcard_format_busy`/`ipc_poweroff_busy`/`uart_recovery_busy` 三个旧键（`rg` 确认它们不在 `AT+GETCFG` 快照 `getCnfgSnps` 输出中，T31x 侧无可见变化；`host_uart.lua:98-125` `state` 初值表同步删）。
 **文档同步点**：`doc/modules/HOST_UART_AT_DISPATCH.md`（新增「串口并发模型：事务锁 / 会话 / per-query」一节，填 §5.1 缺口）；`doc/overview/TECH_WORKFLOWS.md W3` 门禁列；`doc/overview/USER_LIB_OPTIMIZATION_NEXT.md §6` 回归项；`CONFIG.md`（若 `AT+GETCFG` 字段变）。
 **风险与回退**：行为面——格式化期间 2007 从「发出去」变「走缓存」，2002 断电期间 WLED 查询同理。回退 revert 即恢复旧 busy 键。
 **验收**：VERSION +1；实机：2009 期间下发 2007 → 1007 回缓存且无 `AT+TFCARD?` 上串口；2002 enter 期间 2005 wled → `t31x_unavailable`/缓存；`_protocol_regression_check` 加「`state.xxx_busy = true` 只允许出现在 `enterSession`」断言。
