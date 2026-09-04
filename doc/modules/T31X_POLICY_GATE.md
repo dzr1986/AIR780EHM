@@ -46,7 +46,7 @@ flowchart TD
 | `policyDisabled()` | 策略关闭 |
 | `isBurnActive()` | T31x 烧录模式 |
 | `opts.force_wake` | PIR 高优先级等 |
-| `passesUsbGate(reason)` | USB 插入（`mqtt_offline` 需 `allow_mqtt_offline_wake_when_usb`） |
+| `passUsbGate(reason)` | USB 插入（`mqtt_offline` 需 `block_mqtt_offline_wake_when_usb = false`；默认 true 不放行） |
 
 ### 2.2 rest 白名单（`allowsWakeInRest`）
 

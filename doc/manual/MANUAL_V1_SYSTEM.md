@@ -86,7 +86,7 @@ main.lua ─► module_loader 装载 config 族（先配置后业务）
 
 | 项 | 值/来源 | 说明 |
 |----|---------|------|
-| 脚本 `VERSION` | `user/main.lua`（文档侧当前同步版本 **001.000.154**，见 [CAT1_API_NAMING](../overview/CAT1_API_NAMING.md) 头） | 出现在 1008.`scriptVersion` |
+| 脚本 `VERSION` | `user/main.lua`（文档侧当前同步版本 **001.000.155**，见 [CAT1_API_NAMING](../overview/CAT1_API_NAMING.md) 头） | 出现在 1008.`scriptVersion` |
 | OTA `version`（合宙 IoT） | `内核号.001.xxx`，如 `2044.001.004` | `firmwareVersion` 口径 = `rtos.version` 内核号 + 脚本版本首段.末段；**不是** `main.lua` 的 `VERSION` |
 | `project` / `buildTag` | 如 `PANSHI_CAT1` / `v20260730` | 1008/BASEINFO 字段 |
 | 量产包 | `量产/` 目录（bin/soc/binpkg 三件套），~342KB | 打包见 [MANUAL_V7_TOOLCHAIN.md](MANUAL_V7_TOOLCHAIN.md) |

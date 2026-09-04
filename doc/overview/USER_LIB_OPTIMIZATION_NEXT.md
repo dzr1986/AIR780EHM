@@ -2,7 +2,7 @@
 
 > **真源**：仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`。  
 > **基线版本**：`001.000.068`（2026-08-30）  
-> **当前版本**：`001.000.154`（152–154 = 审计 P0/P1 行为修复，见 §8 末尾）  
+> **当前版本**：`001.000.155`（152–155 = 审计行为修复，见 §8 末尾）  
 > **拆分后治理计划**（文件树 / P0–P4 / 回归）：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)  
 > **API 命名真源**：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) · **历史缩写对照**：[FUNCTION_NAME_MAP.md](../_audit/FUNCTION_NAME_MAP.md)（134 前实验，只读）
 
@@ -199,6 +199,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-04 | **破冻结第二波（P2-4 + P3-1/5 + require 环规范，零行为，VERSION 维持 154）**：P2-4 `host.lua` 8+7 处 `hostBootWaitMs=1500`/`t31x_power_wait_ms=800` → 模块级标量 `HOST_BOOT_WAIT_MS`/`T31X_POWER_WAIT_MS`（改值只改一处）；P3-5 `hif_ipc_encode` 删 `setHostEncode(scope)` 零调用 wrapper（−8 行）；P3-1 framework doc 第 9.6 节补 encode 演化注记 + CAT1_LOGIC_SLIM「合并 setHostEncode」建议标不再采纳；require 环约束沉淀 framework doc §2.4（config 片段/config_manager 禁 require utils 系 lib）。详见 audit §15 |
 | 2026-09-04 | **破冻结第三波（P2-5/6/7，零行为，VERSION 维持 154）**：P2-5 云状态 9 键**单源**——`hif_ipc_cloud.CLOUD_STAT_KEYS`（真源）导出 `cloudStatKeys()` → `host_uart._M`，`defaultCloudSkeleton` 改按清单造骨架；`ipc_supv` 删本地清单与字面量格式串，改按清单逐键拼 1003 JSON（字段名/序/值不变，逐字节等价）。P2-6 `asNeedUpload`/`fmtStrField` 单源定义于 `net_mqtt` ctx（`C.asNeedUpload`/`C.fmtStrField`），`mqtt_dl_upload`/`mqtt_ul_upload`/`mqtt_ul_pir` 摘本地逐字副本（同函数体→同输出）；`mqtt_uplink` radioExtraFields vs pubSimInfo 复核=保持逐字段枚举（字段集 5 vs 4、schema 异，载荷契约禁机械收敛）。P2-7 `hif_ipc_hostq` 双名复核=有意保留（`mqtt_hproto`「长名 or 短名」fallback + `_host_uart_regression_check.py:90-93` 守护），导出区注释登记禁删。详见 audit §16 |
 | 2026-09-04 | **破冻结第四波（P3-2/3/4 复核收口，零行为，VERSION 维持 154）**：P3-2 `lp_wakeup` 模式矩阵策略谓词——`onEnterRest`/`onExitRest` 钩子内联 `isMqttMode`/`isTcpMode` 绕过 `shouldCloseTcpOnEnterRest`/`shouldRestoreTcpOnExitRest`（半接线漂移）→ 钩子改以谓词为决策点（谓词=模式别名，行为逐位等价，死导出转活）+ 谓词族注释登记；`getModemHibernate` 恒 false 占位唯一消费 `app.lua:134`。P3-3 `main.lua` OTA `_G` 三连复核=保留：validateBuildVersion/resolveIotOtaVersion 经 `_G` 被 mqtt_uplink/mqtt_dl_ctrl/fota_svc 活消费，buildIotOtaVersion 导出属工具链统一入口（同族有意），注释登记撤销条件。P3-4 `watchdog` feed()/getConfig() 复核=保留（标准 API 族，LIB_RUNTIME_UTILS §2.1），注释登记。**审计 P0/P1/P2/P3 全清单闭环，仅剩 P1-1 待硬件图**。详见 audit §17 |
+| 2026-09-04 | **第二轮体检（VERSION 155）**：三组并行只读审计 → 逐条实证（驳回全部「`or` 吞 0」误判）→ 修复 R1–R14：**R1 P0** `gpio_util.setupInput` 9bcfc78 起只读 camelCase，调用方 snake_case → PWR/BOOT 长按永不触发 + 全部防抖失效（新护栏 `_gpio_opts_check.py`）；R2 `patchCloud` 抢答 `IPCSTAT_ACK`；R3 `+RECORD` 解析失败误清录像态；R4 TFFORMAT 进串口锁；R5 host_uart start/stop 复位锁；R6 `AT+HOSTIDLE?` 双 OK；R7 `defineQuery` 透传 skipQuiet/waitBoot；R8 policy 读未注册键；R9 `MODULE_FLAGS.host_evt` 接入；R10 2004 尊重 `channel=iot`；R11 dl_tf `dlMsgId`；R12 `net_mqtt.stop` 退订 IP handler；R13 vbat ADC pcall；R14 pmd 守卫。文档侧：互链护栏 Linux 假绿修复 + 恢复 8 篇被 .gitignore 吞掉的文档、CONFIG.md 配置键总索引（代码生成 + 漂移护栏）、`_doc_version_check.py`。详见 [audit §18](USER_LIB_CODE_AUDIT_20260904.md)、[DOC_HEALTH_REPORT](../_audit/DOC_HEALTH_REPORT_20260904.md) |
 
 ---
 
@@ -224,6 +225,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 - [ ] 2002 进/出 rest、USB 插拔 1003
 - [ ] 蜂窝 SIM/APN 1005
 - [ ] 烧录确认 `scriptVersion`
+- [ ] **155 新增**：PWR 3s 长按关机 / BOOT 2s 长按进烧录（154 前长按永不触发）；`AT+HOSTIDLE?` 单 OK；WLED 切换中 `AT+IPCSTAT?` 等到真实 `+IPCSTAT:` 应答；`AT+TFFORMAT` 期间 1003 IPCSTAT 刷新不被饿死；2004 `channel=iot` 不带 url 走合宙默认
 
 ---
 

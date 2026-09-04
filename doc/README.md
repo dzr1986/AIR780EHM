@@ -32,7 +32,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [overview/CAT1_API_NAMING.md](overview/CAT1_API_NAMING.md) | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…；对齐代码 001.000.154，151 批 rename 后无 API 变更） |
+| [overview/CAT1_API_NAMING.md](overview/CAT1_API_NAMING.md) | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…；对齐代码 001.000.155，151 批 rename 后无 API 变更） |
 | [overview/T31X_NAMING.md](overview/T31X_NAMING.md) | 协处理器系列写法（`t31x` / `T31x` / `T31X`） |
 | [overview/LUA_MODULES.md](overview/LUA_MODULES.md) | **模块树真源**（user 58 + lib 15 = 73） |
 

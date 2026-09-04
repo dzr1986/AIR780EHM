@@ -1,4 +1,4 @@
-# Cat.1 Lua API 命名真源（对齐代码 001.000.154）
+# Cat.1 Lua API 命名真源（对齐代码 001.000.155）
 
 > **代码真源**：仓库根 `user/`、`lib/` · **版本**：`user/main.lua` → `VERSION`  
 > **协处理器系列写法**：[T31X_NAMING.md](T31X_NAMING.md)（`t31x` / `T31x` / `T31X`，与本文 API 驼峰无关）  
@@ -186,4 +186,4 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 - 运行后检查点：`git diff -- doc/` 只应出现"旧名 → 新名"的收敛差异；`FUNCTION_NAME_MAP.md` 为只读历史表，
   在 `SKIP_FILES` 内不受影响。
 
-**版本**：2026-09-04 · 对齐代码 `001.000.154` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–154 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12），无 API 增删改名
+**版本**：2026-09-04 · 对齐代码 `001.000.155` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–155 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12/§18），无 API 增删改名
