@@ -5,7 +5,7 @@
     "battery.lua": 106,
     "battery_guard.lua": 391,
     "cellular.lua": 25,
-    "config.lua": 27,
+    "config.lua": 30,
     "events.lua": 49,
     "features.lua": 111,
     "flags.lua": 28,
@@ -80,12 +80,12 @@
   "totals": {
     "user": {
       "files": 58,
-      "lines": 13584
+      "lines": 13587
     },
     "lib": {
       "files": 15,
       "lines": 2559
     },
-    "all": 16143
+    "all": 16146
   }
 }

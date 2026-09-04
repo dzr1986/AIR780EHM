@@ -1,9 +1,12 @@
 -- ================================================================
 -- Filename : config.lua
--- Module   : 硬件与策略总配置编排（配置片段见 config/ 子目录）
--- Arch     : 见 doc/overview/LUA_MODULES.md
+-- Module   : 硬件与策略总配置编排（配置片段为 user/ 顶层同名 .lua，非子目录；
+--            user/config/ 目录只放 global.ini / self.json 等数据文件）
+-- Arch     : 见 doc/overview/LUA_MODULES.md · 键索引 doc/overview/CONFIG.md「配置键总索引」
 -- Note     : 本文件仅按依赖顺序 require 各片段；所有配置以 _G.X_CFG 暴露，
---            由 config_manager 统一读取。新增配置请归入对应 config/<group>.lua。
+--            由 config_manager 统一读取。新增配置请归入对应 user/<group>.lua 片段，
+--            并在 main.lua __LUATOOLS_SCAN_ANCHOR__ 挂名。片段/config_manager 禁 require
+--            utils 系 lib（require 环，见 doc/overview/CAT1_MODULE_FRAMEWORK.md §2.4）。
 --            加载顺序必须保持：features 最先（定义 FEATURE_CFG），其余按依赖排列。
 -- ================================================================
 

@@ -54,7 +54,8 @@
 | 脚本 | 干什么 | 什么时候跑 |
 |------|--------|------------|
 | `python doc/_tools/doc_registry_check.py` | **登记护栏**：doc 主题下每个 md 必须被顶层或同主题 README 登记 | 新增/移动文档后（本手册目录已在检查范围） |
-| `python tools/debug/_doc_md_link_check.py` | **互链护栏**：doc 内 md 文件级互链断链（外部/待补走 EXEMPT） | 改链接后 |
+| `python tools/debug/_doc_md_link_check.py` | **互链护栏**：doc 内 md 文件级互链断链（外部/待补走 EXEMPT）；`--no-exclude-archive` 连 `archive/`/`_audit/` 一起查 | 改链接后；恢复/迁移历史文档后 |
+| `python tools/debug/_config_key_check.py --write-doc` | **配置键索引同步**：按代码重生成 [CONFIG.md「配置键总索引」](../overview/CONFIG.md)（键 → 注册片段 → 消费模块）；不带参数 = 校验漂移 + 死配置 | 增删/移动 `_G.X_CFG` 或改消费方后 |
 | `python tools/sync_doc_naming.py` | 把 `doc/` 里的历史 API 别名收敛到真名 | 改 API 名后（见 [CAT1_API_NAMING §4](../overview/CAT1_API_NAMING.md)） |
 | `python tools/debug/_doc_archive_by_topic.py` | 按主题归档并重算全仓 md/html 链接 | doc 重新分目录时 |
 | `doc/_tools/doc_registry_check.py --export` | 打印待补登记行草稿 | 护栏报未登记时 |
@@ -88,7 +89,8 @@
 
 - [ ] 烧录产物出自 `pack_mass_prod.py`（量产）或 release 流程（单台）。
 - [ ] 代码护栏整跑：`run_all_checks.py` + 相关 regression。
-- [ ] 文档护栏：`doc_registry_check.py` + `_doc_md_link_check.py` 双 PASS。
+- [ ] 文档护栏：`doc_registry_check.py` + `_doc_md_link_check.py` 双 PASS（须在 **非 Windows** 平台也跑过一次，2026-09-04 曾因分隔符假绿漏掉 33 条断链，见 [DOC_HEALTH_REPORT](../_audit/DOC_HEALTH_REPORT_20260904.md)）。
+- [ ] `git status` 确认新增文档**已被 git 跟踪**（`.gitignore` 忽略目录一律根锚定 `/xxx/`，勿让 `doc/<同名目录>/` 被吞）。
 - [ ] API 改名则跑 `sync_doc_naming.py`，检查 `git diff -- doc/` 只有收敛差异。
 - [ ] 版本同步：`user/main.lua` `VERSION`、`luatos.json`、发布说明 [RELEASE_*](../release/)、[CAT1_API_NAMING](../overview/CAT1_API_NAMING.md) 头部版本口径。
 

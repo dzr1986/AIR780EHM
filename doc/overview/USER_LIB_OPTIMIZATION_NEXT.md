@@ -2,7 +2,7 @@
 
 > **真源**：仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`。  
 > **基线版本**：`001.000.068`（2026-08-30）  
-> **当前版本**：`001.000.140`（pubUplink/appEvent、TF snap、bootGpio）  
+> **当前版本**：`001.000.154`（152–154 = 审计 P0/P1 行为修复，见 §8 末尾）  
 > **拆分后治理计划**（文件树 / P0–P4 / 回归）：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)  
 > **API 命名真源**：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) · **历史缩写对照**：[FUNCTION_NAME_MAP.md](../_audit/FUNCTION_NAME_MAP.md)（134 前实验，只读）
 
