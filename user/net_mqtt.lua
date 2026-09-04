@@ -333,13 +333,19 @@ local function createMqttClient(mcfg, cellAdp, clientId, autoMs)
     return client
 end
 
-local function bindIpHandlers(client, cellAdp, settleMs, autoMs, loseCoolSec, tryMqttConn)
+local function unbindIpHandlers()
     if state.ip_ready_hdl then
         sys.unsubscribe("IP_READY", state.ip_ready_hdl)
+        state.ip_ready_hdl = nil
     end
     if state.ip_lose_hdl then
         sys.unsubscribe("IP_LOSE", state.ip_lose_hdl)
+        state.ip_lose_hdl = nil
     end
+end
+
+local function bindIpHandlers(client, cellAdp, settleMs, autoMs, loseCoolSec, tryMqttConn)
+    unbindIpHandlers()
     state.ip_ready_hdl = function(ipAdapter)
         if cellAdp ~= nil and ipAdapter ~= nil and ipAdapter ~= cellAdp then
 		return
@@ -631,6 +637,8 @@ function stop()
 		end)
 		mqttClient = nil
 	end
+    -- 旧 IP_READY/IP_LOSE 闭包持有已 close 的 client；stop→restart 窗口内网络抖动会对其调 autoreconn/tryMqttConn
+    unbindIpHandlers()
 	isConnected = false
     rntmPwr.setOnline(false)
 	started = false

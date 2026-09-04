@@ -229,6 +229,14 @@ local function uartAcquire(timeoutMs)
     return true
 end
 
+-- start/stop 时强制复位事务锁：持有者协程若在 stop 期间被丢弃，锁会永久 busy，
+-- 之后所有 hostQuery/hostSet 只能等超时走 fallback；复位后原持有者的 uartRelease 变 no-op
+local function resetUartTxn()
+    uartTxnOwner = nil
+    uartTxnDepth = 0
+    state.uart_txn_busy = false
+end
+
 local function uartRelease()
     local me = coroutine.running()
     if uartTxnOwner ~= me then
@@ -635,6 +643,7 @@ function start(opts)
     t31xFallback = t31xModule
     state.host_at_ready = false
     state.first_host_at = nil
+    resetUartTxn()
     bindStartHooks(opts)
     uart_bridge.setOnLine(onUartLine)
     started = true
@@ -643,6 +652,7 @@ end
 
 function stop()
     uart_bridge.setOnLine(nil)
+    resetUartTxn()
     started = false
     return true
 end

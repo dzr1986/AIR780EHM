@@ -88,7 +88,7 @@
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs"],
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs", "uartAcquire", "uartRelease"],
       "h": ["ensT31xHost", "hostBoot"]
     },
     "hif_ipc_encode.lua": {

@@ -56,9 +56,11 @@ local function policyOff()
     return policyCfg().enabled == false or not loader.enabled("t31x_policy")
 end
 
+-- USB 在位时放行，mqtt_offline 例外：仅当 block_mqtt_offline_wake_when_usb 显式为 false 才放行
+-- （原读未注册键 allow_mqtt_offline_wake_when_usb，恒 nil → 等价「永不放行」，与默认 true 行为相同）
 local function passUsbGate(reason)
     return rntmPwr.isUsbInserted()
-        and (reason ~= "mqtt_offline" or policyCfg().allow_mqtt_offline_wake_when_usb == true)
+        and (reason ~= "mqtt_offline" or policyCfg().block_mqtt_offline_wake_when_usb == false)
 end
 
 local function passLpGate(reason)

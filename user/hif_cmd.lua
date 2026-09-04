@@ -79,7 +79,8 @@ function bind(C)
     end
 
     local function checkHostIdleGate()
-        if cfgm.get("FEATURE_CFG").host_evt == false then
+        if cfgm.get("FEATURE_CFG").host_evt == false
+            or cfgm.get("MODULE_FLAGS").host_evt == false then
             return rspOnly("HOSTIDLE", "NOT_SUPPORTED")
         end
         if cfgm.get("HOST_EVT_CFG").allow_host_idle_sleep == false then
@@ -135,11 +136,12 @@ function bind(C)
             return rspOnly("HOSTIDLE", "BUSY")
         end
         if cmd == HOST_IDLE.query then
+            -- rspFmt 已带 OK 尾，勿再拼 okTail（否则 +HOSTIDLE 应答双 OK）
             return rspFmt(
                 "HOSTIDLE", "lowpower=%d,usb=%d,host_idle_allow=%d",
                 modCall("runtime_power", "isLowPowerMode") and 1 or 0,
                 usbInserted() and 1 or 0,
-                hostIdleAllowed() and 1 or 0) .. okTail()
+                hostIdleAllowed() and 1 or 0)
         end
         if not isSet then
             return nil

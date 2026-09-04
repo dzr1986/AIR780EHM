@@ -83,6 +83,8 @@ local function useSelfServer(data)
     data = utils.optTable(data)
     local url = data.url or data.otaUrl or data.firmwareUrl
     if url and url ~= "" then return true end
+    -- 下行 channel=iot 显式走合宙 IoT（与 mqtt_dl_ctrl.otaUrl 同判据），不受 server_mode 影响
+    if string.lower(tostring(data.channel or "")) == "iot" then return false end
     local mode = string.lower(tostring(fotaCfg().server_mode or "self"))
     return mode == "self" or mode == "custom"
 end

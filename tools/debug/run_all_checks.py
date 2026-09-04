@@ -12,6 +12,8 @@
     5. _doc_md_link_check.py        doc/ 内部 markdown 互链断链审计（EXEMPT 登记外部/待补引用）
     6. _doc_index_check.py          doc 导航完整性（README 收录覆盖 + 孤岛零容忍）
     7. _config_key_check.py         配置键读写一致性（cfgm.get 消费键 ⊆ _G 注册键，大小写敏感）+ 死配置 + CONFIG.md 键索引同步
+    8. _gpio_opts_check.py          gpio_util.setupInput 调用方 opts 键 ⊆ 实现读取键（防 camel/snake 静默失效回归）
+    9. _doc_version_check.py        文档「当前版本」锚点 ↔ user/main.lua VERSION 一致
 
 全部 PASS 时退出码 0，任一失败退出码 1。
 """
@@ -32,6 +34,8 @@ CHECKS = (
     ("_doc_md_link_check.py", (), "doc/ 内部 markdown 互链断链审计（外部工程引用与待补文档走 EXEMPT 登记）"),
     ("_doc_index_check.py", (), "doc 导航完整性（顶层/modules 入 README 索引；迁移 stub 豁免；孤岛零容忍）"),
     ("_config_key_check.py", (), "配置键读写一致性（cfgm.get 消费键须有精确同键名 _G 注册，大小写敏感）+ 死配置 + CONFIG.md 键索引同步"),
+    ("_gpio_opts_check.py", (), "gpio_util.setupInput opts 键护栏（调用方字面键须被实现读取，防 camel/snake 回归）"),
+    ("_doc_version_check.py", (), "文档现状版本锚点 ↔ main.lua VERSION 一致（README/manual/overview 10 处）"),
 )
 
 

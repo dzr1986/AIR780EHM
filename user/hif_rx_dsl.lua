@@ -186,7 +186,10 @@ function bind(C)
         return snap
     end
 
-    local function commitIpcStat(snap)
+    -- notify=true 仅用于 T31x 完整快照（+IPCSTAT: 应答 / AT+IPCSTAT= 主动上报）；
+    -- patchCloud 局部补丁（WLED/RECORD/TFCARD/IPCSTATUS/poweroff…）不得发 IPCSTAT_ACK，
+    -- 否则会抢答正在 waitUntil(IPCSTAT_ACK) 的 qryIpcCloudStat，使 AT+IPCSTAT? 误判成功早退
+    local function commitIpcStat(snap, notify)
         if type(snap) ~= "table" or next(snap) == nil then
             return nil
         end
@@ -199,7 +202,9 @@ function bind(C)
         if snap.ipcReady == 1 and not state.host_ipc_status then
             state.host_ipc_status = "ready"
         end
-        sys.publish(SYS_EVT.IPCSTAT_ACK, snap)
+        if notify == true then
+            sys.publish(SYS_EVT.IPCSTAT_ACK, snap)
+        end
         return snap
     end
 
@@ -373,7 +378,9 @@ function bind(C)
             snap.active = asNum(active)
             return snap
         end
-        return snap
+        -- 两种已知格式都不匹配（畸形/空字段/未知变体）：返回 nil，由调用方忽略。
+        -- 若此处回落默认 running=0/active=0，会把「解析失败」当成「已停录」清掉 t31x_rec_active
+        return nil
     end
 
     local function applyRecordState(snap)
@@ -437,6 +444,9 @@ function bind(C)
             return false
         end
         local snap = parseRecordLine(line)
+        if not snap then
+            return false
+        end
         state.host_record = snap
         applyRecordState(snap)
         sys.publish(SYS_EVT.RECORD_ACK, snap)
@@ -452,7 +462,7 @@ function bind(C)
         if not snap then
             return false
         end
-        commitIpcStat(snap)
+        commitIpcStat(snap, true)
         return true
     end
 

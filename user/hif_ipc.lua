@@ -272,6 +272,10 @@ function bind(C)
                 defaultTimeout = d.tmo,
                 atCmd = type(d.at) == "function" and d.at(opts or {}) or d.at,
                 ackEvent = d.ev,
+                -- 与 defineSet 对齐：spec 的 skipQuiet/waitBoot 须透传，否则 hif_cmd_wled
+                -- QRY_WLED_D.skipQuiet=true 为死字段，查询仍多等一段 quiet
+                skipQuiet = d.skipQuiet,
+                waitBoot = d.waitBoot,
                 whenDisabled = d.dis,
                 beforeSend = d.pre,
                 onResponse = d.rsp,
@@ -319,7 +323,8 @@ function bind(C)
     -- 录制态单一写入点：同步 state.t31x_rec_active 与 cloud.recordingt31x
     --   commitIpcStat 以 cloud.recordingt31x 回填 t31x_rec_active，故以
     --   cloud 为准；统一此处避免散写导致快照与影子态不一致。
-    --   不触发额外 publish（patchCloud 路径自带 commitIpcStat 发布）
+    --   不触发 publish：patchCloud/commitIpcStat 局部补丁路径亦不发 IPCSTAT_ACK
+    --   （仅 +IPCSTAT: 完整快照 notify=true），避免抢答 qryIpcCloudStat
     ----------------------------------------------------------------
     local function setRecActive(flag)
         flag = (tonumber(flag) == 1) and 1 or 0

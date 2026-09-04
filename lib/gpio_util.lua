@@ -21,16 +21,20 @@ function pull(pull_name)
     return PULL[pull_name] or 1
 end
 
+-- opts 同时接受 camelCase（triggerMode/debounce）与 GPIO_IN 表原生 snake_case
+-- （trigger_mode/debounce_ms）。9bcfc78 曾只留 camelCase，而 pir_ctrl/peripheral/usb_charge
+-- 仍传 snake_case → 按键 both 边沿与全部防抖静默失效（长按事件永不触发）。此处为唯一归一点。
 function setupInput(pin, callback, opts)
     if pin == nil or not callback then return false end
     opts = opts or {}
     gpio.setup(
         pin,
         callback,
-        pull(opts.pull or "pullup"),
-        triggerMode(opts.triggerMode or "rising")
+        pull(opts.pull or opts.pull_mode or "pullup"),
+        triggerMode(opts.triggerMode or opts.trigger_mode or "rising")
     )
     local debounce = opts.debounce
+    if debounce == nil then debounce = opts.debounce_ms end
     if debounce and debounce > 0 then
         gpio.debounce(pin, debounce)
     end

@@ -17,6 +17,7 @@ function bind(C, H)
     local utils = C.utils
     local t31xUartOff = C.t31xUartOff
     local hostNowMs = C.hostNowMs
+    local uartAcquire, uartRelease = C.uartAcquire, C.uartRelease
     local ensT31xHost = H.ensT31xHost
     local hostBoot = H.hostBoot
 
@@ -80,7 +81,7 @@ function bind(C, H)
     -- format session
     ----------------------------------------------------------------
 
-    local function waitFormatAck(timeoutMs, outcome)
+    local function waitFormatAck(timeoutMs, outcome, onStarted)
         local deadline = hostNowMs() + timeoutMs
         local startDeadline = hostNowMs() + TIMEOUT.startDeadlineMs
         local started = false
@@ -101,6 +102,7 @@ function bind(C, H)
             if got and type(val) == "table" then
                 if val.phase == "started" then
                     started = true
+                    if onStarted then onStarted() end
                 elseif val.phase == "ok" then
                     outcome.ok = true
                     outcome.detail = val
@@ -121,8 +123,13 @@ function bind(C, H)
             sys.wait(hostBoot(cfg))
         end
         waitHostIdle(TIMEOUT.hostIdleMs)
+        -- 与 hostQuery/hostSet 共用串口事务锁：只覆盖「发 AT → 收到 started」窗口，
+        -- 格式化本身可长达 format_timeout_ms(120s)，不能整段独占锁（会饿死 1003 IPCSTAT 刷新）
+        if not uartAcquire(TIMEOUT.hostIdleMs) then
+            error("uart_busy")
+        end
         uart_bridge.sendString(buildFormatAt(reboot), true)
-        waitFormatAck(timeoutMs, outcome)
+        waitFormatAck(timeoutMs, outcome, uartRelease)
     end
 
     ----------------------------------------------------------------
@@ -141,6 +148,7 @@ function bind(C, H)
         state.tfcard_format_busy = true
         local outcome = { ok = false, reason = "unknown" }
         local okRun, errRun = pcall(runFormatSession, opts, cfg, reboot, timeoutMs, outcome)
+        uartRelease() -- started 前出错/超时的兜底释放（非持有者调用为 no-op）
         state.tfcard_format_busy = false
         if outcome.ok then
             return true, outcome.detail

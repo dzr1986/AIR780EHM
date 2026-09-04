@@ -354,7 +354,8 @@ local function onPmdMsg(msg)
 end
 
 local function setupPmd()
-    if rtos and rtos.MSG_PMD then
+    -- pmd 仅部分内核带；MSG_PMD 存在但 pmd 库缺失时不能裸调 pmd.init
+    if rtos and rtos.MSG_PMD and pmd then
         rtos.on(rtos.MSG_PMD, onPmdMsg)
         pmd.init({})
     end

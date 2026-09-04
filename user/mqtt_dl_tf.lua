@@ -20,6 +20,7 @@ function bind(C, shared)
     local pubTfCard = C.pub.pubTfCard
     local pubTfFormat = C.pub.pubTfFormat
     local hostReady = shared.t31xHostReady
+    local dlMsgId = shared.dlMsgId -- 与其它 dl_* 一致：messageId 或 msgId 都认
 
     local TIMEOUT = {
         queryRetryWait = 400,
@@ -143,13 +144,14 @@ function bind(C, shared)
     local function dlTfFormat(data)
         local cfg = fmtCfg()
         local action = data.action or "format"
+        local messageId = dlMsgId(data)
         if action ~= "format" then
-            pubTfFormat(-1, "unknown_action", data.messageId, {})
+            pubTfFormat(-1, "unknown_action", messageId, {})
             return
         end
         local reboot = parseRebootFlag(data, cfg)
         sys.taskInit(function()
-            runFormatSession(data.messageId, reboot)
+            runFormatSession(messageId, reboot)
             if pirCtrl.resume and reboot == 0 then
                 pirCtrl.resume()
             end

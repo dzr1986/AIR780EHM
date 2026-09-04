@@ -171,7 +171,7 @@ function bind(C)
         if not snap then
             return RSP_ERROR
         end
-        commitIpcStat(snap)
+        commitIpcStat(snap, true) -- 完整快照，允许唤醒等待中的 AT+IPCSTAT? 查询
         return rspLineOk("IPCSTAT")
     end
 
