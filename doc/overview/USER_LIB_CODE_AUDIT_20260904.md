@@ -280,17 +280,17 @@ python tools/debug/_module_tree.py --diff
 |---|------|------|------|------|
 | R1 | `lib/gpio_util.lua setupInput` | **P0** 9bcfc78（09-01）把 opts 只读 camelCase `triggerMode`/`debounce`，而 `pir_ctrl:185`/`peripheral:76,91`/`usb_charge:43` 仍传 `trigger_mode`/`debounce_ms` → PWR/BOOT 按键 `both` 退化为 `rising`（active-low 键只在松开时回调 → **长按事件永不触发**，每次松开误发 SHORT）、全部输入防抖失效。`CODE_LAYERING_ARCHITECTURE §5.P4-1` 写「已兼容」与代码不符 | `setupInput` 同时读 camel/snake（`pull_mode` 一并兼容），单点归一 | 新护栏 `_gpio_opts_check.py`（run_all_checks 第 8 项）：调用方字面 opts 键 ⊆ 实现读取键；对旧实现验证 8 FAIL |
 | R2 | `user/hif_rx_dsl.lua commitIpcStat` | `patchCloud`（WLED/RECORD/TFCARD/IPCSTATUS/poweroff 等 12 处局部补丁）经 `commitIpcStat` 无条件 `publish(IPCSTAT_ACK)`，抢答正在 `waitUntil(IPCSTAT_ACK)` 的 `qryIpcCloudStat`（`AT+IPCSTAT?` 误判成功早退，拿到的是补丁前快照） | `commitIpcStat(snap, notify)`：仅 `+IPCSTAT:` URC（`tryIpcStatCloud`）与 `AT+IPCSTAT=` 主动上报（`uartIpcStatNtf`）传 `notify=true` | 函数头注释登记；`hif_ipc.setRecActive` 注释同步 |
-| R3 | `user/hif_rx_dsl.lua parseRecordLine` | `+RECORD:` 两种已知格式都不匹配时仍回落 `running=0/active=0` → `setRecActive(0)` + `RECORD_ACK`，把「解析失败」当「已停录」 | 未匹配返回 nil，`tryRecord` 返回 false 不改状态（查询走超时/缓存） | 注释登记 |
-| R4 | `user/hif_ipc_tffmt.lua runFormatSession` | `AT+TFFORMAT` 直接 `sendString`，未进串口事务锁，可与 `hostQuery/hostSet` 并发写串口 | `uartAcquire` 覆盖「发 AT → 收到 started」窗口，`started` 即 `uartRelease`（格式化可达 120s，不整段独占，避免饿死 1003 IPCSTAT 刷新）；`pcall` 外兜底 release | `bind_header_specs.json` tffmt `c` 加 `uartAcquire/uartRelease`，`--check-all` PASS |
-| R5 | `user/host_uart.lua start/stop` | `stop()` 不复位事务锁：持有者协程若被丢弃，`uart_txn_busy` 永久 true，之后所有 hostQuery/hostSet 只能等超时走 fallback | `resetUartTxn()` 在 start/stop 调用（原持有者 `uartRelease` 变 no-op） | — |
+| R3 | `user/hif_rx_dsl.lua parseRecordLine` | `+RECORD:` 两种已知格式都不匹配时仍回落 `running=0/active=0` → `setRecActive(0)` + `RECORD_ACK`，把「解析失败」当「已停录」 | 未匹配返回 nil，不改状态；§18.4 起：先 `normLine` + 剥行尾 `OK`（与 `parseTfCard` 同口径），未匹配发 `RECORD_ACK=false` 作 nack（`saveSnap` 对非 table 回 nil → 走缓存，不再烧满 `TMO.rec` 持锁）+ 一次 `log.warn record_line_unparsed` | 注释登记 |
+| R4 | `user/hif_ipc_tffmt.lua runFormatSession` | `AT+TFFORMAT` 直接 `sendString`，未进串口事务锁，可与 `hostQuery/hostSet` 并发写串口 | **§18.4 方案 A**：与 `hostQuery`/`hostIpcPowerOff` 同序——`uartAcquire(min(timeoutMs, 8000))` → `ensT31xHost` → `waitBoot` → `waitHostIdle` → 发送 → **整段持锁至终态**；`tfcard_format_busy` 在零 yield 的预检后即刻置位（`ensT31xHost` 移入 session）。首版「started 后早释放以免饿死 1003」理由不成立（`tfcard_format_busy` 本在 `HU_BUSY_KEYS`，1003 全程走缓存），且 2s 预算引入改前不存在的 `uart_busy` 失败面 | `bind_header_specs.json` tffmt `c` 含 `uartAcquire/uartRelease`，`--check-all` PASS |
+| R5 | `user/host_uart.lua start/stop` | `stop()` 不复位事务锁：持有者协程若被丢弃，`uart_txn_busy` 永久 true，之后所有 hostQuery/hostSet 只能等超时走 fallback | `resetUartTxn()` 在 `stop()` 与**首次** `start()`（`not started`）调用；§18.4 起运行中重入 `start` 不复位，避免把仍等 ACK 的持有者手里的锁放给第二个协程。注：`stop()` 当前全库无调用方，属防御 | — |
 | R6 | `user/hif_cmd.lua checkHostIdle` | `AT+HOSTIDLE?` 应答 `rspFmt(...) .. okTail()`，而 `rspFmt` 已带 OK 尾 → **双 OK**（全库唯一一处） | 去掉多余 `okTail()` | — |
-| R7 | `user/hif_ipc.lua defineQuery` | 工厂不透传 `skipQuiet`/`waitBoot`（`defineSet` 透传）→ `hif_cmd_wled QRY_WLED_D.skipQuiet=true` 为死字段，WLED 查询多等一段 quiet | 透传两字段 | 注释登记 |
+| R7 | `user/hif_ipc.lua defineQuery` | 工厂不透传 `skipQuiet`/`waitBoot`（`defineSet` 透传）→ `hif_cmd_wled QRY_WLED_D.skipQuiet=true` 为死字段，WLED 查询多等一段 quiet | 透传两字段。**行为面**：`AT+WLED?` 发送前不再 `waitHostIdle(≤1.5s)`，属默认配置下的时序变化，列入 §6 实机回归；`waitBoot` 透传目前无 `defineQuery` 消费者（仅前瞻） | 注释登记 |
 | R8 | `user/t31x_policy.lua passUsbGate` | 读**未注册键** `allow_mqtt_offline_wake_when_usb`（config 只有 `block_mqtt_offline_wake_when_usb=true`），恒 nil；`T31X_POLICY_GATE.md:49` 同样写错键 | 改读 `block_mqtt_offline_wake_when_usb == false`（默认 true → 行为不变，配置意图恢复）；doc 同步 | `_config_key_check` 为表级，字段级错键仍是静态盲区（登记于 18.3） |
 | R9 | `user/host_event.lua isEnabled` / `hif_cmd.lua checkHostIdleGate` | `MODULE_FLAGS.host_evt`（flags.lua 由 FEATURE_CFG 派生）**从未被消费**，单拨 flags 无效 | 两处显式并入 `MODULE_FLAGS.host_evt ~= false`（默认派生值 → 行为不变） | CONFIG.md 键索引自动刷新（`MODULE_FLAGS` 消费方 +2） |
 | R10 | `user/mqtt_dl_ctrl.lua otaUrl` + `user/fota_svc.lua useSelfServer` | 2004 OTA 忽略下行 `channel=iot`：`server_mode=self`（默认）时即使 `channel=iot` 也填自建 URL，与 `MQTT_DOWNLINK.md §6.3`「不带 url 走 libfota2 默认」矛盾 | 两处同判据：显式 url > `channel=iot`（不填 url）> server_mode | 注释互链 |
 | R11 | `user/mqtt_dl_tf.lua dlTfFormat` | 只认 `data.messageId`，其它 dl_* 均走 `dlMsgId`（兼容 `msgId`） | 统一 `shared.dlMsgId` | — |
-| R12 | `user/net_mqtt.lua stop` | 不退订 `IP_READY/IP_LOSE`，旧闭包持有已 close 的 client；stop→restart 窗口内网络抖动会对其调 `autoreconn/tryMqttConn` | 抽 `unbindIpHandlers()`，`bindIpHandlers` 与 `stop` 共用 | `_net_mqtt_regression_check` 23/23 |
-| R13 | `user/vbat.lua batteryTask` | `adc.open/read/get/setRange` 无 pcall（原则 §2.6 平台 API 保留 pcall）；单次 ADC 异常会让采样协程整体退出，电量永久 `--` | `readPin`/`applyAdc`/`adc.open` pcall 化，读错告警一次 | — |
+| R12 | `user/net_mqtt.lua stop` | 不退订 `IP_READY/IP_LOSE`，旧闭包持有已 close 的 client；stop→restart 窗口内网络抖动会对其调 `autoreconn/tryMqttConn` | 抽 `unbindIpHandlers()`，`bindIpHandlers` 与 `stop` 共用；§18.4 起退订移到 `publish("close")`/`close()` **之前**（先摘订阅再拆连接，封住 `stopCloseWait` 窗口） | `_net_mqtt_regression_check` 23/23 |
+| R13 | `user/vbat.lua batteryTask` | `adc.open/read/get/setRange` 无 pcall（原则 §2.6 平台 API 保留 pcall）；单次 ADC 异常会让采样协程整体退出，电量永久 `--` | `readPin`/`applyAdc`/`adc.open`/`adc.close` pcall 化（索引放进闭包，`adc` 库缺失也兜住）；读错告警每次 `start` 一次；`log` 守卫 | — |
 | R14 | `user/app.lua setupPmd` | `rtos.MSG_PMD` 存在但 `pmd` 库缺失的内核上裸调 `pmd.init` 必崩（`pmd_runtime` 默认 false，属守卫加固） | `and pmd` 存在性守卫 | — |
 
 ### 18.2 实证不成立 / 有意设计（驳回，代码不动）
@@ -317,6 +317,22 @@ python tools/debug/_module_tree.py --diff
 | `HOST_EVT_CFG.poll_interval_*`、`APP_PERSIST_CFG.host_evt_poll*`、`LED_CFG.mode/red_enabled`、`BATTERY_CFG.led.*`、`LOW_POWER_CFG.modem_hibernate` 字段级零读 | 表级 `_config_key_check` 不覆盖字段级；下一步可做「字段级死配置」护栏（需处理别名 `xCfg().field` 形态） |
 | `mqtt_dl_pir:228` 2011 发 1004 `pir_stop` vs `MQTT_DOWNLINK.md`「2011 无即时 1004」 | 与 `MQTT_CLOUD_REMOTE_CTRL_FLOW` / 实机闭环一致，以现网为准改 DOWNLINK 文案（文档侧待办） |
 | pin29 `coproc_ready`（IN）与 `t31x_mcu_int`（OUT）同脚 | = P1-1，待硬件图 |
+
+### 18.4 多模型对抗评审处置（2026-09-04，Opus / GPT-5.6 / Grok / Composer 四路独立评审 → 共识项修复）
+
+四路评审均无 critical；共识与处置如下（原文见 PR #11 评审记录）：
+
+| # | 共识（票数） | 处置 |
+|---|------|------|
+| 1 | R4 锁窗口：2s 预算 < 持锁者最坏 5.2–22s，引入 `uart_busy` 新失败面；静默期在锁外；「不饿死 1003」理由不成立；`busy` 在可 yield 的预检后才置位（4/4） | **方案 A 已实施**：先锁（8000 cap）→ 上电 → boot/quiet → 发送 → 整段持锁；`ensT31xHost` 移入 session、预检零 yield。注释与 §6 验收项同步改正 |
+| 2 | `_gpio_opts_check` 单行字面表零键 PASS、`setupInputEntry`/别名调用不在扫描面、`RE_FUNC` 首个 `\nend` 截断（4/4） | 重写：键按 `{`/`,` 切分；覆盖 `setupInputEntry` 第 3 实参与内部映射表；识别 `require` 模块别名与函数别名；变量传 opts 显式列「未覆盖」并设基线 `UNCOVERED_MAX=0`；函数体按顶层 `^end` 提取。注入 5 类样本全部 FAIL 复现 |
+| 3 | `_config_key_check` 把字符串字面量当消费方，可掩盖死配置并污染 CONFIG.md 索引；`--write-doc` 跳过 FAIL（3/4） | `_G.KEY`/裸 `KEY` 判定前剥字符串与块注释；「函数(单键字符串)」形态（`cfgm.get`/`getCfg`/`config.get`，单双引号）计消费；`--write-doc` 写后继续检查。注入 `log.info("cfg","ZZ_DEAD_CFG")` 不再掩盖死键；重算后 CONFIG.md 索引与原版逐字一致（原消费方均为真） |
+| 4 | R12 退订在 `close()` 之后，`stopCloseWait` 窗口仍可命中旧闭包（2/4） | 退订前移到 `publish("close")` 之前 |
+| 5 | R5 `start()` 无条件复位锁，将来重入会放锁给第二协程（3/4） | 仅 `not started` 时复位 |
+| 6 | R3 无 nack → `qryRecord` 烧满 `3000+200+3000` 持锁再回陈旧缓存；`parseRecordLine` 不 `normLine`（3/4） | `normLine` + 剥 `OK`；未匹配发 `RECORD_ACK=false` 作 nack + 一次 warn |
+| 7 | `sync_doc_naming` 会改掉 `_audit/` 里的事故记录本身（2/4） | 跳过 `_audit/`、`archive/` |
+| — | 单模型：`pull_mode` 凭空别名（Opus）；vbat `pcall(adc.open,…)` 索引在 pcall 外 / `adc.close` 裸调 / 标志不复位（Opus）；`_doc_version_check` 只取首个匹配、`\d{3}` 过严（Opus） | 均已改：删 `pull_mode`；闭包内索引 + `start` 复位标志；`findall` 全一致 + `\d+` |
+| — | 单模型登记不实施：`parseIpcStat` 仅 1 个 `k=v` 即整体替换 9 键并 notify（GPT）；`sameMqttCfg` 比较范围；字段级死配置护栏 | 登记 §18.3 |
 
 **验证**：`run_all_checks.py` 9/9 PASS（新增第 8 项 `_gpio_opts_check`、第 9 项 `_doc_version_check`）；`luac5.3 -p` 73 文件通过；`_gen_bind_header --check-all` 11/11；`_net_mqtt_regression_check` 23/23；模块树基线刷新（+77 行，均为守卫/注释）。
 **版本**：R1–R14 均为行为面 → `VERSION` 001.000.154 → **001.000.155**；实机回归清单见 `USER_LIB_OPTIMIZATION_NEXT.md §6`（新增：PWR 3s 长按关机 / BOOT 2s 长按烧录 / `AT+HOSTIDLE?` 单 OK / `AT+IPCSTAT?` 在 WLED 切换中仍等到真实应答）。

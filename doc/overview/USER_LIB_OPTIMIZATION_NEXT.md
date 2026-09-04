@@ -225,7 +225,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 - [ ] 2002 进/出 rest、USB 插拔 1003
 - [ ] 蜂窝 SIM/APN 1005
 - [ ] 烧录确认 `scriptVersion`
-- [ ] **155 新增**：PWR 3s 长按关机 / BOOT 2s 长按进烧录（154 前长按永不触发）；`AT+HOSTIDLE?` 单 OK；WLED 切换中 `AT+IPCSTAT?` 等到真实 `+IPCSTAT:` 应答；`AT+TFFORMAT` 期间 1003 IPCSTAT 刷新不被饿死；2004 `channel=iot` 不带 url 走合宙默认
+- [ ] **155 新增**：PWR 3s 长按关机 / BOOT 2s 长按进烧录（154 前长按永不触发）；`AT+HOSTIDLE?` 单 OK；WLED 切换中 `AT+IPCSTAT?` 等到真实 `+IPCSTAT:` 应答；2009 与 1003/2011 重叠时格式化**排队成功**而非 `uart_busy`，格式化期间 2007/`AT+WLED?` 等查询等到自身超时走缓存；`AT+WLED?` 发送前不再等 quiet（R7 skipQuiet 生效，确认 T31x 侧无丢字）；2004 `channel=iot` 不带 url 走合宙默认；畸形 `+RECORD:` 行日志 `record_line_unparsed` 且录像态不变
 
 ---
 
