@@ -30,7 +30,7 @@ function setupInput(pin, callback, opts)
     gpio.setup(
         pin,
         callback,
-        pull(opts.pull or opts.pull_mode or "pullup"),
+        pull(opts.pull or "pullup"),
         triggerMode(opts.triggerMode or opts.trigger_mode or "rising")
     )
     local debounce = opts.debounce

@@ -24,13 +24,13 @@
     "hif_ipc_hostq.lua": 344,
     "hif_ipc_power.lua": 203,
     "hif_ipc_rec.lua": 184,
-    "hif_ipc_tffmt.lua": 167,
+    "hif_ipc_tffmt.lua": 171,
     "hif_rx.lua": 69,
-    "hif_rx_dsl.lua": 540,
+    "hif_rx_dsl.lua": 550,
     "hif_rx_media.lua": 275,
     "host.lua": 110,
     "host_event.lua": 158,
-    "host_uart.lua": 698,
+    "host_uart.lua": 699,
     "ipc_supv.lua": 188,
     "led_pir.lua": 68,
     "lp_wakeup.lua": 116,
@@ -48,7 +48,7 @@
     "mqtt_ul_upload.lua": 147,
     "mqtt_uplink.lua": 537,
     "net.lua": 82,
-    "net_mqtt.lua": 664,
+    "net_mqtt.lua": 665,
     "net_tcp.lua": 35,
     "peripheral.lua": 178,
     "pir_ctrl.lua": 728,
@@ -58,7 +58,7 @@
     "t31x_notify.lua": 87,
     "t31x_policy.lua": 129,
     "time_sync.lua": 218,
-    "vbat.lua": 248
+    "vbat.lua": 250
   },
   "lib": {
     "cell_boot.lua": 373,
@@ -80,12 +80,12 @@
   "totals": {
     "user": {
       "files": 58,
-      "lines": 13660
+      "lines": 13678
     },
     "lib": {
       "files": 15,
       "lines": 2563
     },
-    "all": 16223
+    "all": 16241
   }
 }

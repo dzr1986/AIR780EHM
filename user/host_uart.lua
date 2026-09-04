@@ -229,8 +229,9 @@ local function uartAcquire(timeoutMs)
     return true
 end
 
--- start/stop 时强制复位事务锁：持有者协程若在 stop 期间被丢弃，锁会永久 busy，
--- 之后所有 hostQuery/hostSet 只能等超时走 fallback；复位后原持有者的 uartRelease 变 no-op
+-- stop 时（及冷启动首次 start）复位事务锁：持有者协程若在 stop 期间被丢弃，锁会永久 busy，
+-- 之后所有 hostQuery/hostSet 只能等超时走 fallback；复位后原持有者的 uartRelease 变 no-op。
+-- 运行中重入 start 不复位——否则会把仍在等 ACK 的持有者手里的锁放给第二个协程
 local function resetUartTxn()
     uartTxnOwner = nil
     uartTxnDepth = 0
@@ -643,7 +644,7 @@ function start(opts)
     t31xFallback = t31xModule
     state.host_at_ready = false
     state.first_host_at = nil
-    resetUartTxn()
+    if not started then resetUartTxn() end
     bindStartHooks(opts)
     uart_bridge.setOnLine(onUartLine)
     started = true

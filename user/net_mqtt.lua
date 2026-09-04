@@ -624,6 +624,9 @@ function stop()
             sys.wait(TIMEOUT.stopRestWait)
         end
 	end
+    -- 先摘订阅再拆连接：IP handler 闭包持有 client，若留到 close 之后，
+    -- stopCloseWait 期间的 IP_READY/IP_LOSE 仍会对正在关闭的 client 调 autoreconn/tryMqttConn
+    unbindIpHandlers()
 	if mqttClient then
 		pcall(function()
 			mqttClient:autoreconn(false)
@@ -637,8 +640,6 @@ function stop()
 		end)
 		mqttClient = nil
 	end
-    -- 旧 IP_READY/IP_LOSE 闭包持有已 close 的 client；stop→restart 窗口内网络抖动会对其调 autoreconn/tryMqttConn
-    unbindIpHandlers()
 	isConnected = false
     rntmPwr.setOnline(false)
 	started = false

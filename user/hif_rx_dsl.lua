@@ -361,6 +361,8 @@ function bind(C)
         if not line then
             return snap
         end
+        -- 与 parseTfCard 同口径：去首尾空白并剥掉粘连的行尾 OK，避免 `\r`/`OK` 让两种格式都不中
+        line = normLine(line):gsub("%s*OK%s*$", "")
         local r, a, c, rs = line:match("^%+RECORD:running=(%d),active=(%d),ch=(%-?%d+),reason=(.+)$")
         if r then
             snap.running = asNum(r)
@@ -439,13 +441,21 @@ function bind(C)
         return true
     end
 
+    local recordParseWarned = false
     local function tryRecord(line)
         if not line or not line:match("^%+RECORD:") then
             return false
         end
         local snap = parseRecordLine(line)
         if not snap then
-            return false
+            -- 已确认是 +RECORD: 行但格式未知：不改录像态；发 false 作 nack，让 AT+RECORD? 的
+            -- 等待方立刻走缓存（saveSnap 对非 table 返回 nil → defaultResult），而不是烧满 TMO.rec 并持锁
+            if not recordParseWarned then
+                recordParseWarned = true
+                log.warn("host_uart", "record_line_unparsed", line:sub(1, 64))
+            end
+            sys.publish(SYS_EVT.RECORD_ACK, false)
+            return true
         end
         state.host_record = snap
         applyRecordState(snap)
