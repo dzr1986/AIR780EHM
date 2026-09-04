@@ -175,7 +175,9 @@ def main() -> int:
         rows = []
         for p, line, name, ctx, hint in sorted(items):
             tag = "-> 建议: " + hint if hint else ""
-            rows.append(f"{os.path.relpath(p, ROOT)}:{line}  {name}  {tag}")
+            # 报告入库，路径统一 posix 分隔符，避免 Windows/Linux 交替运行产生无意义 diff
+            rel = os.path.relpath(p, ROOT).replace(os.sep, "/")
+            rows.append(f"{rel}:{line}  {name}  {tag}")
             rows.append(f"    {ctx[:150]}")
         return rows
 
