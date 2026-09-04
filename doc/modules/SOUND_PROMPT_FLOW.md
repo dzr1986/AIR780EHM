@@ -75,7 +75,7 @@ flowchart TD
 | `enabled` | 总开关 |
 | `boot_wait_host_ms` | 等 T31x/首条 AT 超时（默认 120s） |
 | `play_timeout_ms` | 等 SOUNDACK 超时（默认 2500ms） |
-| `t31xPowerWaitMs` | `ensurePowered` 等待 |
+| `t31x_power_wait_ms` | `ensPowOn` 等待（透传为 opts `t31xPowerWaitMs`） |
 | `boot_on_cold_start` 等 | 各场景布尔开关 |
 
 ---

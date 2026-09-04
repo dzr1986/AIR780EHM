@@ -91,7 +91,7 @@ flowchart TD
 | `sync_on_wake` | true | `onT31xWake` 路径 |
 | `sync_before_wake` | true | 唤醒前 `pushBeforeNotify` 对时 |
 | `host_boot_wait_ms` | 1500 | 发 AT 前等待 |
-| `t31xPowerWaitMs` | 800 | `ensurePowered` 等待 |
+| `t31x_power_wait_ms` | 800 | `ensPowOn` 等待（透传为 opts `t31xPowerWaitMs`） |
 | `ack_timeout_ms` | 800 | TIMESET 应答超时 |
 | `resync_skew_sec` | 2 | 去重窗口 |
 

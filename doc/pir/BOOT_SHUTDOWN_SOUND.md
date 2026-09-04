@@ -178,7 +178,7 @@ _G.SOUND_CFG = {
     shutdown_on_battery_off = false, -- battery_guard ≤5%
     boot_wait_host_ms = 120000,      -- 等首条 AT 超时（毫秒）；超时跳过开机音
     play_timeout_ms = 2500,          -- 无 SOUNDACK 时最大等待
-    t31xPowerWaitMs = 800,         -- 发 PLAYSOUND 前若 T31x 未上电则 powerOn 后等待
+    t31x_power_wait_ms = 800,         -- 发 PLAYSOUND 前若 T31x 未上电则 powerOn 后等待
 }
 ```
 

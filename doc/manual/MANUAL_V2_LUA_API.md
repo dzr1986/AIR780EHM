@@ -11,7 +11,7 @@
 
 - **函数命名**：模块导出 = 动词前缀 + camelCase；**事件 key = `UPPER_SNAKE`**，事件值字符串 = `lower_snake`；**配置键/JSON/协议字段 = snake_case（永不改名）**。
 - **模块导出惯例**：`module(_modname, package.seeall)` + `_G[_modname] = _M`（合宙惯例）；**不要**改成 `local M = {}`/metatable OOP。
-- **跨模块访问**：懒加载 API（`utils.getHostUart()`），**不要**在业务里写 `_G.xxx=`。
+- **跨模块访问**：懒加载 API（`utils.hostUart()`），**不要**在业务里写 `_G.xxx=`。
 - **文档同步**：改完 API 名跑 `python tools/sync_doc_naming.py` 收敛 `doc/` 引用。
 
 ## 2. API 命名真源（🟢 自包含，来源 CAT1_API_NAMING）
@@ -132,7 +132,7 @@
 - [ ] 导出函数名符合 §2 前缀约定；不新造缩写（对照 `FUNCTION_NAME_MAP.md` 历史教训）。
 - [ ] 新事件：`events.lua` 常量（UPPER）→ 用 `utils.appEvent` 发布（lower_snake 值）。
 - [ ] 新配置：并入 `config.lua` 编排的片段表；JSON/协议字段保持 snake_case。
-- [ ] 跨模块：懒加载（`utils.getHostUart()` 等），不直取 `_G`。
+- [ ] 跨模块：懒加载（`utils.hostUart()` 等），不直取 `_G`。
 - [ ] 顶层 local 上限 200/文件（LuatOS 限制；`host_uart`/`net_mqtt` 主文件已接近），超了优先拆子模块。
 - [ ] 回归：`host_uart` 族 → `_host_uart_regression_check.py`；`net_mqtt` 族 → `_net_mqtt_regression_check.py`（见 [MANUAL_V7](MANUAL_V7_TOOLCHAIN.md)）。
 - [ ] 文档：改 API 名后跑 `sync_doc_naming.py`；改行为后同步本卷相关专题链接与速查。

@@ -133,7 +133,7 @@ _G.HOST_TFCARD_FORMAT_CFG = {
     reboot_after = false,
     publish_status_after = true,
     host_boot_wait_ms = 1500,
-    t31xPowerWaitMs = 800,
+    t31x_power_wait_ms = 800,
 }
 ```
 

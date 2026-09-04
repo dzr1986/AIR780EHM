@@ -65,7 +65,7 @@ main.lua ─► module_loader 装载 config 族（先配置后业务）
         ─► 事件总线 APP_EVENTS 驱动运行期协作（低功耗/USB/PIR/IPC 桥）
 ```
 
-- **模块加载**：`config.lua` 26 行负责把 config 片段与业务模块装好；运行期跨模块访问走**懒加载 API**（`utils.getHostUart()`/`getUartBridge()` 等），禁止业务侧持 `_G` 别名（见 [LUA_MODULES §4](../overview/LUA_MODULES.md)）。
+- **模块加载**：`config.lua` 26 行负责把 config 片段与业务模块装好；运行期跨模块访问走**懒加载 API**（`utils.hostUart()`/`uartBridge()` 等），禁止业务侧持 `_G` 别名（见 [LUA_MODULES §4](../overview/LUA_MODULES.md)）。
 - **事件总线**：`APP_EVENTS` 常量定义在 config 片段 `events.lua`，用 `sys.publish/subscribe`（合宙）承载；见 [MANUAL_V2 §4](MANUAL_V2_LUA_API.md)。
 - **连接启动**：`lib/cell_boot.lua` 完成 SIM/APN 与入网，就绪后 `net_mqtt.bootstrapNet()`；详见 [modules/CELLULAR_BOOTSTRAP](../modules/CELLULAR_BOOTSTRAP.md)。
 

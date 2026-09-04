@@ -215,7 +215,7 @@ flowchart LR
 | `shutdown_on_battery_off` | false | 5% 自动关机不播 |
 | `boot_wait_host_ms` | 120000 | 等 T31x 首条 AT 超时（毫秒）；超时跳过开机音，**不会无限等待** |
 | `play_timeout_ms` | 2500 | 等 `+SOUNDACK` 超时 |
-| `t31xPowerWaitMs` | 800 | 发 PLAYSOUND 前若 T31x 未上电则 `powerOn` 后等待 |
+| `t31x_power_wait_ms` | 800 | 发 PLAYSOUND 前若 T31x 未上电则 `powerOn` 后等待 |
 
 冷启动开机音流程（首条 AT、超时、防重复）见 [BOOT_SHUTDOWN_SOUND.md](../pir/BOOT_SHUTDOWN_SOUND.md) §7.3。
 
@@ -244,7 +244,7 @@ Cat.1 IMEI + T31x GB28181 ID；MQTT **2006**→**1006**。见 [MQTT_PROTOCOL.md]
 | `auto_publish_delay_ms` | 500 | 自动上报前额外等待 |
 | `query_timeout_ms` | 3000 | `AT+GB28181?` 等待超时 |
 | `host_boot_wait_ms` | 1500 | T31x 上电后等 UART 就绪 |
-| `t31xPowerWaitMs` | 800 | 查询前 `powerOn` 后等待 |
+| `t31x_power_wait_ms` | 800 | 查询前 `powerOn` 后等待 |
 | `publish_on_ipcinfo_query` | false | T31x 发 `AT+IPCINFO?` 后是否额外 MQTT 1006 |
 
 T31x 侧在 `client.ini` 配置 `gb28181_id=`。
@@ -256,7 +256,7 @@ T31x 侧在 `client.ini` 配置 `gb28181_id=`。
 | `enabled` | true | 总开关 |
 | `query_timeout_ms` | 3000 | `AT+TFCARD?` 等待超时 |
 | `host_boot_wait_ms` | 1500 | T31x 上电后等 UART 就绪 |
-| `t31xPowerWaitMs` | 800 | 查询前 `powerOn` 后等待 |
+| `t31x_power_wait_ms` | 800 | 查询前 `powerOn` 后等待 |
 
 T31x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。见 [MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md) §4.7。
 
@@ -286,7 +286,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 | `poweroff_timeout_ms` | 30000 | 等待 `+IPCPOWEROFF:OK`（封盘可 >15s） |
 | `status_query_timeout_ms` | 2000 | 单次 `AT+IPCSTATUS?` 超时（无应答视为 idle） |
 | `ready_wait_timeout_ms` | 120000 | 上电后轮询 ready 总超时 |
-| `ready_pollMs` | 1000 | ready 轮询间隔 |
+| `ready_poll_ms` | 1000 | ready 轮询间隔 |
 | `boot_sound_wait_ready` | true | 冷启动开机音等 `+IPCSTATUS:ready` |
 | `uart_recovery.*` | 见下 | **USB 已插**且连续 `ipc_status_no_response` 时 powerOff→powerOn→脉冲 |
 
