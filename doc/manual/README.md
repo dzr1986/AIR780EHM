@@ -44,6 +44,7 @@
 | 我现在要… | 去卷 | 第一站（真源） |
 |-----------|------|----------------|
 | 刚接手，想 1 小时内看懂系统 | V1 → V2 | [SYSTEM_ARCHITECTURE](../overview/SYSTEM_ARCHITECTURE.md) |
+| 想按「设备正在做什么」顺着查：这一步为什么没发生、被哪个门禁拦了 | 先看工作流图再进卷 | [TECH_WORKFLOWS](../overview/TECH_WORKFLOWS.md)（W1–W10 每步给模块.函数 / 门禁 / 观测点） |
 | 想知道固件有哪些模块、谁负责什么 | V1/V2 | [LUA_MODULES §1.1](../overview/LUA_MODULES.md) |
 | 要给固件加一个 Lua 功能/模块 | V2 | [CAT1_API_NAMING](../overview/CAT1_API_NAMING.md) + [modules](../modules/README.md) |
 | 平台要新加一条 MQTT 下行命令 | V3 | [MQTT_PROTOCOL §4](../mqtt/MQTT_PROTOCOL.md) + [MQTT_DOWNLINK](../mqtt/MQTT_DOWNLINK.md) |
@@ -62,6 +63,7 @@
 
 - 顶层文档索引：[doc/README.md](../README.md)（唯一入口）
 - 系统级总览（新读者首选）：[overview/SYSTEM_ARCHITECTURE.md](../overview/SYSTEM_ARCHITECTURE.md)
+- 技术工作流总图（运行时视角，与本手册同层互补）：[overview/TECH_WORKFLOWS.md](../overview/TECH_WORKFLOWS.md)
 - 代码真源：仓库根 `user/`、`lib/`；不要在 `LuaTools/userprojs/` 副本里改代码。
 - 本仓库其它工程：`http_server/` `ota_server/` `patch_server/` `video_upload_server/` 各自 `README`/`docs`（跨仓库链接见 [doc/README 外部工程相关文档](../README.md)）。
 
@@ -76,7 +78,7 @@
 ```text
 L0 入口登记   doc/README.md ─── 唯一入口；登记 doc/ 全部主题 md（登记护栏管辖）
         │  ▼
-L1 任务汇编   doc/manual/（本页任务矩阵 + MANUAL_V1…V7）─── 速查汇编层，无真源权
+L1 任务汇编   doc/manual/（本页任务矩阵 + MANUAL_V1…V7）+ overview/TECH_WORKFLOWS（运行时工作流）─── 速查汇编层，无真源权
         │  ▼
 L2 主题真源   overview/ mqtt/ t31x/ power/ pir/ modules/ hardware/ release/ _audit/
         │  ▼            （每份知识唯一真源；冲突判据：代码 > 专题真源 > 手册速查）

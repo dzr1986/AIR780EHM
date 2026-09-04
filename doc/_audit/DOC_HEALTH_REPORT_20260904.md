@@ -52,3 +52,27 @@ python tools/debug/_doc_md_link_check.py --no-exclude-archive   # 含 archive/_a
 python tools/debug/run_all_checks.py                              # 9 项，含第 7/9 项文档同步护栏
 python doc/_tools/doc_registry_check.py
 ```
+
+---
+
+## 第 2 轮 · 2026-09-04（按技术工作流理顺功能逻辑）
+
+### 2.1 结论
+
+| 项 | 结果 |
+|----|------|
+| 导航层 | 原有两种视角（架构 `overview/`、任务 `manual/`）之上新增**运行时视角** [`overview/TECH_WORKFLOWS.md`](../overview/TECH_WORKFLOWS.md)：W0–W10 按设备生命周期串起 73 模块 / 130+ 文档，每步给 `模块.函数` / 协议·事件 / 门禁 / 观测点 / 真源 / 典型故障 |
+| 接线 | `doc/README.md` 阅读路径改为三视角表；`overview/README`、`manual/README` §2/§3/§4.1、`power`/`mqtt`/`t31x`/`modules` 二级索引与 README 的 PIR/硬件分组各加一行「工作流位置」；`SYSTEM_ARCHITECTURE §6` 反链 |
+| 校验 | 文档内全部 `模块.函数`、camelCase 标识、`APP_EVENTS`/`SYS_EVT` 常量、链接目标经脚本对照代码逐一存在（0 缺失）；护栏 9/9 + 登记 PASS |
+
+### 2.2 顺带修正的漂移
+
+| # | 问题 | 处置 |
+|---|------|------|
+| 10 | `CALL_GRAPH §1.1` `app.start` 顺序沿用旧函数名（`setupEventHandlers`/`initPowerStatus`/`scheduleBootUsbPolicySync`/`setupWatchdog`/`setupUartBridge`/`startBackgroundServices`）；§4 电量档位仍写 ≤15%/≤10% 中间档（现码仅 NORMAL/SHUTDOWN）；§6 上行函数用历史名（`publishHostIdentity`/`pubTfCardInfo`/`publishEncodeReply`） | 全部对齐 155 代码；补 2008/2009/2012/2013/2020–2031 行 |
+| 11 | `tools/sync_doc_naming.py` 无词边界且含配置键规则（`t31x_power_wait_ms→t31xPowerWaitMs`、`poll_ms→pollMs`），曾把 `CONFIG.md` 等 8 处**配置键**改成 opts 名（照抄进 `host.lua` 即死字段）；`--help` 也会写文件 | 整词替换 + 「src 与 config 片段字段同名即拒绝运行」+ `--dry-run`；8 处配置键还原 |
+
+### 2.3 经验沉淀
+
+- **导航层要按读者提问方式分视角**：架构（长什么样）/ 工作流（正在发生什么）/ 任务（我要改什么）三者引用同一组真源，互相反链，都不持真源权。
+- **批量改名脚本必须整词匹配，且 API 名与配置键是两套命名空间**——配置键（snake）出现在文档配置表里是正确的，不能被 API 规则「收敛」。

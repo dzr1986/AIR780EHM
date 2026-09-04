@@ -3,6 +3,7 @@
 > **唯一入口**：[doc/README.md](../README.md)；本页为 mqtt 二级索引（2026-09-04 分层）。
 > **代码**：`user/net_mqtt.lua` 及 `mqtt_*`/`mqtt_dl_*`/`mqtt_ul_*` 子模块（树见 [LUA_MODULES.md](../overview/LUA_MODULES.md)）。
 > **模块专题**（下载分发/上行职责）：[modules/README.md](../modules/README.md)「net_mqtt 子模块索引」。
+> **工作流位置**：[TECH_WORKFLOWS](../overview/TECH_WORKFLOWS.md) W2（上线/1003）· W4（下行闭环）· W6（2013/1013 上传）· W8（2004 OTA）；串口 AT 在 W3。
 
 ## 协议与规范（真源，先读 📌）
 
