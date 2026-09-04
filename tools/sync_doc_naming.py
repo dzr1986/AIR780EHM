@@ -143,6 +143,9 @@ SKIP_FILES = {
     "FUNCTION_NAME_MAP.md",
     "CAT1_API_NAMING.md",
 }
+# 历史留档目录：事故记录/审计账本里会原文引用旧名（如 DOC_HEALTH_REPORT 记录的 `poll_ms→pollMs` 事故本身），
+# 收敛脚本一律不碰，否则会把证据改掉
+SKIP_DIRS = {"_audit", "archive"}
 
 
 # 2026-09-04 事故：旧实现无词边界 + 含配置键规则 → 把 CONFIG.md 等 8 处配置键
@@ -196,7 +199,7 @@ def main() -> None:
     total = 0
     files = 0
     for path in sorted(DOC.rglob("*.md")):
-        if path.name in SKIP_FILES:
+        if path.name in SKIP_FILES or (path.relative_to(DOC).parts[0] in SKIP_DIRS):
             continue
         raw = path.read_text(encoding="utf-8")
         new, n = sub_text(raw)

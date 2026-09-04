@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "user" / "main.lua"
-V = r"(\d{3}\.\d{3}\.\d{3})"
+V = r"(\d+\.\d+\.\d+)"  # 与 main.lua SCRIPT_VERSION_PATTERN（%d+%.%d+%.%d+）同宽，勿写死 3 位
 
 # (相对仓库根路径, 含单个捕获组的正则) —— 捕获组即该文档声称的「当前版本」
 ANCHORS = (
@@ -51,12 +51,15 @@ def main() -> int:
             print(f"    [FAIL] {rel} 不存在")
             fails += 1
             continue
-        m = re.search(pat, p.read_text(encoding="utf-8"), re.M)
-        if not m:
+        found = re.findall(pat, p.read_text(encoding="utf-8"), re.M)
+        if not found:
             print(f"    [FAIL] {rel} 未找到锚点 /{pat}/（锚点文案被改动？同步更新本脚本）")
             fails += 1
-        elif m.group(1) != ver:
-            print(f"    [FAIL] {rel} 声称 {m.group(1)} ≠ 代码 {ver}")
+            continue
+        # 同一锚点文案在文内出现多次时须全部一致（只取首个会被后插的同款行静默绕过）
+        wrong = sorted(set(v for v in found if v != ver))
+        if wrong:
+            print(f"    [FAIL] {rel} 声称 {', '.join(wrong)} ≠ 代码 {ver}（锚点命中 {len(found)} 处）")
             fails += 1
     if fails:
         print(f"\nFAILED: {fails} 处版本口径漂移")

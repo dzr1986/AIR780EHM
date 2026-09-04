@@ -20,7 +20,9 @@ config_manager.get(name) 直查 _G[name]、大小写敏感，键不一致即恒�
 
 索引规则（CONFIG.md「配置键总索引」块）：
     * 只收 user/config.lua 编排的 10 个片段文件内注册的键（main.lua 的 VERSION 等运行元信息不收）。
-    * 消费方 = 注册文件以外、以 cfgm.get("KEY") / _G.KEY / 裸 KEY 任一形态引用该键的 .lua 文件。
+    * 消费方 = 注册文件以外、以 任意函数(单键字符串)（cfgm.get/getCfg/config.get，单双引号）/ _G.KEY / 裸 KEY 任一形态引用该键的 .lua 文件；
+      _G.KEY / 裸 KEY 判定前先剥掉字符串字面量与块注释，日志文案/协议字段同名不计为消费。
+    * --write-doc 写入后仍执行全部检查并按结果返回退出码（不会在仍有缺失/死键时静默成功）。
     * 零消费键在索引中标 ⚠，并计入 FAIL（死配置须删除或补消费方）。
     * CONFIG.md 中 <!-- CFG_KEY_INDEX:BEGIN --> … <!-- CFG_KEY_INDEX:END --> 之间内容须与生成结果一致，
       否则 FAIL 并提示 --write-doc。
@@ -41,19 +43,28 @@ CONFIG_DOC = ROOT / "doc" / "overview" / "CONFIG.md"
 MARK_BEGIN = "<!-- CFG_KEY_INDEX:BEGIN -->"
 MARK_END = "<!-- CFG_KEY_INDEX:END -->"
 
-RE_ASSIGN = re.compile(r"_G\.([A-Za-z_]\w*)\s*=")
-RE_GET = re.compile(r'cfgm\.get\("([^"]+)"\)')
+RE_ASSIGN = re.compile(r"_G\.([A-Za-z_]\w*)\s*=(?!=)")
+RE_GET = re.compile(r"cfgm\.get\(\s*[\"']([^\"']+)[\"']\s*\)")
+# 任意「函数(单个键字符串)」调用都视为消费：cfgm.get("K") / getCfg("K")（hif_ipc 别名）/ config.get("K")
+RE_CALL_KEY = re.compile(r"[A-Za-z_][\w.]*\(\s*[\"']([A-Za-z_]\w*)[\"']\s*\)")
+RE_STR = re.compile(r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'")
 RE_FRAGMENT = re.compile(r'^\s*require\s*"([A-Za-z_]\w*)"', re.MULTILINE)
 
 
 def strip_comment(line: str) -> str:
-    """去掉行内 Lua 注释（-- 起截断），避免注释/字符串误捕。"""
+    """去掉行内 Lua 注释（-- 起截断）。字符串内的 -- 会被误切，仅影响极少数日志文案行。"""
     idx = line.find("--")
     return line[:idx] if idx >= 0 else line
 
 
 def code_only(text: str) -> str:
+    text = re.sub(r"--\[\[.*?\]\]", "", text, flags=re.S)  # 块注释
     return "\n".join(strip_comment(l) for l in text.splitlines())
+
+
+def no_strings(code: str) -> str:
+    """剥掉字符串字面量：`_G.KEY` / 裸 `KEY` 的消费判定不得被日志文案/协议字段名命中。"""
+    return RE_STR.sub('""', code)
 
 
 def lua_files() -> list[Path]:
@@ -81,26 +92,28 @@ def config_fragments() -> list[Path]:
 
 
 def key_pattern(key: str) -> re.Pattern:
-    # 命中 cfgm.get("KEY") / _G.KEY / 裸 KEY；排除 X.KEY 这类字段访问
-    return re.compile(r'(?:_G\.|"|(?<![\w.]))%s\b' % re.escape(key))
+    # 命中 _G.KEY / 裸 KEY（输入须已剥字符串）；排除 X.KEY 这类字段访问
+    return re.compile(r'(?:_G\.|(?<![\w.]))%s\b' % re.escape(key))
 
 
-def consumers_of(key: str, files, texts: dict[Path, str], exclude: set[Path]) -> list[str]:
+def consumers_of(key: str, files, texts: dict[Path, tuple[str, str]], exclude: set[Path]) -> list[str]:
+    """texts[f] = (code, code_without_strings)；cfgm.get("KEY") 在原 code 上判定，其余形态在剥字符串后判定。"""
     pat = key_pattern(key)
     hits = []
     for f in files:
         if f in exclude:
             continue
-        if pat.search(texts[f]):
+        code, nostr = texts[f]
+        if key in RE_CALL_KEY.findall(code) or pat.search(nostr):
             hits.append(f.relative_to(ROOT).as_posix())
     return hits
 
 
-def used_inside_fragment(key: str, text: str) -> bool:
+def used_inside_fragment(key: str, code: str) -> bool:
     """注册片段内部、赋值语句之外是否还引用了该键（如 PIR_CFG.cooldown_ms = _G.PIR_COOLDOWN_MS.frequent）。"""
-    assign = re.compile(r"_G\.%s\s*=" % re.escape(key))
+    assign = re.compile(r"_G\.%s\s*=(?!=)" % re.escape(key))
     pat = key_pattern(key)
-    for line in text.splitlines():
+    for line in no_strings(code).splitlines():
         if assign.search(line):
             continue
         if pat.search(line):
@@ -112,7 +125,10 @@ def build_index(files, registered) -> tuple[list[str], list[str]]:
     """返回 (markdown 行, 零消费键)。"""
     frags = config_fragments()
     frag_set = set(frags)
-    texts = {f: code_only(f.read_text(encoding="utf-8", errors="ignore")) for f in files}
+    texts = {}
+    for f in files:
+        code = code_only(f.read_text(encoding="utf-8", errors="ignore"))
+        texts[f] = (code, no_strings(code))
     rows: list[tuple[str, str, str, list[str]]] = []
     for key, where in registered.items():
         reg_files = [w for w in where if w in frag_set]
@@ -120,7 +136,7 @@ def build_index(files, registered) -> tuple[list[str], list[str]]:
             continue
         reg = reg_files[0]
         cons = consumers_of(key, files, texts, exclude=set(where))
-        if not cons and used_inside_fragment(key, texts[reg]):
+        if not cons and used_inside_fragment(key, texts[reg][0]):
             cons = ["（片内引用）"]
         rows.append((reg.stem, key, reg.relative_to(ROOT).as_posix(), cons))
     order = {f.stem: i for i, f in enumerate(frags)}
@@ -173,8 +189,7 @@ def main() -> int:
         return 0
     if "--write-doc" in sys.argv:
         write_doc(index_lines)
-        print(f"已写入 {CONFIG_DOC.relative_to(ROOT).as_posix()} 索引块（{len(index_lines) - 4} 键）")
-        return 0
+        print(f"已写入 {CONFIG_DOC.relative_to(ROOT).as_posix()} 索引块（{len(index_lines) - 4} 键）；继续执行一致性检查：")
 
     print("== 配置键读写一致性检查 ==")
     print("    注册侧: _G.<NAME> = ...（config 片段）  消费侧: cfgm.get(\"<NAME>\")")
