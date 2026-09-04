@@ -14,6 +14,7 @@
     7. _config_key_check.py         配置键读写一致性（cfgm.get 消费键 ⊆ _G 注册键，大小写敏感）+ 死配置 + CONFIG.md 键索引同步
     8. _gpio_opts_check.py          gpio_util.setupInput 调用方 opts 键 ⊆ 实现读取键（防 camel/snake 静默失效回归）
     9. _doc_version_check.py        文档「当前版本」锚点 ↔ user/main.lua VERSION 一致
+   10. tests/test_guards.py         护栏自身回归（_luatok 词法单测 + 注入样本必 FAIL + 干净仓库基线 PASS）
 
 全部 PASS 时退出码 0，任一失败退出码 1。
 """
@@ -36,6 +37,7 @@ CHECKS = (
     ("_config_key_check.py", (), "配置键读写一致性（cfgm.get 消费键须有精确同键名 _G 注册，大小写敏感）+ 死配置 + CONFIG.md 键索引同步"),
     ("_gpio_opts_check.py", (), "gpio_util.setupInput opts 键护栏（调用方字面键须被实现读取，防 camel/snake 回归）"),
     ("_doc_version_check.py", (), "文档现状版本锚点 ↔ main.lua VERSION 一致（README/manual/overview 10 处）"),
+    ("tests/test_guards.py", (), "护栏自身回归（_luatok 词法 + 注入样本必 FAIL + 基线 PASS；unittest，无新依赖）"),
 )
 
 

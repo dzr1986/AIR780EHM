@@ -10,6 +10,7 @@ AT+MQTTPUB / DeviceId 上报等路径静默失效。本脚本把此类错误纳�
   A. 引用名不得含 "."（自研模块均为 user/、lib/ 顶层单文件；LuatOS 内置无点路径）
   B. loader.load / loader.opt 第二参 / modCall 的目标须 ∈ {自研模块名} ∪ KNOWN_EXTERNAL
   C. require 的目标须 ∈ {自研模块名} ∪ KNOWN_EXTERNAL ∪ KNOWN_REQUIRE_ONLY
+  词法：源码先经 tools/debug/_luatok.strip_comments 去注释（P0 护栏 token 化），注释中的历史名不计。
 
 用法: python tools/debug/_ref_name_check.py     # 全检 user/ + lib/
 退出码: 0=全过  1=有 FAIL
@@ -19,6 +20,9 @@ from __future__ import annotations
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _luatok import strip_comments  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCAN_DIRS = ("user", "lib")
@@ -54,7 +58,8 @@ def scan_dir(dirname: str) -> dict:
         if fn.endswith(".lua"):
             p = os.path.join(base, fn)
             with open(p, "r", encoding="utf-8", errors="replace") as f:
-                out[os.path.join(dirname, fn)] = f.read()
+                # 注释里的旧模块名（如「原 ipc_supervision.lua」）不算引用；字符串必须保留（模块名即字符串）
+                out[os.path.join(dirname, fn)] = strip_comments(f.read())
     return out
 
 

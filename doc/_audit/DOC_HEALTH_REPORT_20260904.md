@@ -76,3 +76,17 @@ python doc/_tools/doc_registry_check.py
 
 - **导航层要按读者提问方式分视角**：架构（长什么样）/ 工作流（正在发生什么）/ 任务（我要改什么）三者引用同一组真源，互相反链，都不持真源权。
 - **批量改名脚本必须整词匹配，且 API 名与配置键是两套命名空间**——配置键（snake）出现在文档配置表里是正确的，不能被 API 规则「收敛」。
+
+---
+
+## 第 3 轮 · 2026-09-04（refactor_plan P0：护栏 token 化 + 护栏单测）
+
+| 项 | 结果 |
+|----|------|
+| 新增 `tools/debug/_luatok.py` | 最小 Lua 词法器（字符串/长字符串/行注释/块注释/标识符/数字/符号；`strip_noncode`/`strip_comments`/`calls`/`table_keys`）。`_config_key_check`/`_gpio_opts_check`/`_ref_name_check` 三条护栏的注释/字符串/实参切分改为统一调用，不再各自正则 |
+| 新增 `tools/debug/tests/test_guards.py` + `fixtures/` | 12 用例：5 条 `_luatok` 词法单测 + 7 条沙箱注入（gpio 5 类错键、字符串伪消费、单引号 `cfgm.get`、`--write-doc` 仍报错、注释旧模块名不计、真实错名 FAIL、干净仓库基线 PASS）；`unittest`，零新依赖 |
+| `run_all_checks.py` | 9 → 10 项；全 PASS |
+| 切换前后一致性 | `_config_key_check --table` 索引 md5 与切换前逐字一致；`_gpio_opts_check` 调用点 6/6 一致；`_ref_name_check` 338 → 336 处引用（2 处为注释内旧名，现正确不计） |
+| 回归验证 | 临时还原 R1 前的 `gpio_util.setupInput` → `_gpio_opts_check` 9 FAIL |
+
+经验：护栏的「什么是代码」判断只能有一处实现；护栏必须有自己的测试，否则「ALL PASS」的可信度随护栏数量下降。

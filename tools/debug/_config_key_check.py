@@ -13,6 +13,7 @@ config_manager.get(name) 直查 _G[name]、大小写敏感，键不一致即恒�
     python tools/debug/_config_key_check.py --write-doc  # 重写 CONFIG.md 索引块（标记对之间）
 
 比对规则：
+    0. 词法：注释/字符串识别统一走 tools/debug/_luatok.py（P0 护栏 token 化），本脚本只写规则。
     1. 注册键：user/ + lib/ 下 `_G.<NAME> = ...` 赋值（含 = {、= _G.X.guard 等别名注册）。
        模块挂名 `_G[_modname] = _M`（方括号）不视为配置注册。
     2. 消费键：`cfgm.get("<NAME>")` 字面量。
@@ -36,6 +37,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _luatok import strip_comments, strip_noncode  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 SCAN_DIRS = (ROOT / "user", ROOT / "lib")
 CONFIG_ORCHESTRATOR = ROOT / "user" / "config.lua"
@@ -47,24 +51,17 @@ RE_ASSIGN = re.compile(r"_G\.([A-Za-z_]\w*)\s*=(?!=)")
 RE_GET = re.compile(r"cfgm\.get\(\s*[\"']([^\"']+)[\"']\s*\)")
 # 任意「函数(单个键字符串)」调用都视为消费：cfgm.get("K") / getCfg("K")（hif_ipc 别名）/ config.get("K")
 RE_CALL_KEY = re.compile(r"[A-Za-z_][\w.]*\(\s*[\"']([A-Za-z_]\w*)[\"']\s*\)")
-RE_STR = re.compile(r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'")
 RE_FRAGMENT = re.compile(r'^\s*require\s*"([A-Za-z_]\w*)"', re.MULTILINE)
 
 
-def strip_comment(line: str) -> str:
-    """去掉行内 Lua 注释（-- 起截断）。字符串内的 -- 会被误切，仅影响极少数日志文案行。"""
-    idx = line.find("--")
-    return line[:idx] if idx >= 0 else line
-
-
+# 词法由 _luatok 统一：code_only 去注释保留字符串（供 cfgm.get("K") 等字符串形态判定），
+# no_strings 再把字符串置空（供 _G.KEY / 裸 KEY 判定，日志文案/协议字段名不计为消费）
 def code_only(text: str) -> str:
-    text = re.sub(r"--\[\[.*?\]\]", "", text, flags=re.S)  # 块注释
-    return "\n".join(strip_comment(l) for l in text.splitlines())
+    return strip_comments(text)
 
 
 def no_strings(code: str) -> str:
-    """剥掉字符串字面量：`_G.KEY` / 裸 `KEY` 的消费判定不得被日志文案/协议字段名命中。"""
-    return RE_STR.sub('""', code)
+    return strip_noncode(code)
 
 
 def lua_files() -> list[Path]:

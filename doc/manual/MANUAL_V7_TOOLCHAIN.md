@@ -71,7 +71,9 @@
 | `_gen_bind_header.py --check-all` | hif bind 头与代码一致 | 动 bind 后（`--emit hif_cmd_xxx.lua` 生成） |
 | `_module_tree.py` / `_ref_name_check.py` | 模块树/引用名一致性 | 模块改名后 |
 | `_config_key_check.py` / `_gpio_opts_check.py` / `_doc_version_check.py` | 配置键注册↔消费 + CONFIG.md 索引；`gpio_util.setupInput` opts 键；文档现状版本锚点 ↔ `main.lua` | 改配置/改 GPIO 调用/升 VERSION 后（均在 `run_all_checks` 内） |
-| `run_all_checks.py` | 汇总运行全部 9 项静态护栏 | 发布前整跑（须在非 Windows 平台也跑过一次） |
+| `_luatok.py`（库，不单独运行） | 最小 Lua 词法器：注释/字符串/调用实参/字面表键的**唯一**实现，`_config_key_check`/`_gpio_opts_check`/`_ref_name_check` 均基于它；新护栏一律 `from _luatok import …`，不要再写正则剥注释 | 写新护栏时 |
+| `python -m unittest tools/debug/tests/test_guards.py` | **护栏自身回归**：`_luatok` 词法单测 + `tests/fixtures/` 注入样本必 FAIL + 干净仓库基线 PASS（`run_all_checks` 第 10 项） | 改任何护栏脚本后 |
+| `run_all_checks.py` | 汇总运行全部 10 项静态护栏（含护栏自测） | 发布前整跑（须在非 Windows 平台也跑过一次） |
 
 ## 7. 调试与一次性脚本族（tools/debug/，按用途选）
 
