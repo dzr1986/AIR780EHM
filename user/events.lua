@@ -1,5 +1,5 @@
 -- ================================================================
--- Filename : config/events.lua
+-- Filename : events.lua（config 片段，user/ 顶层；由 config.lua 编排 require）
 -- Module   : APP_EVENTS 事件名常量
 -- Arch     : 拆分自 config.lua。
 -- ================================================================

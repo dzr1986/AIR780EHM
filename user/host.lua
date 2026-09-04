@@ -1,5 +1,5 @@
 -- ================================================================
--- Filename : config/host.lua
+-- Filename : host.lua（config 片段，user/ 顶层；由 config.lua 编排 require）
 -- Module   : 主机（T31x）侧服务配置：SOUND/TIME_SYNC/IDENTITY/TFCARD/RECORD/ENCODE/IPC/WAKE
 -- Arch     : 拆分自 config.lua。HOST_IPC_CFG 依赖 config.features 的 LOW_POWER_CFG。
 -- ================================================================

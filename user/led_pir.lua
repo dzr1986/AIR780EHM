@@ -1,5 +1,5 @@
 -- ================================================================
--- Filename : config/led_pir.lua
+-- Filename : led_pir.lua（config 片段，user/ 顶层；由 config.lua 编排 require）
 -- Module   : LED 指示 / WLED 转发 / PIR 冷却与硬件配置 / 持久化路径
 -- Arch     : 拆分自 config.lua。PIR_CFG 依赖 config.gpio 的 GPIO_IN（须先加载）。
 -- ================================================================

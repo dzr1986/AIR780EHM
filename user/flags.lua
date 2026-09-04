@@ -1,5 +1,5 @@
 -- ================================================================
--- Filename : config/flags.lua
+-- Filename : flags.lua（config 片段，user/ 顶层；由 config.lua 编排 require）
 -- Module   : MODULE_FLAGS 可选服务裁剪开关
 -- Arch     : 拆分自 config.lua。依赖 config.features 的 FEATURE_CFG。
 -- ================================================================

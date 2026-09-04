@@ -1,5 +1,5 @@
 -- ================================================================
--- Filename : config/net.lua
+-- Filename : net.lua（config 片段，user/ 顶层；由 config.lua 编排 require）
 -- Module   : UART 桥 / 看门狗 / MQTT 客户端 / FOTA 拉包地址
 -- Arch     : 拆分自 config.lua。resFotaUrl 为全局函数，供 fota_svc / net_mqtt 共用。
 -- ================================================================
