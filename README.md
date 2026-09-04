@@ -38,8 +38,8 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 | `lib/` | 驱动与公共库：串口 / GPIO / USB / 蜂窝引导 / 唤醒策略 / 加载器 / 系统（15 文件） |
 | `doc/` | 文档库（按主题分目录：`overview/` `hardware/` `power/` `pir/` `mqtt/` `t31x/` `release/` `modules/`，`_audit/` 历史留档、`archive/` 迁移 stub；索引见 [doc/README.md](doc/README.md)） |
 | `archive/` | 历史归档（已删模块留档、旧文档迁移表） |
-| `firmware/` `量产/` | 发布固件产物（`.soc` / `.binpkg`） |
-| `ota_server/` `http_server/` `video_upload_server/` `patch_server/` | 服务端（Java / Python，独立文档） |
+| `firmware/` `量产/` | 发布固件产物（`.soc` / `.binpkg`）；**大部分被 `.gitignore` 忽略**，克隆后为空属正常，从量产包/发布流程获取 |
+| `ota_server/` `http_server/` `video_upload_server/` `patch_server/` | 云侧服务端（Java / Python），**各自独立工程、独立部署**，与固件仅协议耦合；入口见各目录 `README` |
 | `tools/` | 调试脚本（`tools/debug/` 静态护栏）、打包脚本 |
 
 ## lib/ 主路径（15）
@@ -95,7 +95,13 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 
 ## 打包
 
-`package_project.bat` / `pack.ps1` → `780EHM_PJ_YYYYMMDD.zip`（含 `user/`、`lib/`、`doc/`、`README.md`、`luatos.json`）。
+| 用途 | 命令 | 说明 |
+|------|------|------|
+| **量产交付（真源）** | `python tools/pack_mass_prod.py <脚本版本>` | 生成 `{日期}_量产/`（固件 + 烧录工具），见 [doc/release/CAT1_FLASH_FLOW.md](doc/release/CAT1_FLASH_FLOW.md) |
+| **单台烧录** | `python tools/gui/flash/cat1_flash.py flash-script` | 只刷脚本区、免 BOOT；不要用 Luatools debug99 |
+| 工程源码包（归档/交付源码） | `package_project.bat` / `pack.ps1` → `780EHM_PJ_YYYYMMDD.zip` | 含 `user/`、`lib/`、`doc/`、`README.md`、`luatos.json`；**不是**烧录产物 |
+
+> `luatos.json` 的 `core`（V2034）仅供 Luatools 打开工程调试；量产内核以 [doc/release/RELEASE_v1.2.md](doc/release/RELEASE_v1.2.md) 登记的内核号为准。
 
 ---
 

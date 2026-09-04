@@ -44,7 +44,7 @@ main.lua
 | 13 | `mqtt` | `netModule.bootstrapNet()`（`main.lua` 已调，幂等） |
 | 14 | 始终 | **`bootMqtt()`**（协程：等 RNDIS stable + `net_ready`）→ `startMqtt()` → `net_mqtt.start()` |
 | 15 | `fota` | `setupFota()` |
-| 16 | 始终 | `startHeartbeat()`（10s） |
+| 16 | 始终 | `startHeartbeat()`（间隔 `APP_META.heartbeat_log_interval_ms`，默认 60000，下限 `TIMEOUT.heartbeatMin`） |
 
 > 运行时视角（每步之后设备会发生什么、在哪个门禁被拦）见 [TECH_WORKFLOWS.md](TECH_WORKFLOWS.md) W1。
 
@@ -129,7 +129,7 @@ main.lua
 | uart_bridge | sys |
 | t31x_ctrl | sys, config 引脚 |
 
-**规则**：`lib/*` 不得 `require user/*`。
+**规则**：`lib/*` 不得依赖 `user/` **业务**模块（`pir_ctrl`/`host_uart`/`net_mqtt`/…）。**例外**：`config` 域——`user/config.lua` 及 10 个片段、`lib/config_manager`、`lib/module_loader`、`lib/runtime_power`——属 L0 平台配置层，lib 在加载期 `require "config"` 是允许的（实测 9 个 lib 如此）。由 `tools/debug/_layer_check.py` 守护（P1a 起），图与环/反向边真源见 `python tools/debug/_dep_graph.py`。
 
 ---
 

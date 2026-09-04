@@ -3,6 +3,8 @@
 > 标签：`v1.2`  
 > 打包名建议：`780EHM_PJ_v1.2_20260602.zip`  
 > 固件版本字符串：`APP_META.version` / `BUILD_TAG` = **v1.2**
+>
+> **内核/脚本口径（2026-09-04 补记）**：当前脚本 `VERSION` 见 `user/main.lua`（`_doc_version_check` 守护）；实机 2008/1008 报 `firmwareVersion` 前缀 **2050**（`doc/mqtt/MQTT_231_CLOSED_LOOP_20260902.md`），烧录工具文档写 V2044，`luatos.json core` 为 V2034——**量产内核号待产线确认后在此登记**；`luatos.json` 的 `core` 仅供 Luatools 打开工程，不参与 `flash-script` 量产。
 
 ---
 

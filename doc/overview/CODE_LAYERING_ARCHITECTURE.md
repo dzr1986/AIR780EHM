@@ -23,7 +23,10 @@
 │ L1  lib · 硬件驱动     gpio_util uart_bridge watchdog          │
 │                                usb_rndis usb_charge usb_vuart  │
 │                                led_ctrl(已下沉)                 │
-│ L0  vendor/framework  sys.lua（LuatOS 协程核心 fork，不改动）  │
+│ L0  平台配置/框架    sys.lua（LuatOS fork，不改动）            │
+│                      config + 10 片段(user/) · config_manager  │
+│                      module_loader · runtime_power              │
+│                      ── lib 可在加载期依赖本层；本层禁 require utils 系（§2.4 require 环）│
 └──────────────────────────────────────────────────────────────┘
 ```
 

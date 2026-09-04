@@ -350,7 +350,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 |----|-------------|--------------|------|
 | `RNDIS_ENABLE` | `?= 1` | `local RNDIS_ENABLE = 1` | → `FEATURE_CFG.rndis`；关 RNDIS 可移 `usb_rndis.lua` 至 `archive/slim/lib/` |
 | `USB_REENUM_ENABLE` | `?= 1` | `local USB_REENUM_ENABLE = 1` | → `FEATURE_CFG.usb_reenum` |
-| `FOTA_SERVER` | `iot` / `custom` | `FOTA_CFG.server_mode` | `self` 用 `FOTA_CFG.server` 选端点；合宙 IoT 需 `main.lua` `PRODUCT_KEY`；2004 也可带 `url` |
+| `FOTA_SERVER` | `iot` / `custom` | `FOTA_CFG.server_mode` | `self` 用 `FOTA_CFG.server` 选端点；合宙 IoT 需 `main.lua` `PRODUCT_KEY`；2004 也可带 `url`。**注意默认不一致**：`config.mk` 默认 `iot`，`user/net.lua` 默认 `server_mode = "self"`，且 `config.mk` 宏不会自动写入 lua——以 `net.lua` 为运行真源 |
 | `LOW_POWER_ENABLE` | — | `local LOW_POWER_ENABLE = 1` | → `FEATURE_CFG.low_power` → `MODULE_FLAGS.low_power` |
 | `HOST_EVT_ENABLE` | — | `local HOST_EVT_ENABLE = 1` | → `FEATURE_CFG.host_evt` → PIRSTAT.has_work |
 | `LOW_POWER_WAKEUP_MODE` | — | `LOW_POWER_WAKEUP_CFG.mode` | `"mqtt"` / `"tcp"`，见 [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](../power/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md) |

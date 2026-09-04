@@ -127,7 +127,7 @@ doc/power/CAT1_USER_LIB_SLIM.md:55  mobile_info.lua
     3. 需恢复 mobile_info 周期调试时，从历史提交恢复 `lib/mobile_info.lua`，并将 `mobile_info=true`。
 doc/power/CAT1_USER_LIB_SLIM.md:64  encode_proxy.lua  
     | 删除 `encode_proxy.lua` | 2021/2020 直调 `host_uart.queryHostEncode` / `setHost*Encode` |
-doc/release/RELEASE_v1.2.md:13  cellular_bootstrap.lua  -> 建议: cell_boot
+doc/release/RELEASE_v1.2.md:15  cellular_bootstrap.lua  -> 建议: cell_boot
     | 蜂窝 | `lib/cellular_bootstrap.lua` — IMSI/ICCID 运营商识别、联通 APN、`mobile.reset` 重试 |
 
 == [历史区] doc/archive 与 doc/_audit ==
