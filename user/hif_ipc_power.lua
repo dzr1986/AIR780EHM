@@ -16,7 +16,6 @@ function bind(C, H)
     local uart_bridge = C.uart_bridge
     local hostNowMs = C.hostNowMs
     local patchCloud = C.patchCloud
-    local setRecActive = C.setRecActive
     local getCfg = H.getCfg
     local qryHostStat = H.qryHostStat
 

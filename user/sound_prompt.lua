@@ -10,7 +10,7 @@ local utils = require "utils"
 local cfgm = require "config_manager"
 local loader = require "module_loader"
 local t31xPolicy = require "t31x_policy"
-local t31x_ctrl = require "t31x_ctrl"
+local t31xCtrl = require "t31x_ctrl"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -94,7 +94,7 @@ local function waitHostForBootSound(ipc, sound)
     if ipc.enabled == false or ipc.boot_sound_wait_ready == false then
         return true
     end
-    return t31x_ctrl.pwrOnReady({
+    return t31xCtrl.pwrOnReady({
         readyTimeoutMs = bootHostTimeoutMs(sound),
         pollMs = ipc.ready_poll_ms,
     })

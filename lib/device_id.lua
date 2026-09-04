@@ -23,7 +23,9 @@ function getImei()
         return tostring(cachedImei)
     end
     local id = mobile and mobile.imei and mobile.imei()
-    return (id and id ~= "") and tostring(id) or nil
+    -- mobile 无卡时可能回 "unknown"，与 cachedImei 同一过滤口径，
+    -- 避免字面 "unknown" 绕过 getDeviceId() 的 "unknown_device" 兜底
+    return validImei(id) and tostring(id) or nil
 end
 
 function getDeviceId()

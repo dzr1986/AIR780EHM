@@ -130,7 +130,7 @@ function bind(C, shared)
     end
 
     local function otaVerOk(data)
-        local fn, v = _G.valBuildVer, data.version
+        local fn, v = _G.validateBuildVersion, data.version
         if not fn or not v or v == "" then
             return true
         end

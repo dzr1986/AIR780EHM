@@ -4,36 +4,58 @@
 > - 既有文档回答"**代码按什么层放**"（基础设施 vs 业务）。
 > - 本文档回答"**功能按什么域组织**"，并给出**拆分/合并清单**与**架构选型建议**（用户当前诉求）。
 >
-> **基线**：`lib/` 15 个、 `user/` 48 个 `.lua`（含 2 个 json）。入口 `main.lua` → `app.start(peripheral, net, t31x_ctrl)` → `sys.run()` 事件主循环。
+> **基线（2026-09-04 实测真源）**：`lib/` 15 + `user/` 58 = **73 个 `.lua` 模块**（另有 2 个 json），16 112 行。
+> 入口 `main.lua` → `config`→`module_loader` → `app.start(peripheral, net_mqtt, t31x_ctrl)` → `sys.run()` 事件主循环。
+> 版本 `001.000.151`。本图以下覆盖 73 模块的**功能分层**（与 [LUA_MODULES.md](LUA_MODULES.md) 模块树、[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 系统视图互补）。
 
 ---
 
 ## 1. 功能架构总览（特性域 → 层 → 模块）
 
 ```
-                         ┌─────────────────────────────────────────────┐
-   编排/入口  (L4)        │ main · app(编排) · peripheral(外设编排)         │
-                         └─────────────────────────────────────────────┘
-   ┌─────────── 业务协议 / 状态机 (L3) ───────────┐
-   │ 蜂窝/网络 : net_mqtt + mqtt_*  (1001–2031 线协议)          │
-   │ USB/AT   : host_uart + hif_cmd_* + hif_rx_* + hif_ipc_*       │
-   │ 协处理    : ipc_supv · t31x_ctrl/policy/notify(实为L2服务)  │
-   │ 产品特性  : pir_ctrl · battery_guard · fota_svc ·           │
-   │            sound_prompt · time_sync · lp_wakeup · host_event│
-   └───────────────────────────────────────────────────────────┘
-   ┌─────────── 核心服务 / 驱动 (L2 / L1) ─────────┐
-   │ 传感/电源 : vbat · runtime_power · usb_charge · watchdog   │
-   │ USB通道  : usb_rndis · usb_vuart                          │
-   │ 蜂窝引导 : cell_boot · device_id                         │
-   │ 框架     : config_manager · module_loader · utils · libfota2│
-   │ 硬件驱动 : gpio_util · uart_bridge · led_ctrl            │
-   └─────────────────────────────────────────────────────────┘
-   ┌─────────── 底座 (L0 / L0.5) ────────────────┐
-   │ sys(LuatOS协程) · config(共享常量/引脚/开关/事件表)        │
-   └─────────────────────────────────────────────────────────┘
+┌───────────────────────────────── 云 / 后台 ─────────────────────────────────┐
+│ panshi MQTT broker ◄─/panshi/app{IMEI}──┐  自建 OTA(差分)    uploadVideo     │
+│       ▲          /panshi/device{IMEI}/   │   HTTP GET 2004    :7003(T31x直传)│
+└───────┴──────────────────────────────────┴──────────────────────────────────┘
+        │ MQTT 200x→ / 100x↑(唯一会话)
+        ▼
+┌────────────────────────── L4 编排 / 入口（user）─────────────────────────────┐
+│ main.lua       VERSION·蜂窝/RNDIS·bootstrapNet→app.start→sys.run             │
+│ app.lua        事件订阅/低功耗|USB|PIR→MQTT桥/烧录态（972 行 · 冻结）          │
+│ peripheral.lua 按键/LED/PIR 外设编排                                          │
+│ config.lua     仅编排：features·cellular·t31x_burn·gpio_cfg·led_pir·         │
+│                battery·host·net·flags·events → 全量 _G.X_CFG（L0.5 叶子）     │
+└───────┬──────────────────────────────────────────────────────────────────────┘
+        │ ① APP_EVENTS 事件总线（sys.publish/subscribe 横切）                   
+        │ ② _G.X_CFG 仅经 config_manager 读取；子模块经 bind(C) 注入（零回环）    
+        ▼                                                                      
+┌────────────────────────── L3 业务协议 / 状态机（user）────────────────────────┐
+│ ① MQTT 云面               ② T31x UART-AT 面                                  │
+│  net_mqtt(主/任务/锁)        host_uart(主/锁/RX行分发)                          │
+│  mqtt_conn · mqtt_dispatch  ├ hif_at（AT 表编译）                             │
+│  mqtt_uplink(+mqtt_ul_pir)  ├ hif_cmd(+usb|link|pir|t31x|wled)                │
+│  mqtt_downlink(+dl_ctrl|    ├ hif_rx(+dsl|media)                              │
+│    dl_dev|dl_pir|dl_tf|     └ hif_ipc(+rec|hostq|cloud|power|tffmt|encode)    │
+│    dl_upload)                mqtt_hproto(2020–31 → ②)                         │
+│ ③ T31x 协作 / 产品业务                                                       │
+│  t31x_ctrl(供电/唤醒) · t31x_policy(门禁) · t31x_notify · ipc_supv(1004/1011) │
+│  host_event · pir_ctrl(录像会话) · battery_guard(三档) · vbat(ADC)            │
+│  fota_svc · time_sync · sound_prompt · lp_wakeup · net_tcp(桩·默认未启用)     │
+└───────┬──────────────────────────────────────────────────────────────────────┘
+        │ require 方向严格向下：lib 不反向 require user（config 片段=共享常量例外）
+        ▼
+┌────────────────────────── L2 核心服务（lib）─────────────────────────────────┐
+│ config_manager(配置中枢) · module_loader(裁剪/懒加载) · runtime_power(运行态)  │
+│ cell_boot(蜂窝引导) · device_id · libfota2(OTA) · utils(helper/mkLogFns)      │
+├────────────────────────── L1 硬件/通道驱动（lib）────────────────────────────┤
+│ uart_bridge(唯一 uart.setup) · gpio_util · led_ctrl · watchdog                │
+│ usb_rndis(蜂窝共享) · usb_charge · usb_vuart                                  │
+├────────────────────────── L0 底座 ──────────────────────────────────────────┤
+│ sys.lua(LuatOS 协程 fork · vendor 不改)   LuatOS 系统库(mqtt/socket/rtos/pm…) │
+└───────────────────────────────────────────────────────────────────────────────┘
 
-   横切 : APP_EVENTS 事件总线(sys.publish/subscribe) · APP_RUNTIME 运行态中枢
-          MODULE_FLAGS 可选模块裁剪(module_loader) · _G 全局常量(PROJECT/VERSION)
+横切：APP_EVENTS 事件总线 · runtime_power 运行态中枢 · MODULE_FLAGS+module_loader 裁剪
+      中心模块（require 引用 Top）：config_manager > utils > module_loader > runtime_power > host_uart
 ```
 
 按特性域的模块归属：
@@ -44,7 +66,7 @@
 | 蜂窝/网络 | `cell_boot` `net_mqtt` `mqtt_*` | L2/L3 |
 | USB 通道 | `usb_charge` `usb_rndis` `usb_vuart` | L1/L2 |
 | 主机 UART/AT | `host_uart` `hif_cmd*` `hif_rx*` `hif_ipc*` `hif_at` | L3 |
-| 协处理器(T31x) | `t31x_ctrl` `t31x_policy` `t31x_notify` `ipc_supv` `hif_ipc*` | L2/L3 |
+| 协处理器(T31x) | `t31x_ctrl` `t31x_policy` `t31x_notify` `ipc_supv` `hif_ipc*` | L3 |
 | 传感/电源 | `vbat` `runtime_power` `battery_guard` `watchdog` | L2/L3 |
 | 外设/指示 | `gpio_util` `led_ctrl` `peripheral` | L1/L3 |
 | 媒体/PIR | `pir_ctrl` `sound_prompt` + `mqtt_dl_pir`/`mqtt_ul_pir` | L3 |
@@ -102,7 +124,7 @@
 | `user/hif/ipc/` | `hif_ipc` + `hif_ipc_rec/hostq/cloud/power/tffmt/encode` + `hif_at` |
 | `user/mqtt/` | `net_mqtt` + `net_tcp` + `mqtt_*`(13) |
 
-**可行性**：LuatOS `require` 按**模块名**解析（`package.path` 含 `lib/`、`user/` 及子目录），移动文件不改 `require` 语句；仅 `main.lua` 的 `__LUATOOLS_SCAN_ANCHOR__` 静态扫描锚点需同步列新路径。移动后跑 `python tools/debug/_module_tree.py --diff` 校验 63 模块全在位即可。
+**可行性（2026-09-04 修正）**：⚠️ 目录分组会**改变模块全名**——LuatOS `require` 按 `package.path` 以**模块名**找文件，`user/hif/hif_cmd.lua` 无法被 `require "hif_cmd"` 命中（除非扩 `package.path` 并全局同步所有 `require`/`loader.load` 名串与 `__LUATOOLS_SCAN_ANCHOR__`）。即"移动即改名"工程，非零改动；模块边界已由 `hif_*`/`mqtt_*` 前缀自描述 → **不建议优先做**（详见 §7.3）。
 **收益**：目录即文档，显式表达"同一子系统"，新读者 30 秒看懂边界。
 
 ### 4.3 建议"拆分"（god module）
@@ -158,3 +180,55 @@
 > python tools/debug/_net_mqtt_regression_check.py
 > python tools/debug/_module_tree.py --diff
 > ```
+
+---
+
+## 7. 简洁与命名体检（2026-09-04 源码实读审计）
+
+> 依据：对 `user/` + `lib/` 73 个 `.lua` 逐文件通读抽样，全部证据取自代码而非文档。
+>
+> **2026-09-04 执行记录（本批已落地，代码与文档同步）**
+> - N1/N2：事件 key 统一 `T31X_*`/`PIR_WAKE_T31X`（对齐 [T31X_NAMING.md](T31X_NAMING.md) 规范），事件值改 `"battery_update"` —— `events.lua` + 全部发布/订阅点（app/pir_ctrl/hif_cmd_t31x/hif_ipc_cloud）。
+> - N3/N4：local / ctx 键收敛全拼 —— `batteryGuard`/`ipcSupv`（app、net_mqtt、mqtt_uplink、mqtt_dl_pir）、`t31xCtrl`（sound_prompt、main）。
+> - N5（**实为死引用修复**）：`host_uart` 现导出 `hostBusy`（已无 `isHuBusy`），`ipc_supv` 两处 `hostUart.isHuBusy()` 原会 `attempt to call a nil value` → 修为 `hostUart.hostBusy()`；`hif_ipc_cloud` 私有 `isHuBusy`→`isCloudBusy`。⚠️ 属行为面修复，发布请评估并升 `main.lua` VERSION。
+> - N6：`main.lua` 全拼化 —— `validateBuildVersion`/`buildIotOtaVersion`/`resolveIotOtaVersion`（`_G` 面与 LUA_MODULES 文档名一致）、local `coreVersion`/`startNetwork`；引用方 mqtt_uplink / mqtt_dl_ctrl / fota_svc 已同步。
+> - N7：分层约定已写入 [CAT1_API_NAMING.md](CAT1_API_NAMING.md) §3.1。
+> - N8：本文件 §1 图与 [CALL_GRAPH.md](CALL_GRAPH.md) 启动链/依赖表已按真源刷新（config 片段、module_loader、cell_boot / lp_wakeup / usb_vuart）。
+> - S2：`host_uart.lua` start() 的 require 兜底已加注释。
+> - **目录分组：沿用平铺**（user 建立子目录曾致烧录异常；不改目录，边界仍由 `hif_*`/`mqtt_*` 前缀表达）。
+> 待办：实机事件链路冒烟（BATTERY_UPDATE / T31X_IPC_ALERT / PIR_WAKE）、S3 可选聚合、app/pir 拆分（09-14 后）。
+
+### 7.1 命名：不一致证据（按影响排序）
+
+> 下表为实读审计原文（file:line 为审计时点）；各条处置状态见上方执行记录（N5 实际为死引用修复而非改名）。
+
+| # | 证据（file:line） | 问题 | 建议 |
+|---|---|---|---|
+| N1 | `events.lua:34/36-42`：`PIR_WAKE_t31x`、`t31x_SNAPSHOT_DONE`、`t31x_RECORD_ACTIVE`、`t31x_IPC_ALERT`… | 事件 key 的 `t31x_` 前缀小写，与其余全大写 key 规则冲突 | key 统一 `T31X_*`（UPPER_SNAKE）；值保持小写 snake |
+| N2 | `events.lua:44` `BATTERY_UPDATE = "BATTERY_UPDATE"` | 事件值全库唯一大写，破坏"值=小写 snake" | 值改 `"battery_update"` |
+| N3 | `app.lua:21/23` `bttrGrd`、`ipcSprv` vs 文件名 `ipc_supv`；`net_mqtt` 局部又写 `ipc_sup` | 同一目标多拼写 + 缩写粒度不一 | local 统一：`batteryGuard`、`ipcSupv` |
+| N4 | 同模块 `t31x_ctrl`（app.lua:24、sound_prompt 等）vs `t31xCtrl`（net_mqtt:17、mqtt_hproto、pir_ctrl） | local 接收名风格分裂 | 全库统一一种（推荐 `t31xCtrl`） |
+| N5 | `host_uart` 导出 `isHuBusy`、内部 `HU_*` | `hu` 时代缩写唯一残留 | 导出改名 `isHostUartBusy`（先 grep 调用方） |
+| N6 | `main.lua:12/19/34/50/145` `valBuildVer/bldIotOtaVer/resIotOtaVer/coreVrsn/strtNetw` | 缩写过短；且 `_G` 三个导出名与 LUA_MODULES 文档名（validateBuildVersion…）漂移 | local 改全拼（`strtNetw→startNetwork`）；`_G` 三函数：改真名或改文档，二选一 |
+| N7 | `app.state.mqtt_started`、pir session `last_stop_reason`（snake）vs opts/API camelCase vs 配置键 snake | 字段命名无显式分层成文 | 在 [CAT1_API_NAMING.md](CAT1_API_NAMING.md) 补约定：函数/opts=camel · state/持久化字段=snake · 配置键=snake（不改） |
+| N8 | [CALL_GRAPH.md](CALL_GRAPH.md) §1 仍写 `require config, app_config, key_config`、`cellular_bootstrap.start()` | 文档漂移（真源 main.lua:82-125 为 config 片段+`cell_boot`） | 文档按真源刷新 |
+
+### 7.2 简洁：主要发现与处置
+
+| # | 证据 | 说明 | 处置 |
+|---|---|---|---|
+| S1 | 50+ 文件顶部样板 | 重复 `require config_manager` + `module(...)` + `utils.mkLogFns` + 3 行 local | Lua 无宏，**接受**；维持 `mkLogFns` 收窄 |
+| S2 | `host_uart.lua:638` `opts.t31x or require "t31x_ctrl"` | 注入已就位，require 兜底使依赖图启动期非全静态 | 保留兜底 + 注释"仅兼容裸启动"；app 必经注入（低风险，冻结期可做） |
+| S3 | JSON 片段 `string.format` 散点（mqtt_conn/uplink/ipc_supv） | 无统一构造器 | 按需抽 `utils.buildJson(fields)` 后逐步替换 |
+| S4 | `net_tcp`（桩）· `module_loader.stopAll`（无调用）· 双看门狗 | 死/桩代码 | 维持"标注不清零"（已在 ARCHITECTURE_REVIEW §5/§3.5 标注） |
+| S5 | 全库抽查 | 协议族函数由 spec/ctx 驱动，**无 >80 行命令函数** | ✅ 通过，无待拆函数 |
+
+### 7.3 处置状态（2026-09-04 批后）
+
+| 项 | 状态 |
+|---|---|
+| N1–N6、S2、N7、N8 | ✅ 已执行（见上方执行记录） |
+| 目录分组（§4.2） | ❌ 沿用平铺（用户约束：user 子目录曾致烧录异常；需在 `package.path` 层面另行验证才可重议） |
+| S3 JSON 聚合 / S4 桩清理 | 可选优化，维持"按需 / 标注不清零" |
+| 实机冒烟 | ⏳ 接硬件必跑：`_gen_bind_header.py --check-all`、`_host_uart_regression_check.py`、`_net_mqtt_regression_check.py`、`_module_tree.py --diff`；事件链路 BATTERY_UPDATE / T31X_IPC_ALERT / PIR_WAKE |
+| app/pir_ctrl 拆分 | ⏳ 维持 [ARCHITECTURE_REVIEW_20260903.md](ARCHITECTURE_REVIEW_20260903.md) §6 S2/S3（09-14 后） |

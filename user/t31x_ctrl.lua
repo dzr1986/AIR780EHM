@@ -346,7 +346,7 @@ function gracePowOff(opts)
         if settle > 0 then sys.wait(settle) end
     end
     powerOff()
-    if hif then hif.resetHostLinkState() end
+    if hif then hif.resetHostLink() end -- 旧名 resetHostLinkState 无定义，真身见 hif_ipc_rec
     return true
 end
 

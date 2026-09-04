@@ -162,6 +162,19 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 | `libfota2` / `sys.lua` | — | 冻结 |
 | AT handler 逻辑体 | `uartGetCfg` 等 | 与 AT 表同步成本高 |
 
+### 3.1 字段 / 键分层命名约定（2026-09-04 实读成文）
+
+| 面 | 风格 | 示例 |
+|----|------|------|
+| 模块导出函数 / opts 键 / ctx 键 | camelCase | `modCall`、`ipcSupv`、`t31xCtrl` |
+| 内部 `state` 表 / 会话字段 | snake_case（真源不改） | `state.mqtt_started`、`state.t31x_rec_active`、`session.last_stop_reason` |
+| 配置键 / JSON / 协议字段 | snake_case（真源不改） | `wled_on`、`record_stop_timeout_ms` |
+| 事件常量 key | UPPER_SNAKE（`T31X` 全大写） | `T31X_RECORD_STOP`、`PIR_WAKE_T31X` |
+| 事件值字符串 | lower_snake | `"t31x_record_stop"`、`"battery_update"` |
+
+配套规则：ctx 键 / local 接收名与模块文件名保持同构拼写、不引入私有缩写
+（`ipc_supv`→`ipcSupv`、`t31x_ctrl`→`t31xCtrl`；废弃 `bttrGrd` 式截断）。
+
 ---
 
 ## 4. 文档维护

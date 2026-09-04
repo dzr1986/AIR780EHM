@@ -261,7 +261,7 @@ USB 函数：`applyUsbPower` → 拔出 `enterRestIfNeededAfterUsbRemove`（**�
 
 | 文件 | 项 |
 |------|-----|
-| `config.lua` | `BATTERY_CFG.guard`、`T31X_POLICY_CFG` |
+| `config.lua` | `BATTERY_CFG.guard`、`t31x_POLICY_CFG` |
 | `config.lua` 片段（`flags.lua`·`features.lua`·`battery.lua`） | `battery_guard`/`t31x_policy`/`charge` 开关与阈值 |
 
 | 版本 | 变更 |

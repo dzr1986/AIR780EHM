@@ -32,12 +32,8 @@ function bind(C, shared)
         return (v == 1 or v == true) and 1 or 0
     end
 
-    local function fmtStrField(key, val)
-        if val and val ~= "" then
-            return string.format(',"%s":"%s"', key, escJson(val))
-        end
-        return ""
-    end
+    -- 单源：net_mqtt ctx（P2-6，与 mqtt_ul_upload 共用同实现）
+    local fmtStrField = C.fmtStrField
 
     local function fmtOptIntField(key, val, asBool)
         if val == nil then

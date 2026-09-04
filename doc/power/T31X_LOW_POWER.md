@@ -12,7 +12,7 @@
 |------|------------------|-----------------|------|
 | 低功耗总开关 | `WITH_T31X_LOW_POWER ?= yes` | `local LOW_POWER_ENABLE = 1` → `FEATURE_CFG.low_power` | **必须同名**：`yes`↔`1`，`no`↔`0` |
 | 优雅 T31x 关机 | `WITH_T31X_LOW_POWER=yes` 时编译 `ipc_power_off.c` | `LOW_POWER_CFG.graceful_ipc = true` → `HOST_IPC_CFG` | `enterSleep` 前发 `AT+IPCPOWEROFF` |
-| rest 唤醒门禁 | — | `T31X_POLICY_CFG.enabled` ← `LOW_POWER_CFG.enabled` | rest 下禁止 PIR/MQTT 离线硬唤醒 T31x |
+| rest 唤醒门禁 | — | `t31x_POLICY_CFG.enabled` ← `LOW_POWER_CFG.enabled` | rest 下禁止 PIR/MQTT 离线硬唤醒 T31x |
 | 电量 rest | — | `battery_guard.enabled()` 读 `FEATURE_CFG.low_power` | 关闭后不走 ≤10% 进 rest |
 | 模组深睡 | — | `LOW_POWER_CFG.modem_hibernate = false` | `true` 时 `pm.hibernate()`，MQTT 断开 |
 
@@ -45,7 +45,7 @@ _G.LOW_POWER_CFG = {
     rest_mqtt_interval_sec = 30,
 }
 
-_G.T31X_POLICY_CFG = { enabled = _G.LOW_POWER_CFG.enabled, ... }
+_G.t31x_POLICY_CFG = { enabled = _G.LOW_POWER_CFG.enabled, ... }
 _G.HOST_IPC_CFG = {
     enabled = _G.LOW_POWER_CFG.enabled and _G.LOW_POWER_CFG.graceful_ipc,
     graceful_poweroff = _G.LOW_POWER_CFG.graceful_ipc,

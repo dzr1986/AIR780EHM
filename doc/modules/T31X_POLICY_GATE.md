@@ -1,7 +1,7 @@
 # t31x_policy T31x 唤醒门禁
 
 > **代码真源**：[`user/t31x_policy.lua`](../../user/t31x_policy.lua)  
-> **配置**：`T31X_POLICY_CFG`（[`config.lua`](../../user/config.lua)）  
+> **配置**：`t31x_POLICY_CFG`（[`config.lua`](../../user/config.lua)）  
 > **硬件与休眠**：[T31X_POWER_WAKEUP.md](T31X_POWER_WAKEUP.md) · **对时**：[TIME_SYNC_FLOW.md](TIME_SYNC_FLOW.md)
 
 ---
@@ -17,7 +17,7 @@
 | `app.onMqttOffline` | `shouldWakeOnMqttOffline` |
 | `time_sync.pushBeforeNotify` | `mayPowerT31x("time_sync_notify")` |
 
-`MODULE_FLAGS.t31x_policy=false` 或 `T31X_POLICY_CFG.enabled=false` 时门禁恒通过。
+`MODULE_FLAGS.t31x_policy=false` 或 `t31x_POLICY_CFG.enabled=false` 时门禁恒通过。
 
 ---
 
@@ -58,7 +58,7 @@ flowchart TD
 
 ### 2.3 电量门禁
 
-`block_wake_below_percent` 默认读 `T31X_POLICY_CFG`（当前 **5%**），回退 `BATTERY_CFG.guard.pir_suspend_percent`。
+`block_wake_below_percent` 默认读 `t31x_POLICY_CFG`（当前 **5%**），回退 `BATTERY_CFG.guard.pir_suspend_percent`。
 
 拒绝时 `getDenyReason()` 如 `battery<=5%`。
 
@@ -93,7 +93,7 @@ mayPowerT31x 通过
 
 ---
 
-## 5. 配置（`T31X_POLICY_CFG` 摘要）
+## 5. 配置（`t31x_POLICY_CFG` 摘要）
 
 | 键 | 默认 | 说明 |
 |----|------|------|

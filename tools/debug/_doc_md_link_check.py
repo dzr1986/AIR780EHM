@@ -33,15 +33,17 @@ EXCLUDE_DIRS = ("archive", "_audit")
 # 命中(源 md 相对 doc 路径, 目标文件名) 时放行并在报告计数, 不判失败。
 # 待对应文档在本仓库落地后, 应将条目移出本表并保持护栏全绿。
 EXEMPT = {
-    ("allday_pir_record_backend_dispatch.md", "record_mode_and_storage_paths.md"),
-    ("allday_pir_record_backend_dispatch.md", "cat1_pir_mqtt_action_config.md"),
-    ("allday_pir_record_backend_dispatch.md", "gb28181_livegbs_alarm_e2e.md"),
-    ("allday_pir_record_backend_dispatch.md", "pir_person_detect_complementary_flow.md"),
-    ("mqtt_2010_2012_2011_pir_flow.md", "mqtt_cloud_uart_ipc_record_flow.md"),
-    ("mqtt_2010_2012_2011_pir_flow.md", "mqtt_backend_integration.md"),
-    ("mqtt_2010_2012_2011_pir_flow.md", "cat1_pir_mqtt_action_config.md"),
-    ("MQTT_862323084068314.md", "usb_recovery_backend_dispatch.md"),
-    ("mqtt_tfcard_format_flow.md", "media_fifo_flow.md"),
+    # 注：key 第一元素为源 md 相对 doc/ 的路径（含主题子目录，如 mqtt/…），
+    # 与下方 key = (md.relative_to(DOC).as_posix(), target_name) 精确对齐。
+    ("mqtt/allday_pir_record_backend_dispatch.md", "record_mode_and_storage_paths.md"),
+    ("mqtt/allday_pir_record_backend_dispatch.md", "cat1_pir_mqtt_action_config.md"),
+    ("mqtt/allday_pir_record_backend_dispatch.md", "gb28181_livegbs_alarm_e2e.md"),
+    ("mqtt/allday_pir_record_backend_dispatch.md", "pir_person_detect_complementary_flow.md"),
+    ("pir/mqtt_2010_2012_2011_pir_flow.md", "mqtt_cloud_uart_ipc_record_flow.md"),
+    ("pir/mqtt_2010_2012_2011_pir_flow.md", "mqtt_backend_integration.md"),
+    ("pir/mqtt_2010_2012_2011_pir_flow.md", "cat1_pir_mqtt_action_config.md"),
+    ("mqtt/MQTT_862323084068314.md", "usb_recovery_backend_dispatch.md"),
+    ("mqtt/mqtt_tfcard_format_flow.md", "media_fifo_flow.md"),
 }
 
 

@@ -13,10 +13,13 @@ _G[_modname] = _M
 
 local started = false
 local feedTimerId = nil
+-- 模块内置兜底默认（仅 WDT_CFG 缺失时生效）；net.lua WDT_CFG 为产品权威默认，两处改动须同步
+local DEF_TIMEOUT_MS = 9000
+local DEF_FEED_IV_MS = 3000
 local runtime = {
     enabled = true,
-    timeout_ms = 9000,
-    feed_interval_ms = 3000,
+    timeout_ms = DEF_TIMEOUT_MS,
+    feed_interval_ms = DEF_FEED_IV_MS,
 }
 
 local function isModuleBsp()
@@ -58,8 +61,8 @@ function start(opts)
     if runtime.enabled == false or not wdt or not wdt.init or not isModuleBsp() then
         return false
     end
-    local timeout = tonumber(runtime.timeout_ms) or 9000
-    local interval = clampFeedIv(timeout, tonumber(runtime.feed_interval_ms) or 3000)
+    local timeout = tonumber(runtime.timeout_ms) or DEF_TIMEOUT_MS
+    local interval = clampFeedIv(timeout, tonumber(runtime.feed_interval_ms) or DEF_FEED_IV_MS)
     wdt.init(timeout)
     feedOnce()
     feedTimerId = sys.timerLoopStart(feedOnce, interval)
@@ -67,6 +70,9 @@ function start(opts)
     return true
 end
 
+-- start/feed/stop/getState/getConfig = 看门狗 API 族（LIB_RUNTIME_UTILS.md §2.1 登记，
+-- P3-4 复核=有意保留）：start/stop 由 app.setupWatchdog 消费；feed/getConfig 零外部直连
+-- 但属族内标准接口（feed=手动喂一次、getConfig=调试快照），勿按死代码摘除。
 function feed()
     return started and feedOnce() or false
 end

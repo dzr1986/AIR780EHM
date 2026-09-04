@@ -209,7 +209,7 @@ OK
 | `suspended` | 1=烧录等场景已 `pir_ctrl.suspend` |
 | `recording` | 1=录像会话中 |
 | `hw_started` | PIR 驱动已启动 |
-| `burn_mode` | 1=`T31X_BURN_MODE_ACTIVE` |
+| `burn_mode` | 1=烧录模式激活（查询 `t31x_policy.isBurnActive()`） |
 | `lowpower` / `online` | 与 `GETCFG` 同源运行时 |
 | `pin` / `cooldown_ms` | 硬件配置 |
 | `cooldown_left_ms` | 距下次可触发剩余毫秒 |

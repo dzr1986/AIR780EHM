@@ -160,10 +160,6 @@ local function noopIdle()
     return "idle"
 end
 
-local function noopFalse()
-    return false
-end
-
 local function t31xUartOff()
     return not loader.enabled("t31x_app") or not loader.enabled("uart_bridge")
 end
@@ -442,7 +438,6 @@ local ctx = {
     -- 业务 helper（host_uart 提供）
     setPendingWake = setPendingWake,
     getHostEvtPending = getHostEvtPending,
-    noopFalse = noopFalse,
     noopIdle = noopIdle,
     usbInserted = usbInserted,
     usbBlockHost = usbBlockHost,
@@ -635,6 +630,7 @@ end
 
 function start(opts)
     opts = opts or {}
+    -- require 兜底仅兼容裸启动/独立单测；产品路径必经 app.start 显式注入（见 FUNCTIONAL_ARCHITECTURE §7.2 S2）
     t31xModule = opts.t31x or require "t31x_ctrl"
     t31xFallback = t31xModule
     state.host_at_ready = false

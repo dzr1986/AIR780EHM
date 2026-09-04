@@ -138,6 +138,11 @@ function bind(C)
             username = cfg.username or "",
             password = cfg.password or "",
             client_id = clientId,
+            -- 可选调参透传（net_mqtt 消费端 tonumber() or 默认；nil 时走 TIMEOUT 默认）
+            autoreconn_ms = cfg.autoreconn_ms,
+            min_connect_interval_sec = cfg.min_connect_interval_sec,
+            ip_lose_cooldown_sec = cfg.ip_lose_cooldown_sec,
+            ip_ready_settle_ms = cfg.ip_ready_settle_ms,
         }
     end
 

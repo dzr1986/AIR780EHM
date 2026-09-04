@@ -7,8 +7,9 @@
 --            加载顺序必须保持：features 最先（定义 FEATURE_CFG），其余按依赖排列。
 -- ================================================================
 
-module(..., package.seeall)
-_G[_modname or (...)] = _M
+local _modname = ...
+module(_modname, package.seeall)
+_G[_modname] = _M
 
 -- 必需顺序：features 提供 FEATURE_CFG，其后片段均依赖之。
 -- 注意：Luatools 不递归扫本文件 require，片段须在 main.lua __LUATOOLS_SCAN_ANCHOR__ 挂名，否则会 module not found。

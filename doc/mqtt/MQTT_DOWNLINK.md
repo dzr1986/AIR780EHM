@@ -7,6 +7,8 @@
 > **GUI 自动测试日志（JSON 展开）**：[MQTT_AUTOTEST_LOG_862323084068124_20260818.md](../_audit/MQTT_AUTOTEST_LOG_862323084068124_20260818.md)  
 > **完整协议**：[MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) · **平台对接**：[§1.2](MQTT_PROTOCOL.md#12-平台对接须知) · **远程控制流程**：[MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · **2002 停 IPC 再断电**：[MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md) · **代码**：`user/net_mqtt.lua`
 
+> **章节速览**：`1 连接约定`（1.1 主题）· `2 200x↔100x 对照` · `3 2001 探活` · `4 2002 rest/断电` · `5 2003 状态` · `6 2004 电源/OTA` · `7–8 2005/2006/2007/2008/2009 查询·格式化` · `9 2010 PIR 策略` · `10 2011 停录` · `10a 2012 开录` · `10b 2013/1013 上传信令` · `11–12c 2020–2027 编码/帧率/人形` · `13 MQTTX 测试顺序` · `14 代码映射`
+
 ---
 
 ## 1. 连接约定

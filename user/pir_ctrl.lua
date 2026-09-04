@@ -47,6 +47,12 @@ local DEFAULT_RECORD_POLICY = {
     startOnCloud = true,
 }
 
+-- DEVICE 与 CLOUD 同映射 cnt_stop_cloud：两条「云停」回链同源归口（非复制遗留）——
+--   DEVICE: 4G 侧 reqStopCloud（MQTT 2012/2010 下行）主动停录的建模 reason；
+--   CLOUD : T31x 固件 record_notify 回 AT+RECORD=0,reason=cloud 经 syncStopT31x 补记
+--           （词表见 doc/t31x/T31X_IPC_ALERT_CODE_INDEX.md）。
+--   本地停（timer/二次 PIR/manual）不落此键；pubStopRec 先置 recording=false，
+--   后到的 syncStopT31x 不再 bump——同一云停不会双计。
 local STOP_STAT_KEY = {
     [PIR_MEDIA.STOP_REASON.TIMER] = "cnt_stop_timer",
     [PIR_MEDIA.STOP_REASON.PIR_RETRIGGER] = "cnt_stop_retrigger",
@@ -423,7 +429,7 @@ function reqT31xStopRec(reason)
     end
     clearRecTimer()
     session.last_stop_reason = reason
-    publishEvent(APP_EVENTS.PIR_REQUEST_t31x_STOP, reason, session.uploadMode, session.quality)
+    publishEvent(APP_EVENTS.PIR_REQUEST_T31X_STOP, reason, session.uploadMode, session.quality)
     return true
 end
 
@@ -457,7 +463,7 @@ function pubActionEvents(cfg)
         bumpStat("cnt_biz_video")
         startVideoSession(media.uploadMode, media.quality)
     end
-    publishEvent(APP_EVENTS.PIR_WAKE_t31x, media.action, media.uploadMode, media.quality)
+    publishEvent(APP_EVENTS.PIR_WAKE_T31X, media.action, media.uploadMode, media.quality)
     return media
 end
 

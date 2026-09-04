@@ -191,6 +191,14 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-08-31 | `hif_ipc_encode`：音视频 prep 拆分、`curEncodeRow`/`asEnable` helper、去未用 `utils`（纯重构，未升 VERSION） |
 | 2026-08-31 | `hif_ipc_encode` 命名：`buildQueryAt`/`packQueryResult`/`loadCurrentRow` 等，export 仅保留 4 个对外 API（纯重构，未升 VERSION） |
 | 2026-08-31 | `hif_ipc_hostq`：配置别名、`build*At` helper、全 `local` bind、回调 `opts`（纯重构，未升 VERSION） |
+| 2026-09-04 | **冻结期体检 + 死代码清理**（151 之后）：5 组并行只读审查 user/lib 73 文件 → 报告 [USER_LIB_CODE_AUDIT_20260904.md](USER_LIB_CODE_AUDIT_20260904.md)；清理 6 处零引用死代码 −40 行（host_uart `noopFalse` / `hif_ipc_cloud` cached*×3 / `mqtt_dl_pir` 孤儿对 / `hif_ipc_power` 死快照）；护栏 ALL PASS、模块树基线刷新（纯重构，未升 VERSION） |
+| 2026-09-04 | 体检分级清单（**按冻结/零行为口径只列不实施**）：P0×3（`mqtt_dl_pir` `hif.queryHostRecord` nil 调用、`t31x_ctrl:349` `hif.resetHostLinkState` nil 调用、MQTT_CFG 4 字段被 `normMqttCfg` 丢弃）、P1×4、P2×9、P3×5，详见上条报告 |
+| 2026-09-04 | **逻辑 bug 修复（VERSION 154）**：`t31x_policy` 读配置键 `cfgm.get("T31X_POLICY_CFG")`（全大写）vs `battery.lua` 注册 `_G.t31x_POLICY_CFG`（`t31x_` 前缀小写规范，T31X_NAMING §8）——`config_manager.get=_G[name]` 大小写敏感 → 恒空表回退，t31x 唤醒门 11 字段（低电阈值/离线冷却/开关）**静默失效**，仅靠兜底值人工对齐掩盖。读侧对齐写入键名；差异点：`enabled=false` 门禁真恒通过、`mqtt_offline_wake_cooldown_sec=120` 生效。详见 [USER_LIB_CODE_AUDIT_20260904.md](USER_LIB_CODE_AUDIT_20260904.md) §12 |
+| 2026-09-04 | **§12 防回归双防线（零行为，VERSION 维持 154）**：① 新静态护栏 `tools/debug/_config_key_check.py` 挂入 `run_all_checks` 第 7 项——`cfgm.get` 消费键须精确匹配 `_G` 注册键（大小写敏感），未来键错名/大小写不一静态 FAIL；② `lib/config_manager.lua` `get()` 未注册键路径加一次性 `log.warn`（`warnOnce` 去重），把「静默空表」变「启动即见」；cfg 片段同步 require + 消费方 `require "config"` 前置（host_uart:31）已取证无假阳性。详见 audit §13 |
+| 2026-09-04 | **破冻结第一波（P2-1/2/3，零行为，VERSION 维持 154）**：P2-2 `watchdog.lua` 5 处 9000/3000 字面量 → 模块级 `DEF_TIMEOUT_MS`/`DEF_FEED_IV_MS`（net.lua WDT_CFG=产品权威 + DEF=内置兜底）；P2-1/P2-3 **发现 require 环结构约束**（module_loader:7 require config；config 片段/config_manager 禁 require utils 系 lib，重入栈溢出）→ 定稿为双实现/双源 + 注释互链，放弃代码归一。详见 audit §14 |
+| 2026-09-04 | **破冻结第二波（P2-4 + P3-1/5 + require 环规范，零行为，VERSION 维持 154）**：P2-4 `host.lua` 8+7 处 `hostBootWaitMs=1500`/`t31x_power_wait_ms=800` → 模块级标量 `HOST_BOOT_WAIT_MS`/`T31X_POWER_WAIT_MS`（改值只改一处）；P3-5 `hif_ipc_encode` 删 `setHostEncode(scope)` 零调用 wrapper（−8 行）；P3-1 framework doc 第 9.6 节补 encode 演化注记 + CAT1_LOGIC_SLIM「合并 setHostEncode」建议标不再采纳；require 环约束沉淀 framework doc §2.4（config 片段/config_manager 禁 require utils 系 lib）。详见 audit §15 |
+| 2026-09-04 | **破冻结第三波（P2-5/6/7，零行为，VERSION 维持 154）**：P2-5 云状态 9 键**单源**——`hif_ipc_cloud.CLOUD_STAT_KEYS`（真源）导出 `cloudStatKeys()` → `host_uart._M`，`defaultCloudSkeleton` 改按清单造骨架；`ipc_supv` 删本地清单与字面量格式串，改按清单逐键拼 1003 JSON（字段名/序/值不变，逐字节等价）。P2-6 `asNeedUpload`/`fmtStrField` 单源定义于 `net_mqtt` ctx（`C.asNeedUpload`/`C.fmtStrField`），`mqtt_dl_upload`/`mqtt_ul_upload`/`mqtt_ul_pir` 摘本地逐字副本（同函数体→同输出）；`mqtt_uplink` radioExtraFields vs pubSimInfo 复核=保持逐字段枚举（字段集 5 vs 4、schema 异，载荷契约禁机械收敛）。P2-7 `hif_ipc_hostq` 双名复核=有意保留（`mqtt_hproto`「长名 or 短名」fallback + `_host_uart_regression_check.py:90-93` 守护），导出区注释登记禁删。详见 audit §16 |
+| 2026-09-04 | **破冻结第四波（P3-2/3/4 复核收口，零行为，VERSION 维持 154）**：P3-2 `lp_wakeup` 模式矩阵策略谓词——`onEnterRest`/`onExitRest` 钩子内联 `isMqttMode`/`isTcpMode` 绕过 `shouldCloseTcpOnEnterRest`/`shouldRestoreTcpOnExitRest`（半接线漂移）→ 钩子改以谓词为决策点（谓词=模式别名，行为逐位等价，死导出转活）+ 谓词族注释登记；`getModemHibernate` 恒 false 占位唯一消费 `app.lua:134`。P3-3 `main.lua` OTA `_G` 三连复核=保留：validateBuildVersion/resolveIotOtaVersion 经 `_G` 被 mqtt_uplink/mqtt_dl_ctrl/fota_svc 活消费，buildIotOtaVersion 导出属工具链统一入口（同族有意），注释登记撤销条件。P3-4 `watchdog` feed()/getConfig() 复核=保留（标准 API 族，LIB_RUNTIME_UTILS §2.1），注释登记。**审计 P0/P1/P2/P3 全清单闭环，仅剩 P1-1 待硬件图**。详见 audit §17 |
 
 ---
 
@@ -202,6 +210,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 |------|------|
 | **已收（loop 完）** | 真源 `user/`、`lib/` 除 `config.lua` / `sys.lua` / `libfota2` 外均已按口径扫过；**命名 loop 111–134 已收工** |
 | **冻结** | `config.lua`（配置真源）、`sys.lua`、`libfota2`、协议 handler 本体 |
+| **09-04 体检** | 审计 + 死代码清理见 [USER_LIB_CODE_AUDIT_20260904.md](USER_LIB_CODE_AUDIT_20260904.md)；P0×3 行为项待冻结期后 + 实机验证再动 |
 
 每轮 3–8 个小模块，有行为改动升 `001.000.0xx`。说「停止 loop」即停；**098–101 loop 已收工**。
 

@@ -18,9 +18,9 @@ local t31xNotify = require "t31x_notify"
 local deviceId = require "device_id"
 local uart_bridge = require "uart_bridge"
 local pirCtrl = require "pir_ctrl"
-local bttrGrd = require "battery_guard"
+local batteryGuard = require "battery_guard"
 local host_uart = require "host_uart"
-local ipcSprv = require "ipc_supv"
+local ipcSupv = require "ipc_supv"
 local t31x_ctrl = require "t31x_ctrl"
 local net_tcp = require "net_tcp"
 local batAdc = loader.opt("battery", "vbat")
@@ -233,7 +233,7 @@ end
 local function onPowerOff(reason)
     appWarn("device_poweroff_request", tostring(reason or "unknown"))
     local function shutdownNow()
-        if reason == "battery" and bttrGrd.isUsbInserted() then
+        if reason == "battery" and batteryGuard.isUsbInserted() then
             return
         end
         stopWatchdogBeforePowerOff()
@@ -311,7 +311,7 @@ local function onUsbRemovedEnterRest(source)
         return
     end
     if loader.enabled("battery_guard") then
-        bttrGrd.onUsbRemove()
+        batteryGuard.onUsbRemove()
     elseif not rntmPwr.isLowPowerMode() then
         onEnterLowPower("usb_remove")
     end
@@ -319,7 +319,7 @@ end
 
 local function onUsbInsertedExitRest(source)
     if loader.enabled("battery_guard") then
-        bttrGrd.onUsbIns({ source = source })
+        batteryGuard.onUsbIns({ source = source })
     else
         onExitLowPower("usb_insert")
     end
@@ -547,7 +547,7 @@ end
 
 local function wakeT31xFor(tag, sid, evt)
     if loader.enabled("battery_guard") then
-        bttrGrd.notifyHostIdle()
+        batteryGuard.notifyHostIdle()
     end
     if loader.enabled("t31x_wakeup") and loader.enabled("t31x_app") then
         local wakeSid = sid or cfgm.get("HOST_WAKE_CFG").default_sid or 1
@@ -755,7 +755,7 @@ end
 
 local function onBatUpd(pct, mv)
     if loader.enabled("battery_guard") then
-        bttrGrd.onBatUpd(pct, mv)
+        batteryGuard.onBatUpd(pct, mv)
     end
 end
 
@@ -780,15 +780,15 @@ local EVNT_HNDL = {
     { E.BATTERY_UPDATE, onBatUpd },
     { E.MQTT_OFFLINE, onMqttOffline },
     { E.HOST_UART_FIRST_AT, onHostFirstAt },
-    { E.PIR_WAKE_t31x, onPirMediaAction },
+    { E.PIR_WAKE_T31X, onPirMediaAction },
     { E.PIR_MEDIA_EFFECTIVE, onPirMedia },
-    { E.PIR_REQUEST_t31x_STOP, onPirReqStop },
+    { E.PIR_REQUEST_T31X_STOP, onPirReqStop },
     { E.PIR_STOP_RECORDING, onPirStop },
-    { E.t31x_SNAPSHOT_DONE, mqttCall("pubSnapDone") },
-    { E.t31x_RECORD_ACTIVE, mqttCall("pubRecActive") },
-    { E.t31x_PERSON_CNT, onPersonCnt },
-    { E.t31x_RECORD_STOP, onT31xRecStop },
-    { E.t31x_IPC_ALERT, ipcSprv.pubAlert },
+    { E.T31X_SNAPSHOT_DONE, mqttCall("pubSnapDone") },
+    { E.T31X_RECORD_ACTIVE, mqttCall("pubRecActive") },
+    { E.T31X_PERSON_CNT, onPersonCnt },
+    { E.T31X_RECORD_STOP, onT31xRecStop },
+    { E.T31X_IPC_ALERT, ipcSupv.pubAlert },
     { E.PIR_TIMER_EXPIRED, onPirTimer },
     { E.GPIO_PIR_TRIGGERED, onGpioPir },
 }
@@ -913,7 +913,7 @@ function start(gpio, net, t31x_ctrl)
     })
     setupEvents()
     if loader.enabled("battery_guard") then
-        bttrGrd.start({
+        batteryGuard.start({
             onEnterLowPower = onEnterLowPower,
             onExitLowPower = onExitLowPower,
             onPowerOff = function()

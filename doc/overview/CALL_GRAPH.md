@@ -1,6 +1,6 @@
 # user / lib 调用关系（780EHM_PJ）
 
-> 与代码同步：配置见 [`CONFIG.md`](CONFIG.md)；MQTT=`net_mqtt.lua`；UART=`lib/uart_bridge.lua` + `host_uart.lua`；按键=`peripheral.lua` + `key_config.KEY_CONFIG`。  
+> 与代码同步：配置=`config.lua` 编排加载 10 片段(`features/cellular/t31x_burn/gpio_cfg/led_pir/battery/host/net/flags/events`)→`_G.X_CFG`（`gpio_cfg` 定义 `KEY_CONFIG`），见 [`CONFIG.md`](CONFIG.md)；MQTT=`net_mqtt.lua`；UART=`lib/uart_bridge.lua` + `host_uart.lua`；按键=`peripheral.lua`。  
 > 深度分析见 **[CODE_ANALYSIS.md](CODE_ANALYSIS.md)** · 核验流程 **[CODE_DOC_AUDIT.md](CODE_DOC_AUDIT.md)**。  
 > PIR 唤醒 / 录像 MQTT： [T31X_RECORD_MQTT_FLOW.md](../pir/T31X_RECORD_MQTT_FLOW.md)
 
@@ -10,11 +10,15 @@
 
 ```
 main.lua
-  require config, app_config, key_config
-  [cellular] cellular_bootstrap.start()
-  [rndis]    sys.taskInit(usb_rndis.open)
-  [mqtt]     net_mqtt.bootstrapNet()
-  app.start(peripheral, net_mqtt, t31x_ctrl)
+  require sys, sysplus, config            -- config 加载 10 片段 → _G.X_CFG
+  require module_loader                   -- Luatools 扫描锚点列全 user/lib 模块
+  require app, peripheral, net_mqtt, t31x_ctrl
+  loader.load("lp_wakeup")                -- 可选：低功耗唤醒（FEATURE_CFG 门控）
+  [usb_vuart] loader.load("usb_vuart").start()
+  [cellular]  loader.load("cell_boot").start()
+  [rndis]     sys.taskInit(usb_rndis.open → net_mqtt.bootstrapNet())
+  [mqtt]      net_mqtt.bootstrapNet()
+  app.start(peripheral, net_mqtt, t31xCtrl)
   sys.run()
 ```
 
@@ -110,13 +114,13 @@ pir_ctrl.lua
   require: gpio_util, sys
 
 main.lua
-  require: config, app_config, key_config, app, peripheral, net_mqtt, t31x_ctrl
-  opt:     cellular_bootstrap, usb_rndis
+  require: config(片段), module_loader, app, peripheral, net_mqtt, t31x_ctrl
+  opt:     usb_vuart, cell_boot, usb_rndis, lp_wakeup（module_loader 裁剪）
 ```
 
-| 模块 | 直接依赖 |
+| 模块 | 直接依赖（真源 user/ lib/） |
 |------|----------|
-| main | config, app_config, key_config, app, peripheral, net_mqtt, t31x_ctrl |
+| main | config, module_loader, app, peripheral, net_mqtt, t31x_ctrl |
 | app | uart_bridge, pir_ctrl, battery_guard, host_uart + optMod 子模块 + 注入 |
 | peripheral | led_ctrl, pir_ctrl |
 | net_mqtt | config, pir_ctrl；运行时 host_uart |
@@ -251,12 +255,8 @@ app subscribe:
 
 | `lib/` 根（参与启动） | 说明 |
 |-----------------|------|
-| gpio_util | GPIO 工具 |
-| usb_charge, usb_rndis | 充电检测 / RNDIS |
-| uart_bridge | 唯一 `uart.setup` |
-| cellular_bootstrap | 蜂窝拨号引导 |
-| watchdog, device_id, usb_policy | WDT / IMEI / USB 策略 |
-| low_power_wakeup, t31x_policy, host_event | 低功耗唤醒通道 / T31x 门禁 / HOSTEVT |
+| `lib/` 真源 15 个 | cell_boot · config_manager · device_id · gpio_util · led_ctrl · libfota2 · module_loader · runtime_power · sys(LuatOS fork) · uart_bridge · usb_charge · usb_rndis · usb_vuart · utils · watchdog |
+| `user/` 同层业务 | lp_wakeup(low_power_wakeup) · t31x_policy · host_event · pir_ctrl · peripheral · vbat · fota_svc · time_sync 等 |
 
 PIR / 按键 / LED / 电池 / OTA / SNTP 在 `user/`（`pir_ctrl`、`peripheral`、`led_ctrl`、`vbat`、`fota_svc`、`time_sync`）。
 

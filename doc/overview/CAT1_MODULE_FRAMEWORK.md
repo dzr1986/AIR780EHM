@@ -3,6 +3,9 @@
 > 本文描述 2026-08 框架整合后的模块加载、配置访问、生命周期与事件约定。  
 > 相关文档：[CALL_GRAPH.md](CALL_GRAPH.md)（启动顺序）、[LUA_MODULES.md](LUA_MODULES.md)（模块职责）、[CAT1_USER_LIB_SLIM.md](../power/CAT1_USER_LIB_SLIM.md)（瘦身速查）。
 
+> **章节速览**：`1 背景与目标` · `2 lib/module_loader.lua 框架` · `3 lib/config_manager.lua 框架` · `4 生命周期约定` · `5 日志约定` · `6 事件约定` · `7 本次整合改动清单` · `8–10 轮次回顾`（8 功能逻辑梳理·第二轮 / 9 lazy-require 迁移与响应串收敛·第三轮 / 10 架构重构轮：stop() 补齐 + lib→user 解耦 + 事件收编）
+> **读法**：现状框架看 §1–§6；改动与演进看 §7–§10（轮次回顾属历史梳理，勿当现状）。
+
 ---
 
 ## 1. 背景与目标
@@ -62,6 +65,18 @@ loader.start(time_sync, "startSntp")
 | [lib/utils.lua](../../lib/utils.lua) | `lazyRequire` 委托 `loader.load`（消除双缓存），旧调用方无需改动 |
 
 **打包注意**：Luatools 只打包从 main.lua 静态 `require` 可达的文件；仅经 `loader.load/opt` 动态加载的模块会被漏掉。main.lua 中的 `__LUATOOLS_SCAN_ANCHOR__` 死代码块列出全部动态模块作为扫描锚点（运行时永不执行）。**新增动态加载模块时必须同步加入该锚点块**。
+
+### 2.4 require 依赖环约束（config 域红线，2026-09-04 沉淀）
+
+`lib/module_loader.lua` 顶部 `require "config"`（含 `require "config_manager"`），构成单向加载环。推论（违反即 require 重入 → 栈溢出）：
+
+| 禁令 | 原因 |
+|---|---|
+| **config 片段**（`config/` 各 `*.lua`，被 config.lua require）禁 require 任何经 module_loader 依赖 config 的 lib（如 `lib/utils`、`config_manager`） | config 加载中重入 `require "config"` → 无限递归 |
+| **`config_manager`** 禁 `require "lib/utils"` | `config_manager→utils→module_loader→config_manager` 重入环 |
+| config 域的值（默认/模板/常量）**无法与 lib 单源共享** | 只允许「config 权威 + lib 兜底/双实现」+ 互链注释同步（实例：`MIN_VALID_UNIX`、`parseBoolDef`/`bool`，见 `USER_LIB_CODE_AUDIT_20260904.md` §14） |
+
+**检查点**：新增 config 片段、或改动 config_manager / lib 顶部 require 前，跑一次 `run_all_checks.py`（module_tree 护栏会暴露依赖拓扑破坏）。
 
 ---
 
@@ -259,6 +274,8 @@ luacheck 因 `module(package.seeall)` 无法识别模块导出函数是否被使
 - `defineSet(d)` 返回 `function(opts)`，映射同上外加 `boot→boot_cfg、prep(opts)→prepare、parse→parse_rsp`（缺省 `parse_ok_rsp`）。
 
 已转换 15 个函数：`queryHostGb28181/Record/RecordTime/Framerate/PersonDetect/Mic/SoftPhoto/TfCard`、`setHostRecordTime/Framerate/PersonDetect/Mic/SoftPhoto`、`recordCtrlStart/Stop`。**刻意保留手写**（选项集复杂）：`qryIpcCloudStat/IpcStatus/Wled/Encode`、`setHostEncode`、`formatHostTfCard` 及各简单单行解析器。
+
+> **后续演化（勿把上列保留清单当现状）**：encode 的 query/set 迁至 `user/hif_ipc_encode.lua`——`setHostEncode` 按音/视频拆为 `setHostVideoEncode`/`setHostAudioEncode`（各走 `defineSet`，2026-08-30 058）；`setHostEncode(scope)` 兼容 wrapper 零调用已于 2026-09-04 摘除。host_uart 侧 `query*` 前缀函数保留为**兼容别名**（真名 `qry*`，对照 `qryRecTime`↔`queryHostRecordTime`，hostq:319-323），新增调用一律用真名。
 
 注意事项：
 - spec 表在模块加载期构造，其中引用的局部函数（如 `encode_cfg`）**必须在词法上先定义**——本轮已把 `encode_cfg` 定义前移至 `tf_card_cfg` 之后。

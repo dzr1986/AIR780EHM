@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""doc/ 归档后仓库 md/html 出链健康检查护栏。
+"""【已废弃 DEPRECATED】早期全仓 md/html 出链检查器，未接入任何正式护栏入口。
 
-对仓库内每个 md/html（txt 不做源：非链接文档），解析 md 链接 href（inline +
-reference），凡目标是本地相对路径且 resolve 后落在 ROOT 内：校验文件存在。
-不存在判 BROKEN。
+替代工具：tools/debug/_doc_md_link_check.py（doc/ 范围，默认排除 doc/archive 与
+doc/_audit，带 EXEMPT 登记表，由正式检查入口调用）。
 
-用法：
+本脚本差异与遗留原因：
+  * 扫描 ROOT 全仓（含 doc/archive、ota_server/、http_server/ 等目录），会把归档
+    与历史快照里既有断链一并报为 BROKEN，产生噪音，不适合直接当护栏结论。
+  * 需要「含 archive 的全量出链」排查时，请改用：
+        python tools/debug/_doc_md_link_check.py --no-exclude-archive
+    并按其 EXEMPT 机制登记确认为「外部工程 / 待补文档」的引用。
+  * 仓库归档稳定后本脚本无调用者，保留仅作对照，确认无用后删除。
+
+用法（旧）：
     python tools/debug/_doc_link_check.py [--root <dir>] [--quiet]
         --root 默认仓库根；可指向解包出的 git HEAD 快照做基线对比
 """

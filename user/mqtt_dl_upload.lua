@@ -15,6 +15,7 @@ _G[_modname] = _M
 function bind(C, shared)
     local hostUart = C.hostUart
     local utils = C.utils
+    local asNeedUpload = C.asNeedUpload -- 单源：net_mqtt ctx（P2-6，与 mqtt_ul_upload 共用）
     local pubUploadReply = C.pub.pubUploadReply
     local dlMsgId = shared.dlMsgId
     local hostReady = shared.t31xHostReady
@@ -38,14 +39,6 @@ function bind(C, shared)
             maxSec = LIMITS.maxWindowSec
         end
         return maxSec
-    end
-
-    local function asNeedUpload(v)
-        local n = tonumber(v)
-        if n == nil then
-            n = 1
-        end
-        return (n == 0) and 0 or 1
     end
 
     local function normUploadAction(action)

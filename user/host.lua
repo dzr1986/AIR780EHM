@@ -4,6 +4,10 @@
 -- Arch     : 拆分自 config.lua。HOST_IPC_CFG 依赖 config.features 的 LOW_POWER_CFG。
 -- ================================================================
 
+-- ===== 通用主机侧等待参数模板（各 *_CFG 块统一引用，改值只改此处） =====
+local HOST_BOOT_WAIT_MS = 1500   -- T31x host 就绪等待上限
+local T31X_POWER_WAIT_MS = 800   -- T31x 上电后供电稳定等待
+
 -- ===== SOUND 提示音：冷启动/关机播放、超时、等待首条 AT =====
 _G.SOUND_CFG = {
     enabled = true,
@@ -14,17 +18,17 @@ _G.SOUND_CFG = {
     shutdown_on_battery_off = false,
     boot_wait_host_ms = 120000,
     play_timeout_ms = 2500,
-    t31x_power_wait_ms = 800,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
 }
 
 -- ===== 时间同步：SNTP→AT+TIMESET、唤醒前对时、host_boot_wait =====
 _G.TIME_SYNC_CFG = {
     enabled = true,
-    min_valid_unix = 1704067200,
+    min_valid_unix = 1704067200,   -- 须与 lib/utils.lua MIN_VALID_UNIX 同值（config 片段禁 require lib，见 audit §14）
     sync_on_sntp = true,
     sync_before_wake = true,
-    hostBootWaitMs = 1500,
-    t31x_power_wait_ms = 800,
+    hostBootWaitMs = HOST_BOOT_WAIT_MS,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
     ack_timeout_ms = 800,
     resync_skew_sec = 2,
 }
@@ -35,8 +39,8 @@ _G.HOST_IDENTITY_CFG = {
     auto_publish_on_ready = true,
     auto_publish_delay_ms = 500,
     query_timeout_ms = 3000,
-    hostBootWaitMs = 1500,
-    t31x_power_wait_ms = 800,
+    hostBootWaitMs = HOST_BOOT_WAIT_MS,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
     publish_on_ipcinfo_query = false,
 }
 
@@ -44,8 +48,8 @@ _G.HOST_IDENTITY_CFG = {
 _G.HOST_TFCARD_CFG = {
     enabled = true,
     query_timeout_ms = 3000,
-    hostBootWaitMs = 1500,
-    t31x_power_wait_ms = 800,
+    hostBootWaitMs = HOST_BOOT_WAIT_MS,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
 }
 
 -- ===== TF 格式化：2009→AT+TFFORMAT 超时等待 =====
@@ -56,23 +60,23 @@ _G.HOST_TFCARD_FORMAT_CFG = {
     pre_format_wait_ms = 500,
     reboot_after = false,
     publish_status_after = true,
-    hostBootWaitMs = 1500,
-    t31x_power_wait_ms = 800,
+    hostBootWaitMs = HOST_BOOT_WAIT_MS,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
 }
 _G.HOST_RECORD_CFG = {
     enabled = true,
     query_timeout_ms = 3000,
     -- T31x record_stop 等泵线程 join 最长约 15s；8s 会误报 timeout
     record_stop_timeout_ms = 22000,
-    hostBootWaitMs = 1500,
-    t31x_power_wait_ms = 800,
+    hostBootWaitMs = HOST_BOOT_WAIT_MS,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
 }
 
 -- ===== HOST_ENCODE：2020/2021 query/set 超时 / runtimeApply =====
 _G.HOST_ENCODE_CFG = {
     query_timeout_ms = 8000,
-    hostBootWaitMs = 1500,
-    t31x_power_wait_ms = 800,
+    hostBootWaitMs = HOST_BOOT_WAIT_MS,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
 }
 
 -- ===== t31x IPC 电源：graceful_poweroff / IPCSTATUS? 轮询 / uart_recovery 看门狗 =====
@@ -86,8 +90,8 @@ _G.HOST_IPC_CFG = {
     status_cache_max_age_sec = 90,
     ready_wait_timeout_ms = 120000,
     ready_poll_ms = 1000,
-    t31x_power_wait_ms = 800,
-    hostBootWaitMs = 1500,
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS,
+    hostBootWaitMs = HOST_BOOT_WAIT_MS,
     boot_sound_wait_ready = true,
     uart_recovery = {
         enabled = true,

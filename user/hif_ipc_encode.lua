@@ -193,18 +193,10 @@ function bind(C, H)
     local setHostVideoEncode = encodeSet(SYS_EVT.VENC_SET, false)
     local setHostAudioEncode = encodeSet(SYS_EVT.AUDIO_SET, true)
 
-    local function setHostEncode(scope, opts)
-        if scope == "audio" then
-            return setHostAudioEncode(opts)
-        end
-        return setHostVideoEncode(opts)
-    end
-
     return {
         queryHostEncode = queryHostEncode,
         setHostVideoEncode = setHostVideoEncode,
         setHostAudioEncode = setHostAudioEncode,
-        setHostEncode = setHostEncode,
     }
 end
 

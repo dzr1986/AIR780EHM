@@ -27,20 +27,9 @@ function bind(C)
     -- JSON 字段 helper
     ----------------------------------------------------------------
 
-    local function asNeedUpload(v)
-        local n = tonumber(v)
-        if n == nil then
-            n = 1
-        end
-        return (n == 0) and 0 or 1
-    end
-
-    local function fmtStrField(key, val)
-        if val and val ~= "" then
-            return string.format(',"%s":"%s"', key, escJson(val))
-        end
-        return ""
-    end
+    -- 单源：net_mqtt ctx（P2-6，与 mqtt_dl_upload/mqtt_ul_pir 共用同实现）
+    local asNeedUpload = C.asNeedUpload
+    local fmtStrField = C.fmtStrField
 
     local function resolveTimeWindow(extra)
         local beginTs = tonumber(extra.beginTs) or 0

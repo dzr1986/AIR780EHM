@@ -41,13 +41,17 @@ function bind(C, H)
         "ipc_poweroff_busy", "tfcard_format_busy", "uart_recovery_busy",
     }
 
+    -- 云状态 9 键 + 上报序唯一真源（1003 IPCSTAT 载荷契约，勿随意增删/换序）：
+    --   · 本文件 defaultCloudSkeleton 依此造骨架（0 兜底 + 计算键覆盖）；
+    --   · ipc_supv 经 hostUart.cloudStatKeys() 取同一清单拼 1003 JSON。
+    local CLOUD_STAT_KEYS = {
+        "ipcReady", "gb28181Online", "tfPresent", "personDetectEnabled",
+        "personDetectAvailable", "timeSynced", "recordingt31x", "wledEnable", "cat1Link",
+    }
+
     ----------------------------------------------------------------
     -- GB28181
     ----------------------------------------------------------------
-
-    local function cachedGb28181Id()
-        return state.host_gb28181_id
-    end
 
     local qryGb28181 = defineQuery{
         busy = "gb28181_query_busy", cache = "host_gb28181_id",
@@ -124,17 +128,15 @@ function bind(C, H)
         local life = state.host_ipc_status or "idle"
         local ipcReady = (life == "ready") and 1 or 0
         local cat1Link = (ipcReady == 1 or state.host_at_ready) and 1 or 0
-        return {
-            ipcReady = ipcReady,
-            gb28181Online = 0,
-            tfPresent = 0,
-            personDetectEnabled = 0,
-            personDetectAvailable = 0,
-            timeSynced = 0,
-            recordingt31x = (tonumber(state.t31x_rec_active) == 1) and 1 or 0,
-            wledEnable = wledGet(),
-            cat1Link = cat1Link,
-        }
+        local sk = {}
+        for i = 1, #CLOUD_STAT_KEYS do
+            sk[CLOUD_STAT_KEYS[i]] = 0
+        end
+        sk.ipcReady = ipcReady
+        sk.recordingt31x = (tonumber(state.t31x_rec_active) == 1) and 1 or 0
+        sk.wledEnable = wledGet()
+        sk.cat1Link = cat1Link
+        return sk
     end
 
     local function cloudCacheReady()
@@ -187,7 +189,7 @@ function bind(C, H)
         return cloud
     end
 
-    local function isHuBusy()
+    local function isCloudBusy()
         for i = 1, #HU_BUSY_KEYS do
             if state[HU_BUSY_KEYS[i]] then
                 return true
@@ -237,7 +239,7 @@ function bind(C, H)
         if not coroutine.running() then
             return cloudCacheReady()
         end
-        if not canQueryT31() or isHuBusy() then
+        if not canQueryT31() or isCloudBusy() then
             return cloudCacheReady()
         end
         if not force and not isIpcCloudStatStale() then
@@ -262,7 +264,7 @@ function bind(C, H)
         if not coroutine.running() or not state.host_at_ready then
             return false
         end
-        if isHuBusy() or not canQueryT31() then
+        if isCloudBusy() or not canQueryT31() then
             return false
         end
         local snap = qryHostRecord(timeoutMs or TIMEOUT.recordReconcile)
@@ -279,28 +281,25 @@ function bind(C, H)
         if not uploadMode then
             uploadMode, quality = "auto", "high"
         end
-        sys.publish(E.t31x_RECORD_STOP, reason, uploadMode, quality)
+        sys.publish(E.T31X_RECORD_STOP, reason, uploadMode, quality)
         return true
     end
 
-    local function cachedTfCard()
-        return state.host_tf_card
-    end
-
     return {
-        cachedGb28181Id = cachedGb28181Id,
         qryGb28181 = qryGb28181,
         isIpcCloudStatStale = isIpcCloudStatStale,
         getCloudStat = getCloudStat,
         canQueryT31 = canQueryT31,
-        shouldQryIpcStat = canQueryT31,
         needsIpcStatRefresh = needsIpcStatRefresh,
         mergeTfCloud = mergeTfCloud,
         refCloudStat1003 = refCloudStat1003,
-        isHuBusy = isHuBusy,
+        isCloudBusy = isCloudBusy,
         reconcileRecord = reconcileRecord,
         qryIpcCloudStat = qryIpcCloudStat,
-        cachedTfCard = cachedTfCard,
+        -- 供 ipc_supv 取云状态键序拼 1003（单源，勿另立清单）
+        cloudStatKeys = function()
+            return CLOUD_STAT_KEYS
+        end,
     }
 end
 

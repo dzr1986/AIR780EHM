@@ -37,6 +37,10 @@ function allowTcpChannel()
     return isTcpMode()
 end
 
+-- 模式矩阵策略谓词族（LOW_POWER_WAKEUP.md §2 真源，P3-2 复核=有意保留）：
+--   shouldClose/ShouldRestore 为 onEnterRest/onExitRest 的决策谓词（勿绕回 isMqttMode/isTcpMode 内联）；
+--   getModemHibernate 恒 false 占位谓词，唯一消费者 app.lua enterLowPower:134
+--   （modem_hibernate 真源 LOW_POWER_CFG 由 app 侧单独读取，谓词层不承载配置）。
 function shouldCloseTcpOnEnterRest()
     return isMqttMode()
 end
@@ -69,7 +73,7 @@ local function withTcp(fn)
 end
 
 function onEnterRest()
-    if not isMqttMode() then return end
+    if not shouldCloseTcpOnEnterRest() then return end
     local nt = netTcp()
     if not nt or not nt.getState then return end
     local st = nt.getState()
@@ -79,7 +83,7 @@ function onEnterRest()
 end
 
 function onExitRest()
-    if not isTcpMode() then return end
+    if not shouldRestoreTcpOnExitRest() then return end
     local ch = _G.NET_TCP_CHANNEL
     if not ch then return end
     withTcp(function(nt)

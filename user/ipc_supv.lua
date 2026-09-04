@@ -48,10 +48,10 @@ local ALERT_CLOUD_PATCH = {
     gb28181_register_fail = { gb28181Online = 0 },
 }
 
-local CLOUD_STAT_KEYS = {
-    "ipcReady", "gb28181Online", "tfPresent", "personDetectEnabled",
-    "personDetectAvailable", "timeSynced", "recordingt31x", "wledEnable", "cat1Link",
-}
+-- 云状态 9 键 + 1003 上报序：单源在 hif_ipc_cloud（经 hostUart.cloudStatKeys() 暴露），
+-- 与 defaultCloudSkeleton 同一清单，避免双清单漂移（增删/换序只改 host 侧一处）。
+-- 注意：host_uart 模块体在 require 返回前已完整 bind（含 hif_ipc_cloud），此处取值恒可用。
+local CLOUD_STAT_KEYS = hostUart.cloudStatKeys()
 
 local cloudRefreshBusy = false
 local cloudRefreshForce = false
@@ -77,13 +77,11 @@ end
 
 function ipcCloudStatFields()
     local stat = hostUart.getCloudStat() or {}
-    local vals = {}
+    local out = {}
     for i = 1, #CLOUD_STAT_KEYS do
-        vals[i] = cloudInt(stat, CLOUD_STAT_KEYS[i])
+        out[i] = string.format(',"%s":%d', CLOUD_STAT_KEYS[i], cloudInt(stat, CLOUD_STAT_KEYS[i]))
     end
-    return string.format(
-        ',"ipcReady":%d,"gb28181Online":%d,"tfPresent":%d,"personDetectEnabled":%d,"personDetectAvailable":%d,"timeSynced":%d,"recordingt31x":%d,"wledEnable":%d,"cat1Link":%d',
-        vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7], vals[8], vals[9])
+    return table.concat(out)
 end
 
 function mergeHostCache()
@@ -115,7 +113,7 @@ local function scheduleCloudRefresh(force)
         local mustForce = cloudRefreshForce
         cloudRefreshBusy = false
         cloudRefreshForce = false
-        if (mustForce or hostReady()) and not hostUart.isHuBusy() then
+        if (mustForce or hostReady()) and not hostUart.hostBusy() then
             refCloudStat(TIMEOUT.cloudQuery, mustForce)
         end
     end)
@@ -129,7 +127,7 @@ local function scheduleRecordReconcile()
     sys.taskInit(function()
         sys.wait(TIMEOUT.reconcileDebounce)
         recordReconcileBusy = false
-        if pirCtrl.isRecording() and hostReady() and not hostUart.isHuBusy() then
+        if pirCtrl.isRecording() and hostReady() and not hostUart.hostBusy() then
             hostUart.reconcileRecord(TIMEOUT.reconcileQuery)
         end
     end)

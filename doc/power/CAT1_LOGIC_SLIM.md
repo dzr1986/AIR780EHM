@@ -83,6 +83,8 @@ busy 锁 → ensure_t31x_for_host_query → bootWait → sendString → waitUnti
 
 **建议**：合并为 `setHostEncode(scope, opts)`，`scope` 为 `"video"` | `"audio"`。
 
+> **2026-09-04 注：不再采纳**——video/audio 已分别走 `defineSet`（`setHostVideoEncode`/`setHostAudioEncode`，见 `user/hif_ipc_encode.lua`），`setHostEncode(scope)` 兼容 wrapper 零调用已摘除；如需合并请先评估单 scope 调度成本。
+
 #### 体构建
 
 `build_hostevt_body` 与 `build_pirstat_body` 均调用 `pir_ctrl.buildStatBodyy` + `host_event.summarize`，仅扩展字段名不同。
@@ -125,7 +127,7 @@ busy 锁 → ensure_t31x_for_host_query → bootWait → sendString → waitUnti
 
 | 类型 | 位置 | 建议 |
 |------|------|------|
-| 烧录检查明细日志 | `checkT31xBurnPreconditions*`（约 571–689 行） | `T31X_BURN_CFG.debug_checks` 开关，量产关日志、逻辑保留 |
+| 烧录检查明细日志 | `checkT31xBurnPreconditions*`（约 571–689 行） | `t31x_BURN_CFG.debug_checks` 开关，量产关日志、逻辑保留 |
 | rest 门禁重复 | `onEnterLowPower`、`setupEventHandlers` POWER_ENTER_REST | 委托 `usb_policy` |
 | PIR 唤醒重复 | `onPirMediaAction`、`onPirStopRecording` 等 | `wakeT31xForPir(sid, reason)` |
 | 纯日志订阅 | `MQTT_SERVER_DATA`、`GPIO_VBUS_CHANGED` 等 | 合并为 `debugLogSubscriber` |
@@ -206,7 +208,7 @@ busy 锁 → ensure_t31x_for_host_query → bootWait → sendString → waitUnti
 | # | 项 |
 |---|-----|
 | 3.1 | 上行 JSON 发布表驱动 |
-| 3.2 | 烧录检查 `T31X_BURN_CFG.debug_checks` |
+| 3.2 | 烧录检查 `t31x_BURN_CFG.debug_checks` |
 | 3.3 | PIR / MQTT 事件订阅表驱动 |
 
 ### 阶段 4 — `lib/` 内部去重（可选）
@@ -290,7 +292,7 @@ busy 锁 → ensure_t31x_for_host_query → bootWait → sendString → waitUnti
 | 2 | `t31x_ctrl.ensurePowered(tag)` | `t31x_ctrl.lua`，`sound_prompt`/`time_sync`/`host_uart` |
 
 | 3 | `formatUplink` / `pubUplink` 上行表驱动 | `user/net_mqtt.lua` |
-| 3 | `T31X_BURN_CFG.debug_checks` 烧录明细日志 | `user/config.lua`、`user/app.lua` |
+| 3 | `t31x_BURN_CFG.debug_checks` 烧录明细日志 | `user/config.lua`、`user/app.lua` |
 | 3 | PIR/MQTT 桥接表驱动 + `wakeT31xForPir` | `user/app.lua` |
 
 | 4 | `usb_rndis.withRndisReopen` 去重 switch/rebind | `lib/usb_rndis.lua` |

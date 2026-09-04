@@ -18,7 +18,7 @@ function bind(C)
     local power = C.power
     local getDeviceId = C.getDeviceId
     local msgIdJson = C.msgIdJson
-    local ipc_sup = C.ipc_sup
+    local ipcSupv = C.ipcSupv
     local pubAppEvent = C.pubAppEvent
     local isConnected = C.isConnected
     local statFlags = C.statFlags
@@ -60,6 +60,8 @@ function bind(C)
         return extra
     end
 
+    -- 射频 5 字段子串（csq/rssi/rsrp/rsrq/snr）与 pubSimInfo 中 4 字段（无 rsrq）
+    -- 近似但 schema 不同，均为各自 1001/1002 载荷契约（P2-6 复核=保持逐字段枚举，勿机械收敛）
     local function radioExtraFields(rdSnap)
         return string.format(
             ',"csq":"%s","rssi":"%s","rsrp":"%s","rsrq":"%s","snr":"%s"',
@@ -75,9 +77,9 @@ function bind(C)
             return
         end
         if coroutine.running() then
-            ipc_sup.refCloudStat(TIMEOUT.ipcRefreshMs)
+            ipcSupv.refCloudStat(TIMEOUT.ipcRefreshMs)
         else
-            ipc_sup.mergeHostCache()
+            ipcSupv.mergeHostCache()
         end
     end
 
@@ -86,8 +88,8 @@ function bind(C)
             return ""
         end
         ver = tostring(ver)
-        if _G.valBuildVer then
-            return _G.valBuildVer(ver) or ver
+        if _G.validateBuildVersion then
+            return _G.validateBuildVersion(ver) or ver
         end
         return ver
     end
@@ -169,10 +171,10 @@ function bind(C)
                 escJson(usbRcvrLast or ""),
                 radioExtraFields(radioSnap()),
                 statusExtraFields(opts),
-                ipc_sup.ipcCloudStatFields()),
+                ipcSupv.ipcCloudStatFields()),
             onPublished = function()
                 C.setLastBatteryAt(os.time())
-                ipc_sup.afterBatteryStatusPublished()
+                ipcSupv.afterBatteryStatusPublished()
             end,
         })
     end
@@ -268,7 +270,7 @@ function bind(C)
     ----------------------------------------------------------------
 
     function pubIpcAlert(alertCode, alertDetail)
-        return ipc_sup.pubAlert(alertCode, alertDetail)
+        return ipcSupv.pubAlert(alertCode, alertDetail)
     end
 
     function pubCtrlReply(action, retCode, message, extra)
@@ -313,8 +315,8 @@ function bind(C)
     local function collectVersionSnap(messageId)
         local scriptVersion = tostring(_G.VERSION or "")
         local firmwareVersion = ""
-        if _G.resIotOtaVer then
-            firmwareVersion = _G.resIotOtaVer(scriptVersion) or ""
+        if _G.resolveIotOtaVersion then
+            firmwareVersion = _G.resolveIotOtaVersion(scriptVersion) or ""
         elseif _G.IOT_VERSION then
             firmwareVersion = tostring(_G.IOT_VERSION)
         end

@@ -65,7 +65,7 @@ function bind(C)
             state.t31x_last_reason = reason
             patchCloud({ recordingt31x = 1 })
             if reason ~= "allday_person" then
-                sys.publish(E.t31x_RECORD_ACTIVE)
+                sys.publish(E.T31X_RECORD_ACTIVE)
             end
             return rspBody("RECORD", "1,active=1")
         end
@@ -78,7 +78,7 @@ function bind(C)
         state.t31x_last_reason = reason
         patchCloud({ recordingt31x = 0 })
         local uploadMode, quality = modCall("pir_ctrl", "syncStopT31x", reason)
-        sys.publish(E.t31x_RECORD_STOP, reason, uploadMode, quality)
+        sys.publish(E.T31X_RECORD_STOP, reason, uploadMode, quality)
         return rspFmt("RECORD", "0,reason=%s", reason)
     end
 
@@ -88,7 +88,7 @@ function bind(C)
             return RSP_ERROR
         end
         local n = tonumber(cnt) or 0
-        sys.publish(E.t31x_PERSON_CNT, n)
+        sys.publish(E.T31X_PERSON_CNT, n)
         return rspFmt("PERSONCNT", "ok,count=%d", n)
     end
 
@@ -106,7 +106,7 @@ function bind(C)
         if not code or code == "" then
             return RSP_ERROR
         end
-        sys.publish(E.t31x_IPC_ALERT, code, detail or "")
+        sys.publish(E.T31X_IPC_ALERT, code, detail or "")
         return rspFmt("IPCALERT", "OK,code=%s", code)
     end
 
@@ -195,7 +195,7 @@ function bind(C)
         if not path then
             return RSP_ERROR
         end
-        sys.publish(E.t31x_SNAPSHOT_DONE, path)
+        sys.publish(E.T31X_SNAPSHOT_DONE, path)
         return rspFmt("SNAPSHOT", "ok,path=%s", path)
     end
 

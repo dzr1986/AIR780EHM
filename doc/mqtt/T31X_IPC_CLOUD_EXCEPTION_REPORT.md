@@ -4,7 +4,8 @@
 > **目的**：梳理 IPC 联网进程可能产生的异常，以及哪些已上报服务器、哪些仍仅本地日志。  
 > **关联**：[MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) · [T31X_RECORD_MQTT_FLOW.md](../pir/T31X_RECORD_MQTT_FLOW.md) · [MQTT_CLOUD_REMOTE_CTRL_FLOW.md](MQTT_CLOUD_REMOTE_CTRL_FLOW.md) · **[T31X_IPC_EXCEPTION_MQTT_UPLINK.md](../t31x/T31X_IPC_EXCEPTION_MQTT_UPLINK.md)** · **[T31X_IPC_CAT1_SUPERVISION.md](../t31x/T31X_IPC_CAT1_SUPERVISION.md)**  
 > **IPC 仓库关联**：`ipc_device_gb28181/docs/cat1_record_status_sync.md` · `docs/t31x_ipc_exception_mqtt_uplink.md`
-> **更新**：2026-06-26 · **§4.3–§4.7 / §5–§6 已在 IPC + Cat.1 Lua 落地**（见 §9 源码索引）
+> **更新**：2026-06-26 · **§4.3–§4.7 / §5–§6 已在 IPC + Cat.1 Lua 落地**（见 §9 源码索引）  
+> **读法**：查「已上报哪些」看 §3；查「还没上报/该不该补」看 §4–§6；按源码定位看 §9 索引。
 
 ---
 

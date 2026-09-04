@@ -6,17 +6,17 @@
 
 PROJECT = "PANSHI_CAT1"
 -- ===== 第 1 段：VERSION 格式校验 & 全局 OTA 版本函数 =====
-VERSION = "001.000.151"
+VERSION = "001.000.154"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
-local function valBuildVer(ver)
+local function validateBuildVersion(ver)
     if type(ver) ~= "string" or not ver:match(SCRIPT_VERSION_PATTERN) then
         return nil
     end
     return ver
 end
 
-local function coreVrsn()
+local function coreVersion()
     local coreVer = rtos and rtos.version and rtos.version()
     if (not coreVer or coreVer == "") and rtos and rtos.get_version then
         local full = rtos.get_version() or ""
@@ -31,12 +31,12 @@ local function coreVrsn()
     return coreVer:sub(1, 1) == "V" and coreVer:sub(2) or coreVer
 end
 
-local function bldIotOtaVer(scriptVer)
-    local v = valBuildVer(scriptVer)
+local function buildIotOtaVersion(scriptVer)
+    local v = validateBuildVersion(scriptVer)
     if not v then
         return nil
     end
-    local core = coreVrsn()
+    local core = coreVersion()
     if not core then
         return nil
     end
@@ -47,18 +47,22 @@ local function bldIotOtaVer(scriptVer)
     return core .. "." .. x .. "." .. z
 end
 
-local function resIotOtaVer(ver)
+local function resolveIotOtaVersion(ver)
     if ver == nil or ver == "" then
         ver = _G.VERSION
     end
-    return bldIotOtaVer(tostring(ver))
+    return buildIotOtaVersion(tostring(ver))
 end
-if not valBuildVer(VERSION) then
+if not validateBuildVersion(VERSION) then
     error("main: VERSION 须为 nnn.nnn.nnn 脚本版(如 001.000.020), 当前=" .. tostring(VERSION))
 end
-_G.valBuildVer = valBuildVer
-_G.bldIotOtaVer = bldIotOtaVer
-_G.resIotOtaVer = resIotOtaVer
+-- OTA 版本工具 _G 导出族（LUA_MODULES.md §3.1 登记，P3-3 复核=有意保留）：
+--   validateBuildVersion / resolveIotOtaVersion 被 mqtt_uplink/mqtt_dl_ctrl/fota_svc 经 _G 消费（活）；
+--   buildIotOtaVersion 为纯内部构造函数，_G 导出与兄弟同族，留作 Luat 调试台/工具链统一入口
+--   （零仓内消费；撤销条件=工具链接入点迁移后可与同族一并摘除）。
+_G.validateBuildVersion = validateBuildVersion
+_G.buildIotOtaVersion = buildIotOtaVersion
+_G.resolveIotOtaVersion = resolveIotOtaVersion
 _G.VERSION = VERSION
 _G.PROJECT = PROJECT
 _G.PRODUCT_KEY = PRODUCT_KEY
@@ -69,7 +73,7 @@ local isEntry = moduleName == nil
 require "sys"
 require "sysplus"
 do
-    local iotVer = bldIotOtaVer(VERSION)
+    local iotVer = buildIotOtaVersion(VERSION)
     if iotVer then
         _G.IOT_VERSION = iotVer
     end
@@ -122,7 +126,7 @@ end
 local app = require "app"
 local peripheral = require "peripheral"
 local net = require "net_mqtt"
-local t31x_ctrl = require "t31x_ctrl"
+local t31xCtrl = require "t31x_ctrl"
 if not isEntry then
     return app
 end
@@ -142,7 +146,7 @@ if loader.enabled("cellular") then
     end
 end
 
-local function strtNetw()
+local function startNetwork()
     -- ===== 第 4 段：MQTT 网络引导 + app.start 编排子系统（battery/uart/pir/mqtt/t31x）=====
     if loader.enabled("mqtt") then
         net.bootstrapNet()
@@ -154,14 +158,14 @@ if loader.enabled("rndis") then
     if usb_rndis then
         sys.taskInit(function()
             usb_rndis.open()
-            strtNetw()
+            startNetwork()
         end)
     else
-        strtNetw()
+        startNetwork()
     end
 else
-    strtNetw()
+    startNetwork()
 end
-app.start(peripheral, net, t31x_ctrl)
+app.start(peripheral, net, t31xCtrl)
 -- ===== 第 5 段：进入 sys.run() 事件主循环 =====
 sys.run()

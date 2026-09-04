@@ -314,9 +314,14 @@ function bind(C, H)
         end,
     }
 
+    -- 双名保留（P2-7 复核=有意）：导出键即 host_uart 对外名（qry*/set* 为内部真名，
+    -- 经 api/hang 装配到 _M 全链一致）；mqtt_hproto:225-245 以「长名 or 短名」fallback
+    -- 跨版本消费，删除任一名都会破坏兼容链——tools/debug/_host_uart_regression_check.py:90-93
+    -- 已护栏守护，勿在后续清理中摘除。
     return {
         getT31xRecActive = t31xRecOn,
         qryHostRecord = qryRecord,
+        queryHostRecord = qryRecord, -- 兼容旧名（与 queryHostRecordTime/setHostRecordTime 双名同族）
         qryRecTime = qryRecTime,
         queryHostRecordTime = qryRecTime,
         setRecTime = setRecTime,

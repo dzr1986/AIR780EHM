@@ -11,7 +11,7 @@ local loader = require "module_loader"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
 local pirCtrl = require "pir_ctrl"
-local ipc_sup = require "ipc_supv"
+local ipcSupv = require "ipc_supv"
 local deviceId = require "device_id"
 local t31xNotify = require "t31x_notify"
 local t31xCtrl = require "t31x_ctrl"
@@ -195,6 +195,23 @@ end
 
 local escJson = utils.escJson
 
+-- ctx 共享 JSON 字段 helper（P2-6 单源）：mqtt_dl_upload / mqtt_ul_upload /
+-- mqtt_ul_pir 经 C.asNeedUpload / C.fmtStrField 取用，删除各叶子内逐字副本。
+local function asNeedUpload(v)
+    local n = tonumber(v)
+    if n == nil then
+        n = 1
+    end
+    return (n == 0) and 0 or 1
+end
+
+local function fmtStrField(key, val)
+    if val and val ~= "" then
+        return string.format(',"%s":"%s"', key, escJson(val))
+    end
+    return ""
+end
+
 local function pubUplink(opts)
 	opts = opts or {}
 	if not isConnected then
@@ -232,6 +249,8 @@ local ctx = {
     pubUplink = pubUplink,
     pubAppEvent = pubAppEvent,
     escJson = escJson,
+    asNeedUpload = asNeedUpload,
+    fmtStrField = fmtStrField,
     logInfo = mqttInfo,
     logWarn = mqttWarn,
     power = rntmPwr,
@@ -244,7 +263,7 @@ local ctx = {
     HOST_DL_NEEDS_t31x = HOST_DL_NEEDS_t31x,
     getDeviceId = conn.getDeviceId,
     msgIdJson = conn.msgIdJson,
-    ipc_sup = ipc_sup,
+    ipcSupv = ipcSupv,
     getWledState = getWledState,
     battSnap = conn.battSnap,
     radioSnap = conn.radioSnap,
@@ -629,7 +648,7 @@ function getState()
 end
 
 stat.loadStatCfg()
-ipc_sup.bind({
+ipcSupv.bind({
     pubUplink = pubUplink,
     dtUlControl = DT.UL_CONTROL,
     pubT31xStop = ctx.pub.pubT31xStop,

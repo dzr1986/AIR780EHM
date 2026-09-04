@@ -56,8 +56,8 @@ local function reportStatus(stage, retCode, message, extra)
 end
 
 local function resolveOtaVer(ver)
-    if _G.resIotOtaVer then
-        return _G.resIotOtaVer(ver)
+    if _G.resolveIotOtaVersion then
+        return _G.resolveIotOtaVersion(ver)
     end
     return ver
 end
@@ -92,8 +92,8 @@ local function buildReqOpts(data)
     local timeout = tonumber(data.timeout) or runtime.timeout_ms
     local currentVer = localIotVer()
     local targetVer = data.version or data.targetVersion or data.firmwareVersion
-    if targetVer and targetVer ~= "" and _G.resIotOtaVer then
-        targetVer = _G.resIotOtaVer(targetVer) or targetVer
+    if targetVer and targetVer ~= "" and _G.resolveIotOtaVersion then
+        targetVer = _G.resolveIotOtaVersion(targetVer) or targetVer
     end
     data.currentVersion = currentVer
     data.targetVersion = targetVer

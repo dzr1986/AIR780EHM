@@ -11,6 +11,7 @@
     4. _doc_module_ref_check.py     doc 与 user|lib 代码的 .lua 引用一致性（写 _doc_ref_report.txt）
     5. _doc_md_link_check.py        doc/ 内部 markdown 互链断链审计（EXEMPT 登记外部/待补引用）
     6. _doc_index_check.py          doc 导航完整性（README 收录覆盖 + 孤岛零容忍）
+    7. _config_key_check.py         配置键读写一致性（cfgm.get 消费键 ⊆ _G 注册键，大小写敏感）
 
 全部 PASS 时退出码 0，任一失败退出码 1。
 """
@@ -30,6 +31,7 @@ CHECKS = (
     ("_doc_module_ref_check.py", (), "doc 与 user|lib 代码的 .lua 引用一致性（现状类须 0 需修复；输出 _doc_ref_report.txt）"),
     ("_doc_md_link_check.py", (), "doc/ 内部 markdown 互链断链审计（外部工程引用与待补文档走 EXEMPT 登记）"),
     ("_doc_index_check.py", (), "doc 导航完整性（顶层/modules 入 README 索引；迁移 stub 豁免；孤岛零容忍）"),
+    ("_config_key_check.py", (), "配置键读写一致性（cfgm.get 消费键须有精确同键名 _G 注册，大小写敏感）"),
 )
 
 

@@ -132,16 +132,16 @@ ipc_supervision_build_stat(buf, sizeof(buf));
 ### Cat.1（Lua）
 
 ```lua
-local ipc_sup = require "ipc_supv"
-ipc_sup.pubAlert(code, detail)           -- 事件总线入口
-ipc_sup.publishAlert(code, detail)      -- 直接 MQTT（需已 bind）
-ipc_sup.ipcCloudStatFields()            -- 1003 扩展字段
+local ipcSupv = require "ipc_supv"
+ipcSupv.pubAlert(code, detail)           -- 事件总线入口
+ipcSupv.publishAlert(code, detail)      -- 直接 MQTT（需已 bind）
+ipcSupv.ipcCloudStatFields()            -- 1003 扩展字段
 ```
 
 `net_mqtt` 加载末尾：
 
 ```lua
-ipc_sup.bind({
+ipcSupv.bind({
     pubUplink = pubUplink,
     dtUlControl = DT.UL_CONTROL,
     pubT31xStop = pubT31xStop,

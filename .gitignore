@@ -28,6 +28,9 @@ Luatools_v3.exe
 .specstory/
 ota_server/.specstory/
 
+# AI 会话记忆（本地，勿入 git）
+.ai-memory/
+
 # 发布包（体积大，需要时单独归档）
 release/
 firmware/*.soc

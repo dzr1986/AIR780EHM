@@ -6,7 +6,7 @@
 > - **CPU_PWR_EN** → **GPIO22**（Pin19）  
 > **注意**：`config.lua` 里 `pin` 是 **Luat GPIO 号**，不是模组物理 Pin 号（Pin25≠26，Pin26 为 `PWM4`）。  
 > 触发：**GPIO28** `boot_key` 长按 → `app.tryEnterT31xBurnMode`。  
-> 配置：[`../user/config.lua`](../../user/config.lua) → `_G.T31X_BURN_CFG`  
+> 配置：[`../user/config.lua`](../../user/config.lua) → `_G.t31x_BURN_CFG`  
 > 全量 GPIO 对照：[CONFIG.md](../overview/CONFIG.md#air780-gpio-编号对照configlua) · [T31X_CAT1_GPIO.md §1.1](T31X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)
 
 ---
@@ -27,7 +27,7 @@
 
 ## 2. 进入烧录前自动关停的功能
 
-按 `app.shutdownServicesForT31xBurn()` 顺序（进入时立即置位 `_G.T31X_BURN_MODE_ACTIVE` 与 `heartbeat_paused`）：
+按 `app.shutdownServicesForT31xBurn()` 顺序（进入时立即置位 `state.t31x_burn_active` 与 `heartbeat_paused`）：
 
 | 序号 | 功能 | 模块 | 动作 |
 |------|------|------|------|

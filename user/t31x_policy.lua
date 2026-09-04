@@ -19,7 +19,9 @@ local lastMqttWakeAt = 0
 local burnActive = false
 
 local function policyCfg()
-    return cfgm.get("T31X_POLICY_CFG")
+    -- 键名规范：t31x_ 前缀小写 + 大写下划线后缀（T31X_NAMING.md），
+    -- 由 battery.lua 注册 _G.t31x_POLICY_CFG；全大写 T31X_POLICY_CFG 读不到（cfgm.get 大小写敏感）
+    return cfgm.get("t31x_POLICY_CFG")
 end
 
 local function guardCfg()

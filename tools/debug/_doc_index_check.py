@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "doc"
 # 主题目录：与 doc/_doc_archive_by_topic.py 归档目标一致；新增目录须在此登记
-TOPIC_DIRS = ("overview", "hardware", "power", "pir", "mqtt", "t31x", "release", "modules")
+TOPIC_DIRS = ("overview", "hardware", "power", "pir", "mqtt", "t31x", "release", "modules", "manual")
 EXCLUDE_DIRS = ("_audit", "archive")
 
 RE_INLINE = re.compile(r"!?\[[^]]*\]\(\s*([^)\s]+)(?:\s+[^)]*)?\)")

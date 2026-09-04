@@ -61,7 +61,7 @@ flowchart TB
 
 | 优先级 | 条件 | 对 T31x / 电量保护 |
 |--------|------|-------------------|
-| **P0** | T31x 烧录模式 `T31X_BURN_MODE_ACTIVE` | 暂停 `battery_guard`；专用心跳/供电时序 |
+| **P0** | T31x 烧录模式激活（`t31x_policy.isBurnActive()`） | 暂停 `battery_guard`；专用心跳/供电时序 |
 | **P1** | **USB 插入** `power_status==1` | `battery_guard` **整段跳过**；插入时 **wake T31xx**、恢复 PIR、取消 ≤5% 关机 |
 | **P2** | 未插 USB + **电量** | >20% 常电；5~20% HOSTIDLE；≤5% rest+关机 |
 | **P3** | **业务低功耗**（USB 拔出 / MQTT 2002 / AT） | `onEnterLowPower` → 断 T31x + 1002（与电量可叠加） |

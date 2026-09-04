@@ -37,7 +37,7 @@ flowchart TD
 
 白名单 reason：`ntfHost` · `pir_media` · `exit_low_power` · `pir_stop*` · `wled` 等。
 
-配置：`T31X_POLICY_CFG.block_wake_below_percent=5`
+配置：`t31x_POLICY_CFG.block_wake_below_percent=5`
 
 ---
 

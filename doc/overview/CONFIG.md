@@ -98,7 +98,7 @@
 
 - `PIR_CFG`：由 `GPIO_IN.pir_det` 自动带出中断参数 + `PIR_COOLDOWN_MS.frequent`
 - `BATTERY_CFG`：ADC 采样、模组灯、电量保护（真源 [`config.lua`](../../user/config.lua)）；行为见 [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md)
-- `T31X_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
+- `t31x_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
 - `MODULE_FLAGS.battery_guard`：[`flags.lua`](../../user/flags.lua)，`false` 可关闭电量保护
 
 ### `BATTERY_CFG` 字段一览
@@ -252,7 +252,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 
 日志：`uart_recovery_sched` → `uart_recovery_cycle`；耗尽 `uart_recovery_exhausted`。
 
-### `T31X_POLICY_CFG` T31x 门禁（`config.lua`，v1.2）
+### `t31x_POLICY_CFG` T31x 门禁（`config.lua`，v1.2）
 
 实现：`lib/t31x_policy.lua`。见 [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md) §5。
 

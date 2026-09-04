@@ -17,7 +17,7 @@ function bind(C, shared)
     local hostUart = C.hostUart
     local pirCtrl = C.pirCtrl
     local utils = C.utils
-    local ipcSupervision = C.ipc_sup
+    local ipcSupervision = C.ipcSupv
     local pubPirDetect = C.pub.pubPirDetect
     local pubPirStart = C.pub.pubPirStart
     local pubPirStop = C.pub.pubPirStop
@@ -79,29 +79,6 @@ function bind(C, shared)
         return tonumber(rec.record_stop_timeout_ms)
             or tonumber(fmt.record_stop_timeout_ms)
             or TIMEOUT.stopDefault
-    end
-
-    local function queryT31xRecording()
-        local hif = getReadyHost()
-        if not hif then
-            return false
-        end
-        ipcSupervision.refCloudStat(TIMEOUT.cloudRefresh, true)
-        if snapIsRecording(hif.queryHostRecord(TIMEOUT.recordQuery)) then
-            return true
-        end
-        if hif.getT31xRecActive() == 1 then
-            return true
-        end
-        return snapIsRecording(hif.getCloudStat())
-    end
-
-    local function t31xRecordingFlag()
-        if queryT31xRecording() then
-            return 1
-        end
-        local hif = hostUart()
-        return (hif and hif.getT31xRecActive() == 1) and 1 or 0
     end
 
     local function publishForcedPirStop(messageId)

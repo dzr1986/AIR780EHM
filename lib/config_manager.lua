@@ -11,10 +11,22 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
--- 取全局配置表（如 "LED_CFG"）；不存在返回空表，不缓存以支持运行时覆盖
+-- 取全局配置表（如 "LED_CFG"）；不存在返回空表，不缓存以支持运行时覆盖。
+-- 键名大小写敏感，须精确等于 config 片段注册的 _G.<键>（例：battery.lua 注册 t31x_POLICY_CFG，
+-- 若读 "T31X_POLICY_CFG" 会静默空表——见 doc/overview/USER_LIB_CODE_AUDIT §12）。未注册键仅告警一次。
+local warnOnce = {}
 function get(name)
     local t = _G[name]
-    return type(t) == "table" and t or {}
+    if type(t) ~= "table" then
+        if not warnOnce[name] then
+            warnOnce[name] = true
+            if log and log.warn then
+                log.warn("config_manager", "unknown cfg key '" .. tostring(name) .. "', fallback {} (check config fragment _G registration & case)")
+            end
+        end
+        return {}
+    end
+    return t
 end
 
 -- 解析配置来源：t 可为全局配置名或直接配置表
@@ -28,7 +40,9 @@ function num(t, key, default)
     return type(v) == "number" and v or default
 end
 
--- 取布尔配置：t 为全局配置名或表；nil 用 default；false/0/"0" 为 false
+-- 取布尔配置：t 为全局配置名或表；nil 用 default；false/0/"0" 为 false。
+-- 语义与 lib/utils.lua parseBoolDef 等价；因 utils→module_loader→本模块 require 环禁 require utils 复用，
+-- 两处须同步维护（见 doc/overview/USER_LIB_CODE_AUDIT_20260904.md §14）。
 function bool(t, key, default)
     local v = resolve(t)[key]
     if v == nil then

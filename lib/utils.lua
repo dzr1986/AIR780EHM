@@ -9,6 +9,8 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
+-- 时间合法性下界（unix 秒）。须与 user/host.lua TIME_SYNC_CFG.min_valid_unix 保持同值；
+-- config 片段禁 require 本模块（module_loader→config require 环），无法单源引用，见 audit §14。
 MIN_VALID_UNIX = 1704067200
 
 function nowMs()
@@ -138,6 +140,8 @@ function inSysTask()
     return co ~= nil and isMain ~= true
 end
 
+-- 布尔归一：nil→default；false/0/"0"→false；其余→true。
+-- 与 config_manager.bool 语义等价但禁 require 互引（utils→module_loader→config_manager require 环），两处须同步维护
 function parseBoolDef(v, default)
     if v == nil then return default end
     if v == false or v == 0 or v == "0" then return false end

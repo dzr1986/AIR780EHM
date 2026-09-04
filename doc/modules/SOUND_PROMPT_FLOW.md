@@ -43,7 +43,7 @@ flowchart TD
 | `shutdown_low_power` | `shutdown_on_low_power` | 关 | `app.onEnterLowPower` 提示音 |
 | `shutdown_battery` | `shutdown_on_battery_off` | 关 | 低电关机 |
 
-烧录模式（`T31X_BURN_MODE_ACTIVE`）下全部跳过。
+烧录模式激活（`t31x_policy.isBurnActive()`）时全部跳过。
 
 ---
 
