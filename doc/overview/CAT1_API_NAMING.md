@@ -1,4 +1,4 @@
-# Cat.1 Lua API 命名真源（对齐代码 001.000.156）
+# Cat.1 Lua API 命名真源（对齐代码 001.000.157）
 
 > **代码真源**：仓库根 `user/`、`lib/` · **版本**：`user/main.lua` → `VERSION`  
 > **协处理器系列写法**：[T31X_NAMING.md](T31X_NAMING.md)（`t31x` / `T31x` / `T31X`，与本文 API 驼峰无关）  
@@ -107,6 +107,13 @@ ctx 键：`hostNowMs`、`noteUartLinkOk`、`wledGet`、`okTail`、`hexLine`、`s
 | `gpio_util.setupInput` / `setupInputEntry` / `setupOutput` | GPIO 封装 |
 | `gpio_util.triggerMode` | 边沿枚举（配置键仍为 `trigger_mode`） |
 
+### 2.4b `runtime_power` PSM（P6a，VERSION 157）
+
+| API | 说明 |
+|-----|------|
+| `requestRest(reason)` / `requestNormal(reason)` | rest 态唯一写点（`ok, changed[, why]`）；`setLowPowerMode` 不再导出 |
+| `canRest(reason)` / `isUserCut(reason)` / `bindPowerGates(g)` | 门禁预判 / USER_CUT 判定 / app.start 注入门禁 |
+
 ### 2.5 唤醒链
 
 ```text
@@ -186,4 +193,4 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 - 运行后检查点：`git diff -- doc/` 只应出现"旧名 → 新名"的收敛差异；`FUNCTION_NAME_MAP.md` 为只读历史表，
   在 `SKIP_FILES` 内不受影响。
 
-**版本**：2026-09-04 · 对齐代码 `001.000.156` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–156 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12/§18），无 API 增删改名
+**版本**：2026-09-04 · 对齐代码 `001.000.157` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–157 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12/§18），无 API 增删改名

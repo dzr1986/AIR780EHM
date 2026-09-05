@@ -1,7 +1,11 @@
 -- ================================================================
 -- Filename : runtime_power.lua
 -- Module   : 工作模式 + USB/充电/电量/在线访问器（嵌套 APP_RUNTIME 唯一读写入口）
--- Arch     : 见 doc/overview/LUA_MODULES.md、doc/overview/USER_LIB_OPTIMIZATION_NEXT.md
+--            + 电源状态机 PSM（refactor_plan P6a）：rest 态唯一写点 requestRest / requestNormal
+-- Arch     : 见 doc/overview/LUA_MODULES.md、doc/modules/LOW_POWER_WAKEUP.md §PSM、
+--            doc/overview/ARCHITECTURE_REVIEW_POWER_PSM.md（R1 主案）
+-- Note     : 转移门禁（低功耗开关 / USB 拦截 / 烧录态）由 app 经 bindPowerGates 注入；
+--            副作用（T31x 断电、1002、提示音、lp_wakeup 钩子）留在 app，本模块只裁决与改状态。
 -- ================================================================
 
 require "config"
@@ -62,12 +66,73 @@ function isLowPowerMode()
     return tonumber(sub("power").rest) == 1
 end
 
-function setLowPowerMode(on)
+-- rest 位唯一写点（P6a 起不再导出；业务只能经 requestRest/requestNormal）
+local function writeLowPowerMode(on)
     local p = sub("power")
     local v = on and 1 or 0
     if tonumber(p.rest) == v then return false end
     p.rest = v
     return true
+end
+
+----------------------------------------------------------------
+-- PSM：Normal ⇄ Rest 转移表
+--   入口 reason 分两类：用户明确要求（USER_CUT：2002 / AT+LOWPOWER）与策略触发（usb_remove / battery / …）。
+--   门禁：gates.enabled()（MODULE_FLAGS.low_power）对所有进入生效；gates.usbBlocks() 只拦策略触发；
+--   gates.blocked() 供烧录态等临时锁死。退出 rest 无门禁（对称性：任何退出请求都放行，只是 changed 可能为 false）。
+----------------------------------------------------------------
+local USER_CUT = { mqtt_2002 = true, at = true }
+local gates = {}
+
+function bindPowerGates(g)
+    gates = type(g) == "table" and g or {}
+end
+
+local function gate(name)
+    local fn = gates[name]
+    return type(fn) == "function" and fn() == true
+end
+
+function isUserCut(reason)
+    return USER_CUT[reason] == true
+end
+
+-- 进入 rest 的门禁裁决（不改状态）；供 app 在播关机音之前预判，避免「响了却没进」
+function canRest(reason)
+    if gates.enabled and not gate("enabled") then return false, "low_power_disabled" end
+    if gate("blocked") then return false, "blocked" end
+    if not isUserCut(reason) and gate("usbBlocks") then return false, "usb_block" end
+    return true
+end
+
+-- 请求进入 rest：返回 ok, changed, why
+--   ok=false 表示被门禁拦或（策略触发）已在 rest；ok=true 时 changed 表示 rest 位是否真的翻转
+--   USER_CUT 即使已在 rest 也返回 ok=true（用户要求必须重放副作用：断 T31x / 1002）
+function requestRest(reason)
+    reason = reason or "unknown"
+    local ok, why = canRest(reason)
+    if not ok then return false, false, why end
+    local userCut = isUserCut(reason)
+    if userCut then setWorkMode(WORK_PIR_WATCH) end
+    local changed = writeLowPowerMode(true)
+    if not userCut and not changed then return false, false, "already_rest" end
+    setLastRestReason(reason)
+    if sys and sys.publish and _G.APP_EVENTS and _G.APP_EVENTS.POWER_ENTERED_REST then
+        sys.publish(_G.APP_EVENTS.POWER_ENTERED_REST, reason)
+    end
+    return true, changed
+end
+
+-- 请求回到 Normal：总是放行；changed 表示 rest 位是否真的翻转
+function requestNormal(reason)
+    reason = reason or "unknown"
+    setWorkMode(WORK_PERSON_DETECT)
+    local changed = writeLowPowerMode(false)
+    setLastRestReason(nil)
+    if changed and sys and sys.publish and _G.APP_EVENTS and _G.APP_EVENTS.POWER_EXITED_REST then
+        sys.publish(_G.APP_EVENTS.POWER_EXITED_REST, reason)
+    end
+    return true, changed
 end
 
 function setLastRestReason(reason)

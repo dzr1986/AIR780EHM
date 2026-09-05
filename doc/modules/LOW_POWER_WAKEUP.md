@@ -35,6 +35,30 @@
 
 ---
 
+## 2b. PSM：rest 态唯一写点（refactor_plan P6a，VERSION 157，2026-09-05）
+
+`lib/runtime_power.lua` 自 157 起持有最小电源状态机（`ARCHITECTURE_REVIEW_POWER_PSM.md` R1 主案落地，方案 A 不新增模块）：
+
+```text
+                 requestRest(reason)                          requestNormal(reason)
+   Normal ──────────────────────────────► Rest ──────────────────────────────► Normal
+     │  门禁（canRest）：                    │  无门禁：任何退出请求放行
+     │   enabled()      MODULE_FLAGS.low_power（全部进入）   changed=false 时不重放 1002/lp_wakeup
+     │   usbBlocks()    HOST_USB_CFG.block_4g_rest_when_usb  但 T31x ensNormalPwrOn 仍执行（清 BOOT/OTA）
+     │                  只拦策略触发；USER_CUT（mqtt_2002 / at）不拦
+     └── USER_CUT 已在 Rest 仍返回 ok（用户要求必须重放断 T31x / 1002）
+```
+
+| API（`runtime_power`） | 语义 |
+|---|---|
+| `bindPowerGates{ enabled, usbBlocks[, blocked] }` | app.start 注入门禁；`blocked` 预留（烧录态），155 前行为不拦故未注入 |
+| `canRest(reason) → ok, why` | 只裁决不改状态；app 在播关机音前预判，避免「响了却没进」 |
+| `requestRest(reason) → ok, changed, why` | 唯一进入写点：USER_CUT 切 `pir_watch`；置 rest=1；记 `last_rest_reason`；发 `POWER_ENTERED_REST(reason)` |
+| `requestNormal(reason) → ok, changed` | 唯一退出写点：切 `person_detect`；置 rest=0；清 reason；changed 才发 `POWER_EXITED_REST(reason)` |
+| `isUserCut(reason)` | `mqtt_2002` / `at` |
+
+四条入口（2002 `mqtt_dl_dev.dlRest`、`AT+LOWPOWER` `hif_cmd`、`battery_guard.enterBatRest`、USB 拔出 `app.onUsbRemovedEnterRest`）仍经 `app.onEnterLowPower/onExitLowPower`，但 app 已退化为**副作用执行器**（T31x `enterSleep`/`ensNormalPwrOn`、`pubRest` 1002、提示音、`lp_wakeup.onEnter/ExitRest`）；`setLowPowerMode` 不再导出，`_protocol_regression_check` 单一写入点断言守护。行为对齐：门禁条件与 155 逐条等价，只是从 app 两处 if 搬进转移表。
+
 ## 3. rest 进/出钩子
 
 ```mermaid

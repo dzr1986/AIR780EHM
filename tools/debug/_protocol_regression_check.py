@@ -62,8 +62,38 @@ def check_no_biz_error_codes() -> int:
     return fail
 
 
+# 单一写入点（refactor_plan P6）：pattern 只允许出现在 allowed 文件中
+SINGLE_WRITERS = [
+    (r"\bsetLowPowerMode\s*\(|\bwriteLowPowerMode\s*\(|power\)?\.rest\s*=(?!=)",
+     {"lib/runtime_power.lua"}, "rest 位只能由 runtime_power PSM 写（requestRest/requestNormal）"),
+]
+
+
+def check_single_writers() -> int:
+    fail = 0
+    print("=== 单一写入点断言（P6）===")
+    for pattern, allowed, why in SINGLE_WRITERS:
+        rx = re.compile(pattern)
+        hits = []
+        for base in (USER, LIB):
+            for path in sorted(base.glob("*.lua")):
+                rel = path.relative_to(ROOT).as_posix()
+                if rel in allowed:
+                    continue
+                text = strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
+                for m in rx.finditer(text):
+                    hits.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}")
+        if hits:
+            fail += 1
+            print(f"  FAIL  {why}  → 越权写点: {', '.join(hits)}")
+        else:
+            print(f"  PASS  {why}")
+    print()
+    return fail
+
+
 def main() -> int:
-    fail = check_lua_filename_len() + check_no_biz_error_codes()
+    fail = check_lua_filename_len() + check_no_biz_error_codes() + check_single_writers()
     print("=== protocol regression (user/) ===\n")
     for name in SCRIPTS:
         path = DEBUG / name

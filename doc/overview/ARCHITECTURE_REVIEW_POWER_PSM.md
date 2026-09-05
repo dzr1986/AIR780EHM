@@ -2,7 +2,7 @@
 
 > **关联**：[PWR_BUDGET.md](../power/PWR_BUDGET.md) 📌（测量场景/电流档真源）· [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md) · [LOW_POWER_ENTER_STRATEGY.md](../power/LOW_POWER_ENTER_STRATEGY.md) · [CHARGE_BATTERY.md](../power/CHARGE_BATTERY.md) · [T31X_BATTERY_USB_T31X_OSCILLATION.md](../power/T31X_BATTERY_USB_T31X_OSCILLATION.md)
 > **代码真源**：`user/app.lua` · `user/battery_guard.lua` · `user/mqtt_dl_dev.lua` · `lib/runtime_power.lua` · `user/events.lua` · `user/features.lua`
-> **性质**：评审快照 + 设计稿。R1 主案 + R2–R4 备选。**落地前不改码**；与 [ARCHITECTURE_REVIEW_20260903.md](ARCHITECTURE_REVIEW_20260903.md)（四主题裁决）互补，本文只聚焦 **power/rest 运行态**。
+> **性质**：评审快照 + 设计稿。R1 主案 + R2–R4 备选。**R1 已于 2026-09-05 按方案 A 落地（VERSION 157，refactor_plan P6a）**——`runtime_power.requestRest/requestNormal/canRest/bindPowerGates`，实现见 [modules/LOW_POWER_WAKEUP.md §2b](../modules/LOW_POWER_WAKEUP.md)；`work.mode` 二态仍按 §4.8 留 R1v2。以下设计稿保留为落地依据；与 [ARCHITECTURE_REVIEW_20260903.md](ARCHITECTURE_REVIEW_20260903.md)（四主题裁决）互补，本文只聚焦 **power/rest 运行态**。
 > **纪律**：一次只动一个变量。每阶段改动前后在 [PWR_BUDGET.md §5](../power/PWR_BUDGET.md) 记录实测。
 
 ---
