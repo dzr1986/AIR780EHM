@@ -14,7 +14,9 @@ _G[_modname] = _M
 
 function bind(C, H)
     local state, SYS_EVT, E = C.state, C.SYS_EVT, C.E
+    local setHostCloudStat = C.setHostCloudStat
     local modCall = C.modCall
+    local bizCall = C.bizCall
     local hostBusy = C.hostBusy
     local wledGet = C.wledGet
     local normIpcCloud = C.normIpcCloud
@@ -183,8 +185,7 @@ function bind(C, H)
     local function mergeTfCloud()
         local cloud = state.host_ipc_cloud_stat
         if type(cloud) ~= "table" then
-            cloud = {}
-            state.host_ipc_cloud_stat = cloud
+            cloud = setHostCloudStat({})
         end
         applyTfToCloud(cloud)
         applyRecordToCloud(cloud)
@@ -263,7 +264,7 @@ function bind(C, H)
     ----------------------------------------------------------------
 
     local function reconcileRecord(timeoutMs)
-        if not modCall("pir_ctrl", "isRecording") then
+        if not bizCall("pirIsRecording") then
             return false
         end
         if not coroutine.running() or not state.host_at_ready then
@@ -282,7 +283,7 @@ function bind(C, H)
         end
         setRecActive(0)
         state.t31x_last_reason = reason
-        local uploadMode, quality = modCall("pir_ctrl", "syncStopT31x", reason)
+        local uploadMode, quality = bizCall("pirSyncStopT31x", reason)
         if not uploadMode then
             uploadMode, quality = "auto", "high"
         end

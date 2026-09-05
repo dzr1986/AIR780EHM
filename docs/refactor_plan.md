@@ -209,7 +209,7 @@
 
 ## P8 · 协议字段表驱动 + 文档 ⊆ 校验
 
-> **执行结论（2026-09-05）：护栏半已落地，序列化重写不做。** `_uplink_schema_check.py`（`run_all_checks` #12）静态对照 `MQTT_DOWNLINK`/`MQTT_PROTOCOL` 中 10xx 样例键集 ⊆ 代码可发字段，缺口基线登记 6 键（1013 进度 5 键、1004 `hostEvtPollMs`）——正是 P10 输入。把 `string.format` 手拼改为字段表序列化需逐 dataType 黄金样本逐字节比对，离线无真机/无 LuatOS 运行时无法可靠生成样本；字段顺序/空值/引号差异一旦漏检即为对外协议回归，收益（可读性）不抵风险，登记为可选后续。
+> **执行结论（2026-09-05）：护栏半已落地，序列化重写不做。** `_uplink_schema_check.py`（`run_all_checks` #12）静态对照 `MQTT_DOWNLINK`/`MQTT_PROTOCOL` 中 10xx 样例键集 ⊆ 代码可发字段，缺口基线登记 6 键（1013 进度 5 键、1004 `hostEvtPollMs`）——正是 P10 输入。把 `string.format` 手拼改为字段表序列化需逐 dataType 黄金样本逐字节比对，离线无真机/无 LuatOS 运行时无法可靠生成样本；字段顺序/空值/引号差异一旦漏检即为对外协议回归，收益（可读性）不抵风险，登记为可选后续。**2026-09-05 补齐采样链路（架构 G 条）**：`MQTT_CFG.golden_tap`（默认 false）→ `pubLoop` 打 `MQTT_GOLDEN` 行 → `_uplink_golden_capture.py` 写 `tests/fixtures/uplink_golden/<dataType>.json` → `_uplink_schema_check` 自动比对真机键 ⊆ 代码全集。剩余动作只需真机开 tap 跑一轮采集。
 
 
 **目标**：A8——10xx 上行字段以 Lua 表声明（`fields = { deviceNo=…, dataType=…, … }` → 统一序列化），`MQTT_DOWNLINK.md` 中各 10xx JSON 样例的键集 ⊆ 代码字段表由护栏校验；输出字节与今日**逐字等价**。

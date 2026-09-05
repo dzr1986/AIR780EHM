@@ -6,6 +6,8 @@ alwaysApply: false
 
 # 重构硬约束
 
+> 架构决策 ADR 与 Agent 工作流见仓库根 **`AGENTS.md`**。
+
 ## 1. 对外接口变更必须在同一 commit 更新文档
 
 本仓库的「对外接口」= 模块导出函数签名（`function name(...)` / `_M.x`）、`bind(ctx)` 注入键、`_G.X_CFG` 表及字段、MQTT `dataType`/JSON 字段、`AT+` 命令与应答格式。改动任一项，同一 commit 内同步：
@@ -27,7 +29,7 @@ alwaysApply: false
 
 ```bash
 for f in user/*.lua lib/*.lua; do luac5.3 -p "$f"; done   # 语法（Lua 5.3）
-python tools/debug/run_all_checks.py                       # 9 项静态护栏全 PASS
+python tools/debug/run_all_checks.py                       # 13 项静态护栏全 PASS
 ```
 
 - 有行为改动升 `user/main.lua` `VERSION`（`_doc_version_check` 会联动校验 10 处文档口径）。

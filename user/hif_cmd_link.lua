@@ -12,6 +12,7 @@ _G[_modname] = _M
 
 function bind(C)
     local state, hooks, E = C.state, C.hooks, C.E
+    local bizCall = C.bizCall
     local rspBody, rspFmt, rspLine, okTail = C.rspBody, C.rspFmt, C.rspLine, C.okTail
     local modCall, utils = C.modCall, C.utils
     local RSP_ERROR = C.RSP_ERROR
@@ -91,7 +92,7 @@ function bind(C)
     end
 
     local function tcpChBlocked()
-        return modCall("lp_wakeup", "allowTcpChannel") == false
+        return bizCall("allowTcpChannel") == false
     end
 
     ----------------------------------------------------------------
@@ -138,7 +139,7 @@ function bind(C)
             qryGb28181(cfg.query_timeout_ms)
             state.gb28181_refresh_scheduled = false
             if pubAfter then
-                modCall("net_mqtt", "pubDeviceIdRef", nil)
+                bizCall("pubDeviceIdRef", nil)
             end
         end)
     end
@@ -151,7 +152,7 @@ function bind(C)
             scheduleGb281Refresh(cfg, cfg.publish_on_ipcinfo_query == true)
         elseif cfg.publish_on_ipcinfo_query == true then
             sys.taskInit(function()
-                modCall("net_mqtt", "pubDeviceIdRef", nil)
+                bizCall("pubDeviceIdRef", nil)
             end)
         end
         return rspBody("IPCINFO", string.format(
@@ -169,7 +170,7 @@ function bind(C)
         if not suffix or not body or body == "" then
             return rspLine("MQTTPUB", false)
         end
-        return rspLine("MQTTPUB", modCall("net_mqtt", "pubRaw", suffix, body, 1) == true)
+        return rspLine("MQTTPUB", bizCall("pubRaw", suffix, body, 1) == true)
     end
 
     local function uartMqttCfg(cmd)
@@ -210,7 +211,7 @@ function bind(C)
         if hooks.onServClose then
             hooks.onServClose(sid)
         else
-            modCall("lp_wakeup", "closeTcpChannel", sid)
+            bizCall("closeTcpChannel", sid)
         end
         state.channel = nil
         return rspFmt("SERVCLOSE", "%d", sid)

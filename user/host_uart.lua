@@ -50,7 +50,7 @@ local HOST_PUSH_QUIET_MS = 300
 local TMO_SHARED = {
     acquireCapMs = 8000,      -- 拿串口事务锁最多等待（power / tffmt）
     statusQueryMs = 2000,     -- AT+IPCSTATUS? 单次超时（rec / power）
-    cloudStatQueryMs = 2500,  -- AT+IPCSTAT? 单次超时（cloud / 首条 AT 后刷新）
+    cloudStatQueryMs = _G.HOST_PROTO_TMO.ipcstat_query_ms,  -- AT+IPCSTAT? 单次超时（cloud / 首条 AT 后刷新）；跨族单源 config host.lua
     qryDefaultMs = 3000,      -- 通用 AT 查询默认超时（hif_ipc.hostQuery / cmd_wled AT+WLED?）
     t31xWaitMs = 800,         -- ensT31xHost 上电后等待默认值（配置 t31x_power_wait_ms 缺省时）
 }
@@ -165,6 +165,48 @@ local function rp(fn)
     return modCall("runtime_power", fn)
 end
 
+-- 业务 provider（refactor A 条 / _layer_check R4）：AT 协议层不再 modCall 业务模块（pir_ctrl / net_mqtt /
+-- battery_guard / t31x_policy / lp_wakeup / host_event / time_sync / sound_prompt），改由 app.start 经
+-- host_uart.start{ biz = {...} } 注入显式函数表；未注入（模块被裁剪）时返回 nil，与 modCall 对未加载模块的语义一致。
+-- 键名清单真源：user/app.lua buildBizProviders；_ref_name_check 规则 F 校验 bizCall("x") 的 x ∈ 该表。
+----------------------------------------------------------------
+-- state 语义键 setter（架构 C 条）：host_ipc_status / host_at_ready / host_tf_card / host_ipc_cloud_stat
+-- 只能经这里写（_protocol_regression_check SINGLE_WRITERS 守护）；缓存/计数键仍可直写。
+-- setHostIpcStatus(st, syncCloud=true) 同步 cloud.ipcReady（cmd_t31x / rx_dsl 两条 IPCSTATUS 路径原各自 patchCloud）。
+----------------------------------------------------------------
+local ctx -- 前向声明：setter 需运行期取 ctx.ipcReadyFrom / ctx.patchCloud（子模块 bind 后回填）
+
+local function setHostIpcStatus(st, syncCloud)
+    state.host_ipc_status = st
+    if syncCloud and ctx and ctx.patchCloud and ctx.ipcReadyFrom then
+        ctx.patchCloud({ ipcReady = ctx.ipcReadyFrom(st) })
+    end
+    return st
+end
+
+local function setHostAtReady(v)
+    state.host_at_ready = v == true
+    return state.host_at_ready
+end
+
+local function setHostTfCard(snap)
+    state.host_tf_card = snap
+    return snap
+end
+
+local function setHostCloudStat(snap)
+    state.host_ipc_cloud_stat = snap
+    return snap
+end
+
+local function bizCall(name, ...)
+    local biz = hooks.biz
+    local f = biz and biz[name]
+    if f then
+        return f(...)
+    end
+end
+
 local function noopIdle()
     return "idle"
 end
@@ -245,6 +287,9 @@ local function uartAcquire(timeoutMs)
     return true
 end
 
+-- 破坏性会话持有协程（P3；声明须先于 resetUartTxn，否则那里的赋值会落成全局——2026-09-05 评审修复）
+local uartSessionOwner = nil
+
 -- stop 时（及冷启动首次 start）复位事务锁：持有者协程若在 stop 期间被丢弃，锁会永久 busy，
 -- 之后所有 hostQuery/hostSet 只能等超时走 fallback；复位后原持有者的 uartRelease 变 no-op。
 -- 运行中重入 start 不复位——否则会把仍在等 ACK 的持有者手里的锁放给第二个协程
@@ -261,7 +306,6 @@ end
 -- 除会话持有协程外，所有 hostQuery 走 fallback、hostSet 回 busy、1003 刷新走缓存。
 -- 与事务锁的分工：锁 = 「同时只有一个请求在飞」；会话 = 「T31x 处于不可打扰状态」。
 ----------------------------------------------------------------
-local uartSessionOwner = nil
 
 local function enterSession(name)
     if state.uart_session then
@@ -369,7 +413,7 @@ local function configSnap()
         devicemodel = meta.device_model or "",
         wled = rp("getWledOn") or 0,
         workmode = rp("getWorkMode") or "person_detect",
-        tcp_extra = modCall("lp_wakeup", "appCfgFields") or "",
+        tcp_extra = bizCall("lpAppCfgFields") or "",
     }
 end
 
@@ -464,7 +508,7 @@ end
 --   下半：子模块在 bind 时回填（见各编排器末尾的“注册”段）
 ----------------------------------------------------------------
 
-local ctx = {
+ctx = {
     -- 运行时引用
     M = _M,
     state = state,
@@ -487,6 +531,11 @@ local ctx = {
 
     -- 模块工具
     modCall = modCall,
+    bizCall = bizCall,
+    setHostIpcStatus = setHostIpcStatus,
+    setHostAtReady = setHostAtReady,
+    setHostTfCard = setHostTfCard,
+    setHostCloudStat = setHostCloudStat,
     loader = loader,
     utils = utils,
     uart_bridge = uart_bridge,
@@ -565,6 +614,7 @@ local ipc = require("hif_ipc").bind(ctx)
 for k, fn in pairs(ipc) do _M[k] = fn end
 -- 外部模块（ipc_supv）经 host_uart._M 使用的本文件 local / rx 能力：显式导出，否则为 nil 调用（P9 成员校验）
 _M.hostBusy = hostBusy
+_M.getUartSession = function() return state.uart_session end -- t31x_ctrl.blockSleep 仲裁用（P3 会话）
 _M.patchCloud = rx.patchCloud -- 仅限非 recordingt31x 的云状态补丁（recordingt31x 走 setRecActive，护栏守护）
 
 ----------------------------------------------------------------
@@ -575,7 +625,7 @@ local function onFirstHostAt(atLine)
     if state.host_at_ready then
         return
     end
-    state.host_at_ready = true
+    setHostAtReady(true)
     state.first_host_at = atLine
     state.host_ready_seen = true
     if ctx.noteUartLinkOk then
@@ -670,7 +720,7 @@ end
 local START_HOOK_KEYS = {
     "onServCreate", "onServClose", "onMqttCfg", "onAtExt",
     "onEnterLowPower", "onExitLowPower", "onReboot", "onPowerOff",
-    "onOta", "onPlainLine",
+    "onOta", "onPlainLine", "biz",
 }
 
 local function bindStartHooks(opts)
@@ -696,7 +746,7 @@ function start(opts)
     -- require 兜底仅兼容裸启动/独立单测；产品路径必经 app.start 显式注入（见 FUNCTIONAL_ARCHITECTURE §7.2 S2）
     t31xModule = opts.t31x or require "t31x_ctrl"
     t31xFallback = t31xModule
-    state.host_at_ready = false
+    setHostAtReady(false)
     state.first_host_at = nil
     if not started then resetUartTxn() end
     bindStartHooks(opts)
@@ -716,7 +766,7 @@ function ntfHost(sid, evt)
     local cfg = cfgm.get("HOST_WAKE_CFG")
     sid = sid or cfg.default_sid or 1
     evt = evt or _M.EVT.SERVER_DATA
-    if modCall("t31x_policy", "mayPowerT31x", "ntfHost") == false then
+    if bizCall("mayPowerT31x", "ntfHost") == false then
         return false
     end
     setPendingWake(sid, evt)
@@ -730,7 +780,7 @@ function ntfHost(sid, evt)
     if t31xSt and (not t31xSt.powered_on or t31xSt.in_boot_mode) then
         t31xModule.ensNormalPwrOn("ntfHost")
     end
-    modCall("battery_guard", "markT31xWoken")
+    bizCall("markT31xWoken")
     return t31xModule.pulseMcuInt()
 end
 

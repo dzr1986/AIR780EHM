@@ -13,8 +13,10 @@ function bind(C)
     local state, SYS_EVT, E = C.state, C.SYS_EVT, C.E
     local rspBody, rspFmt, rspLineOk = C.rspBody, C.rspFmt, C.rspLineOk
     local modCall = C.modCall
+    local bizCall = C.bizCall
     local RSP_ERROR = C.RSP_ERROR
     local utils = C.utils
+    local setHostIpcStatus, setHostTfCard = C.setHostIpcStatus, C.setHostTfCard
     local function parseIpcStat(...)
         return C.parseIpcStat(...)
     end
@@ -81,7 +83,7 @@ function bind(C)
         end
         state.t31x_last_reason = reason
         setRecActive(0)
-        local uploadMode, quality = modCall("pir_ctrl", "syncStopT31x", reason)
+        local uploadMode, quality = bizCall("pirSyncStopT31x", reason)
         sys.publish(E.T31X_RECORD_STOP, reason, uploadMode, quality)
         return rspFmt("RECORD", "0,reason=%s", reason)
     end
@@ -101,7 +103,7 @@ function bind(C)
         if not action then
             return RSP_ERROR
         end
-        modCall("pir_ctrl", "applyEffMedia", action)
+        bizCall("pirApplyEffMedia", action)
         return rspFmt("PIRMEDIA", "ok,action=%s", action)
     end
 
@@ -124,7 +126,7 @@ function bind(C)
             return RSP_ERROR
         end
         local need = tonumber(arg:match("^(%d+)")) or 1
-        modCall("net_mqtt", "pubUploadNeed", {
+        bizCall("pubUploadNeed", {
             needUpload = need,
             action = "upload_video",
             reason = arg:match("reason=([^,]+)") or "record_done",
@@ -141,7 +143,7 @@ function bind(C)
             return RSP_ERROR
         end
         local ret = tonumber(kvFromArg(arg, "ret")) or -1
-        modCall("net_mqtt", "pubUploadDone", ret, kvFromArg(arg, "msgId"), {
+        bizCall("pubUploadDone", ret, kvFromArg(arg, "msgId"), {
             videoType = tonumber(kvFromArg(arg, "type")) or 1,
             beginTs = tonumber(kvFromArg(arg, "start")) or 0,
             endTs = tonumber(kvFromArg(arg, "end")) or 0,
@@ -160,8 +162,7 @@ function bind(C)
         if not st then
             return RSP_ERROR
         end
-        state.host_ipc_status = st
-        patchCloud({ ipcReady = ipcReadyFrom(st) })
+        setHostIpcStatus(st, true) -- 含 cloud.ipcReady 同步
         sys.publish(SYS_EVT.IPCSTATUS_ACK, st)
         return rspFmt("IPCSTATUS", "OK,status=%s", st)
     end
@@ -188,7 +189,7 @@ function bind(C)
         if not snap.parsed then
             return RSP_ERROR
         end
-        state.host_tf_card = snap
+        setHostTfCard(snap)
         patchCloud({ tfPresent = utils.to01(snap.present) })
         sys.publish(SYS_EVT.TFCARD_ACK, snap)
         return rspLineOk("TFCARD")

@@ -70,6 +70,10 @@ SINGLE_WRITERS = [
      {"user/hif_rx_dsl.lua", "user/host_uart.lua"}, "t31x_rec_active 只能由 commitIpcStat（hif_rx_dsl）raw 写；业务走 hif_ipc.setRecActive"),
     (r"patchCloud\(\s*\{[^}]*recordingt31x",
      {"user/hif_ipc.lua"}, "recordingt31x 补丁只能经 hif_ipc.setRecActive（P6b 录像态单入口）"),
+    (r"state\.host_ipc_status\s*=(?!=)", {"user/host_uart.lua"}, "host_ipc_status 只能经 host_uart.setHostIpcStatus（C 条）"),
+    (r"state\.host_at_ready\s*=(?!=)", {"user/host_uart.lua"}, "host_at_ready 只能经 host_uart.setHostAtReady（C 条）"),
+    (r"state\.host_tf_card\s*=(?!=)", {"user/host_uart.lua"}, "host_tf_card 只能经 host_uart.setHostTfCard（C 条）"),
+    (r"state\.host_ipc_cloud_stat\s*=(?!=)", {"user/host_uart.lua"}, "host_ipc_cloud_stat 只能经 host_uart.setHostCloudStat（C 条）"),
 ]
 
 

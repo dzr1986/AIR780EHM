@@ -18,6 +18,7 @@ function bind(C, H)
     local state = C.state
     local SYS_EVT = C.SYS_EVT
     local utils = C.utils
+    local setHostTfCard = C.setHostTfCard
     local defineQuery = H.defineQuery
     local defineSet = H.defineSet
     local identityCfg = H.idCfgFn
@@ -33,7 +34,7 @@ function bind(C, H)
         mic = 8000,
         photo = 8000,
         recOn = 8000,
-        recOff = 22000,
+        recOff = _G.HOST_PROTO_TMO.record_stop_ms, -- 与 mqtt_dl_pir stopDefault 同源（F 条）
     }
 
     local function recCfg()
@@ -307,7 +308,7 @@ function bind(C, H)
         at = "AT+TFCARD?", ev = SYS_EVT.TFCARD_ACK,
         rsp = function(got, snap)
             if got and type(snap) == "table" and snap.parsed then
-                state.host_tf_card = snap
+                setHostTfCard(snap)
                 return snap
             end
             return nil

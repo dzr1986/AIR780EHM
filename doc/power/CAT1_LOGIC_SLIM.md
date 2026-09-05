@@ -87,7 +87,7 @@ busy 锁 → ensure_t31x_for_host_query → bootWait → sendString → waitUnti
 
 #### 体构建
 
-`build_hostevt_body` 与 `build_pirstat_body` 均调用 `pir_ctrl.buildStatBodyy` + `host_event.summarize`，仅扩展字段名不同。
+`build_hostevt_body` 与 `build_pirstat_body` 均调用 `pir_ctrl.getStatSnapshot`（→ `hif_cmd_pir.buildPirStatBody`）+ `host_event.summarize`，仅扩展字段名不同。
 
 **建议**：`buildPirWakeBody(extFields)` 统一内核。
 

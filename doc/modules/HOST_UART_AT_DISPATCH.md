@@ -268,13 +268,15 @@ host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（�
 |---|---|---|
 | `acquireCapMs` | 8000 | `hif_ipc_power`（IPCPOWEROFF）、`hif_ipc_tffmt`（TFFORMAT） |
 | `statusQueryMs` | 2000 | `hif_ipc_rec`（`AT+IPCSTATUS?`）、`hif_ipc_power`（恢复链复查） |
-| `cloudStatQueryMs` | 2500 | `hif_ipc_cloud`（`AT+IPCSTAT?`）、`host_uart` 首条 AT 后刷新 |
+| `cloudStatQueryMs` | 2500（← `HOST_PROTO_TMO.ipcstat_query_ms`） | `hif_ipc_cloud`（`AT+IPCSTAT?`）、`host_uart` 首条 AT 后刷新；与 `net_mqtt.TMO_SHARED.ipcStatRefreshMs` 跨族同源 |
 | `qryDefaultMs` | 3000 | `hif_ipc.TMO.qry`（hostQuery 默认超时）、`hif_cmd_wled`（`AT+WLED?` ack）（P2b） |
 | `t31xWaitMs` | 800 | `hif_ipc.TMO.t31xWait`（`ensT31xHost` 默认等待）、`hif_cmd_wled`（P2b） |
 
 规则：**同一语义只在 `TMO_SHARED` 定义一次**；子模块本地表只留模块特有值（`tffmt.formatMs=120000`、`hostq.recOff=22000`、`power.readyDefaultMs` 等）。子模块头部写 `local TMO_SHARED = C.TMO_SHARED`，并在 `tools/debug/bind_header_specs.json` 对应 `c` 列表登记（`_gen_bind_header --check-all` 守护）。
 
-**未并入（同值但语义待定）**：`hif_ipc_hostq.TMO.rec = 3000`（录像查询）与 `qryDefaultMs` 同值，是否同义待定；`mqtt_dl_pir.stopDefault = 22000` 与 `hif_ipc_hostq.TMO.recOff = 22000` 跨族同值，待 P7 ctx.const 统一。
+**跨族单源（架构 F 条，2026-09-05）**：config 片段 `user/host.lua` 新增 `_G.HOST_PROTO_TMO = { ipcstat_query_ms = 2500, record_stop_ms = 22000 }`。`host_uart.TMO_SHARED.cloudStatQueryMs` / `net_mqtt.TMO_SHARED.ipcStatRefreshMs` 同引 `ipcstat_query_ms`；`hif_ipc_hostq.TMO.recOff` / `mqtt_dl_pir.TIMEOUT.stopDefault` 同引 `record_stop_ms`。放在 config 域而非任一族 ctx，是因为两族互不 require（不能为一个常量引入 net_mqtt → host_uart 边）；`_config_key_check` 已把 `HOST_PROTO_TMO` 纳入 CONFIG.md 键索引（40 键）。
+
+**未并入（同值但语义待定）**：`hif_ipc_hostq.TMO.rec = 3000`（录像查询）与 `qryDefaultMs` 同值，是否同义待定。
 
 **已知同义不同值（本阶段不改数值，待维护者定）**：串口静默期 quiet——`hif_ipc.TMO.quiet = 1500`（hostQuery/hostSet 走 `armHost`）vs `hif_ipc_power.hostIdleCapMs = 2000` / `hif_ipc_tffmt.hostIdleMs = 2000`（直接 `waitHostIdle`）。统一到哪一个值需实机验证后再收进 `TMO_SHARED`。
 
@@ -291,7 +293,8 @@ host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（�
 P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery` 只看③自己的键：格式化期间 2007 `AT+TFCARD?` 仍会拿锁发出（体检 A2）。P3 起：
 - 三个旧键 `tfcard_format_busy` / `ipc_poweroff_busy` / `uart_recovery_busy` **删除**（`_host_uart_regression_check` 负向断言防回潮），`AT+GETCFG` 快照无此字段，T31x 侧无可见变化。
 - 行为变化（实机回归项，`USER_LIB_OPTIMIZATION_NEXT §6`）：2009 格式化期间下发 2007 → 1007 回缓存且串口无 `AT+TFCARD?`；2002 断电期间 2005 wled/2020 encode 查询 → 缓存 / `busy`；USB 恢复任务期间同理。
-- 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，`hostIpcPowerOff` 回 false（调用方 `enterSleep` 走 GPIO 直接断电兜底），恢复任务放弃本轮。
+- 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，恢复任务放弃本轮。
+- **断电与会话的仲裁（VERSION 161）**：① 策略触发的休眠（USB 拔出 / 电量 / `pir_watch_idle`，`skipPendingWorkCheck ~= true`）在任何会话进行中一律延后——`t31x_ctrl.blockSleep` 读 `host_uart.getUartSession()`，日志 `sleep_blocked_uart_session <name>`，与既有 `sleep_blocked_pending_work` 同一分支；② 用户显式 2002/AT 断电（`skipPendingWorkCheck`）不延后，但 `hostIpcPowerOff` 在其它会话进行中**有界等待**（≤ 本次 `poweroff_timeout_ms`，默认 30s，日志 `ipcpoweroff_rx wait_session`）其结束后再进入 poweroff 会话优雅断电；超时仍占用才回 false（`session_still_busy`）由 `gracePowOff` 硬切电。160 前二者都会在 500ms 内硬切电（写盘中拔卡）。
 
 ## 10. bind 头规格：生成 + bind 时刻可用性（refactor_plan P7，2026-09-05）
 
@@ -303,3 +306,24 @@ P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery`
 | **spec 由生成**（`--sync-specs`） | `bind_header_specs.json` 各模块 `c`/`h` 列表按头部同名直读快照 + wrapper + body 运行期用到的延迟键重写；改名快照（`local identityCfg = H.idCfgFn`）由 `inject` 表达。新增子模块 = 写头部 → `--sync-specs` → `--check-all`，不再手抄 JSON |
 
 `ctx` 三命名空间拆分登记为可选后续（无事故驱动不做）。
+
+## 11. AT 层不再反向调用业务层：`bizCall` provider 注入（架构 A 条，2026-09-05）
+
+AT 协议层（`host_uart` + 18 个 `hif_*`）此前经 `modCall("pir_ctrl"/"net_mqtt"/"battery_guard"/"t31x_policy"/"lp_wakeup"/"host_event"/"time_sync"/"sound_prompt", …)` 反向驱动业务层（25 处），是运行期 22 模块软环的主因，也让依赖方向从静态图上消失。现改为：
+
+- `app.buildBizProviders()`（`user/app.lua`）是**唯一真源**：22 个显式函数键（`shouldHostSleep`/`canHostSleep`/`markT31xWoken`/`mayPowerT31x`/`lpAppCfgFields`/`allowTcpChannel`/`closeTcpChannel`/`hostEvtEnabled`/`hostEvtSummarize`/`pirIsRecording`/`pirSyncStopT31x`/`pirApplyEffMedia`/`pirStatSnapshot`（H 条前为 `pirStatBody`）/`pirClearMarkers`/`pirResetCounters`/`onTimesetAck`/`onSoundAck`/`pubUploadDone`/`pubUploadNeed`/`setStatInterval`/`pubRaw`/`pubDeviceIdRef`），经 `host_uart.start{ biz = … }` 注入到 `hooks.biz`。
+- AT 层统一经 `ctx.bizCall(key, …)` 调用；provider 缺失（模块被 `MODULE_FLAGS` 裁剪）时返回 nil，与旧 `modCall` 对未加载模块的语义一致。**差异**：旧 `modCall` 用 `loader.load` 会把被裁剪模块强行加载再调用，新实现对被裁剪模块直接 no-op（更符合裁剪意图）。
+- 护栏：`_layer_check` R4（AT 层 ↛ 业务层）基线 15 → **0**；`_ref_name_check` 规则 F 校验 `bizCall("x")` 的 x ∈ provider 表键。软环 22 → 16 模块，`modCall` 46 → 17 处（余下均指向 `t31x_ctrl`/`runtime_power`/`device_id` 等基础设施）。
+
+## 12. `state` 语义键 setter 化（架构 C 条，2026-09-05）
+
+`host_uart.state` 中四个"有语义"的键不再允许子模块直写，统一经 `host_uart` 的 setter（`ctx.*` 导出）：
+
+| 键 | setter | 原写点数 → 1 | 说明 |
+|---|---|---|---|
+| `host_ipc_status` | `setHostIpcStatus(st, syncCloud)` | 7 → 1 | `syncCloud=true` 时顺带 `patchCloud{ipcReady=ipcReadyFrom(st)}`（`hif_cmd_t31x` 下行 IPCSTATUS + `hif_rx_dsl` URC 两条路径原各自 patch，现合一）；`hif_ipc_rec` 查询/`hif_ipc_power` 断电不同步（维持原行为） |
+| `host_at_ready` | `setHostAtReady(bool)` | 3 → 1 | `host_uart` 首条 AT / start；`hif_ipc_rec.resetHostLink` |
+| `host_tf_card` | `setHostTfCard(snap)` | 3 → 1 | `hif_cmd_t31x` / `hif_ipc_hostq` / `hif_rx_dsl` |
+| `host_ipc_cloud_stat` | `setHostCloudStat(snap)` | 3 → 1 | `commitIpcStat` raw 写、`resetHostLink` 清空、`mergeTfCloud` 建空表；`ipc_cloud_stat_ts` 仍只在 `commitIpcStat` 写 |
+
+护栏：`_protocol_regression_check SINGLE_WRITERS` 新增 4 条（`state.<键> =` 只许出现在 `user/host_uart.lua`）。实现细节：`host_uart` 需前向声明 `local ctx` 再 `ctx = {…}`（setter 运行期取 `ctx.patchCloud/ipcReadyFrom`），`_gen_bind_header` 的 ctx 字面量识别正则已兼容。缓存/计数类键（`t31x_wake_ts`、`last_command`、`miss_streak` 等）仍允许直写。零行为改动，VERSION 维持 161。

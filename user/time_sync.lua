@@ -110,7 +110,7 @@ function pushToHost(force)
     end
     ub.sendString("AT+TIMESET=" .. t, true)
     local timeoutMs = tonumber(cfg.ack_timeout_ms) or 800
-    local ok = utils.waitT31xAck(ACK_EVENT, timeoutMs)
+    local ok = utils.waitEventUntil(ACK_EVENT, timeoutMs)
     if ok then
         lastPushedAt = t
         tsInfo("sync_ack_ok", t)

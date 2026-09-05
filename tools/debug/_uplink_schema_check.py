@@ -12,6 +12,9 @@
   * 缺口 = 文档键 − 代码全集，按 dataType 列出；以 _uplink_schema_baseline.json 为已知缺口基线，**新增缺口即 FAIL**，
     基线内缺口只报告（它们是 P10 对外接口阶段的输入）。
 
+  * 黄金样本（架构 G 条，可选）：tests/fixtures/uplink_golden/<dataType>.json 存在时（由 _uplink_golden_capture.py 真机采集），
+    额外校验「真机键集 ⊆ 代码全集」（不一致直接 FAIL，样本即真源），并把「文档键 − 真机键」作为文档漂移提示打印。
+
 用法：
     python tools/debug/_uplink_schema_check.py                 # 校验（对照基线）
     python tools/debug/_uplink_schema_check.py --save-baseline # 用当前缺口覆盖基线
@@ -32,6 +35,7 @@ DOCS = (ROOT / "doc" / "mqtt" / "MQTT_DOWNLINK.md", ROOT / "doc" / "mqtt" / "MQT
 CODE = [ROOT / "user" / "net_mqtt.lua", ROOT / "user" / "ipc_supv.lua", ROOT / "user" / "hif_ipc_cloud.lua"] + sorted(
     (ROOT / "user").glob("mqtt_*.lua"))
 BASELINE = Path(__file__).resolve().parent / "_uplink_schema_baseline.json"
+GOLDEN_DIR = Path(__file__).resolve().parent / "tests" / "fixtures" / "uplink_golden"
 
 RE_FENCE = re.compile(r"```json\s*\n(.*?)```", re.S)
 RE_KEY = re.compile(r'"([A-Za-z_]\w*)"\s*:')
@@ -87,6 +91,39 @@ def gaps() -> dict[str, list[str]]:
     return out
 
 
+def golden_samples() -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    if not GOLDEN_DIR.is_dir():
+        return out
+    for p in sorted(GOLDEN_DIR.glob("1*.json")):
+        try:
+            obj = json.loads(p.read_text(encoding="utf-8"))
+            out[str(obj.get("dataType") or p.stem)] = list(obj.get("keys") or [])
+        except Exception:
+            continue
+    return out
+
+
+def golden_check(samples_doc: dict[str, set[str]]) -> int:
+    """真机键 ⊆ 代码全集（FAIL 计数）；文档键 − 真机键 仅提示。"""
+    gold = golden_samples()
+    if not gold:
+        print("    黄金样本：无（tests/fixtures/uplink_golden/ 为空；真机 MQTT_CFG.golden_tap=true 后跑 _uplink_golden_capture.py）")
+        return 0
+    uni = code_universe()
+    fails = 0
+    for dt, keys in sorted(gold.items()):
+        miss = [k for k in keys if k not in uni]
+        for k in miss:
+            fails += 1
+            print(f"    [FAIL] 黄金样本 {dt} 含键 `{k}`，代码可发字段全集里没有（样本过期或代码删字段未重采）")
+        drift = sorted(samples_doc.get(dt, set()) - set(keys))
+        if drift:
+            print(f"    [info] {dt}: 文档样例有、真机样本无 {drift}（可能为可选字段，或文档漂移）")
+    print(f"    黄金样本 {len(gold)} 个 dataType 已比对")
+    return fails
+
+
 def main() -> int:
     cur = gaps()
     if "--save-baseline" in sys.argv:
@@ -112,8 +149,9 @@ def main() -> int:
     gone = {dt: v for dt, v in gone.items() if v}
     if gone:
         print(f"    基线中已补齐（请 --save-baseline 收缩）：{gone}")
-    if new:
-        print(f"\nFAILED: 新增文档-代码字段缺口 {new} 个（文档新写的上行字段代码未实现，或代码删了字段未改文档）")
+    gold_fails = golden_check(samples)
+    if new or gold_fails:
+        print(f"\nFAILED: 新增文档-代码字段缺口 {new} 个 / 黄金样本越界键 {gold_fails} 个（文档新写的上行字段代码未实现，或代码删了字段未改文档/未重采样本）")
         return 1
     total = sum(len(v) for v in cur.values())
     print(f"\nALL PASS — 无新增缺口（基线登记 {total} 键，属 P10 对外接口待办）")

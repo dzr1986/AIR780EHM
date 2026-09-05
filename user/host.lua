@@ -8,6 +8,13 @@
 local HOST_BOOT_WAIT_MS = 1500   -- T31x host 就绪等待上限
 local T31X_POWER_WAIT_MS = 800   -- T31x 上电后供电稳定等待
 
+-- ===== 跨族协议超时单源（架构 F 条）：host_uart 族与 net_mqtt 族共用的 T31x 协议等待时长 =====
+-- 同一协议语义只在此定义一次；host_uart.TMO_SHARED / net_mqtt.TMO_SHARED / hif_ipc_hostq / mqtt_dl_pir 均引用此表。
+_G.HOST_PROTO_TMO = {
+    ipcstat_query_ms = 2500,   -- AT+IPCSTAT? 单次超时 = MQTT 侧 refCloudStat 刷新等待（1003 前 / PIR 云状态）
+    record_stop_ms = 22000,    -- AT+RECORD=0 停录等待（hostq recOff = dl_pir 2011 stopDefault；T31x 收尾写盘 + 封装）
+}
+
 -- ===== SOUND 提示音：冷启动/关机播放、超时、等待首条 AT =====
 _G.SOUND_CFG = {
     enabled = true,

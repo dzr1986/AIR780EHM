@@ -12,6 +12,7 @@ _G[_modname] = _M
 function bind(C)
     local state, SYS_EVT = C.state, C.SYS_EVT
     local modCall = C.modCall
+    local bizCall = C.bizCall
     local utils = C.utils
 
     local function noteLinkOk()
@@ -189,18 +190,21 @@ function bind(C)
     -- notify=true 仅用于 T31x 完整快照（+IPCSTAT: 应答 / AT+IPCSTAT= 主动上报）；
     -- patchCloud 局部补丁（WLED/RECORD/TFCARD/IPCSTATUS/poweroff…）不得发 IPCSTAT_ACK，
     -- 否则会抢答正在 waitUntil(IPCSTAT_ACK) 的 qryIpcCloudStat，使 AT+IPCSTAT? 误判成功早退
-    local function commitIpcStat(snap, notify)
+    -- keepTs=true：局部补丁不把缓存标为「新鲜」，isIpcCloudStatStale 仍按上次完整 +IPCSTAT: 快照计时
+    local function commitIpcStat(snap, notify, keepTs)
         if type(snap) ~= "table" or next(snap) == nil then
             return nil
         end
         snap = normIpcCloud(snap)
-        state.host_ipc_cloud_stat = snap
-        state.ipc_cloud_stat_ts = os.time()
+        C.setHostCloudStat(snap)
+        if keepTs ~= true then
+            state.ipc_cloud_stat_ts = os.time()
+        end
         if snap.recordingt31x ~= nil then
             state.t31x_rec_active = asNum(snap.recordingt31x)
         end
         if snap.ipcReady == 1 and not state.host_ipc_status then
-            state.host_ipc_status = "ready"
+            C.setHostIpcStatus("ready")
         end
         if notify == true then
             sys.publish(SYS_EVT.IPCSTAT_ACK, snap)
@@ -208,7 +212,7 @@ function bind(C)
         return snap
     end
 
-    local function patchCloud(fields)
+    local function patchCloud(fields, keepTs)
         local cloud = state.host_ipc_cloud_stat
         if type(cloud) ~= "table" then
             cloud = {}
@@ -217,7 +221,7 @@ function bind(C)
         for k, v in pairs(fields) do
             cloud[k] = v
         end
-        return commitIpcStat(cloud)
+        return commitIpcStat(cloud, nil, keepTs)
     end
 
     local function parseIpcStat(line)
@@ -243,7 +247,7 @@ function bind(C)
         if not name then
             return false
         end
-        modCall("sound_prompt", "onSoundAck", name)
+        bizCall("onSoundAck", name)
         return true
     end
 
@@ -251,7 +255,7 @@ function bind(C)
         if not line or not line:match("^%+TIMESET:OK$") then
             return false
         end
-        modCall("time_sync", "onTimesetAck")
+        bizCall("onTimesetAck")
         return true
     end
 
@@ -340,7 +344,7 @@ function bind(C)
         if not snap.parsed then
             return false
         end
-        state.host_tf_card = snap
+        C.setHostTfCard(snap)
         patchCloud({ tfPresent = utils.to01(snap.present) })
         sys.publish(SYS_EVT.TFCARD_ACK, snap)
         return true
@@ -484,8 +488,7 @@ function bind(C)
         if not st then
             return false
         end
-        state.host_ipc_status = st
-        patchCloud({ ipcReady = C.ipcReadyFrom(st) })
+        C.setHostIpcStatus(st, true) -- 含 cloud.ipcReady 同步
         noteLinkOk()
         sys.publish(SYS_EVT.IPCSTATUS_ACK, st)
         return true

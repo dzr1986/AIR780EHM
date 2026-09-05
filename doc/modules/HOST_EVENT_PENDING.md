@@ -24,7 +24,7 @@
 | 类型 | 位 | 数据来源 |
 |------|-----|----------|
 | `wake` | 1 | `host_uart` pending HOSTEVT（`ntfHost` 未消费） |
-| `pir` | 2 | `pir_ctrl.buildStatBodyy()` 近期 PIR（`last` + `last_ts`） |
+| `pir` | 2 | `pir_ctrl.getStatSnapshot()（→ hif_cmd_pir.buildPirStatBody 拼文本）` 近期 PIR（`last` + `last_ts`） |
 | `record` | 4 | PIRSTAT `recording=1` |
 | `mqtt` | 8 | `net_mqtt.hasHostQueue()` |
 
@@ -83,7 +83,7 @@ flowchart TD
 
 ```text
 build_pir_wake_context()
-  → pir_ctrl.buildStatBodyy()
+  → pir_ctrl.getStatSnapshot()（→ hif_cmd_pir.buildPirStatBody 拼文本）
   → getHostEvtPending()
   → host_event.summarize(...)
   → 拼入 AT+HOSTEVT? / AT+PIRSTAT? 应答

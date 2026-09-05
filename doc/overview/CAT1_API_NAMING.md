@@ -1,4 +1,4 @@
-# Cat.1 Lua API 命名真源（对齐代码 001.000.160）
+# Cat.1 Lua API 命名真源（对齐代码 001.000.161）
 
 > **代码真源**：仓库根 `user/`、`lib/` · **版本**：`user/main.lua` → `VERSION`  
 > **协处理器系列写法**：[T31X_NAMING.md](T31X_NAMING.md)（`t31x` / `T31x` / `T31X`，与本文 API 驼峰无关）  
@@ -20,7 +20,7 @@
 | `sched*` | 定时/对账调度 | `schedPirSleep`、`schedStopFallback` |
 | `ref*` | 刷新/对账 | `refCloudStat1003`、`refDevId`、`refTfCard` |
 | `on*` | 事件回调 | `onFirstHostAt`、`onPmdMsg`、`onRxRaw` |
-| `build*` | 拼装字符串/表 | `buildStatBody`、`buildReqOpts` |
+| `build*` | 拼装字符串/表 | `buildPirStatBody`、`buildReqOpts` |
 | `notify*` | 非 MQTT 通知 | `notifyHostIdle`、`notifyUsbIdle` |
 | `ntf*` | 业务侧保留名（仅 `ntfHost`） | `ntfHost` |
 | camelCase | 模块内 helper、ctx 键 | `hostQuery`、`modCall`、`patchCloud` |
@@ -36,7 +36,8 @@
 | API | 说明 |
 |-----|------|
 | `ntfHost(sid, evt)` | GPIO29 唤醒 + pending HOSTEVT |
-| `hostBusy()` / `patchCloud(fields)` / `getCachedHostTfCard()` / `getCachedHostGb28181Id()` | **159 起显式导出**（此前 `ipc_supv`/`mqtt_dl_tf`/`mqtt_dl_dev` 调用的这四个成员在 `_M` 上不存在 → nil 调用）；`patchCloud` 仅限非 `recordingt31x` 键，录像态走 `setRecActive` |
+| `getUartSession()` | 161 起导出：当前破坏性串口会话名或 nil（`t31x_ctrl.blockSleep` 仲裁用） |
+| `hostBusy()` / `patchCloud(fields[, keepTs])` / `getCachedHostTfCard()` / `getCachedHostGb28181Id()` | **159 起显式导出**（此前 `ipc_supv`/`mqtt_dl_tf`/`mqtt_dl_dev` 调用的这四个成员在 `_M` 上不存在 → nil 调用）；`patchCloud` 仅限非 `recordingt31x` 键，录像态走 `setRecActive` |
 | `onFirstHostAt(cmd)` | 首条 host→4G AT → `HOST_UART_FIRST_AT` |
 | `onRxRaw(data)` | UART 原始 RX |
 | `uartAtCmd(cmd)` | AT 分发入口 |
@@ -131,7 +132,7 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 
 | 模块 | API |
 |------|------|
-| `pir_ctrl` | `buildStatBody()` |
+| `pir_ctrl` | `getStatSnapshot()`（2026-09-05 起；`+PIRSTAT:` 文本拼装移至 `hif_cmd_pir.buildPirStatBody`） |
 | `battery_guard` | `notifyHostIdle()`、`shouldHostSleep()`、`canHostSleep()` |
 | `app` | `notifyUsbIdle`、`applyUsbPower`、`setupUart` |
 | `time_sync` | `pushBeforeNotify` → `ntfHost` |
@@ -194,4 +195,4 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 - 运行后检查点：`git diff -- doc/` 只应出现"旧名 → 新名"的收敛差异；`FUNCTION_NAME_MAP.md` 为只读历史表，
   在 `SKIP_FILES` 内不受影响。
 
-**版本**：2026-09-04 · 对齐代码 `001.000.160` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–160 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12/§18），无 API 增删改名
+**版本**：2026-09-04 · 对齐代码 `001.000.161` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–161 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12/§18），无 API 增删改名

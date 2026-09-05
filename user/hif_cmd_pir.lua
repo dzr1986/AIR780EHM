@@ -10,8 +10,10 @@ _G[_modname] = _M
 
 function bind(C)
     local state = C.state
+    local utils = C.utils
     local rspBody, rspLineOk = C.rspBody, C.rspLineOk
     local modCall = C.modCall
+    local bizCall = C.bizCall
     local getHostEvtPending = C.getHostEvtPending
 
     local DEFAULTS = {
@@ -59,10 +61,47 @@ function bind(C)
     -- HOSTEVT / PIRSTAT body
     ----------------------------------------------------------------
 
+    -- "+PIRSTAT:" 宽表文本（架构 H 条）：由 pir_ctrl.getStatSnapshot 数据快照拼装；字段顺序即线上格式，勿改
+    local function buildPirStatBody(s)
+        local esc = utils.escKv
+        local function b01(v) return v and 1 or 0 end
+        local parts = {
+            "suspended=" .. b01(s.suspended),
+            "recording=" .. b01(s.recording),
+            "hw_started=" .. b01(s.hw_started),
+            "burn_mode=" .. b01(s.burn_mode),
+            "lowpower=" .. b01(s.lowpower),
+            "online=" .. b01(s.online),
+            "pin=" .. s.pin,
+            "cooldown_ms=" .. s.cooldown_ms,
+            "cooldown_left_ms=" .. s.cooldown_left_ms,
+            "action=" .. esc(s.action),
+            "upload=" .. esc(s.upload),
+            "quality=" .. esc(s.quality),
+            "max_sec=" .. s.max_sec,
+            "stop_second=" .. b01(s.stop_second),
+            "stop_cloud=" .. b01(s.stop_cloud),
+            "start_cloud=" .. b01(s.start_cloud),
+        }
+        for _, kv in ipairs(s.counters or {}) do
+            parts[#parts + 1] = kv[1] .. "=" .. kv[2]
+        end
+        parts[#parts + 1] = "last=" .. esc(s.last_event)
+        parts[#parts + 1] = "last_ts=" .. s.last_ts
+        if s.rec_elapsed then
+            parts[#parts + 1] = "rec_elapsed=" .. s.rec_elapsed
+        end
+        if s.last_stop then
+            parts[#parts + 1] = "last_stop=" .. esc(s.last_stop)
+        end
+        return table.concat(parts, ",")
+    end
+
     local function collectPirWakeCtx()
-        local pirBody = modCall("pir_ctrl", "buildStatBody") or ""
+        local snap = bizCall("pirStatSnapshot")
+        local pirBody = snap and buildPirStatBody(snap) or ""
         local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
-        local sum = modCall("host_event", "summarize", pirBody, wakeValid, wakeSid, wakeEvt)
+        local sum = bizCall("hostEvtSummarize", pirBody, wakeValid, wakeSid, wakeEvt)
         return pirBody, wakeValid, wakeSid, wakeEvt, sum
     end
 
@@ -82,7 +121,7 @@ function bind(C)
         else
             body = body .. ",pending_wake=0"
         end
-        if sum and modCall("host_event", "isEnabled") then
+        if sum and bizCall("hostEvtEnabled") then
             body = body .. string.format(",has_work=%d,work_types=%s,work_pending=%s,work_sid=%d,work_evt=%d",
                 sum.has_event, sum.types, sum.pending, sum.sid or 0, sum.evt or -1)
         else
@@ -106,7 +145,7 @@ function bind(C)
     local function uartHostEvtClr(_cmd)
         state.pending_valid = false
         state.pending_evt = -1
-        modCall("pir_ctrl", "clearConsumableMarkers")
+        bizCall("pirClearMarkers")
         return rspBody("HOSTEVTCLR", "OK")
     end
 
@@ -115,7 +154,7 @@ function bind(C)
     end
 
     local function uartPirClr(_cmd)
-        modCall("pir_ctrl", "resetCounters")
+        bizCall("pirResetCounters")
         return rspLineOk("PIRCLR")
     end
     return {

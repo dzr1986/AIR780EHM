@@ -111,7 +111,9 @@ flowchart TD
 
 ---
 
-## 8. AT 对外（`buildStatBodyy` → `+PIRSTAT:`）
+## 8. AT 对外（`getStatSnapshot` → `hif_cmd_pir.buildPirStatBody` → `+PIRSTAT:`）
+
+2026-09-05（架构 H 条）起 `pir_ctrl` 只导出数据快照 `getStatSnapshot()`（布尔/数值/计数表），`+PIRSTAT:` 的 `k=v,k=v` 文本由 AT 层 `hif_cmd_pir.buildPirStatBody` 拼装（经 `bizCall("pirStatSnapshot")` 取数）；线上字段顺序与 `buildStatBody` 时代逐字一致。
 
 宽表字段：硬件统计 `cnt_*`、会话 `recording`、`has_work` 合成（经 `host_uart` / `host_event`）。
 
@@ -142,6 +144,6 @@ flowchart TD
 | `state.host_ipc_cloud_stat.recordingt31x`（云状态 9 键之一，进 1003） | 同上 | `commitIpcStat`（完整 `+IPCSTAT:` 快照）或 `hif_ipc.setRecActive(flag)` → `patchCloud({recordingt31x})` |
 | `pir_ctrl.session.recording`（4G 侧会话） | `pir_ctrl` | `pir_ctrl` 自己（`startVideoSession`/`endRecSession`） |
 
-**业务侧一律调 `setRecActive(flag)`**（`hif_ipc` 定义；子模块经 `C.setRecActive`，外部经 `host_uart.setRecActive`）：`hif_cmd_t31x.uartRecord`（T31x `AT+RECORD=1/0`）、`hif_ipc_power.applyPowerOffSuccess`、`hif_ipc_cloud.reconcileRecord`、`hif_rx_dsl.applyRecordState`（`+RECORD:` 应答）、`mqtt_dl_pir.stopHostRecord`（2011/2010 云停成功）。`_protocol_regression_check` 单一写入点断言：`state.t31x_rec_active =` 只允许 `hif_rx_dsl`/`host_uart` 初值；`patchCloud({recordingt31x…})` 只允许 `hif_ipc`。
+**业务侧一律调 `setRecActive(flag)`**（161 起经 `patchCloud(fields, keepTs=true)`：单键业务补丁**不刷新** `ipc_cloud_stat_ts`，1003 前 `isIpcCloudStatStale` 仍按上次完整 `+IPCSTAT:` 快照计时，不会因录像态翻转而跳过 `AT+IPCSTAT?` 刷新——评审 #3）（`hif_ipc` 定义；子模块经 `C.setRecActive`，外部经 `host_uart.setRecActive`）：`hif_cmd_t31x.uartRecord`（T31x `AT+RECORD=1/0`）、`hif_ipc_power.applyPowerOffSuccess`、`hif_ipc_cloud.reconcileRecord`、`hif_rx_dsl.applyRecordState`（`+RECORD:` 应答）、`mqtt_dl_pir.stopHostRecord`（2011/2010 云停成功）。`_protocol_regression_check` 单一写入点断言：`state.t31x_rec_active =` 只允许 `hif_rx_dsl`/`host_uart` 初值；`patchCloud({recordingt31x…})` 只允许 `hif_ipc`。
 
 **顺带修复的 P0**：`mqtt_dl_pir.stopHostRecord` 成功路径原调 `hif.patchCloud(...)`，而 `host_uart._M` 从未导出 `patchCloud`（只在 ctx 上）→ 每次 2011 成功停录都会 `attempt to call a nil value`，后续 `publishForcedPirStop`（1011 `force=true`）不发。158 起改 `hif.setRecActive(0)`（已导出）。

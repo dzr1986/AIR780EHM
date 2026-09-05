@@ -325,14 +325,15 @@ function bind(C)
     ----------------------------------------------------------------
     -- 录制态**唯一业务写入点**（refactor_plan P6b）：所有「我知道 T31x 在/不在录」的业务判断
     -- 一律调 setRecActive；它经 patchCloud → commitIpcStat 落到 cloud.recordingt31x 并回填
-    -- state.t31x_rec_active（commitIpcStat 是唯一 raw 写点，cloud 为准），同时刷新 ipc_cloud_stat_ts。
+    -- state.t31x_rec_active（commitIpcStat 是唯一 raw 写点，cloud 为准），**不**刷新 ipc_cloud_stat_ts。
     -- 不触发 IPCSTAT_ACK（局部补丁 notify=nil），避免抢答 qryIpcCloudStat。
     -- 禁止在其它文件直写 state.t31x_rec_active 或 patchCloud({recordingt31x=…})——
     -- _protocol_regression_check 单一写入点断言守护。
     ----------------------------------------------------------------
     local function setRecActive(flag)
         flag = (tonumber(flag) == 1) and 1 or 0
-        C.patchCloud({ recordingt31x = flag })
+        -- keepTs：单键业务补丁不算完整快照，不得让 1003 跳过 AT+IPCSTAT? 刷新（评审 #3）
+        C.patchCloud({ recordingt31x = flag }, true)
     end
     C.setRecActive = setRecActive
 

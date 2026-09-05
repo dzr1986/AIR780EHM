@@ -111,14 +111,8 @@ end
 -- 低功耗
 ----------------------------------------------------------------
 
--- 副作用执行器（P6a）：状态裁决与写入在 runtime_power PSM，这里只做进入 rest 后的动作
-local function enterLowPower(reason)
-    reason = reason or "unknown"
-    local ok, modeChanged = rntmPwr.requestRest(reason)
-    if not ok then
-        return
-    end
-    local userCut = rntmPwr.isUserCut(reason)
+-- PSM 副作用表（P6a/E 条）：状态裁决与写入在 runtime_power PSM；requestRest 放行后回调这里，app 只做副作用
+local function onRestEntered(reason, modeChanged, userCut)
     appInfo("enter_low_power", reason)
     local function cutT31x()
         if not t31xModule then
@@ -140,6 +134,10 @@ local function enterLowPower(reason)
         netModule.pubRest({ reason = reason, source = "enter" })
     end
     lpWake.onEnterRest()
+end
+
+local function enterLowPower(reason)
+    rntmPwr.requestRest(reason or "unknown")
 end
 
 local function notifyUsbIdle(inserted)
@@ -165,10 +163,8 @@ local function onEnterLowPower(reason)
     enterLowPower(reason)
 end
 
-local function onExitLowPower(reason)
-    reason = reason or "unknown"
-    -- 即使已是非 rest，2002exit 也必须给 T31 正常上电（清 BOOT/OTA，防误进烧录）
-    local _, changed = rntmPwr.requestNormal(reason)
+-- PSM 副作用表（E 条）：由 runtime_power.requestNormal 每次回调；changed=false 时仍需给 T31 正常上电（清 BOOT/OTA，防误进烧录）
+local function onRestExited(reason, changed)
     appInfo("exit_low_power", reason, changed and "mode_changed" or "already_awake")
     if changed then
         if state.mqtt_started and netModule then
@@ -211,6 +207,10 @@ local function onExitLowPower(reason)
     end)
 end
 
+local function onExitLowPower(reason)
+    rntmPwr.requestNormal(reason or "unknown")
+end
+
 local function onReboot()
     appWarn("device_reboot_request")
     stopWatchdogBeforePowerOff()
@@ -243,6 +243,54 @@ local function onPowerOff(reason)
     runShutdown()
 end
 
+-- AT 协议层业务 provider（host_uart.start{ biz }；键名即 bizCall("<键>") 的唯一真源，_ref_name_check 规则 F 校验）。
+-- 模块被裁剪/未加载时该键为 nil，bizCall 返回 nil，与旧 modCall 语义一致。
+local function bizProvider(mod, fn)
+    if mod and type(mod[fn]) == "function" then
+        return function(...) return mod[fn](...) end
+    end
+    return nil
+end
+
+local function buildBizProviders()
+    local function viaNet(fn)
+        return function(...)
+            if netModule and netModule[fn] then return netModule[fn](...) end
+        end
+    end
+    return {
+        -- battery_guard
+        shouldHostSleep = bizProvider(batteryGuard, "shouldHostSleep"),
+        canHostSleep = bizProvider(batteryGuard, "canHostSleep"),
+        markT31xWoken = bizProvider(batteryGuard, "markT31xWoken"),
+        -- t31x_policy
+        mayPowerT31x = bizProvider(t31xPolicy, "mayPowerT31x"),
+        -- lp_wakeup
+        lpAppCfgFields = bizProvider(lpWake, "appCfgFields"),
+        allowTcpChannel = bizProvider(lpWake, "allowTcpChannel"),
+        closeTcpChannel = bizProvider(lpWake, "closeTcpChannel"),
+        -- host_event
+        hostEvtEnabled = bizProvider(hostEvt, "isEnabled"),
+        hostEvtSummarize = bizProvider(hostEvt, "summarize"),
+        -- pir_ctrl
+        pirIsRecording = bizProvider(pirCtrl, "isRecording"),
+        pirSyncStopT31x = bizProvider(pirCtrl, "syncStopT31x"),
+        pirApplyEffMedia = bizProvider(pirCtrl, "applyEffMedia"),
+        pirStatSnapshot = bizProvider(pirCtrl, "getStatSnapshot"),
+        pirClearMarkers = bizProvider(pirCtrl, "clearConsumableMarkers"),
+        pirResetCounters = bizProvider(pirCtrl, "resetCounters"),
+        -- time_sync / sound_prompt（可选模块）
+        onTimesetAck = bizProvider(time_sync, "onTimesetAck"),
+        onSoundAck = bizProvider(sound_prompt, "onSoundAck"),
+        -- net_mqtt（注入对象，start 时才有）
+        pubUploadDone = viaNet("pubUploadDone"),
+        pubUploadNeed = viaNet("pubUploadNeed"),
+        setStatInterval = viaNet("setStatInterval"),
+        pubRaw = viaNet("pubRaw"),
+        pubDeviceIdRef = viaNet("pubDeviceIdRef"),
+    }
+end
+
 local function setupUart()
     if _G.APP_STACK and _G.APP_STACK.uart ~= "uart_bridge" then
         return false
@@ -258,6 +306,7 @@ local function setupUart()
         if loader.enabled("t31x_app") then
             host_uart.start({
                 t31x = t31xModule,
+                biz = buildBizProviders(),
                 onEnterLowPower = function() onEnterLowPower("at") end,
                 onExitLowPower = function() onExitLowPower("at") end,
                 onReboot = onReboot,
@@ -889,6 +938,11 @@ function start(gpio, net, t31x_ctrl)
         usbBlocks = function()
             return usbCharge ~= nil and usbCharge.blocks4gRest() == true
         end,
+    })
+    -- PSM 副作用表（E 条）：进/出 rest 的 T31 断电/上电、MQTT 1002、lp_wakeup、提示音全部挂在 PSM 内触发
+    rntmPwr.bindPowerHooks({
+        onEnterRest = onRestEntered,
+        onExitRest = onRestExited,
     })
     t31xNotify.registerProviders({
         pushBeforeNotify = function(sid, evt)

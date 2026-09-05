@@ -21,6 +21,7 @@ function bind(C, H)
 
     local TMO_SHARED = C.TMO_SHARED
     local enterSession, leaveSession = C.enterSession, C.leaveSession
+    local setHostIpcStatus, setHostAtReady, setHostCloudStat = C.setHostIpcStatus, C.setHostAtReady, C.setHostCloudStat
     local TIMEOUT = {
         powerOffMs = 500,
         powerOnWaitMs = 800,
@@ -49,9 +50,9 @@ function bind(C, H)
         end
         return {
             enabled = r.enabled ~= false and c.enabled ~= false,
-            miss_threshold = tonumber(r.miss_threshold) or LIMITMO_SHARED.missThreshold,
-            max_attempts = tonumber(r.max_attempts) or LIMITMO_SHARED.maxAttempts,
-            cooldown_sec = tonumber(r.cooldown_sec) or LIMITMO_SHARED.cooldownSec,
+            miss_threshold = tonumber(r.miss_threshold) or LIMITS.missThreshold,
+            max_attempts = tonumber(r.max_attempts) or LIMITS.maxAttempts,
+            cooldown_sec = tonumber(r.cooldown_sec) or LIMITS.cooldownSec,
             power_off_ms = tonumber(r.power_off_ms) or TIMEOUT.powerOffMs,
             power_on_wait_ms = tonumber(r.power_on_wait_ms) or TIMEOUT.powerOnWaitMs,
         }
@@ -132,20 +133,20 @@ function bind(C, H)
     end
 
     local function resetHostLink()
-        state.host_at_ready = false
+        setHostAtReady(false)
         state.first_host_at = nil
-        state.host_ipc_status = nil
-        state.host_ipc_cloud_stat = nil
+        setHostIpcStatus(nil)
+        setHostCloudStat(nil)
         clearMissStreak()
     end
 
     local function onIpcStatusResponse(got, st)
         if got and st then
             noteUartLinkOk()
-            state.host_ipc_status = st
+            setHostIpcStatus(st)
             return st
         end
-        state.host_ipc_status = "idle"
+        setHostIpcStatus("idle")
         tryUartRecovery("ipc_status")
         return "idle"
     end

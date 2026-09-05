@@ -87,7 +87,7 @@ class GuardSandbox(unittest.TestCase):
 
     # --- 基线：干净仓库三护栏全绿 ---
     def test_baseline_all_pass(self):
-        for s in ("_gpio_opts_check.py", "_config_key_check.py", "_ref_name_check.py"):
+        for s in ("_gpio_opts_check.py", "_config_key_check.py", "_ref_name_check.py", "_undef_global_check.py"):
             rc, out = _run(self.tmp, s)
             self.assertEqual(rc, 0, f"{s} 基线应 PASS:\n{out}")
 
@@ -136,6 +136,25 @@ class GuardSandbox(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("noSuchFnZZ", out)
         self.assertIn("传 3 个实参", out)
+
+    def test_undef_global_flags_misspelled_identifier(self):
+        import shutil as _sh
+        if not (_sh.which("luac5.3") or _sh.which("luac")):
+            self.skipTest("no luac")
+        self.inject("undef_global_bad.lua", "zz_undef.lua")
+        rc, out = _run(self.tmp, "_undef_global_check.py")
+        self.assertEqual(rc, 1)
+        self.assertIn("LIMITMO_SHARED_ZZ", out)
+
+    def test_undef_global_flags_late_top_level_local(self):
+        import shutil as _sh
+        if not (_sh.which("luac5.3") or _sh.which("luac")):
+            self.skipTest("no luac")
+        self.inject("undef_global_late_local.lua", "zz_late_local.lua")
+        rc, out = _run(self.tmp, "_undef_global_check.py")
+        self.assertEqual(rc, 1)
+        self.assertIn("zzLateOwner", out)
+        self.assertIn("先用后声明", out)
 
     def test_ref_name_flags_live_bad_require(self):
         self.inject("ref_name_live_bad.lua", "zz_ref_bad.lua")

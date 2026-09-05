@@ -3,10 +3,12 @@ luac.out
 *.luac
 *.luac64
 
-# IDE / 编辑器（保留 .cursor/rules 以便团队共用）
+# IDE / 编辑器（保留 .cursor/rules 与 .cursor/agents 以便团队共用）
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+!.cursor/agents/
+!.cursor/agents/**
 .vscode/
 .idea/
 .trae/
