@@ -69,12 +69,13 @@ local function blinkBlue(light, dark)
 end
 
 local function runtimeSnapshot()
+    local usbSt = rntmPwr.getUsbChargeState()
     return {
         battery_percent = rntmPwr.getBatteryPercent(),
         online_status = rntmPwr.isOnline() and 1 or 0,
         mqtt_enabled = loader.enabled("mqtt"),
-        usb_inserted = rntmPwr.isUsbInserted(),
-        charging = rntmPwr.isCharging(),
+        usb_inserted = usbSt.usb_inserted,
+        charging = usbSt.charging,
     }
 end
 

@@ -9,18 +9,16 @@ local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
-local function adcLib()
-    return adc
-end
+local readMvFn -- "read" | "get" | nil，首次成功后缓存，避免每采样双 pcall
 
 function available()
-    local ad = adcLib()
+    local ad = adc
     return ad ~= nil and (ad.open ~= nil or ad.read ~= nil or ad.get ~= nil)
 end
 
 function configure(opts)
     opts = opts or {}
-    local ad = adcLib()
+    local ad = adc
     if not ad or not ad.setRange then
         return false
     end
@@ -35,7 +33,7 @@ function configure(opts)
 end
 
 function open(channel)
-    local ad = adcLib()
+    local ad = adc
     if not ad or not ad.open then
         return false, "adc_unavailable"
     end
@@ -43,7 +41,7 @@ function open(channel)
 end
 
 function close(channel)
-    local ad = adcLib()
+    local ad = adc
     if not ad or not ad.close then
         return true
     end
@@ -52,23 +50,30 @@ function close(channel)
 end
 
 function readMv(channel)
-    local ad = adcLib()
+    local ad = adc
     if not ad then
         return nil
     end
-    if ad.read then
-        local ok, mv = pcall(ad.read, channel)
+    local function tryRead(fnName)
+        local fn = ad[fnName]
+        if not fn then
+            return nil
+        end
+        local ok, mv = pcall(fn, channel)
         if ok and mv ~= nil and mv >= 0 then
+            readMvFn = fnName
             return mv
         end
+        return nil
     end
-    if ad.get then
-        local ok, mv = pcall(ad.get, channel)
-        if ok and mv ~= nil and mv >= 0 then
+    if readMvFn then
+        local mv = tryRead(readMvFn)
+        if mv ~= nil then
             return mv
         end
+        readMvFn = nil
     end
-    return nil
+    return tryRead("read") or tryRead("get")
 end
 
 return _M

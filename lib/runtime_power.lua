@@ -269,8 +269,22 @@ function isUsbInserted()
     return getPowerStatus() == 1
 end
 
+function getUsbChargeState()
+    local uc = usbCharge()
+    if uc and uc.snapshot then
+        return uc.snapshot()
+    end
+    return {
+        usb_inserted = isUsbInserted(),
+        charging = isCharging() and 1 or 0,
+    }
+end
+
 function isCharging()
     local uc = usbCharge()
+    if uc and uc.snapshot then
+        return uc.snapshot().charging == 1
+    end
     local v = uc and uc.isCharging()
     return v == 1 or v == true
 end
