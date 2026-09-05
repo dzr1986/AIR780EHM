@@ -5,13 +5,13 @@ doc/modules/IPC_SUPERVISION_FLOW.md:3  ipc_alert_contract.lua  -> 建议: ipc_su
     > **代码真源**：[`user/ipc_supv.lua`](../../user/ipc_supv.lua)（调度 + `alertCode`/`map1011`/`reconcile` 契约表，原 `ipc_supervision.lua` / `ipc_alert_contract.lua
 doc/modules/IPC_SUPERVISION_FLOW.md:3  ipc_supervision.lua  -> 建议: ipc_supv
     > **代码真源**：[`user/ipc_supv.lua`](../../user/ipc_supv.lua)（调度 + `alertCode`/`map1011`/`reconcile` 契约表，原 `ipc_supervision.lua` / `ipc_alert_contract.lua
-doc/overview/LUA_MODULES.md:333  ipc_alert_contract.lua  -> 建议: ipc_supv
+doc/overview/LUA_MODULES.md:344  ipc_alert_contract.lua  -> 建议: ipc_supv
     | **历史命名** | 旧称 `ipc_supervision.lua`（8-31 前）/ `ipc_alert_contract.lua` 已合并，真源为 `ipc_supv.lua` |
-doc/overview/LUA_MODULES.md:333  ipc_supervision.lua  -> 建议: ipc_supv
+doc/overview/LUA_MODULES.md:344  ipc_supervision.lua  -> 建议: ipc_supv
     | **历史命名** | 旧称 `ipc_supervision.lua`（8-31 前）/ `ipc_alert_contract.lua` 已合并，真源为 `ipc_supv.lua` |
-doc/overview/LUA_MODULES.md:352  low_power_wakeup.lua  -> 建议: lp_wakeup
+doc/overview/LUA_MODULES.md:363  low_power_wakeup.lua  -> 建议: lp_wakeup
     | `lp_wakeup` | rest 期间 `onEnterRest`/`onExitRest` 钩子；抽象 mqtt/tcp 通道（旧称 `low_power_wakeup.lua`） |
-doc/overview/LUA_MODULES.md:414  cellular_bootstrap.lua  -> 建议: cell_boot
+doc/overview/LUA_MODULES.md:425  cellular_bootstrap.lua  -> 建议: cell_boot
     SIM/APN 探测、`IP_READY` 等待、运营商映射。`main` 与 `net_mqtt` 共用（旧称 `cellular_bootstrap.lua`）。
 doc/overview/T31X_NAMING.md:180  t3x_ctrl.lua  
     | `t3x_ctrl.lua`、`t3x_policy.lua` | 4G 业务模块旧称误用平台名，正式名用芯片名 | `t31x_ctrl.lua`、`t31x_policy.lua` |
