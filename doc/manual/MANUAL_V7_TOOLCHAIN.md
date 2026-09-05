@@ -68,7 +68,7 @@
 | `_host_uart_regression_check.py` | host_uart 族（AT 表/bind）静态回归 | 动 `host_uart`/`hif_*` 后 |
 | `_net_mqtt_regression_check.py` | net_mqtt 族（命名/分发）静态回归 | 动 `mqtt_*`/`net_mqtt` 后 |
 | `_protocol_regression_check.py` | 协议层一致性 | 协议相关改动后 |
-| `_gen_bind_header.py --check-all` | hif bind 头与代码一致 | 动 bind 后（`--emit hif_cmd_xxx.lua` 生成） |
+| `_gen_bind_header.py --check-all` / `--sync-specs` | hif bind 头与规格一致 + **bind 时刻可用性**（头部快照的键须在该模块 bind 前已挂到 ctx/H）；`--sync-specs` 按头部重写 spec c/h（spec 由生成，勿手改） | 动 bind 后：先 `--sync-specs` 再 `--check-all` |
 | `_module_tree.py` / `_ref_name_check.py` | 模块树/引用名一致性 | 模块改名后 |
 | `_config_key_check.py` / `_gpio_opts_check.py` / `_doc_version_check.py` | 配置键注册↔消费 + CONFIG.md 索引；`gpio_util.setupInput` opts 键；文档现状版本锚点 ↔ `main.lua` | 改配置/改 GPIO 调用/升 VERSION 后（均在 `run_all_checks` 内） |
 | `_dep_graph.py` / `_layer_check.py` | 依赖图（五种边形态、硬环/软环/反向边，`--mermaid` 出图）/ 分层护栏（R1 lib↛user 业务、R2 config 域↛utils 系、R3 子模块↛主文件；基线白名单只许收缩，`--save-baseline`） | 改 `require`/`loader.load` 拓扑后（`run_all_checks` 第 11 项） |

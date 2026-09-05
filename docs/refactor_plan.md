@@ -21,7 +21,7 @@
 | P5 | 错误返回约定统一 + message 词表 | §4.2, §5.1 | 6 | 无（字符串不变） | 维持 |
 | P6a | PSM · 低功耗态单写点 | A3, A7, §4.1 | 5 | **有** | +1 |
 | P6b | PSM · 录像态单入口 + 禁写护栏 | A3, §4.1 | 8 | **有** | +1 |
-| P7a–c | ctx 三命名空间（三批，别名过渡） | A4 | 6 / 7 / 4 | 无 | 维持 |
+| P7a–c | ctx 三命名空间（三批，别名过渡） | A4 | 6 / 7 / 4 | 无 | 维持 | ← 改为 bind 时刻可用性 + spec 生成（见 P7 节结论） |
 | P8 | 协议字段表驱动 + 文档 ⊆ 校验 | A8 | 6 | 无（字节等价） | 维持 |
 | P9 | `modCall` 签名校验 + 重复实现收敛 | A5, §4.3 | 6 | 无 | 维持 |
 | P10 | **对外接口变更**（1013 / hostevt_poll / 2011 文案 / hybrid 配置 / 构建口径） | A8, A9, A11 | 8 | **有，需云端+T31x 配合** | +1 |
@@ -190,6 +190,9 @@
 ---
 
 ## P7a–c · ctx 三命名空间（别名过渡，三批）
+
+> **执行结论（2026-09-05）：命名空间拆分不实施，改为「bind 时刻可用性推导 + spec 由生成」单 commit 落地。** 理由：ctx 字面表已按类别分组注释；三命名空间需重写 11 个头部与生成器全部匹配，零行为且收益仅可读性；而历史事故（107/108、158 前 `mqtt_dl_pir.hif.patchCloud` nil）的共同根因是「头部快照的键在 bind 时尚未挂到 ctx」，命名空间不解决。现 `_gen_bind_header --check-all` 按装配顺序推导每个子模块 bind 时 `C`/`H` 可用键集合并拦截越界快照；`--sync-specs` 让 `bind_header_specs.json` 的 c/h 由头部生成。详见 `HOST_UART_AT_DISPATCH.md §10`。
+
 
 **目标**：A4——`host_uart` 70 键 ctx 拆为 `ctx.const`（`SYS_EVT`/`TMO_SHARED`/`RSP_*`）、`ctx.io`（`sendString`/`rspFmt`/`uartAcquire`…）、`ctx.state`（唯一可变表）；`bind_header_specs.json` 由 `_gen_bind_header --emit-all` 生成。
 

@@ -260,12 +260,126 @@ def check_module(name: str, spec: dict, mod_spec: dict) -> tuple[bool, list[str]
     return len(issues) == 0, issues
 
 
+# ----------------------------------------------------------------
+# P7：bind 时刻可用性（refactor_plan P7，2026-09-05）
+#   子模块头部 `local x = C.k` 是 bind 时刻的快照；若 k 在该模块 bind 那一行之前尚未挂到 ctx，
+#   快照即 nil，运行期才崩（107/108 事故、158 前 mqtt_dl_pir hif.patchCloud 同类）。
+#   这里按装配顺序推导每个模块 bind 时 ctx/H 已有的键，直读快照必须 ⊆ 该集合；
+#   延迟挂载的键只能经 wrapper（return C.k(...)）运行期取用。
+# ----------------------------------------------------------------
+HOST_UART = USER / "host_uart.lua"
+HIF_IPC = USER / "hif_ipc.lua"
+HIF_CMD = USER / "hif_cmd.lua"
+HIF_RX = USER / "hif_rx.lua"
+
+FAMILY_OF = {
+    "hif_cmd": ("hif_cmd", "hif_cmd_usb", "hif_cmd_link", "hif_cmd_pir", "hif_cmd_t31x", "hif_cmd_wled"),
+    "hif_rx": ("hif_rx", "hif_rx_dsl", "hif_rx_media"),
+    "hif_ipc": ("hif_ipc", "hif_ipc_rec", "hif_ipc_hostq", "hif_ipc_cloud", "hif_ipc_power", "hif_ipc_tffmt", "hif_ipc_encode"),
+}
+
+
+def _literal_keys(lines: list[str], start_pat: str) -> tuple[set[str], int]:
+    """从 `<start_pat> = {` 起到配对 `}` 的字面表顶层键；返回 (keys, 结束行号)。"""
+    keys: set[str] = set()
+    for i, ln in enumerate(lines):
+        if re.match(start_pat, ln):
+            depth = 0
+            for j in range(i, len(lines)):
+                s = lines[j].split("--", 1)[0]
+                depth += s.count("{") - s.count("}")
+                m = re.match(r"^\s*([A-Za-z_]\w*)\s*=", s)
+                if m and depth == 1:
+                    keys.add(m.group(1))
+                if depth == 0 and j > i:
+                    return keys, j
+            return keys, len(lines)
+    return keys, -1
+
+
+def _assigns_before(lines: list[str], prefix: str, before_line: int) -> set[str]:
+    out: set[str] = set()
+    for ln in lines[:before_line]:
+        m = re.match(rf"^\s*{prefix}\.([A-Za-z_]\w*)\s*=(?!=)", ln)
+        if m:
+            out.add(m.group(1))
+    return out
+
+
+def _bind_line(lines: list[str], module: str) -> int:
+    for i, ln in enumerate(lines):
+        if re.search(rf'require\("{module}"\)\.bind\(', ln):
+            return i
+    return len(lines)
+
+
+def available_at_bind(module_file: str) -> tuple[set[str], set[str]]:
+    """返回 (C 可用键, H 可用键)。module_file 如 hif_ipc_cloud.lua。"""
+    mod = module_file[:-4]
+    hu = HOST_UART.read_text(encoding="utf-8").splitlines()
+    ctx_keys, _ = _literal_keys(hu, r"^local ctx = \{")
+    fam = next((f for f, mods in FAMILY_OF.items() if mod in mods), None)
+    if fam is None:
+        return set(), set()
+    c_keys = set(ctx_keys) | _assigns_before(hu, "ctx", _bind_line(hu, fam))
+    # 先于本族 bind 完成的族，其编排器在 bind 内挂到 C 的键（如 hif_cmd → wledGet/ipcReadyFrom）对后续族已可用
+    fam_order = ["hif_cmd", "hif_rx", "hif_ipc"]
+    fam_files = {"hif_cmd": HIF_CMD, "hif_rx": HIF_RX, "hif_ipc": HIF_IPC}
+    for earlier in fam_order[: fam_order.index(fam)]:
+        lines_e = fam_files[earlier].read_text(encoding="utf-8").splitlines()
+        c_keys |= _assigns_before(lines_e, "C", len(lines_e))
+    h_keys: set[str] = set()
+    if fam == "hif_ipc" and mod != "hif_ipc":
+        ipc = HIF_IPC.read_text(encoding="utf-8").splitlines()
+        bl = _bind_line(ipc, mod)
+        c_keys |= _assigns_before(ipc, "C", bl)
+        hk, _ = _literal_keys(ipc, r"^\s*local H = \{")
+        h_keys = hk | _assigns_before(ipc, "H", bl)
+    elif fam == "hif_cmd" and mod != "hif_cmd":
+        cmd = HIF_CMD.read_text(encoding="utf-8").splitlines()
+        c_keys |= _assigns_before(cmd, "C", _bind_line(cmd, mod))
+    elif fam == "hif_rx" and mod != "hif_rx":
+        rx = HIF_RX.read_text(encoding="utf-8").splitlines()
+        c_keys |= _assigns_before(rx, "C", _bind_line(rx, mod))
+    return c_keys, h_keys
+
+
+def header_snapshots(header: str) -> list[tuple[str, str, str]]:
+    """头部直读快照 (local_name, prefix, key)；wrapper 不计。"""
+    out: list[tuple[str, str, str]] = []
+    for ln in header.splitlines():
+        m = re.match(r"^\s+local\s+([\w\s,]+?)\s*=\s*(.+)$", ln)
+        if not m or ln.strip().startswith("local function"):
+            continue
+        names = [x.strip() for x in m.group(1).split(",")]
+        exprs = [x.strip() for x in m.group(2).split(",")]
+        for n, e in zip(names, exprs):
+            mm = re.match(r"^(C|H)\.([A-Za-z_]\w*)$", e)
+            if mm:
+                out.append((n, mm.group(1), mm.group(2)))
+    return out
+
+
+def check_bind_time(name: str) -> list[str]:
+    text = read_lua(str(USER / name))
+    header, _, _ = extract_bind_header(text)
+    c_ok, h_ok = available_at_bind(name)
+    issues: list[str] = []
+    for local_name, prefix, key in header_snapshots(header):
+        pool = c_ok if prefix == "C" else h_ok
+        if key not in pool:
+            issues.append(f"  bind 时快照 nil: local {local_name} = {prefix}.{key}（{key} 在本模块 bind 之后才挂到 {prefix}；改用 wrapper 运行期取用）")
+    return issues
+
+
 def cmd_check_all(spec: dict) -> int:
     modules = spec.get("modules") or {}
     fail = 0
     print(f"=== bind header check ({len(modules)} modules) ===")
     for name, mod_spec in sorted(modules.items()):
         ok, issues = check_module(name, spec, mod_spec)
+        issues += check_bind_time(name)
+        ok = ok and not issues
         print(f"  {'PASS' if ok else 'FAIL':4} {name}")
         for line in issues:
             print(line)
@@ -273,6 +387,45 @@ def cmd_check_all(spec: dict) -> int:
             fail += 1
     print(f"\n合计: {len(modules)}, 失败 {fail}")
     return 1 if fail else 0
+
+
+def cmd_sync_specs(spec: dict) -> int:
+    """按各模块头部实际直读快照重写 spec 的 c / h 列表（spec 由生成而非手维护）。
+    wrappers / inject / shared / bind_args 等保持原样；JSON 保持单行数组格式以便 diff。"""
+    raw = SPECS_PATH.read_text(encoding="utf-8")
+    changed = 0
+    for name, mod_spec in (spec.get("modules") or {}).items():
+        text = read_lua(str(USER / name))
+        header, _, _ = extract_bind_header(text)
+        snaps = header_snapshots(header)
+        _, _, hend = extract_bind_header(text)
+        usage = scan_body_usage(text, hend)
+        delayed = set(spec.get("delayed_c_wrappers") or [])
+        # 同名直读快照进 c/h；改名快照（local a = H.b）由 inject 表达，不进 c/h；
+        # body 里运行期 C.k 用到的延迟键（如 cmd_wled 的 C.defineQuery）保留在 c 以放行 body 扫描
+        c_new = [k for n, p, k in snaps if p == "C" and n == k]
+        c_new += [w for w in (mod_spec.get("wrappers") or []) if not isinstance(w, list)]
+        c_new += [k for k in (mod_spec.get("c") or []) if k in delayed and k in (usage.get("C") or set())]
+        h_new = [k for n, p, k in snaps if p == "H" and n == k]
+        # 去重保序
+        c_new = list(dict.fromkeys(c_new))
+        h_new = list(dict.fromkeys(h_new))
+        blk_start = raw.index(f'"{name}"')
+        blk_end = raw.index("}", blk_start)
+        blk = raw[blk_start:blk_end]
+        new_blk = blk
+        for field, vals in (("c", c_new), ("h", h_new)):
+            arr = "[" + ", ".join(f'"{v}"' for v in vals) + "]"
+            if re.search(rf'"{field}":\s*\[', new_blk):
+                new_blk = re.sub(rf'"{field}":\s*\[[^\]]*\]', f'"{field}": {arr}', new_blk, count=1)
+            elif vals:
+                new_blk = new_blk.rstrip().rstrip(",") + f',\n      "{field}": {arr}\n    '
+        if new_blk != blk:
+            raw = raw[:blk_start] + new_blk + raw[blk_end:]
+            changed += 1
+    SPECS_PATH.write_text(raw, encoding="utf-8")
+    print(f"sync-specs: {changed} 个模块的 c/h 列表已按头部重写")
+    return 0
 
 
 def cmd_emit(name: str, spec: dict) -> int:
@@ -310,6 +463,7 @@ def main() -> int:
     ap.add_argument("--emit", metavar="FILE", help="输出建议 bind 头（如 hif_cmd_pir.lua）")
     ap.add_argument("--emit-all", action="store_true", help="输出全部子模块 bind 头")
     ap.add_argument("--scan", metavar="PATH", help="扫描 body 中 C/H/shared 引用")
+    ap.add_argument("--sync-specs", action="store_true", help="按各模块头部直读快照重写 spec 的 c/h 列表（P7：spec 由生成）")
     args = ap.parse_args()
 
     spec = load_specs()
@@ -321,6 +475,8 @@ def main() -> int:
         return cmd_emit_all(spec)
     if args.scan:
         return cmd_scan(args.scan)
+    if args.sync_specs:
+        return cmd_sync_specs(spec)
     ap.print_help()
     return 0
 

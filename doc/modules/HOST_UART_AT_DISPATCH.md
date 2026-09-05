@@ -292,3 +292,14 @@ P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery`
 - 三个旧键 `tfcard_format_busy` / `ipc_poweroff_busy` / `uart_recovery_busy` **删除**（`_host_uart_regression_check` 负向断言防回潮），`AT+GETCFG` 快照无此字段，T31x 侧无可见变化。
 - 行为变化（实机回归项，`USER_LIB_OPTIMIZATION_NEXT §6`）：2009 格式化期间下发 2007 → 1007 回缓存且串口无 `AT+TFCARD?`；2002 断电期间 2005 wled/2020 encode 查询 → 缓存 / `busy`；USB 恢复任务期间同理。
 - 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，`hostIpcPowerOff` 回 false（调用方 `enterSleep` 走 GPIO 直接断电兜底），恢复任务放弃本轮。
+
+## 10. bind 头规格：生成 + bind 时刻可用性（refactor_plan P7，2026-09-05）
+
+原计划把 70 键 `ctx` 拆成 `const / io / state` 三命名空间。执行时复核：ctx 字面表已按「运行时引用 / AT 响应格式化 / 模块工具 / 业务 helper / 子模块回填」分组注释，命名空间拆分需要重写 11 个子模块头部与生成器的全部匹配逻辑，**零行为、收益仅为可读性**，而真正导致过事故（107/108、158 前 `mqtt_dl_pir`）的是「头部快照的键在 bind 时尚未挂到 ctx」——这一点命名空间解决不了。因此 P7 改为在 `_gen_bind_header.py` 上落两项保证：
+
+| 能力 | 做法 |
+|---|---|
+| **bind 时刻可用性推导**（`--check-all` 新增） | 按装配顺序（host_uart `ctx` 字面表 → `ctx.k =` 回填 → `hif_cmd.bind` 内 `C.k =` → `hif_rx.bind` → `hif_ipc.bind` 内 `C.k =` / `local H = {…}` / `H.k =`）计算每个子模块 bind 那一行时 `C`/`H` 已有的键；头部任何 `local x = C.k` / `H.k` 直读快照若 k 不在集合内 → FAIL「bind 时快照 nil…改用 wrapper」。注入验证：给 `hif_ipc_cloud` 头部加 `local zz = C.hostQuery`（延迟键）即 FAIL |
+| **spec 由生成**（`--sync-specs`） | `bind_header_specs.json` 各模块 `c`/`h` 列表按头部同名直读快照 + wrapper + body 运行期用到的延迟键重写；改名快照（`local identityCfg = H.idCfgFn`）由 `inject` 表达。新增子模块 = 写头部 → `--sync-specs` → `--check-all`，不再手抄 JSON |
+
+`ctx` 三命名空间拆分登记为可选后续（无事故驱动不做）。
