@@ -1,7 +1,7 @@
 # V2 · Lua API 与模块开发
 
 > **读者**：改 `user/`、`lib/` 的开发者；**命名/事件/模块树**三件套的真源速查。
-> **真源**：[CAT1_API_NAMING](../overview/CAT1_API_NAMING.md)（API 命名，对齐代码 **001.000.157**）· [T31X_NAMING](../overview/T31X_NAMING.md)（t31x/T31x/T31X 写法）· [LUA_MODULES](../overview/LUA_MODULES.md)（模块树）· [CONFIG](../overview/CONFIG.md)（配置键）
+> **真源**：[CAT1_API_NAMING](../overview/CAT1_API_NAMING.md)（API 命名，对齐代码 **001.000.158**）· [T31X_NAMING](../overview/T31X_NAMING.md)（t31x/T31x/T31X 写法）· [LUA_MODULES](../overview/LUA_MODULES.md)（模块树）· [CONFIG](../overview/CONFIG.md)（配置键）
 > **代码真源**：仓库根 `user/`、`lib/`。
 > **手册链路**：← [总纲 README](README.md)（§2 任务矩阵）· 相关卷：[V1_SYSTEM](MANUAL_V1_SYSTEM.md)（入口/分层）· [V3_MQTT](MANUAL_V3_MQTT.md)（net_mqtt 实现侧）· [V7_TOOLCHAIN](MANUAL_V7_TOOLCHAIN.md)（护栏工具）
 

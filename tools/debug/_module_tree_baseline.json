@@ -15,14 +15,14 @@
     "hif_cmd.lua": 384,
     "hif_cmd_link.lua": 230,
     "hif_cmd_pir.lua": 131,
-    "hif_cmd_t31x.lua": 217,
+    "hif_cmd_t31x.lua": 220,
     "hif_cmd_usb.lua": 258,
     "hif_cmd_wled.lua": 182,
-    "hif_ipc.lua": 387,
+    "hif_ipc.lua": 385,
     "hif_ipc_cloud.lua": 310,
     "hif_ipc_encode.lua": 203,
     "hif_ipc_hostq.lua": 344,
-    "hif_ipc_power.lua": 208,
+    "hif_ipc_power.lua": 210,
     "hif_ipc_rec.lua": 188,
     "hif_ipc_tffmt.lua": 164,
     "hif_rx.lua": 69,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13770
+      "lines": 13773
     },
     "lib": {
       "files": 15,
       "lines": 2613
     },
-    "all": 16383
+    "all": 16386
   }
 }

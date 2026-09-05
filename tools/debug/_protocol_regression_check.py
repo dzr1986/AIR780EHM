@@ -66,6 +66,10 @@ def check_no_biz_error_codes() -> int:
 SINGLE_WRITERS = [
     (r"\bsetLowPowerMode\s*\(|\bwriteLowPowerMode\s*\(|power\)?\.rest\s*=(?!=)",
      {"lib/runtime_power.lua"}, "rest 位只能由 runtime_power PSM 写（requestRest/requestNormal）"),
+    (r"state\.t31x_rec_active\s*=(?!=)",
+     {"user/hif_rx_dsl.lua", "user/host_uart.lua"}, "t31x_rec_active 只能由 commitIpcStat（hif_rx_dsl）raw 写；业务走 hif_ipc.setRecActive"),
+    (r"patchCloud\(\s*\{[^}]*recordingt31x",
+     {"user/hif_ipc.lua"}, "recordingt31x 补丁只能经 hif_ipc.setRecActive（P6b 录像态单入口）"),
 ]
 
 

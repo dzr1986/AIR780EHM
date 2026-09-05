@@ -2,7 +2,7 @@
 
 > **真源**：仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`。  
 > **基线版本**：`001.000.068`（2026-08-30）  
-> **当前版本**：`001.000.157`（152–157 = 审计/重构行为修复，见 §8 末尾）  
+> **当前版本**：`001.000.158`（152–158 = 审计/重构行为修复，见 §8 末尾）  
 > **拆分后治理计划**（文件树 / P0–P4 / 回归）：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)  
 > **API 命名真源**：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) · **历史缩写对照**：[FUNCTION_NAME_MAP.md](../_audit/FUNCTION_NAME_MAP.md)（134 前实验，只读）
 
@@ -202,6 +202,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-04 | **第二轮体检（VERSION 155）**：三组并行只读审计 → 逐条实证（驳回全部「`or` 吞 0」误判）→ 修复 R1–R14：**R1 P0** `gpio_util.setupInput` 9bcfc78 起只读 camelCase，调用方 snake_case → PWR/BOOT 长按永不触发 + 全部防抖失效（新护栏 `_gpio_opts_check.py`）；R2 `patchCloud` 抢答 `IPCSTAT_ACK`；R3 `+RECORD` 解析失败误清录像态；R4 TFFORMAT 进串口锁；R5 host_uart start/stop 复位锁；R6 `AT+HOSTIDLE?` 双 OK；R7 `defineQuery` 透传 skipQuiet/waitBoot；R8 policy 读未注册键；R9 `MODULE_FLAGS.host_evt` 接入；R10 2004 尊重 `channel=iot`；R11 dl_tf `dlMsgId`；R12 `net_mqtt.stop` 退订 IP handler；R13 vbat ADC pcall；R14 pmd 守卫。文档侧：互链护栏 Linux 假绿修复 + 恢复 8 篇被 .gitignore 吞掉的文档、CONFIG.md 配置键总索引（代码生成 + 漂移护栏）、`_doc_version_check.py`。详见 [audit §18](USER_LIB_CODE_AUDIT_20260904.md)、[DOC_HEALTH_REPORT](../_audit/DOC_HEALTH_REPORT_20260904.md) |
 | 2026-09-05 | **P3 破坏性串口会话 `uart_session`（VERSION 156，refactor_plan P3）**：`tfcard_format_busy`/`ipc_poweroff_busy`/`uart_recovery_busy` 三键并为 `state.uart_session` + `enterSession/leaveSession/sessionBlocks`（host_uart）；`hostQuery` 非持有协程走缓存、`hostSet` 回 busy、`isCloudBusy` 统一看会话；`ipcQueryBusy` 排除自身 poweroff 会话；负向断言防旧键回潮。前置 P0–P2b（护栏 token 化 / 分层护栏 / svc 迁出 / 超时单源）均零行为。详见 [HOST_UART_AT_DISPATCH §9](../modules/HOST_UART_AT_DISPATCH.md) |
 | 2026-09-05 | **P6a PSM 低功耗态单写点（VERSION 157，refactor_plan P6a）**：`runtime_power` 新增 `requestRest/requestNormal/canRest/isUserCut/bindPowerGates`，`setLowPowerMode` 改为内部 `writeLowPowerMode` 不再导出；app `enterLowPower/onEnterLowPower/onExitLowPower` 退化为副作用执行器，门禁（低功耗开关 / USB 只拦策略触发）搬进转移表并逐条等价；`POWER_ENTERED/EXITED_REST` 由 PSM 发布并带 reason；`_protocol_regression_check` 新增单一写入点断言。P5 错误返回约定 + `MQTT_REPLY_MESSAGES.md` 词表零行为。详见 [LOW_POWER_WAKEUP §2b](../modules/LOW_POWER_WAKEUP.md) |
+| 2026-09-05 | **P6b 录像态单入口（VERSION 158，refactor_plan P6b）**：`hif_ipc.setRecActive` 改经 `patchCloud`（建表/归一/刷 ts）并导出到 `host_uart._M`；`hif_cmd_t31x`/`hif_ipc_power`/`mqtt_dl_pir` 三处 `patchCloud({recordingt31x})` 直写改 `setRecActive`；raw 写点仅 `commitIpcStat`。**顺带修 P0**：`mqtt_dl_pir.stopHostRecord` 调 `hif.patchCloud` 而 `host_uart._M` 未导出该函数 → 2011 成功停录必崩、1011 force 不发（离线加载 host_uart 实证 `patchCloud=nil`）。`_protocol_regression_check` +2 条单一写入点断言。详见 [PIR_CTRL_FLOW §10](../modules/PIR_CTRL_FLOW.md) |
 
 ---
 
@@ -227,6 +228,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 - [ ] 2002 进/出 rest、USB 插拔 1003
 - [ ] 蜂窝 SIM/APN 1005
 - [ ] 烧录确认 `scriptVersion`
+- [ ] **158 新增（P6b 录像态单入口）**：2011 云停成功 → 1011 `force=true` 确实发出（157 前 `hif.patchCloud` nil 崩，不发）；T31x `AT+RECORD=1/0`、2002 断电、`+RECORD:` 应答、reconcile 四条路径后 1003 `recordingt31x` 与 `AT+PIRSTAT?` 一致；四条停录路径 1011 各一次不重复
 - [ ] **157 新增（P6a PSM）**：USB 拔插 10 次 1002/1001 序列一一对应无震荡；2002 enter 在 USB 在位时仍进 rest（USER_CUT 不拦）、`usb_remove` 在 USB 在位时不进；`MODULE_FLAGS.low_power=false` 时四入口均 `enter_low_power_skip low_power_disabled`；已在 rest 时 2002 enter 仍重放断 T31x + 1002，`battery` 触发不重放；关机音只在 `canRest` 通过时播放
 - [ ] **156 新增（P3 uart_session）**：2009 格式化期间下发 2007 → 1007 回缓存、串口无 `AT+TFCARD?`；2002 断电期间 2005 wled 查询回缓存/`busy`；USB 恢复任务期间 `AT+IPCSTAT?` 不发出；两条破坏性操作重叠时后到者回 `busy`/false 而非并发
 - [ ] **155 新增**：PWR 3s 长按关机 / BOOT 2s 长按进烧录（154 前长按永不触发）；`AT+HOSTIDLE?` 单 OK；WLED 切换中 `AT+IPCSTAT?` 等到真实 `+IPCSTAT:` 应答；2009 与 1003/2011 重叠时格式化**排队成功**而非 `uart_busy`，格式化期间 2007/`AT+WLED?` 等查询等到自身超时走缓存；`AT+WLED?` 发送前不再等 quiet（R7 skipQuiet 生效，确认 T31x 侧无丢字）；2004 `channel=iot` 不带 url 走合宙默认；畸形 `+RECORD:` 行日志 `record_line_unparsed` 且录像态不变

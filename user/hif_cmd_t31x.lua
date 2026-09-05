@@ -26,6 +26,9 @@ function bind(C)
     local function patchCloud(...)
         return C.patchCloud(...)
     end
+    local function setRecActive(...)
+        return C.setRecActive(...)
+    end
     local noteHostPush = C.noteHostPush
 
     local function ipcReadyFrom(st)
@@ -63,7 +66,7 @@ function bind(C)
         if arg == "1" or arg:match("^1,") then
             local reason = arg:match("reason=([^,]+)") or "active"
             state.t31x_last_reason = reason
-            patchCloud({ recordingt31x = 1 })
+            setRecActive(1)
             if reason ~= "allday_person" then
                 sys.publish(E.T31X_RECORD_ACTIVE)
             end
@@ -76,7 +79,7 @@ function bind(C)
             return rspFmt("RECORD", "0,reason=%s,ignored=1", reason)
         end
         state.t31x_last_reason = reason
-        patchCloud({ recordingt31x = 0 })
+        setRecActive(0)
         local uploadMode, quality = modCall("pir_ctrl", "syncStopT31x", reason)
         sys.publish(E.T31X_RECORD_STOP, reason, uploadMode, quality)
         return rspFmt("RECORD", "0,reason=%s", reason)

@@ -5,6 +5,7 @@
     "parseTfCard",
     "commitIpcStat",
     "patchCloud",
+    "setRecActive",
     "hostQuery",
     "hostSet",
     "idCfg",
@@ -51,7 +52,7 @@
       "bind_args": "C",
       "requires_sys": true,
       "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush"],
-      "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud"]
+      "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"]
     },
     "hif_cmd_wled.lua": {
       "bind_args": "C",
@@ -81,7 +82,7 @@
     "hif_ipc_power.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud", "TMO_SHARED", "enterSession", "leaveSession"],
+      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud", "TMO_SHARED", "enterSession", "leaveSession", "setRecActive"],
       "h": ["getCfg", "qryHostStat"]
     },
     "hif_ipc_tffmt.lua": {

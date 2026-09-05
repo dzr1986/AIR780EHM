@@ -333,6 +333,7 @@ python tools/debug/_module_tree.py --diff
 | 7 | `sync_doc_naming` 会改掉 `_audit/` 里的事故记录本身（2/4） | 跳过 `_audit/`、`archive/` |
 | — | 单模型：`pull_mode` 凭空别名（Opus）；vbat `pcall(adc.open,…)` 索引在 pcall 外 / `adc.close` 裸调 / 标志不复位（Opus）；`_doc_version_check` 只取首个匹配、`\d{3}` 过严（Opus） | 均已改：删 `pull_mode`；闭包内索引 + `start` 复位标志；`findall` 全一致 + `\d+` |
 | — | 单模型登记不实施：`parseIpcStat` 仅 1 个 `k=v` 即整体替换 9 键并 notify（GPT）；`sameMqttCfg` 比较范围；字段级死配置护栏 | 登记 §18.3 |
+| — | **P6b 执行中新发现 P0**：`mqtt_dl_pir.lua:103 hif.patchCloud(...)`——`host_uart._M` 只装配 `hif_ipc` api 表与自身导出，`patchCloud` 仅存在于 ctx，`_M.patchCloud == nil`（离线 `require "host_uart"` 实证）→ 2011/2010 云停成功路径 nil 调用，`publishForcedPirStop` 不执行 | **已修（VERSION 158）**：改 `hif.setRecActive(0)`（P6b 起导出）。`_ref_name_check` 只验模块名/函数名存在、不验 `_M` 表成员——属 A5 类盲区，P9 `modCall`/`hif.*` 成员校验应覆盖 |
 | — | 架构体检 A1「ACK 无请求关联」→ refactor_plan P4 `_seq` 方案 | **复核后不实施**：T31x 应答无请求 ID，RX 侧无法区分同类型迟到应答，seq 打标不改变任何可观察行为；跨类型抢答唯一来源已由 R2 消除；既有缓解 `TMO.postQry=300ms` + 事务锁串行。降级为设计约束登记，待协议带 ID 再落地（`docs/refactor_plan.md` P4 节） |
 
 **验证**：`run_all_checks.py` 9/9 PASS（新增第 8 项 `_gpio_opts_check`、第 9 项 `_doc_version_check`）；`luac5.3 -p` 73 文件通过；`_gen_bind_header --check-all` 11/11；`_net_mqtt_regression_check` 23/23；模块树基线刷新（+77 行，均为守卫/注释）。

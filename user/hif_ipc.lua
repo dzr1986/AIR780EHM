@@ -323,19 +323,16 @@ function bind(C)
     }
 
     ----------------------------------------------------------------
-    -- 录制态单一写入点：同步 state.t31x_rec_active 与 cloud.recordingt31x
-    --   commitIpcStat 以 cloud.recordingt31x 回填 t31x_rec_active，故以
-    --   cloud 为准；统一此处避免散写导致快照与影子态不一致。
-    --   不触发 publish：patchCloud/commitIpcStat 局部补丁路径亦不发 IPCSTAT_ACK
-    --   （仅 +IPCSTAT: 完整快照 notify=true），避免抢答 qryIpcCloudStat
+    -- 录制态**唯一业务写入点**（refactor_plan P6b）：所有「我知道 T31x 在/不在录」的业务判断
+    -- 一律调 setRecActive；它经 patchCloud → commitIpcStat 落到 cloud.recordingt31x 并回填
+    -- state.t31x_rec_active（commitIpcStat 是唯一 raw 写点，cloud 为准），同时刷新 ipc_cloud_stat_ts。
+    -- 不触发 IPCSTAT_ACK（局部补丁 notify=nil），避免抢答 qryIpcCloudStat。
+    -- 禁止在其它文件直写 state.t31x_rec_active 或 patchCloud({recordingt31x=…})——
+    -- _protocol_regression_check 单一写入点断言守护。
     ----------------------------------------------------------------
     local function setRecActive(flag)
         flag = (tonumber(flag) == 1) and 1 or 0
-        state.t31x_rec_active = flag
-        local cloud = state.host_ipc_cloud_stat
-        if type(cloud) == "table" then
-            cloud.recordingt31x = flag
-        end
+        C.patchCloud({ recordingt31x = flag })
     end
     C.setRecActive = setRecActive
 
@@ -372,6 +369,7 @@ function bind(C)
     local api = {
         resetHostLink = recovery.resetHostLink,
         qryHostStat = recovery.qryHostStat,
+        setRecActive = setRecActive, -- 供 mqtt_dl_pir 等外部模块（host_uart._M）
     }
     local function hang(...)
         for i = 1, select("#", ...) do

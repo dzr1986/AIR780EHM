@@ -17,6 +17,7 @@ function bind(C, H)
     local uart_bridge = C.uart_bridge
     local hostNowMs = C.hostNowMs
     local patchCloud = C.patchCloud
+    local setRecActive = C.setRecActive
     local getCfg = H.getCfg
     local qryHostStat = H.qryHostStat
 
@@ -67,7 +68,8 @@ function bind(C, H)
 
     local function applyPowerOffSuccess()
         state.host_ipc_status = "idle"
-        patchCloud({ recordingt31x = 0, ipcReady = 0 })
+        setRecActive(0)
+        patchCloud({ ipcReady = 0 })
     end
 
     local function waitBusyClear(deadlineMs)

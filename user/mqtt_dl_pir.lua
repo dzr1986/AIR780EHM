@@ -100,7 +100,7 @@ function bind(C, shared)
             ok, detail = true, "already_idle"
         end
         if ok then
-            hif.patchCloud({ recordingt31x = 0 })
+            hif.setRecActive(0) -- 157 前此处为 hif.patchCloud（host_uart._M 未导出 → nil 调用，2011 成功路径必崩）
             publishForcedPirStop(messageId)
         end
         return ok, detail
