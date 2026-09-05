@@ -75,7 +75,7 @@
     "usb_charge.lua": 131,
     "usb_rndis.lua": 311,
     "usb_vuart.lua": 103,
-    "utils.lua": 185,
+    "utils.lua": 186,
     "watchdog.lua": 100
   },
   "totals": {
@@ -85,8 +85,8 @@
     },
     "lib": {
       "files": 15,
-      "lines": 2631
+      "lines": 2632
     },
-    "all": 16586
+    "all": 16587
   }
 }

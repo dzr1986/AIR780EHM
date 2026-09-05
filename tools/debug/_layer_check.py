@@ -9,7 +9,10 @@
   R4  AT 协议层（host_uart + hif_*）↛ 业务层（BIZ_LAYER：net_mqtt / pir_ctrl / battery_guard / t31x_policy /
       t31x_notify / time_sync / sound_prompt / fota_svc / ipc_supv / app / lp_wakeup / host_event / vbat），
       任何形态（require / loader / modCall）都算；业务联动应经 sys 事件由 app 桥接或经 ctx/provider 注入。
-      t31x_ctrl（协处理器电源）视为基础设施，不在 BIZ_LAYER。2026-09-05 立基线 15 条，只许收缩。
+      t31x_ctrl（协处理器电源）视为基础设施，不在 BIZ_LAYER。2026-09-05 立基线 15 条，同日经 bizCall provider 收敛至 0。
+  R5  vendor 锁（架构 I 条）：lib/sys.lua、lib/libfota2.lua 为合宙原厂脚本（Luatools 要求留在 lib/ 目录，不能物理
+      挪到 vendor/），以 _vendor_lock.json 的 sha256 锁定；内容变更即 FAIL——改动必须显式 --save-baseline 并在
+      LUA_MODULES.md「vendor」段登记原因。
 
 基线模式：违规边先以 _layer_baseline.json 为白名单（当前 11 条反向边），默认「新增违规边即 FAIL；
 基线内的边只能减少」。收缩基线：python tools/debug/_layer_check.py --save-baseline。
@@ -21,6 +24,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -30,6 +34,8 @@ from _dep_graph import HARD_KINDS, build_graph, layer_of, modules  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = Path(__file__).resolve().parent / "_layer_baseline.json"
+VENDOR_LOCK = Path(__file__).resolve().parent / "_vendor_lock.json"
+VENDOR_FILES = ("lib/sys.lua", "lib/libfota2.lua")  # 合宙原厂脚本；勿动
 
 CONFIG_FRAGMENTS = ("features", "cellular", "t31x_burn", "gpio_cfg", "led_pir", "battery", "host", "net", "flags", "events")
 CONFIG_DOMAIN = {"config", "config_manager", "module_loader", "runtime_power", *CONFIG_FRAGMENTS}
@@ -65,19 +71,41 @@ def violations() -> list[tuple[str, str, str, str]]:
     return sorted(out)
 
 
+def vendor_hashes() -> dict[str, str]:
+    return {f: hashlib.sha256((ROOT / f).read_bytes()).hexdigest() for f in VENDOR_FILES if (ROOT / f).exists()}
+
+
+def vendor_violations() -> list[str]:
+    if not VENDOR_LOCK.exists():
+        return ["R5 _vendor_lock.json 缺失：先运行 --save-baseline"]
+    lock = json.loads(VENDOR_LOCK.read_text(encoding="utf-8"))
+    out = []
+    for f, h in vendor_hashes().items():
+        if lock.get(f) != h:
+            out.append(f"R5 vendor 文件 {f} 内容与锁不一致（原厂脚本勿动；确需改动请 --save-baseline 并在 LUA_MODULES.md vendor 段登记）")
+    for f in lock:
+        if f not in VENDOR_FILES or not (ROOT / f).exists():
+            out.append(f"R5 vendor 锁内文件 {f} 已不存在/不在 VENDOR_FILES")
+    return out
+
+
 def main() -> int:
     cur = violations()
     key = lambda v: f"{v[0]} {v[1]} -> {v[2]}"
     cur_keys = {key(v) for v in cur}
     if "--save-baseline" in sys.argv:
         BASELINE.write_text(json.dumps(sorted(cur_keys), indent=1, ensure_ascii=False), encoding="utf-8")
-        print(f"baseline saved → {BASELINE.name}（{len(cur_keys)} 条）")
+        VENDOR_LOCK.write_text(json.dumps(vendor_hashes(), indent=1, ensure_ascii=False), encoding="utf-8")
+        print(f"baseline saved → {BASELINE.name}（{len(cur_keys)} 条）+ {VENDOR_LOCK.name}（{len(VENDOR_FILES)} 个 vendor 文件）")
         return 0
     print("== 分层依赖护栏 ==")
     print(f"    R1 lib↛user业务 / R2 config域↛utils系 / R3 子模块↛主文件 / R4 AT层↛业务层；当前违规边 {len(cur)} 条")
     if not BASELINE.exists():
         print(f"    [FAIL] 基线文件缺失：先运行 --save-baseline")
         return 1
+    vend = vendor_violations()
+    for m in vend:
+        print(f"    [FAIL] {m}")
     base = set(json.loads(BASELINE.read_text(encoding="utf-8")))
     new = sorted(cur_keys - base)
     gone = sorted(base - cur_keys)
@@ -86,10 +114,10 @@ def main() -> int:
         print(f"    [{tag}] {v[0]} {v[1]} -> {v[2]} [{v[3]}]")
     if gone:
         print(f"    基线中已消失 {len(gone)} 条（请 --save-baseline 收缩）：" + ", ".join(gone))
-    if new:
-        print(f"\nFAILED: 新增违规边 {len(new)} 条（不得引入新的 lib→user 业务依赖 / config 域→utils / 子模块→主文件 / AT 层→业务层）")
+    if new or vend:
+        print(f"\nFAILED: 新增违规边 {len(new)} 条 / vendor 锁 {len(vend)} 条（不得引入新的 lib→user 业务依赖 / config 域→utils / 子模块→主文件 / AT 层→业务层 / 改动原厂脚本）")
         return 1
-    print(f"\nALL PASS — 无新增违规边（基线 {len(base)} 条{'，可收缩 ' + str(len(gone)) if gone else ''}）")
+    print(f"\nALL PASS — 无新增违规边（基线 {len(base)} 条{'，可收缩 ' + str(len(gone)) if gone else ''}）；vendor 锁 {len(VENDOR_FILES)} 文件一致")
     return 0
 
 

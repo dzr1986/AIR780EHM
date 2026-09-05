@@ -76,7 +76,7 @@ function playBlocking(name, scene)
     if scene == "boot_cold" then coldBootPlayed = true end
     ub.sendString("AT+PLAYSOUND=" .. name, true)
     local timeoutMs = tonumber(soundCfg().play_timeout_ms) or 2500
-    return utils.waitT31xAck(ACK_EVENT, timeoutMs, function(ackName)
+    return utils.waitEventUntil(ACK_EVENT, timeoutMs, function(ackName)
         return ackName == name or ackName == nil
     end)
 end

@@ -1,0 +1,4 @@
+{
+ "lib/sys.lua": "c5a5b32f6ecf494cac68089937380d71072d735fc3b5419139408b140082d061",
+ "lib/libfota2.lua": "8fc31b0765faa837aa818f4b05fa0756ee6abbed718f6ecdb3da1d5a3c68242b"
+}

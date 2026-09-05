@@ -424,12 +424,21 @@ SIM/APN 探测、`IP_READY` 等待、运营商映射。`main` 与 `net_mqtt` 共
 
 | 模块 | 行数 | 职责 |
 |------|------|------|
-| `sys` | 394 | LuatOS 调度核心（勿动） |
+| `sys` | 394 | LuatOS 调度核心（**vendor**，勿动；R5 sha256 锁） |
 | `runtime_power` | 193 | `APP_RUNTIME` 嵌套表**唯一读写入口**（访问器收口） |
 | `config_manager` | 69 | `cfgm.get/merge/set` 配置访问 |
 | `module_loader` | 59 | `load/opt/start/stopAll/enabled`（`MODULE_FLAGS` 裁剪） |
-| `libfota2` | 180 | 差分 OTA 下载引擎（勿动） |
-| `utils` | 185 | JSON/表/字符串 helper（跨域桥已迁 `user/svc`） |
+| `libfota2` | 180 | 差分 OTA 下载引擎（**vendor**，勿动；R5 sha256 锁） |
+| `utils` | 185 | JSON/表/字符串 helper（跨域桥已迁 `user/svc`；`waitT31xAck` 已改通用名 `waitEventUntil`，lib 内不再含 T31x 语义） |
+
+#### vendor 层（架构 I 条，2026-09-05）
+
+`lib/sys.lua`、`lib/libfota2.lua` 是合宙原厂脚本，逻辑上属 **vendor 层**（不受本项目命名/分层规范约束，也不应被本项目修改）。Luatools 只扫 `luatos.json` 的 `lib` 目录，无法物理挪到 `lib/vendor/`，因此改用 `_layer_check` **R5 sha256 锁**（`tools/debug/_vendor_lock.json`）：内容一旦变化即 FAIL；确需改动（如原厂升级）须 `--save-baseline` 刷新锁并在此登记版本/原因：
+
+| 文件 | 来源 | 登记 |
+|---|---|---|
+| `sys.lua` | LuatOS 官方 `sys.lua` | 2026-09-05 立锁 |
+| `libfota2.lua` | LuatOS 官方 `libfota2.lua` | 2026-09-05 立锁 |
 
 ---
 

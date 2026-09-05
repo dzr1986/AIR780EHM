@@ -102,7 +102,8 @@ function decodeHex(hex)
     return table.concat(parts)
 end
 
-function waitT31xAck(eventName, timeoutMs, ackOk)
+-- 等事件直到截止（通用；无 T31x 语义，原名 waitT31xAck，架构 I 条改名）：pred(payload) 为真才算命中，否则继续等剩余时间
+function waitEventUntil(eventName, timeoutMs, pred)
     local deadline = nowMs() + timeoutMs
     while true do
         local remain = timeoutMs
@@ -111,7 +112,7 @@ function waitT31xAck(eventName, timeoutMs, ackOk)
             if remain <= 0 then return false end
         end
         local got, ackName = sys.waitUntil(eventName, remain)
-        if got and (not ackOk or ackOk(ackName)) then return true end
+        if got and (not pred or pred(ackName)) then return true end
         if not mcu or not mcu.ticks then return false end
     end
 end
