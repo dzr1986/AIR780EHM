@@ -653,9 +653,9 @@ function resume()
     return true
 end
 
-local escVal = utils.escKv
-
-function buildStatBody()
+-- PIRSTAT 数据快照（架构 H 条）：pir_ctrl 只出数据，"+PIRSTAT:" 文本拼装在 hif_cmd_pir.buildPirStatBody
+-- （AT 协议格式不属于业务模块）。字段命名与原 AT 键一致；布尔保留真值语义（and true or false）。
+function getStatSnapshot()
     local hw = getHwState()
     local biz = getState()
     local cfg = cfgm.get("PIR_CFG")
@@ -664,36 +664,33 @@ function buildStatBody()
         media = { action = effectiveMediaAction, uploadMode = media.uploadMode, quality = media.quality }
     end
     local policy = biz.recordPolicy or {}
-    local parts = {
-        "suspended=" .. (biz.suspended and 1 or 0),
-        "recording=" .. (biz.recording and 1 or 0),
-        "hw_started=" .. (hw.started and 1 or 0),
-        "burn_mode=" .. (t31xPolicy.isBurnActive() and 1 or 0),
-        "lowpower=" .. (rntmPwr.isLowPowerMode() and 1 or 0),
-        "online=" .. (rntmPwr.isOnline() and 1 or 0),
-        "pin=" .. (hw.pin or cfg.pin or 0),
-        "cooldown_ms=" .. (cfg.cooldown_ms or 0),
-        "cooldown_left_ms=" .. (hw.cooldown_remaining_ms or 0),
-        "action=" .. escVal(media.action),
-        "upload=" .. escVal(media.uploadMode),
-        "quality=" .. escVal(media.quality),
-        "max_sec=" .. (policy.maxDurationSec or 0),
-        "stop_second=" .. (policy.stopOnSecondPir and 1 or 0),
-        "stop_cloud=" .. (policy.stopOnCloud and 1 or 0),
-        "start_cloud=" .. (policy.startOnCloud and 1 or 0),
+    local counters = {}
+    for i, k in ipairs(STAT_KEYS) do
+        counters[i] = { k, stats[k] }
+    end
+    return {
+        suspended = biz.suspended and true or false,
+        recording = biz.recording and true or false,
+        hw_started = hw.started and true or false,
+        burn_mode = t31xPolicy.isBurnActive() and true or false,
+        lowpower = rntmPwr.isLowPowerMode() and true or false,
+        online = rntmPwr.isOnline() and true or false,
+        pin = hw.pin or cfg.pin or 0,
+        cooldown_ms = cfg.cooldown_ms or 0,
+        cooldown_left_ms = hw.cooldown_remaining_ms or 0,
+        action = media.action,
+        upload = media.uploadMode,
+        quality = media.quality,
+        max_sec = policy.maxDurationSec or 0,
+        stop_second = policy.stopOnSecondPir and true or false,
+        stop_cloud = policy.stopOnCloud and true or false,
+        start_cloud = policy.startOnCloud and true or false,
+        counters = counters,
+        last_event = stats.last_event,
+        last_ts = stats.last_ts or 0,
+        rec_elapsed = (biz.recording and biz.startedAt) and (os.time() - biz.startedAt) or nil,
+        last_stop = biz.last_stop_reason,
     }
-    for _, k in ipairs(STAT_KEYS) do
-        parts[#parts + 1] = k .. "=" .. stats[k]
-    end
-    parts[#parts + 1] = "last=" .. escVal(stats.last_event)
-    parts[#parts + 1] = "last_ts=" .. (stats.last_ts or 0)
-    if biz.recording and biz.startedAt then
-        parts[#parts + 1] = "rec_elapsed=" .. (os.time() - biz.startedAt)
-    end
-    if biz.last_stop_reason then
-        parts[#parts + 1] = "last_stop=" .. escVal(biz.last_stop_reason)
-    end
-    return table.concat(parts, ",")
 end
 
 function clearConsumableMarkers()

@@ -20,7 +20,7 @@
 | `sched*` | 定时/对账调度 | `schedPirSleep`、`schedStopFallback` |
 | `ref*` | 刷新/对账 | `refCloudStat1003`、`refDevId`、`refTfCard` |
 | `on*` | 事件回调 | `onFirstHostAt`、`onPmdMsg`、`onRxRaw` |
-| `build*` | 拼装字符串/表 | `buildStatBody`、`buildReqOpts` |
+| `build*` | 拼装字符串/表 | `buildPirStatBody`、`buildReqOpts` |
 | `notify*` | 非 MQTT 通知 | `notifyHostIdle`、`notifyUsbIdle` |
 | `ntf*` | 业务侧保留名（仅 `ntfHost`） | `ntfHost` |
 | camelCase | 模块内 helper、ctx 键 | `hostQuery`、`modCall`、`patchCloud` |
@@ -132,7 +132,7 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 
 | 模块 | API |
 |------|------|
-| `pir_ctrl` | `buildStatBody()` |
+| `pir_ctrl` | `getStatSnapshot()`（2026-09-05 起；`+PIRSTAT:` 文本拼装移至 `hif_cmd_pir.buildPirStatBody`） |
 | `battery_guard` | `notifyHostIdle()`、`shouldHostSleep()`、`canHostSleep()` |
 | `app` | `notifyUsbIdle`、`applyUsbPower`、`setupUart` |
 | `time_sync` | `pushBeforeNotify` → `ntfHost` |

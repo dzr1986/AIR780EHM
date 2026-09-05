@@ -276,7 +276,7 @@ local function buildBizProviders()
         pirIsRecording = bizProvider(pirCtrl, "isRecording"),
         pirSyncStopT31x = bizProvider(pirCtrl, "syncStopT31x"),
         pirApplyEffMedia = bizProvider(pirCtrl, "applyEffMedia"),
-        pirStatBody = bizProvider(pirCtrl, "buildStatBody"),
+        pirStatSnapshot = bizProvider(pirCtrl, "getStatSnapshot"),
         pirClearMarkers = bizProvider(pirCtrl, "clearConsumableMarkers"),
         pirResetCounters = bizProvider(pirCtrl, "resetCounters"),
         -- time_sync / sound_prompt（可选模块）

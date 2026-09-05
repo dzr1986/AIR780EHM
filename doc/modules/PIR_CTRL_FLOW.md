@@ -111,7 +111,9 @@ flowchart TD
 
 ---
 
-## 8. AT 对外（`buildStatBodyy` → `+PIRSTAT:`）
+## 8. AT 对外（`getStatSnapshot` → `hif_cmd_pir.buildPirStatBody` → `+PIRSTAT:`）
+
+2026-09-05（架构 H 条）起 `pir_ctrl` 只导出数据快照 `getStatSnapshot()`（布尔/数值/计数表），`+PIRSTAT:` 的 `k=v,k=v` 文本由 AT 层 `hif_cmd_pir.buildPirStatBody` 拼装（经 `bizCall("pirStatSnapshot")` 取数）；线上字段顺序与 `buildStatBody` 时代逐字一致。
 
 宽表字段：硬件统计 `cnt_*`、会话 `recording`、`has_work` 合成（经 `host_uart` / `host_event`）。
 

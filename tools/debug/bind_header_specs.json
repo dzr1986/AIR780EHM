@@ -29,7 +29,7 @@
     "hif_cmd_pir.lua": {
       "bind_args": "C",
       "requires_sys": false,
-      "c": ["state", "rspBody", "rspLineOk", "modCall", "bizCall", "getHostEvtPending"]
+      "c": ["state", "utils", "rspBody", "rspLineOk", "modCall", "bizCall", "getHostEvtPending"]
     },
     "hif_cmd_t31x.lua": {
       "bind_args": "C",

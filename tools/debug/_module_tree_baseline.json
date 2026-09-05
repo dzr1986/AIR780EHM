@@ -14,7 +14,7 @@
     "hif_at.lua": 87,
     "hif_cmd.lua": 385,
     "hif_cmd_link.lua": 231,
-    "hif_cmd_pir.lua": 132,
+    "hif_cmd_pir.lua": 170,
     "hif_cmd_t31x.lua": 222,
     "hif_cmd_usb.lua": 258,
     "hif_cmd_wled.lua": 182,
@@ -51,7 +51,7 @@
     "net_mqtt.lua": 673,
     "net_tcp.lua": 35,
     "peripheral.lua": 178,
-    "pir_ctrl.lua": 728,
+    "pir_ctrl.lua": 725,
     "sound_prompt.lua": 132,
     "svc.lua": 31,
     "t31x_burn.lua": 19,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13920
+      "lines": 13955
     },
     "lib": {
       "files": 15,
       "lines": 2631
     },
-    "all": 16551
+    "all": 16586
   }
 }
