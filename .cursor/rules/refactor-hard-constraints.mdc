@@ -47,3 +47,4 @@ python tools/debug/run_all_checks.py                       # 9 项静态护栏�
 - API 名 camelCase（`pubStatus`/`ensPowOn`），配置键 snake_case（`t31x_power_wait_ms`），事件常量全大写；`t31x` 前缀小写规范见 `doc/overview/T31X_NAMING.md`。**API 名与配置键是两套命名空间，不要互相「收敛」。**
 - 只在非显而易见处写注释（意图、约束、撤销条件），不写「做了什么」的叙述性注释。
 - 平台 API（`mobile`/`socket`/`pm`/`json`/`adc`）保留 `pcall`；`0` 是真值，`v ~= nil and v or d` 只对 nil/false 兜底。
+- 返回约定：查询 `value | nil`，命令 `ok, reason[, detail]`；业务失败码走返回值并登记 `doc/mqtt/MQTT_REPLY_MESSAGES.md`，**不用 `error("<业务码>")`**（`error` 只留给运行时异常，pcall 兜住后映射 `internal_error`）。

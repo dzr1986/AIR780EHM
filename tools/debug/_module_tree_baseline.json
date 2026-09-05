@@ -24,7 +24,7 @@
     "hif_ipc_hostq.lua": 344,
     "hif_ipc_power.lua": 208,
     "hif_ipc_rec.lua": 188,
-    "hif_ipc_tffmt.lua": 175,
+    "hif_ipc_tffmt.lua": 164,
     "hif_rx.lua": 69,
     "hif_rx_dsl.lua": 550,
     "hif_rx_media.lua": 275,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13785
+      "lines": 13774
     },
     "lib": {
       "files": 15,
       "lines": 2548
     },
-    "all": 16333
+    "all": 16322
   }
 }

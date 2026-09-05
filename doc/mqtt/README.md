@@ -11,6 +11,7 @@
 |------|------|
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) 📌 | **MQTT 协议总纲**：200x↔100x 对照、上下行明细、Topic（57KB，含 2013） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | **下行命令手册**（平台 → 设备字段全集；GUI 自动测试载入） |
+| [MQTT_REPLY_MESSAGES.md](MQTT_REPLY_MESSAGES.md) | **应答 `ret`/`message` 词表**（1004/1009/1013/1020–1031 失败码含义与处置；固件返回约定 `ok, reason`） |
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | 协议手册 — 设备 `…8314`（连接/主题/全命令；两机主题勿混） |
 | [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) | T31x ↔ Cat.1 串口 AT 一览 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX 基础 |

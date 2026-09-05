@@ -2,9 +2,13 @@
 """host_uart + net_mqtt 协议族静态回归统一入口（无需真机）。"""
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _luatok import strip_comments  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DEBUG = Path(__file__).resolve().parent
@@ -38,8 +42,28 @@ def check_lua_filename_len() -> int:
     return fail
 
 
+RE_BIZ_ERROR = re.compile(r'\berror\(\s*"[a-z][a-z0-9_]*"\s*\)')
+
+
+def check_no_biz_error_codes() -> int:
+    """P5 返回约定：业务失败码走 `ok, reason` 返回值；`error("<小写下划线码>")` 形态须为 0。"""
+    fail = 0
+    print("=== 业务失败码不得走 error(\"code\")（P5 返回约定）===")
+    for base in (USER, LIB):
+        for path in sorted(base.glob("*.lua")):
+            text = strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
+            for m in RE_BIZ_ERROR.finditer(text):
+                line = text.count("\n", 0, m.start()) + 1
+                print(f"  FAIL  {path.relative_to(ROOT).as_posix()}:{line}  {m.group(0)}  → 改为 return false, \"code\"")
+                fail += 1
+    if not fail:
+        print("  PASS  无 error(\"<业务码>\") 形态")
+    print()
+    return fail
+
+
 def main() -> int:
-    fail = check_lua_filename_len()
+    fail = check_lua_filename_len() + check_no_biz_error_codes()
     print("=== protocol regression (user/) ===\n")
     for name in SCRIPTS:
         path = DEBUG / name
