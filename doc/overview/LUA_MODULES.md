@@ -1,7 +1,7 @@
 # Lua 模块逻辑分析
 
-> **代码真源**：`user/*.lua`（**58**）+ `lib/*.lua`（**15**）= **73** 个模块（2026-09-03 实测）
-> **总行数**：`user/` 13 579 + `lib/` 2 533 = 16 112
+> **代码真源**：`user/*.lua`（**61**）+ `lib/*.lua`（**17**）= **78** 个模块（2026-09-05 实测）
+> **总行数**：`user/` 14 138 + `lib/` 2 833 = 16 971
 > **拆分后治理**：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)
 > **配置真源**：[`user/config.lua`](../../user/config.lua)（+ 10 个 config 片段，见 §1.1）
 > **启动顺序**：[`CODE_DOC_AUDIT.md`](CODE_DOC_AUDIT.md) §3 · 调用图 [`CALL_GRAPH.md`](CALL_GRAPH.md)
@@ -35,7 +35,7 @@ main.lua
 
 ---
 
-## 1.1 模块树（2026-09-04 实测真源，user 59 + lib 15 = 74）
+## 1.1 模块树（2026-09-05 实测真源，user 61 + lib 17 = 78）
 
 > 行数可用 `python tools/debug/_module_tree.py` 刷新。协议 handler **禁止**子模块 `require "host_uart"` / `require "net_mqtt"`。
 > 文件都在 `user/` / `lib/` 顶层；文件名即模块名，**无子目录**（旧头注释中的 `config/xxx` 仅表示片段归属）。
