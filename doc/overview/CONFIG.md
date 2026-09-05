@@ -20,7 +20,7 @@
 | `APP_STACK` | `user/features.lua` | `user/app.lua` |
 | `FEATURE_CFG` | `user/features.lua` | `user/battery_guard.lua`、`user/flags.lua`、`user/hif_cmd.lua`、`user/host_event.lua`、`user/main.lua` |
 | `HOST_EVT_CFG` | `user/features.lua` | `user/hif_cmd.lua`、`user/host_event.lua` |
-| `HOST_USB_CFG` | `user/features.lua` | `user/app.lua`、`user/host_uart.lua`、`user/t31x_ctrl.lua`、`lib/usb_charge.lua`、`lib/usb_rndis.lua` |
+| `HOST_USB_CFG` | `user/features.lua` | `user/host_uart.lua`、`user/t31x_ctrl.lua`、`user/usb_power_policy.lua`、`lib/usb_charge.lua`、`lib/usb_rndis.lua` |
 | `LOW_POWER_CFG` | `user/features.lua` | `user/battery.lua`、`user/hif_cmd.lua`、`user/host.lua`、`user/mqtt_uplink.lua` |
 | `LOW_POWER_WAKEUP_CFG` | `user/features.lua` | `user/lp_wakeup.lua` |
 | `RNDIS_CFG` | `user/features.lua` | `lib/usb_rndis.lua` |
@@ -48,13 +48,13 @@
 | `HOST_TFCARD_FORMAT_CFG` | `user/host.lua` | `user/hif_ipc_tffmt.lua`、`user/mqtt_dl_pir.lua`、`user/mqtt_dl_tf.lua` |
 | `HOST_WAKE_CFG` | `user/host.lua` | `user/app.lua`、`user/host_uart.lua`、`user/mqtt_downlink.lua`、`user/t31x_ctrl.lua`、`user/t31x_notify.lua`、`user/t31x_policy.lua` |
 | `SOUND_CFG` | `user/host.lua` | `user/sound_prompt.lua`、`user/t31x_ctrl.lua` |
-| `TIME_SYNC_CFG` | `user/host.lua` | `user/app.lua`、`user/hif_cmd.lua`、`user/hif_ipc.lua`、`user/t31x_ctrl.lua`、`user/time_sync.lua` |
+| `TIME_SYNC_CFG` | `user/host.lua` | `user/hif_cmd.lua`、`user/hif_ipc.lua`、`user/t31x_ctrl.lua`、`user/time_sync.lua`、`user/usb_power_policy.lua` |
 | `FOTA_CFG` | `user/net.lua` | `user/fota_svc.lua`、`user/mqtt_dl_ctrl.lua` |
 | `MQTT_CFG` | `user/net.lua` | `user/app.lua`、`user/mqtt_conn.lua`、`user/net_mqtt.lua` |
 | `UART_CFG` | `user/net.lua` | `lib/uart_bridge.lua` |
 | `WDT_CFG` | `user/net.lua` | `user/app.lua`、`lib/watchdog.lua` |
 | `MODULE_FLAGS` | `user/flags.lua` | `user/hif_cmd.lua`、`user/host_event.lua`、`user/t31x_notify.lua`、`lib/module_loader.lua` |
-| `APP_EVENTS` | `user/events.lua` | `user/app.lua`、`user/fota_svc.lua`、`user/host_uart.lua`、`user/mqtt_dispatch.lua`、`user/mqtt_dl_ctrl.lua`、`user/mqtt_dl_dev.lua`、`user/mqtt_uplink.lua`、`user/net_mqtt.lua`、`user/peripheral.lua`、`user/pir_ctrl.lua`、`user/time_sync.lua`、`user/vbat.lua`、`lib/led_ctrl.lua`、`lib/runtime_power.lua`、`lib/usb_charge.lua` |
+| `APP_EVENTS` | `user/events.lua` | `user/app.lua`、`user/fota_svc.lua`、`user/host_uart.lua`、`user/mqtt_dispatch.lua`、`user/mqtt_dl_ctrl.lua`、`user/mqtt_dl_dev.lua`、`user/mqtt_uplink.lua`、`user/net_mqtt.lua`、`user/peripheral.lua`、`user/pir_ctrl.lua`、`user/time_sync.lua`、`user/usb_power_policy.lua`、`user/vbat.lua`、`lib/led_ctrl.lua`、`lib/runtime_power.lua`、`lib/usb_charge.lua` |
 
 > 共 40 键 / 10 片段；由 `python tools/debug/_config_key_check.py --write-doc` 生成，手改会被护栏判漂移。消费形态含 `cfgm.get("KEY")` / `_G.KEY` / 裸 `KEY`。
 <!-- CFG_KEY_INDEX:END -->
@@ -273,7 +273,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 | `t31x_usb_ursp` | `+CAT1:USB,%d` | URSP 模板 |
 | `boot_notify_delay_ms` | 1500 | 冷启动后补发 USB 态（等 UART/T31x 就绪） |
 
-实现：`user/app.lua`（`applyUsbPower` / `notifyUsbIdle`）、`user/host_uart.lua`（`pushUsbIdle` / `uart_hostidle` / `uart_lowpower`）、`user/net_mqtt.lua`（2002 拦截）。
+实现：`user/usb_power_policy.lua`（`applyPower` / `onHostFirstAt` / `schedBootNotify`）、`user/app.lua`（EVNT_HNDL 桥接）、`user/host_uart.lua`（`pushUsbIdle` / `uart_hostidle` / `uart_lowpower`）、`user/net_mqtt.lua`（2002 拦截）。
 
 ### `HOST_IPC_CFG` T31x 电源（`user/host.lua`）
 

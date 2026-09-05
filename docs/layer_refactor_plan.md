@@ -108,11 +108,11 @@ PSM 低功耗态（`requestRest`/`requestNormal`）与设备关机/重启**正�
 - **烧录模式策略** → `user/t31x_burn_ctrl.lua`（电量门禁、服务裁剪、`entBootMode`）；`app` 仅 `bind` + 事件桥；`state.t31x_burn_active` 收进 `t31xPolicy.isBurnActive()`
 - **PIR→MQTT/T31x 桥** → `user/pir_app_bridge.lua`（停录上报、pir_watch 休眠、媒体唤醒）；`app` EVNT_HNDL 改引 bridge handler
 - **`bootMqtt` 等网上限** → `MQTT_CFG.boot_net_wait_ms`（默认 300000）
+- **USB 边沿策略** → `user/usb_power_policy.lua`（`applyPower`、T31x `+CAT1:USB`、rest 进/出、PWRKEY 宽限、PMD 回退）；`app` 仅 `bind` + `GPIO_USB_DET_CHANGED` 桥
 
 ### 下一步
 
-- USB/电源边沿策略评估是否迁 `battery_guard` / `runtime_power`
-- 实机：PIR 停录 1011、2011、pir_watch 休眠回归
+- 实机：USB 拔插/rest/ PWRKEY 宽限、`+CAT1:USB` 同步回归
 
 ---
 

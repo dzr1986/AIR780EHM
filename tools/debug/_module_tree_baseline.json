@@ -1,7 +1,7 @@
 {
   "date": "2026-09-05",
   "user": {
-    "app.lua": 791,
+    "app.lua": 693,
     "battery.lua": 106,
     "battery_guard.lua": 391,
     "cellular.lua": 25,
@@ -61,6 +61,7 @@
     "t31x_notify.lua": 87,
     "t31x_policy.lua": 129,
     "time_sync.lua": 219,
+    "usb_power_policy.lua": 167,
     "vbat.lua": 237
   },
   "lib": {
@@ -84,13 +85,13 @@
   },
   "totals": {
     "user": {
-      "files": 61,
-      "lines": 14103
+      "files": 62,
+      "lines": 14172
     },
     "lib": {
       "files": 17,
       "lines": 2791
     },
-    "all": 16894
+    "all": 16963
   }
 }

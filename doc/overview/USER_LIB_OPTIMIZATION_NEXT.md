@@ -219,6 +219,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-05 | **L2 逐层重构（零行为，VERSION 维持 161）**：`HOST_PROTO_TMO` 扩展六键（3500/3000/800 ms 跨族单源）；`patchCloud` 局部补丁一律 `keepTs`（WLED/TFCARD/ipcReady/cat1Link/alert 不再刷新 `ipc_cloud_stat_ts`）。详见 [layer_refactor_plan.md L2](../../docs/layer_refactor_plan.md)、[HOST_UART_AT_DISPATCH §8](../modules/HOST_UART_AT_DISPATCH.md) |
 | 2026-09-05 | **L3 逐层重构（零行为）**：烧录模式策略迁出 `t31x_burn_ctrl.lua`（~110 行）；`app` 仅 bind + GPIO_BOOTKEY_LONG 桥；烧录态统一 `t31xPolicy.isBurnActive()`。详见 [layer_refactor_plan.md L3](../../docs/layer_refactor_plan.md)、[T31X_BURN_MODE](../hardware/T31X_BURN_MODE.md) |
 | 2026-09-05 | **L3 续（零行为）**：PIR→MQTT/T31x 桥迁 `pir_app_bridge.lua`（~160 行）；`MQTT_CFG.boot_net_wait_ms` 收 bootMqtt 300s 硬编码。详见 [PIR_CTRL_FLOW §1](../modules/PIR_CTRL_FLOW.md) |
+| 2026-09-05 | **L3 续（零行为）**：USB 边沿策略迁 `usb_power_policy.lua`（~160 行）；`applyPower`/PMD 回退/冷启动 notify/PWRKEY 宽限；`app` 仅 bind + GPIO 事件桥。详见 [USB_CHARGE_POLICY §4](../modules/USB_CHARGE_POLICY.md) |
 | 2026-09-05 | **新增 `AGENTS.md`（仓库根）**：固化四层架构 ADR、冻结项 F-01–F-06、单写点/ provider / 暂缓项 D-01–D-05、提交门槛、子代理索引；Agent 决策真源，流水仍写本节 |
 | 2026-09-05 | **arch-guard-reviewer 首次试跑修复**：`host_uart.resetUartTxn` 里 `uartSessionOwner = nil` 早于 `local` 声明 → 写成全局（P3 引入，效果上无害但属隐式全局）；`local` 上移。`_undef_global_check` 新增规则 2「顶层 local 先用后声明」（fixture + 单测，15 tests OK）。同批修正文档：provider 键数 26→22、`pirStatBody`→`pirStatSnapshot`、`setLowPowerMode` 链路→`requestRest/requestNormal`、`buildStatBodyy` 残留 6 处、hard-constraints 9→13 项、`arch-layering` 把 `svc` 归 L2 基础设施 |
 

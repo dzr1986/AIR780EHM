@@ -35,7 +35,7 @@ flowchart TD
     IRQ[GPIO 边沿中断] --> U[updateUsb / updateChg]
     U --> P1[GPIO_USB_DET_CHANGED]
     U --> P2[GPIO_CHG_STATE_CHANGED]
-    P1 --> APP[app.applyUsbPower]
+    P1 --> APP[usb_power_policy.applyPower]
     P2 --> LED[led_ctrl 刷新灯态]
     P2 --> MQTT[可选 pubStatus]
 ```
@@ -59,16 +59,18 @@ flowchart TD
 
 ---
 
-## 4. app 侧 USB 编排（`applyUsbPower`）
+## 4. USB 边沿编排（`usb_power_policy.applyPower`）
+
+真源：[`user/usb_power_policy.lua`](../../user/usb_power_policy.lua)（L2；`app` 经 `bind` 注入 gpio/rndis/低功耗 hook，`GPIO_USB_DET_CHANGED` 仍订阅在 `app` EVNT_HNDL）。
 
 | 边沿 | 行为 |
 |------|------|
-| **插入** | `APP_RUNTIME.power_status=1` · `battery_guard.onUsbInserted` · 退出 rest · `notifyUsbIdle(true)` · 取消 PWR 长按 |
-| **拔出** | `power_status=0` · `notifyUsbIdle(false)` · `battery_guard.onUsbRemoved`（按电量重评估，高电量不进 rest） |
+| **插入** | `runtime_power.setPowerStatus(1)` · `battery_guard.onUsbIns` · 退出 rest · `host_uart.pushUsbIdle(true)` · 取消 PWR 长按 |
+| **拔出** | `power_status=0` · `pushUsbIdle(false)` · `battery_guard.onUsbRemove`（按电量重评估，高电量不进 rest） |
 
 冷启动 `source=="boot"`：由 `bootPowerOn` 负责 T31 上电，避免与 `exitRest` 重复唤醒（见 [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)）。
 
-**PMD 回退**：`MODULE_FLAGS.charge` 关闭时，`handlePmdMessage` 用模组充电消息驱动 `applyUsbPower`。
+**PMD 回退**：`MODULE_FLAGS.charge` 关闭时，`usb_power_policy.onPmdMessage` 用模组充电消息驱动 `applyPower`。
 
 ---
 
