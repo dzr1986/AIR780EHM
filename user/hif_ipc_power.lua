@@ -27,7 +27,7 @@ function bind(C, H)
     local TIMEOUT = {
         powerOffFloorMs = 5000,
         acquireCapMs = TMO_SHARED.acquireCapMs,
-        busyClearCapMs = 3000,
+        busyClearCapMs = _G.HOST_PROTO_TMO.qry_default_ms,
         hostIdleCapMs = 2000,
         pollSliceMs = 50,
         sendGapMs = 40,

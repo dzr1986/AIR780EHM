@@ -95,7 +95,7 @@
 | 范围 | 真源 | 示例 |
 |---|---|---|
 | 同族 | 主文件 `TMO_SHARED` → `ctx.TMO_SHARED` | `acquireCapMs`、`cloudStatQueryMs` |
-| 跨族 | config 片段 `user/host.lua` → `_G.HOST_PROTO_TMO`（F 条） | `ipcstat_query_ms=2500`、`record_stop_ms=22000` |
+| 跨族 | config 片段 `user/host.lua` → `_G.HOST_PROTO_TMO`（F/L2 条） | 六键：`ipcstat_query_ms`(2500)、`record_stop_ms`(22000)、`qry_default_ms`(3000)、`record_query_ms`(3500)、`t31x_power_wait_ms`(800) |
 | 配置 | `_G.*_CFG` + `cfgm.get("KEY")` | `_config_key_check.py` + `CONFIG.md` 索引 |
 
 ### 4.5 业务层不拼 AT 文本（H 条）

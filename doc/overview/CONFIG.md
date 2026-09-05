@@ -42,7 +42,7 @@
 | `HOST_ENCODE_CFG` | `user/host.lua` | `user/hif_ipc.lua`、`user/hif_ipc_encode.lua`、`user/mqtt_hproto.lua` |
 | `HOST_IDENTITY_CFG` | `user/host.lua` | `user/hif_cmd_link.lua`、`user/hif_ipc.lua`、`user/mqtt_dl_dev.lua` |
 | `HOST_IPC_CFG` | `user/host.lua` | `user/hif_ipc_cloud.lua`、`user/hif_ipc_power.lua`、`user/hif_ipc_rec.lua`、`user/sound_prompt.lua`、`user/t31x_ctrl.lua` |
-| `HOST_PROTO_TMO` | `user/host.lua` | `user/hif_ipc_hostq.lua`、`user/host_uart.lua`、`user/mqtt_dl_pir.lua`、`user/net_mqtt.lua` |
+| `HOST_PROTO_TMO` | `user/host.lua` | `user/hif_ipc_cloud.lua`、`user/hif_ipc_hostq.lua`、`user/hif_ipc_power.lua`、`user/host_uart.lua`、`user/mqtt_dl_pir.lua`、`user/net_mqtt.lua`、`user/sound_prompt.lua`、`user/time_sync.lua` |
 | `HOST_RECORD_CFG` | `user/host.lua` | `user/hif_ipc_hostq.lua`、`user/mqtt_dl_pir.lua` |
 | `HOST_TFCARD_CFG` | `user/host.lua` | `user/hif_ipc.lua`、`user/mqtt_dl_tf.lua` |
 | `HOST_TFCARD_FORMAT_CFG` | `user/host.lua` | `user/hif_ipc_tffmt.lua`、`user/mqtt_dl_pir.lua`、`user/mqtt_dl_tf.lua` |

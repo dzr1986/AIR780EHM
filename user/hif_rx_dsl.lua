@@ -212,7 +212,7 @@ function bind(C)
         return snap
     end
 
-    local function patchCloud(fields, keepTs)
+    local function patchCloud(fields)
         local cloud = state.host_ipc_cloud_stat
         if type(cloud) ~= "table" then
             cloud = {}
@@ -221,7 +221,8 @@ function bind(C)
         for k, v in pairs(fields) do
             cloud[k] = v
         end
-        return commitIpcStat(cloud, nil, keepTs)
+        -- 局部补丁一律 keepTs：完整 +IPCSTAT: 快照走 commitIpcStat(notify=true)，不经 patchCloud
+        return commitIpcStat(cloud, nil, true)
     end
 
     local function parseIpcStat(line)

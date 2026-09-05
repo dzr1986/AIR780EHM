@@ -9,7 +9,7 @@
 |---|---|---|---|
 | **L0** | HAL 驱动 | user/ 零硬件直调；`power_hal` / `adc_hal` / `gpio_util.getLevel` | **已完成**（2026-09-05） |
 | **L1** | 平台抽象 | `runtime_power` 收口设备级 power 语义；config 域零业务泄漏 | **已完成**（2026-09-05） |
-| **L2** | 业务逻辑 | AT/MQTT 族边界巩固；剩余跨族常量进 `HOST_PROTO_TMO`；`patchCloud(keepTs)` 统一 | **下一步** |
+| **L2** | 业务逻辑 | AT/MQTT 族边界巩固；跨族常量进 `HOST_PROTO_TMO`；`patchCloud` 局部补丁一律 keepTs | **已完成**（2026-09-05，零 VERSION） |
 | **L3** | 应用 | `app.lua` 只做装配（provider/事件/hooks），业务算法不下沉 | 持续 |
 
 ---
@@ -73,19 +73,25 @@ PSM 低功耗态（`requestRest`/`requestNormal`）与设备关机/重启**正�
 
 ---
 
-## L2 · 业务逻辑层（下一步）
+## L2 · 业务逻辑层（已完成，2026-09-05）
 
 ### 目标
 
-1. **局部 `patchCloud` 统一 `keepTs=true`**（除完整 IPCSTAT 快照外）  
-2. **跨族同值常量**（3500/3000/800 ms）收进 `HOST_PROTO_TMO`  
+1. **局部 `patchCloud` 统一 `keepTs=true`**（完整 `+IPCSTAT:` 快照仍走 `commitIpcStat(notify=true)`）  
+2. **跨族同值常量**（3500/3000/800 ms）收进 `HOST_PROTO_TMO` 六键  
 3. **AT 层 R4 维持 0**；禁止新增 `modCall` 业务调用  
 4. **MQTT 族** 与 **AT 族** 互不 require
 
+### 改动摘要
+
+- `host.lua` `_G.HOST_PROTO_TMO` 扩展六键；`host_uart.TMO_SHARED`、`hif_ipc_*`、`mqtt_dl_pir`、`time_sync`、`sound_prompt` 改引  
+- `hif_rx_dsl.patchCloud` 内部固定 `commitIpcStat(..., keepTs=true)`（WLED/TFCARD/ipcReady/cat1Link/alert 补丁不再刷新 `ipc_cloud_stat_ts`）
+
 ### 验收
 
-- 实机：格式化/断电/1003/2011 回归
-- `AT+PIRSTAT?` 逐字比对
+- 实机：格式化/断电/1003/2011 回归（待办）  
+- `AT+PIRSTAT?` 逐字比对（待办）  
+- `run_all_checks` 全 PASS；VERSION 维持 161（架构一致性收口，非新语义）
 
 ---
 

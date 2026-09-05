@@ -333,7 +333,7 @@ function bind(C)
     local function setRecActive(flag)
         flag = (tonumber(flag) == 1) and 1 or 0
         -- keepTs：单键业务补丁不算完整快照，不得让 1003 跳过 AT+IPCSTAT? 刷新（评审 #3）
-        C.patchCloud({ recordingt31x = flag }, true)
+        C.patchCloud({ recordingt31x = flag })
     end
     C.setRecActive = setRecActive
 

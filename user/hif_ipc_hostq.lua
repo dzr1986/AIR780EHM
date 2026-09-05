@@ -26,7 +26,7 @@ function bind(C, H)
     local tfCardCfg = H.tfCardCfgFn
 
     local TMO = {
-        rec = 3000,
+        rec = _G.HOST_PROTO_TMO.qry_default_ms,
         fpsQ = 5000,
         fpsS = 8000,
         upload = 12000,
