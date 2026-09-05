@@ -354,3 +354,21 @@ rg -n "local TIMEOUT\s*=|local TMO\s*=" user lib | cut -d: -f1
 rg -c 'return false, "' user lib | awk -F: '{s+=$2} END{print s}'
 python3 tools/debug/run_all_checks.py     # 9 项护栏（本报告生成时 ALL PASS）
 ```
+
+---
+
+## 附二：P0–P10 后复检 A–I 条处置（2026-09-05）
+
+| 条 | 问题 | 处置 | 护栏 |
+|---|---|---|---|
+| A | AT 层（host_uart/hif_*）经 `modCall` 反向驱动业务层 25 处，软环 22 模块 | `app.buildBizProviders`（26 键）经 `host_uart.start{biz}` 注入，AT 层统一 `ctx.bizCall`；AT→业务边 15→0，软环 22→16，`modCall` 46→19（余下均指基础设施） | `_layer_check` R4 基线 0；`_ref_name_check` 规则 F |
+| B | 破坏性会话 vs 断电/休眠仲裁 | `t31x_ctrl.blockSleep` 纳入 `uart_session`；`hostIpcPowerOff` 有界等待他会话（VERSION 161） | — |
+| C | `host_uart.state` 语义键多写点（16 处） | `setHostIpcStatus/setHostAtReady/setHostTfCard/setHostCloudStat` 单写点 | `SINGLE_WRITERS` +4 |
+| D | `setRecActive` 顺带刷新 `ipc_cloud_stat_ts` 导致 1003 跳查 | `commitIpcStat(keepTs)`（VERSION 161） | — |
+| E | app 在 PSM 外编排"先改态再副作用" | `runtime_power.bindPowerHooks{onEnterRest,onExitRest}`，副作用在 `requestRest/requestNormal` 内触发 | — |
+| F | host_uart / net_mqtt 两族同义常量各写一份 | config 片段 `host.lua` `_G.HOST_PROTO_TMO`（2500 / 22000） | `_config_key_check` 索引 40 键 |
+| G | 上行 JSON 无真机黄金样本 | `MQTT_CFG.golden_tap` → `MQTT_GOLDEN` 日志 → `_uplink_golden_capture.py` → `tests/fixtures/uplink_golden/`；**真机采样待执行** | `_uplink_schema_check` 有样本即比对 |
+| H | `pir_ctrl.buildStatBody` 在业务层拼 AT 文本 | `pir_ctrl.getStatSnapshot()` 出数据，`hif_cmd_pir.buildPirStatBody` 拼文本（字段顺序逐字一致） | — |
+| I | lib 含 T31x 语义（`utils.waitT31xAck`）；vendor 脚本无标注 | 改名 `waitEventUntil`；`sys.lua`/`libfota2.lua` 标 vendor 层 + sha256 锁（Luatools 只扫 lib/，不能物理挪目录） | `_layer_check` R5 |
+
+除 B/D（VERSION 161）外均为零行为改动；A 的唯一差异是被 `MODULE_FLAGS` 裁剪的模块从"被 `loader.load` 强行加载再调用"变为 no-op。`run_all_checks` 13 项 ALL PASS。
