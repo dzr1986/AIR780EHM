@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""平台侧 MQTT 测试客户端（对齐 doc/MQTT_DOWNLINK_862323084068124.txt + Lua 实现）。
+"""平台侧 MQTT 测试客户端（对齐 doc/mqtt/MQTT_DOWNLINK_862323084068124.txt + Lua 实现）。
 
 账号密码、Broker、IMEI 均在同目录 config.json。
-差异说明：doc/MQTT_LUA_DOC_DIFF.md
+差异说明：doc/_audit/MQTT_LUA_DOC_DIFF.md
 
   pip install -r tools/gui/mqtt/requirements-mqtt.txt
   python tools/gui/mqtt/mqtt_tools_client.py
@@ -36,12 +36,21 @@ def _load_json(path: Path) -> dict:
 def _make_client(cid: str):
     import paho.mqtt.client as mqtt
 
-    kwargs = {"client_id": cid, "protocol": mqtt.MQTTv311, "clean_session": True}
+    kwargs = {
+        "client_id": cid,
+        "protocol": mqtt.MQTTv311,
+        "clean_session": True,
+    }
     if hasattr(mqtt, "CallbackAPIVersion"):
         try:
+            kwargs["reconnect_on_failure"] = True
             return mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, **kwargs)
         except TypeError:
-            pass
+            kwargs.pop("reconnect_on_failure", None)
+            try:
+                return mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, **kwargs)
+            except TypeError:
+                pass
     return mqtt.Client(**kwargs)
 
 
@@ -79,11 +88,15 @@ class ToolsClient:
         return dtype_hit
 
     def connect(self) -> None:
+        import socket
+
         import paho.mqtt.client as mqtt  # noqa: F401
 
         cid = str(self.cfg.get("client_id") or f"platform-test-{uuid.uuid4().hex[:8]}")
         if cid == self.imei:
             raise SystemExit("ClientId 不能与设备 IMEI 相同，请改 config.json")
+        prev_to = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(10)
         cli = _make_client(cid)
         cli.username_pw_set(self.cfg.get("username") or "", self.cfg.get("password") or "")
         cli.on_connect = self._on_connect
@@ -91,7 +104,11 @@ class ToolsClient:
         cli.on_disconnect = self._on_disconnect
         if self.cfg.get("ssl"):
             cli.tls_set()
-        cli.connect(self.cfg["broker"], int(self.cfg["port"]), int(self.cfg.get("keepalive") or 60))
+        print(f"正在连接 {self.cfg['broker']}:{self.cfg['port']} …")
+        try:
+            cli.connect(self.cfg["broker"], int(self.cfg["port"]), int(self.cfg.get("keepalive") or 60))
+        finally:
+            socket.setdefaulttimeout(prev_to)
         cli.loop_start()
         self._client = cli
         if not self._connected.wait(15):
@@ -169,8 +186,8 @@ class ToolsClient:
             n = len(self._inbox)
         sent = self.publish(item["payload"])
         timeout = float(item.get("timeout_sec") or self.timeout)
-        if item.get("need_t3x"):
-            timeout = max(timeout, 20)
+        if item.get("need_t31x"):
+            timeout = max(timeout, 35)
         got = self.wait_reply(item.get("expect"), n, timeout, sent.get("messageId"))
         if not item.get("expect"):
             print(f"  -- {item['id']} 已发送（按 Lua 无固定应答）")
@@ -180,13 +197,38 @@ class ToolsClient:
             if got.get("ret") is not None:
                 extra = f" ret={got.get('ret')} message={got.get('message', '')}"
             ret = got.get("ret")
-            fail_nz = (item.get("need_t3x") or item.get("_group") == "extra") and not item.get("allow_nonzero_ret")
+            fail_nz = (item.get("need_t31x") or item.get("_group") == "extra") and not item.get("allow_nonzero_ret")
             if fail_nz and ret is not None and str(ret) not in ("0", "0.0"):
                 print(f"  FAIL {item['id']} → {got.get('dataType')}{extra} messageId={got.get('messageId', sent.get('messageId'))}")
                 return False
             print(f"  OK {item['id']} → {got.get('dataType')}{extra} messageId={got.get('messageId', sent.get('messageId'))}")
             return True
-        print(f"  TIMEOUT {item['id']} 未收到 {item.get('expect')}（T3x 未就绪时属预期）")
+        print(f"  TIMEOUT {item['id']} 未收到 {item.get('expect')}（T31x 未就绪时属预期）")
+        return False
+
+    def _saw_boot_since(self, after_n: int) -> bool:
+        with self._lock:
+            newer = self._inbox[after_n:]
+        for _topic, data in newer:
+            if str(data.get("dataType")) == "1008" and str(data.get("messageId") or "") == "boot":
+                return True
+        return False
+
+    def _wait_mqtt_after_boot(self, seconds: float = 45.0) -> bool:
+        print(f"  !! 检测到 1008 messageId=boot，等待 MQTT 恢复最多 {seconds:.0f}s")
+        deadline = time.time() + seconds
+        with self._lock:
+            n = len(self._inbox)
+        while time.time() < deadline:
+            with self._lock:
+                newer = self._inbox[n:]
+            for _topic, data in newer:
+                dt = str(data.get("dataType") or "")
+                if dt in ("1001", "1003") or (dt == "1008" and str(data.get("messageId") or "") != "boot"):
+                    print(f"  !! MQTT 已恢复 dataType={dt}")
+                    return True
+            time.sleep(0.2)
+        print("  !! MQTT 恢复超时")
         return False
 
     def run_group(
@@ -196,7 +238,7 @@ class ToolsClient:
         danger_ok: bool = False,
         include_destructive: bool = False,
         include_tf_format: bool = False,
-    ) -> None:
+    ) -> dict:
         ok = fail = skip = 0
         for item in self.commands.get(group) or []:
             item = dict(item)
@@ -215,14 +257,122 @@ class ToolsClient:
                 print(f"\n=== SKIP {item['id']} {item['name']}（破坏性，需 --danger-all）===")
                 continue
             print(f"\n=== {item['id']} {item['name']} ===")
+            with self._lock:
+                n_before = len(self._inbox)
             if self.send_cmd(item, danger_ok=danger_ok or group != "danger"):
                 ok += 1
             else:
                 fail += 1
+            if self._saw_boot_since(n_before):
+                self._wait_mqtt_after_boot(45.0)
         print(f"\n{group} 完成：成功 {ok}，超时/失败 {fail}，跳过 {skip}")
+        return {"ok": ok, "fail": fail, "skip": skip}
 
-    def run_safe(self) -> None:
-        self.run_group("safe", danger_ok=False)
+    def run_safe(self) -> dict:
+        return self.run_group("safe", danger_ok=False)
+
+    def wait_pred(self, after_n: int, timeout: float, pred) -> dict | None:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self._lock:
+                newer = self._inbox[after_n:]
+            for _topic, data in newer:
+                if pred(data):
+                    return data
+            time.sleep(0.05)
+        return None
+
+    def run_ota_loop(self, version: str, url: str = "", timeout_ms: int = 300000) -> bool:
+        """2008 查版本 → 2004 ota → 1004 accepted/stage → 重启后 1008。"""
+        item = self.find_cmd("2004ota") or {}
+        payload = dict((item.get("payload") or {}))
+        payload["dataType"] = "2004"
+        payload["action"] = "ota"
+        payload["version"] = version
+        payload["timeout"] = int(timeout_ms)
+        payload["full_url"] = int(payload.get("full_url") or 0)
+        if url:
+            payload["url"] = url
+        if not payload.get("url"):
+            payload["url"] = "http://43.136.55.143/ota/api/site/firmware_upgrade?"
+        print(f"\n=== OTA 闭环 target={version} url={payload['url']} ===")
+        with self._lock:
+            n0 = len(self._inbox)
+        sent = self.publish({"dataType": "2008"})
+        got = self.wait_reply("1008", n0, 15, sent.get("messageId"))
+        if not got:
+            print("  FAIL 无 1008，设备可能未订阅或 IMEI 不对")
+            return False
+        before = str(got.get("firmwareVersion") or "")
+        print(f"  升级前 firmwareVersion={before} scriptVersion={got.get('scriptVersion')}")
+        if before and before == version:
+            print("  OK 已是目标版本")
+            return True
+        with self._lock:
+            n1 = len(self._inbox)
+        sent = self.publish(payload)
+        mid = str(sent.get("messageId") or "")
+
+        def is_accepted(data: dict) -> bool:
+            if str(data.get("dataType")) != "1004":
+                return False
+            if str(data.get("message") or "") != "ota_accepted":
+                return False
+            got_mid = data.get("messageId")
+            if mid and got_mid and str(got_mid) != mid:
+                return False
+            return True
+
+        acc = self.wait_pred(n1, 20, is_accepted)
+        if not acc:
+            print("  FAIL 无 1004 ota_accepted")
+            return False
+        print("  设备已受理 ota_accepted")
+        stage_timeout = max(60.0, timeout_ms / 1000.0)
+        deadline = time.time() + stage_timeout
+        failed = None
+        saw_success = False
+        while time.time() < deadline:
+            with self._lock:
+                newer = self._inbox[n1:]
+            for _topic, data in newer:
+                if str(data.get("dataType")) != "1004":
+                    continue
+                stage = str(data.get("stage") or "")
+                if stage == "failed":
+                    failed = data
+                    break
+                if stage == "success":
+                    saw_success = True
+                    print("  拉包成功 stage=success，等待重启后 1008")
+                    break
+            if failed or saw_success:
+                break
+            time.sleep(0.2)
+        if failed:
+            print(f"  FAIL 拉包 stage=failed ret={failed.get('ret')} {failed.get('message')}")
+            return False
+        reboot_deadline = time.time() + 180
+        last_q = 0.0
+        while time.time() < reboot_deadline:
+            with self._lock:
+                newer = self._inbox[n1:]
+            for _topic, data in newer:
+                if str(data.get("dataType")) != "1008":
+                    continue
+                fw = str(data.get("firmwareVersion") or "")
+                if fw == version:
+                    print(f"  OK 闭环通过 firmwareVersion={fw}")
+                    return True
+                if fw:
+                    print(f"  .. 1008 firmwareVersion={fw}（尚未到目标）")
+            now = time.time()
+            if now - last_q >= 8:
+                last_q = now
+                self.publish({"dataType": "2008"})
+            time.sleep(0.3)
+        print("  FAIL 重启后未升到目标版本")
+        return False
 
     def interactive(self) -> None:
         print("命令: list | send <id> | safe | danger <id> | quit")
@@ -255,8 +405,8 @@ class ToolsClient:
     def print_list(self) -> None:
         for item in self.all_cmds():
             flag = item["_group"]
-            t3x = " T3x" if item.get("need_t3x") else ""
-            print(f"  [{flag:6}] {item['id']:10} {item['name']} → {item.get('expect') or '-'}{t3x}")
+            t31x = " T31x" if item.get("need_t31x") else ""
+            print(f"  [{flag:6}] {item['id']:10} {item['name']} → {item.get('expect') or '-'}{t31x}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -273,7 +423,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-safe", action="store_true", help="跑只读查询")
     ap.add_argument("--run-extra", action="store_true", help="跑 extra 设置项")
     ap.add_argument("--run-danger", action="store_true", help="跑可逆危险项（开/停录），不含重启关机")
-    ap.add_argument("--run-all", action="store_true", help="全指令：查询+设置+T3x+rest/关机拦截+最后重启；格式化需另加 --tf-format")
+    ap.add_argument("--run-all", action="store_true", help="全指令：查询+设置+T31x+rest/关机拦截+最后重启；格式化需另加 --tf-format")
+    ap.add_argument("--ota-loop", action="store_true", help="MQTT 2004 OTA 闭环（须 --ota-version）")
+    ap.add_argument("--ota-version", default="", help="目标 firmwareVersion，如 2044.001.147")
+    ap.add_argument("--ota-url", default="", help="拉包 URL，默认生产 /ota/api/site/firmware_upgrade?")
     ap.add_argument("--danger", action="store_true", help="允许发送 danger 分组（不含 skip_auto）")
     ap.add_argument("--danger-all", action="store_true", help="含重启/关机/进 rest（不含 TF 格式化）")
     ap.add_argument("--tf-format", action="store_true", help="含 TF 卡格式化（2009 reboot=0）")
@@ -302,8 +455,14 @@ def main(argv: list[str] | None = None) -> int:
             ok = cli.send_cmd(item, danger_ok=args.danger)
             return 0 if ok else 1
         if args.run_safe:
-            cli.run_safe()
-            return 0
+            st = cli.run_safe()
+            return 0 if st.get("fail", 0) == 0 else 1
+        if args.ota_loop:
+            if not args.ota_version.strip():
+                print("请加 --ota-version，例如 2044.001.147")
+                return 2
+            ok = cli.run_ota_loop(args.ota_version.strip(), args.ota_url.strip())
+            return 0 if ok else 1
         if args.run_extra:
             cli.run_group("extra", danger_ok=True)
             return 0

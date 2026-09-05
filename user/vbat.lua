@@ -6,276 +6,228 @@
 
 require "sys"
 require "config"
+local cfgm = require "config_manager"
+local rntmPwr = require "runtime_power"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
 local BUILD_TAG = "v4-filter"
 local taskStarted = false
+local running = false
 local voltageMv, percent, consumptionRate = 0, 0, 0
 local lastPercent, lastReadTime
 local filteredMv, stablePercent
-local function getCfg()
-    return _G.BATTERY_CFG or {}
+
+local function batteryCfg()
+    return cfgm.get("BATTERY_CFG")
 end
 
-local function getAdcCfg()
-    return getCfg().adc or {}
+local function adcCfg()
+    return batteryCfg().adc or {}
 end
 
-local function getCellCfg()
-    return getCfg().cell or {}
+local function cellCfg()
+    return batteryCfg().cell or {}
 end
 
-local function getFilterCfg()
-    return getCfg().filter or {}
+local function filterCfg()
+    return batteryCfg().filter or {}
 end
 
-local function smplIntrMs()
-    return getCfg().sample_interval_ms or (10 * 1000)
+local function sampleIvMs()
+    return batteryCfg().sample_interval_ms or (10 * 1000)
 end
 
-local function rslvMvScl()
-    local adcCfg = getAdcCfg()
+local function mvScale()
+    local adc = adcCfg()
+    local s = tonumber(adc.mv_scale)
     local scale
-    local s = tonumber(adcCfg.mv_scale)
     if s and s > 1 then
         scale = s
     else
-        local div = adcCfg.divider
-        if type(div) == "table" then
-            local r = tonumber(div.r_kohm)
-            local rx = tonumber(div.rx_kohm)
-            if r and rx and rx > 0 then
-                scale = (r + rx) / rx
-            else
-                scale = 1510 / 510
-            end
-        else
-            scale = 1510 / 510
-        end
+        local div = adc.divider
+        local r = type(div) == "table" and tonumber(div.r_kohm)
+        local rx = type(div) == "table" and tonumber(div.rx_kohm)
+        scale = (r and rx and rx > 0) and ((r + rx) / rx) or (1510 / 510)
     end
-    local cal = tonumber(adcCfg.mv_calibration)
+    local cal = tonumber(adc.mv_calibration)
     if cal and cal > 0 then
         scale = scale * cal
     end
     return scale
 end
 
-local function prcnFrom(cellMv)
-    local vmax = tonumber(getCellCfg().v_max_mv) or 4200
-    local vmin = tonumber(getCellCfg().v_min_mv) or 3000
-    if cellMv >= vmax then
-        return 100
-    end
-    if cellMv <= vmin then
-        return 1
-    end
-    local step = (vmax - vmin) / 100
-    local p = (cellMv - vmin) / step
-    if p < 1 then
-        p = 1
-    end
-    return math.floor(p)
+local function percentFrom(cellMv)
+    local vmax = tonumber(cellCfg().v_max_mv) or 4200
+    local vmin = tonumber(cellCfg().v_min_mv) or 3000
+    if cellMv >= vmax then return 100 end
+    if cellMv <= vmin then return 1 end
+    local p = (cellMv - vmin) / ((vmax - vmin) / 100)
+    return math.floor(p < 1 and 1 or p)
 end
 
-local function trimmedMean(samples)
-    local drop = tonumber(getFilterCfg().trim_drop) or 2
+local function trimMean(samples)
     local n = #samples
-    if n == 0 then
-        return nil
-    end
+    if n == 0 then return nil end
     table.sort(samples)
-    if n <= drop * 2 + 1 then
-        local sum = 0
-        for i = 1, n do
-            sum = sum + samples[i]
-        end
-        return math.floor(sum / n + 0.5)
+    local drop = tonumber(filterCfg().trim_drop) or 2
+    local from, to = 1, n
+    if n > drop * 2 + 1 then
+        from, to = drop + 1, n - drop
     end
-    local sum, c = 0, 0
-    for i = drop + 1, n - drop do
+    local sum = 0
+    for i = from, to do
         sum = sum + samples[i]
-        c = c + 1
     end
-    return math.floor(sum / c + 0.5)
+    return math.floor(sum / (to - from + 1) + 0.5)
 end
 
-local function smoothCellMv(rawCellMv)
-    local fc = getFilterCfg()
+local function clampStep(cur, target, maxStep)
+    local diff = target - cur
+    if maxStep <= 0 or math.abs(diff) <= maxStep then
+        return target
+    end
+    return cur + (diff > 0 and maxStep or -maxStep)
+end
+
+local function smoothCell(rawCellMv)
+    local fc = filterCfg()
     local alpha = tonumber(fc.ema_alpha)
-    if alpha == nil or alpha <= 0 or alpha > 1 then
+    if not alpha or alpha <= 0 or alpha > 1 then
         alpha = 0.35
     end
-    local maxStep = tonumber(fc.mv_max_step) or 35
     if filteredMv == nil then
         filteredMv = rawCellMv
         return filteredMv
     end
-    local target = math.floor(rawCellMv * alpha + filteredMv * (1 - alpha) + 0.5)
-    local diff = target - filteredMv
-    if maxStep > 0 and math.abs(diff) > maxStep then
-        if diff > 0 then
-            target = filteredMv + maxStep
-        else
-            target = filteredMv - maxStep
-        end
-    end
-    filteredMv = target
+    filteredMv = clampStep(
+        filteredMv,
+        math.floor(rawCellMv * alpha + filteredMv * (1 - alpha) + 0.5),
+        tonumber(fc.mv_max_step) or 35)
     return filteredMv
 end
 
-local function smthPrcn(cellMv, rawPct)
-    local fc = getFilterCfg()
-    local vmax = tonumber(getCellCfg().v_max_mv) or 4200
+local function smoothPct(cellMv, rawPct)
+    local fc = filterCfg()
+    local vmax = tonumber(cellCfg().v_max_mv) or 4200
     local hystHigh = tonumber(fc.percent_hyst_high_mv) or (vmax - 80)
-    local maxStep = tonumber(fc.percent_max_step) or 2
     local pct = rawPct
+
     if stablePercent == nil then
         stablePercent = pct
         return pct
     end
+
     if stablePercent >= 100 then
-        if cellMv < hystHigh then
-            pct = prcnFrom(cellMv)
-        else
-            pct = 100
-        end
+        pct = cellMv < hystHigh and percentFrom(cellMv) or 100
     elseif rawPct >= 100 and cellMv >= vmax then
         pct = 100
     end
-    local diff = pct - stablePercent
-    if maxStep > 0 and math.abs(diff) > maxStep then
-        if diff > 0 then
-            pct = stablePercent + maxStep
-        else
-            pct = stablePercent - maxStep
-        end
-    end
-    pct = math.floor(pct)
+
+    pct = math.floor(clampStep(stablePercent, pct, tonumber(fc.percent_max_step) or 2))
     if pct < 1 then
         pct = 1
-    end
-    if pct > 100 then
+    elseif pct > 100 then
         pct = 100
     end
     stablePercent = pct
     return pct
 end
 
-local function updtCnsm(currentPercent)
-    local rate = 0
+local function updateConsume(currentPercent)
     local now = os.time()
-    if lastPercent and lastReadTime then
-        local hours = (now - lastReadTime) / 3600
-        local diff = lastPercent - currentPercent
-        if hours > 0 and diff > 0 then
-            rate = math.floor((diff / hours) * 10 + 0.5) / 10
-        end
-    end
+    local hours = lastReadTime and (now - lastReadTime) / 3600
+    local diff = lastPercent and (lastPercent - currentPercent)
+    local rate = (hours and hours > 0 and diff and diff > 0)
+        and (math.floor((diff / hours) * 10 + 0.5) / 10) or 0
     lastPercent = currentPercent
     lastReadTime = now
     return rate
 end
 
-local function exprGlbl(pct, cellMv, rate)
-    local rt = _G.APP_RUNTIME
-    if not rt then
-        return
-    end
-    rt.battery_percent = pct
-    rt.battery_mv = cellMv
-    rt.battery_consumption_rate = tostring(rate or 0)
+local function applyAdc(ad)
+    if not ad or not ad.setRange then return end
+    local range = adcCfg().range
+    if range == nil then range = ad.ADC_RANGE_MIN end
+    if range ~= nil then ad.setRange(range) end
 end
 
-local function getChannel()
-    local c = getAdcCfg().channel or 1
-    return c
-end
-
-local function applAdcRng(ad)
-    if not ad or not ad.setRange then
-        return
-    end
-    local range = getAdcCfg().range
-    if range == nil and ad.ADC_RANGE_MIN then
-        range = ad.ADC_RANGE_MIN
-    end
-    if range ~= nil then
-        ad.setRange(range)
-    end
-end
-
-local function readPinOnce(ad, channel)
+local function readPinRaw(ad, channel)
     if ad.read then
         local _, mv = ad.read(channel)
-        if mv ~= nil and mv >= 0 then
-            return mv
-        end
+        if mv ~= nil and mv >= 0 then return mv end
     end
     if ad.get then
         local mv = ad.get(channel)
-        if mv ~= nil and mv >= 0 then
-            return mv
-        end
+        if mv ~= nil and mv >= 0 then return mv end
+    end
+end
+
+-- 平台 ADC 调用一律 pcall：单次读失败只丢本样本，不能让 batteryTask 协程整体退出；告警只报一次防刷屏
+local adcReadErrLogged = false
+local function readPin(ad, channel)
+    local ok, mv = pcall(readPinRaw, ad, channel)
+    if ok then return mv end
+    if not adcReadErrLogged then
+        adcReadErrLogged = true
+        if log and log.warn then log.warn("vbat", "adc_read_err", tostring(mv)) end
     end
     return nil
 end
 
-local function readPinMllv(ad, channel)
-    local fc = getFilterCfg()
+local function readPinMv(ad, channel)
+    local fc = filterCfg()
     local count = tonumber(fc.sample_count) or 11
     local spacing = tonumber(fc.sample_spacing_ms) or 20
     local samples = {}
     for i = 1, count do
-        local mv = readPinOnce(ad, channel)
-        if mv ~= nil then
-            samples[#samples + 1] = mv
-        end
-        if i < count and spacing > 0 then
-            sys.wait(spacing)
-        end
+        local mv = readPin(ad, channel)
+        if mv ~= nil then samples[#samples + 1] = mv end
+        if i < count and spacing > 0 then sys.wait(spacing) end
     end
-    if #samples == 0 then
-        return nil
-    end
-    return trimmedMean(samples)
+    return trimMean(samples)
 end
 
 local function batteryTask()
-    if not adc or not adc.open then
-        return
+    local channel = adcCfg().channel or 1
+    local scale = mvScale()
+    -- adc 库本身可能缺失：索引放进闭包内，让 pcall 真正兜住
+    pcall(applyAdc, adc)
+    local okOpen, errOpen = pcall(function() adc.open(channel) end)
+    if not okOpen and log and log.warn then
+        log.warn("vbat", "adc_open_err", tostring(channel), tostring(errOpen))
     end
-    local channel = getChannel()
-    applAdcRng(adc)
-    adc.open(channel)
-    local scale = rslvMvScl()
-    while true do
-        local pinMv = readPinMllv(adc, channel)
+    while running do
+        local pinMv = readPinMv(adc, channel)
         if pinMv then
-            local rawMv = math.floor(pinMv * scale + 0.5)
-            local cellMv = smoothCellMv(rawMv)
-            local vmax = tonumber(getCellCfg().v_max_mv) or 4200
-            if cellMv > vmax then
-                cellMv = vmax
-            end
-            local rawPct = prcnFrom(cellMv)
-            local pct = smthPrcn(cellMv, rawPct)
-            voltageMv = cellMv
-            percent = pct
-            consumptionRate = updtCnsm(percent)
-            exprGlbl(percent, voltageMv, consumptionRate)
+            local cellMv = smoothCell(math.floor(pinMv * scale + 0.5))
+            local vmax = tonumber(cellCfg().v_max_mv) or 4200
+            if cellMv > vmax then cellMv = vmax end
+            local pct = smoothPct(cellMv, percentFrom(cellMv))
+            voltageMv, percent = cellMv, pct
+            consumptionRate = updateConsume(percent)
+            rntmPwr.setBattery(percent, voltageMv, consumptionRate)
             sys.publish(APP_EVENTS.BATTERY_UPDATE, percent, voltageMv, consumptionRate)
         end
-        sys.wait(smplIntrMs())
+        sys.wait(sampleIvMs())
     end
+    pcall(function() if adc and adc.close then adc.close(channel) end end)
 end
 
 function start()
-    if taskStarted then
-        return false
-    end
+    if taskStarted then return true end
     taskStarted = true
+    running = true
+    adcReadErrLogged = false -- 每次启动允许再告警一次（间歇性 ADC 错误不刷屏）
     sys.taskInit(batteryTask)
+    return true
+end
+
+function stop()
+    if not taskStarted then return true end
+    taskStarted = false
+    running = false
     return true
 end
 
@@ -287,9 +239,6 @@ function getState()
     return {
         started = taskStarted,
         build = BUILD_TAG,
-        config = getCfg(),
-        sample_ms = smplIntrMs(),
-        mv_scale = rslvMvScl(),
         voltage = voltageMv,
         percent = percent,
         consumptionRate = consumptionRate,
@@ -297,4 +246,5 @@ function getState()
         stable_percent = stablePercent,
     }
 end
+
 return _M

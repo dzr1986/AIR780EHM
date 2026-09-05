@@ -1,161 +1,329 @@
 # host_uart AT 分发与上行应答
 
-> **代码真源**：[`user/host_uart.lua`](../../user/host_uart.lua)  
-> **协议对照**：[UART_AT_COMMANDS.md](../UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../UART_PROTOCOL.md)
+> **代码真源**：[`user/host_uart.lua`](../../user/host_uart.lua)（互斥、分发、RX 调度、start）  
+> **AT 表**：[`user/hif_at.lua`](../../user/hif_at.lua)  
+> **AT handler**：[`user/hif_cmd.lua`](../../user/hif_cmd.lua) + `hif_cmd_*`  
+> **URC/RX**：[`user/hif_rx.lua`](../../user/hif_rx.lua) + `hif_rx_dsl.lua` / `hif_rx_media.lua`  
+> **IPC query/set**：[`user/hif_ipc.lua`](../../user/hif_ipc.lua) + `hif_ipc_*`  
+> **协议对照**：[UART_AT_COMMANDS.md](../mqtt/UART_AT_COMMANDS.md) · [UART_PROTOCOL.md](../mqtt/UART_PROTOCOL.md)  
+> **bind 头**：`python tools/debug/_gen_bind_header.py --check-all` · spec：`tools/debug/bind_header_specs.json`  
+> **回归**：`python tools/debug/_protocol_regression_check.py`
+
+锁 / `SYS_EVT` / `state` 只留在 `host_uart.lua`，不要迁出。`hif_*` 文件名 ≤24 字节。
 
 ---
 
-## 1. 数据流
+## 0. 模块树与 bind 顺序
+
+```
+host_uart.lua              锁 / SYS_EVT / state / processLine / start
+├── hif_at.lua              AT_CMD_TABLE → exact 哈希 + prefix 数组
+├── hif_cmd.lua             AT 编排（bind 顺序固定）
+│   ├── hif_cmd_usb.lua     USBRESET / RNDIS / USBRECOVERY
+│   ├── hif_cmd_link.lua    P2P / GB28181 / MQTT / SERV
+│   ├── hif_cmd_pir.lua     HOSTEVT / PIRSTAT
+│   ├── hif_cmd_t31x.lua     RECORD / UPLOAD / IPCSTAT 等 NOTIFY
+│   └── hif_cmd_wled.lua    WLED 影子表 + AT
+├── hif_rx.lua              URC 编排，tryHandlers 函数数组
+│   ├── hif_rx_dsl.lua      匹配 DSL + 云态/TF/录像/IPC 行
+│   └── hif_rx_media.lua    VENC / AUDIO / MIC / FRAMERATE 等
+└── hif_ipc.lua             hostQuery / hostSet + 子模块编排
+    ├── hif_ipc_rec.lua     UART 恢复、qryHostStat
+    ├── hif_ipc_hostq.lua   RECORD / MIC / SOFTPHOTO query/set
+    ├── hif_ipc_cloud.lua   云状态 / GB28181（依赖 rec + hostq）
+    ├── hif_ipc_power.lua   IPC 关机 / ready（依赖 rec）
+    ├── hif_ipc_tffmt.lua   TF format
+    └── hif_ipc_encode.lua  VENC / AUDIO
+```
+
+**主文件 bind 顺序**（不要改）：
+
+1. 组 `ctx`（含 `pushUsbIdle`，cmd/usb/rec 可快照）
+2. `hif_cmd.bind(ctx)` → `hif_at.compile(cmd.at)`
+3. `hif_rx.bind(ctx)`，再把 `parseIpcStat` / `patchCloud` 等挂回 `ctx`
+4. `hif_ipc.bind(ctx)`：`rec → hostq`（查询挂到 `H`）→ `cloud → power → tffmt → encode`
+
+cmd 里用到 rx 的 `parseIpcStat` / `patchCloud` 必须 **延迟 wrapper**（`return C.foo(...)`），不能 `local foo = C.foo`。
+
+**WLED 两套入口**（不要混）：
+
+| 符号 | 是什么 | 谁用 |
+|------|--------|------|
+| `C.wledState` | 表 `wledRuntime`（有 `.on`） | `hif_rx_dsl` 写 `C.wledState.on` |
+| `C.M.wledState` | getter `wledGet` | `net_mqtt` 调 `hif.wledState()` |
+
+---
+
+## 1. bind 头约定
+
+`hif_cmd_*` / `hif_ipc_*` 在 `function bind(C[, H, …])` 开头只做 **ctx 字段快照** 或 **延迟 wrapper**，业务从第一个非 header 行开始。
+
+| 类型 | 写法 | 适用 |
+|------|------|------|
+| 快照 | `local state = C.state` | bind 前已存在于 ctx |
+| 合并 | `local state, E = C.state, C.E` | 热路径少行 |
+| 延迟 wrapper | `local function parseIpcStat(...) return C.parseIpcStat(...) end` | rx.bind 后才挂 ctx |
+| 注入 | `local qryHostStat = H.qryHostStat` | rec/hostq 先 bind，查询挂到 H |
+| 直用 shared | `shared.defineSet{ ... }` | encode 等于工厂，不必再 local |
+
+新增/改子模块后：
+
+```bash
+python tools/debug/_gen_bind_header.py --emit hif_cmd_xxx.lua
+python tools/debug/_gen_bind_header.py --check-all
+python tools/debug/_protocol_regression_check.py
+```
+
+---
+
+## 2. 数据流
 
 ```mermaid
 flowchart TD
-    RX[uart_bridge on_rx_raw] --> PROC[host_process_line]
-    PROC --> TRY{RX_LINE_HANDLER_REGISTRY}
-    TRY -->|命中| ACK[专用 try_* 解析 / sys.publish]
+    RX[uart_bridge onUartLine] --> PROC[processLine]
+    PROC --> TRY{RX_LINE_TRY_HANDLERS}
+    TRY -->|命中| ACK[try* 解析 / sys.publish]
     TRY -->|未命中| AT{以 AT 开头?}
-    AT -->|是| DISPATCH[uart_dispatch_at]
-    AT -->|否| STR{STR:/HEX:}
-    STR -->|是| LINE[LINE_HANDLERS]
-    STR -->|否| PLAIN[host_plain_line]
-    DISPATCH --> EXACT[AT_EXACT 精确匹配]
-    DISPATCH --> PREFIX[AT_PREFIX 前缀匹配]
+    AT -->|是| DISPATCH[uartAtCmd → runAtDispatch]
+    AT -->|否| STR{第 4 字符是冒号?}
+    STR -->|是| LINE[LINE_HANDLERS HEX/STR]
+    STR -->|否| PLAIN[plainLine]
+    DISPATCH --> EXACT[AT_EXACT 哈希]
+    DISPATCH --> PREFIX[AT_PREFIX 数组]
+    DISPATCH --> RIL{passthrough?}
+    RIL -->|是| MODEM[hooks.modemAt]
 ```
 
-**原则**：T3x 主动上报的 `+XXX:` 应答行 **优先** 走 `RX_LINE_HANDLER_REGISTRY`，避免被 AT 分发误解析。
+**原则**：T31x 主动上报的 `+XXX:` 行 **优先** 走 `RX_LINE_TRY_HANDLERS`，避免被 AT 分发误解析。
+
+`uartAtCmd`：仅当整串不在 `AT_EXACT` 时才剥尾部 `?`，避免 `AT+USBRESET?` 被剥成 `AT+USBRESET` 真复位。
 
 ---
 
-## 2. AT 命令表（`AT_CMD_TABLE`）
+## 3. AT 命令表（`hif_at.compile`）
 
-构建：`uart_cmd_entry(keys, prefix, handler)` → 编译为 `AT_EXACT` 哈希 + `AT_PREFIX` 数组。
+`uartCmdEntr(keys, prefix, handler)` → `AT_EXACT` 哈希 + `AT_PREFIX` 数组。  
+handler 名是 `hif_cmd` 注入表的短键（`at_ack` / `record`），对应函数是 camelCase（`atAck` / `t31x.uartRecord`）。
 
-### 2.1 握手 / 版本
+### 3.1 握手 / 版本 / 状态
 
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT` | `uart_at_ack` | 链路存活 |
-| `ATI` / `AT+CGMR` / `AT+GETVER` | `uart_ati` | 固件版本 |
+| 匹配 | handler 键 | 函数 | 说明 |
+|------|------------|------|------|
+| `AT` | `at_ack` | `atAck` | 链路存活 |
+| `ATI` / `AT+CGMR` / `AT+GETVER` | `ati` | `atVersion` | 固件版本 |
+| `AT+GETCFG` | `getcfg` | `atGetCfg` | 4G 综合状态 |
+| `AT+PIRSTAT` / `AT+PIRSTAT?` | `pirstat` | `uartPirStatQry` | PIR 宽表 |
+| `AT+PIRCLR` | `pirclr` | `uartPirClr` | 清零 PIR |
+| `AT+HOSTEVT` / `AT+HOSTEVT?` | `hostevt` | `uartHostEvtQry` | 待处理事件 |
+| `AT+HOSTEVTCLR` | `hostevtclr` | `uartHostEvtClr` | 清 pending 唤醒 |
+| `AT+RECORD` / `AT+RECORD?` | `record_qry` | `atRecordQry` | 4G 侧录像会话 |
+| `AT+TIME` | `time` | `atTime` | Unix 时间 |
+| `AT+IMEI` / `AT+IMEI?` | `imei` | `atImei` | Cat.1 IMEI |
+| `AT+IPCINFO` / `AT+IPCINFO?` | `ipcinfo` | `uartIpcInfoQry` | IMEI + GB28181 |
+| `AT+WLED?` / `AT+WLEDEN?` / `AT+WLED=` / `AT+WLEDEN=` | `wled` | `uartWled` | 白光灯 |
+| `AT+HOSTIDLE` / `AT+HOSTIDLE?` / `AT+HOSTIDLE=` | `hostidle` | `atHostIdle` | T31 休眠门禁 |
 
-### 2.2 状态查询
+exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只为阅读。
 
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT+GETCFG` | `uart_getcfg` | 4G 综合状态 |
-| `AT+PIRSTAT` / `AT+PIRSTAT?` | `uart_pirstat_query` | PIR 宽表 + has_work |
-| `AT+RECORD` / `AT+RECORD?` | `uart_record_query` | 4G 侧录像会话 |
-| `AT+HOSTEVT` / `AT+HOSTEVT?` | `uart_hostevt_query` | 精简待处理事件 |
-| `AT+HOSTIDLE` / `AT+HOSTIDLE?` / `AT+HOSTIDLE=` | `uart_hostidle` | T31 休眠门禁 |
-| `AT+TIME` | `uart_time_query` | Unix 时间 |
-| `AT+IMEI` / `AT+IMEI?` | `uart_imei` | Cat.1 IMEI |
-| `AT+IPCINFO` / `AT+IPCINFO?` | `uart_ipcinfo_query` | IMEI + GB28181 |
-| `AT+WLED?` / `AT+WLEDEN?` / `AT+WLED=` / `AT+WLEDEN=` | `uart_wled` | 白光灯 |
+### 3.2 T31x 主动上报（前缀 `AT+XXX=`）
 
-### 2.3 T3x 主动上报（前缀 `AT+XXX=`）
+| 前缀 | handler 键 | 函数 |
+|------|------------|------|
+| `AT+RECORD=` | `record` | `uartRecord` |
+| `AT+IPCSTATUS=` | `ipcstatus` | `uartIpcStatusNtf` |
+| `AT+IPCSTAT=` | `ipcstat` | `uartIpcStatNtf` |
+| `AT+TFCARD=` | `tfcard` | `uartTfCardNtf` |
+| `AT+SNAPSHOT=` | `snapshot` | `uartSnapshot` |
+| `AT+PIRMEDIA=` | `pirmedia` | `uartPirMedia` |
+| `AT+PERSONCNT=` | `personcnt` | `uartPersonCnt` |
+| `AT+IPCALERT=` | `ipcalert` | `uartIpcAlert` |
+| `AT+UPLOADNEED=` | `uploadneed` | `uartUploadNeed` |
+| `AT+UPLOADRESULT=` | `uploadresult` | `uartUploadResult` |
 
-| 前缀 | Handler | 典型 URC |
-|------|---------|----------|
-| `AT+RECORD=` | `uart_record_notify` | 录像开始/结束 |
-| `AT+IPCSTATUS=` | `uart_ipcstatus_notify` | IPC 生命周期 |
-| `AT+IPCSTAT=` | `uart_ipcstat_notify` | 云状态快照 |
-| `AT+TFCARD=` | `uart_tfcard_notify` | TF 卡状态 |
-| `AT+SNAPSHOT=` | `uart_snapshot_notify` | 抓拍结果 |
-| `AT+PIRMEDIA=` | `uart_pir_media_notify` | PIR 媒体策略 |
-| `AT+PERSONCNT=` | `uart_person_cnt_notify` | 人形计数 |
-| `AT+IPCALERT=` | `uart_ipc_alert_notify` | IPC 异常告警 |
+空参一律 `RSP_ERROR`（`needArg` / `ntfArg`）。`ntfArg` 会先 `noteHostPush()`。
 
-### 2.4 链路配置
+### 3.3 链路 / 低功耗 / USB / 维护
 
-| 前缀 | Handler | 说明 |
-|------|---------|------|
-| `AT+SERVCREATE=` | `uart_servcreate` | TCP 通道 |
-| `AT+MQTTCFG=` | `uart_mqttcfg` | 写 MQTT 配置并重启 |
-| `AT+P2PCFG=` / `AT+GB28181CFG=` | 对应 handler | 流媒体配置 |
-| `AT+SERVCLOSE=` | `uart_servclose` | 关 TCP |
-| `AT+RIL=` | `uart_ril` | modem 透传开关 |
-| `AT+MQTTPUB=` | `uart_mqttpub` | T3x 请求 4G 发 MQTT |
+| 匹配 | handler 键 | 说明 |
+|------|------------|------|
+| `AT+SERVCREATE=` / `AT+SERVCLOSE=` | `servcreate` / `servclose` | TCP 通道 |
+| `AT+MQTTCFG=` / `AT+MQTTPUB=` | `mqttcfg` / `mqttpub` | MQTT 配置 / 代发 |
+| `AT+P2PCFG=` / `AT+GB28181CFG=` | `p2pcfg` / `gb28181` | 流媒体 |
+| `AT+RIL=` | `ril` | modem 透传 |
+| `AT+SENDSTR=` / `AT+SENDHEX=` | `sendstr` / `sendhex` | 透传 |
+| `AT+LOWPOWER=` | `lowpower` | 4G rest 进/出 |
+| `AT+RNDIS` / `AT+RNDIS=` | `rndis` | USB 网卡 |
+| `AT+USBRESET` / `AT+USBRESET?` | `usbreset` | USB 重新枚举 |
+| `AT+USBRECOVERY=` | `usbrecovery` | UART 恢复流程 |
+| `AT+REBOOT` / `AT+POWEROFF` | `reboot` / `poweroff` | 重启 / 关机 |
+| `AT+OTA` / `AT+OTACHECK` | `ota` | OTA |
+| `AT+SETCFG=` | `setcfg` | 运行时配置 |
 
-### 2.5 低功耗 / USB
-
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT+LOWPOWER=` | `uart_lowpower` | 4G rest 进/出 |
-| `AT+RNDIS` / `AT+RNDIS=` | `uart_rndis` | USB 网卡 |
-| `AT+USBRESET` / `AT+USBRESET?` | `uart_usbreset` | USB 重新枚举 |
-| `AT+USBRECOVERY=` | `uart_usbrecovery` | UART 恢复流程 |
-
-### 2.6 电源 / 维护
-
-| 匹配 | Handler | 说明 |
-|------|---------|------|
-| `AT+REBOOT` | `uart_reboot` | 重启 4G |
-| `AT+POWEROFF` | `uart_poweroff` | 关机 |
-| `AT+OTA` / `AT+OTACHECK` | `uart_ota` | OTA |
-| `AT+SETCFG=` | `uart_setcfg` | 运行时配置 |
-| `AT+PIRCLR` | `uart_pirclr` | 清零 PIR 统计 |
-| `AT+HOSTEVTCLR` | `uart_hostevt_clr` | 清除 pending 唤醒 |
-
-### 2.7 透传与其它
-
-| 类型 | 说明 |
-|------|------|
-| `STR:` / `HEX:` 行 | `LINE_HANDLERS` → 原样/十六进制转发 |
-| `state.passthrough` + `AT*` | 转交 `hooks.modem_at`（RIL 模式） |
+`STR:` / `HEX:` 行走 `LINE_HANDLERS`，不进 AT 表。`state.passthrough` 时未命中的 `AT*` 转交 `hooks.modemAt`。
 
 ---
 
-## 3. 上行应答注册表（`RX_LINE_HANDLER_REGISTRY`）
+## 4. 上行应答（`RX_LINE_TRY_HANDLERS`）
 
-按序调用 `try_*`，返回 `true` 表示已消费。
+按序调用函数，返回 `true` 表示已消费。注册表是 **函数数组**，不是 `{ name, fn }`。
 
-| name | 函数 | 典型行 | 用途 |
-|------|------|--------|------|
-| encode_uart_error | `try_encode_uart_error` | `+ENCODE:ERROR` | 编码 UART 错误 |
-| sound_ack | `try_sound_ack_line` | `+SOUNDACK:` | 提示音 ACK |
-| timeset_ack | `try_timeset_ack_line` | `+TIMESET:` | 对时 ACK |
-| gb28181 | `try_gb28181_line` | `+GB28181:` | GB28181 配置应答 |
-| wled | `try_wled_line` | `+WLED:` | 白光灯状态 |
-| tfformat | `try_tfformat_line` | `+TFFORMAT:` | 格式化结果 |
-| tfcard | `try_tfcard_line` | `+TFCARD:` | TF 卡查询应答 |
-| recordtime | `try_recordtime_line` | `+RECORDTIME:` | MQTT 2022/2023 |
-| framerate | `try_framerate_line` | `+FRAMERATE:` | MQTT 2024/2025 |
-| recordctrl | `try_recordctrl_line` | `+RECORDCTRL:` | 停录控制 |
-| persondet | `try_persondet_line` | `+PERSONDET:` | MQTT 2026/2027 |
-| record | `try_record_line` | `+RECORD:` | T3x 录像 URC |
-| venc / vencset | `try_venc_*` | `+VENC:` | 视频编码 query/set |
-| audio / audioset | `try_audio_*` | `+AUDIO:` | 音频编码 |
-| mic / micset | `try_mic_*` | `+MIC:` | 麦克风 MQTT 2028/2029 |
-| softphoto / softphotoset | `try_softphoto_*` | `+SOFTPHOTO:` | 软光敏 2030/2031 |
-| ipcstat | `try_ipcstat_line` | `+IPCSTAT:` | 云状态 |
-| ipcstatus | `try_ipcstatus_line` | `+IPCSTATUS:` | IPC 生命周期 |
-| ipcpoweroff | `try_ipcpoweroff_line` | `+IPCPOWEROFF:OK` | 优雅关机 ACK |
-| encode_ok_tail | `try_encode_ok_tail` | 行尾 OK | 编码命令完成 |
-
----
-
-## 4. HOSTIDLE 门禁（与电量联动）
-
-`uart_hostidle` 决策顺序：
-
-1. `FEATURE_CFG.host_evt` / `HOST_EVT_CFG.allow_host_idle_sleep`
-2. USB 插入 → `+HOSTIDLE:USB`
-3. `build_hostevt_body` 含 `has_event=1` → `BUSY`
-4. `battery_guard.shouldAllowHostIdleSleep()` → >20% 回 `BUSY`
-5. `battery_guard.canAcceptHostIdleSleep()` → PIR 唤醒 30s 内 `BUSY`
-6. 通过 → `t3x_ctrl.enterSleep({ reason="host_idle" })` → `OK`
+| 函数 | 典型行 | 用途 |
+|------|--------|------|
+| `tryEncodeUartErr` | 裸 `ERROR` | 冲掉进行中的 encode 查询 |
+| `tryEncodeUartOk` | 裸 `OK` | encode / MIC 查询结束 |
+| `trySoundAck` | `+SOUNDACK:` | 提示音 ACK |
+| `tryTimesetAck` | `+TIMESET:OK` | 对时 ACK |
+| `tryGb28181` | `+GB28181:` | GB28181 配置应答 |
+| `tryWledLine` | `+WLED:` | 白光灯状态 |
+| `tryTfFormat` | `+TFFORMAT:` | 格式化结果 |
+| `tryTfCard` | `+TFCARD:` | TF 卡查询应答 |
+| `tryRecTime` | `+RECORDTIME:` | MQTT 2022/2023 |
+| `tryRecord` | `+RECORD:` | T31x 录像 URC |
+| `tryRecordCtrlLine` | `+RECORDCTRL:` | 停录控制 |
+| `tryUploadLine` | `+UPLOADVIDEO:` | 上传 |
+| `tryFramerateLine` | `+FRAMERATE:` | MQTT 2024/2025 |
+| `tryVenc*` / `tryAudio*` | `+VENC:` / `+AUDIO:` | 视频/音频编码 |
+| `tryMic*` | `+MIC:` | 麦克风 MQTT 2028/2029 |
+| `trySoftPhoto*` | `+SOFTPHOTO:` | 软光敏 2030/2031 |
+| `tryPersonDetLine` | `+PERSONDET:` | 人形开关 |
+| `tryIpcStatCloud` | `+IPCSTAT:` | 云状态 |
+| `tryIpcStatus` | `+IPCSTATUS:` | IPC 生命周期 |
+| `tryIpcPowerOff` | `+IPCPOWEROFF:` | 优雅关机 ACK |
 
 ---
 
-## 5. 扩展新 AT 命令
+## 5. HOSTIDLE 门禁
 
-1. 实现 `local function uart_xxx(cmd) ... end`
-2. 在 `AT_CMD_TABLE` 追加 `uart_cmd_entry(...)`
-3. 无需改 `uart_dispatch_at`（表自动编译）
+`atHostIdle` 决策顺序：
 
-扩展新 T3x 上行应答：
-
-1. 实现 `local function try_xxx_line(line) ... end`
-2. 在 `RX_LINE_HANDLER_REGISTRY` 追加 `{ name, fn }`（注意顺序：更具体的放前面）
+1. `FEATURE_CFG.host_evt == false` → `NOT_SUPPORTED`
+2. `HOST_EVT_CFG.allow_host_idle_sleep == false` → `DISABLED`
+3. USB 挡休眠且 `AT+HOSTIDLE=1` → `+HOSTIDLE:USB`（`=0` 仍回 OK）
+4. `bldPirWake(true)` 含 `has_event=1` → `BUSY`
+5. `AT+HOSTIDLE?` → 回 `lowpower/usb/host_idle_allow` 快照
+6. `battery_guard.shouldHostSleep()` / `canHostSleep()` 任一否 → `BUSY`
+7. 通过 → `t31x_ctrl.enterSleep({ reason="host_idle" })` → `OK`
 
 ---
 
-**版本**：2026-06-30
+## 6. 扩展
+
+新 AT：
+
+1. 在对应 `hif_cmd_*.lua` 写 `local function uartXxx(cmd)`
+2. 挂到 `hif_cmd` 的 `at` 表
+3. 在 `hif_at.lua` 追加 `uartCmdEntr(...)`
+4. 无需改 `runAtDispatch`
+
+新 T31x 上行：
+
+1. 在 `hif_rx_dsl` / `hif_rx_media` 写 `tryXxx(line)`，命中返回 `true`
+2. 追加到 `hif_rx.lua` 的函数数组（更具体的放前面）
+
+---
+
+## 7. 本轮 hif_* 精简（可读性，协议语义不变）
+
+目标：少重复、早返回、名字对齐；不改 AT/MQTT 线格式。
+
+| 文件 | 做了什么 |
+|------|----------|
+| `hif_cmd_t31x.lua` | `needArg` / `ntfArg`；NOTIFY 空参统一 ERROR |
+| `hif_cmd.lua` | `atSend` 分 STR/HEX；`atLowPower` 一次读 rest；`atSend` 不用 `and/or` 调两次 |
+| `hif_cmd_usb.lua` | 去掉未用 `C.state`；`pushRecover`；RNDIS 开/关合一 |
+| `hif_cmd_wled.lua` | `AT+WLED?` / `AT+WLED=` 经 `C.defineQuery` / `C.defineSet` 工厂下发；影子表 `wledRuntime`（勿再命名成 `wledState`） |
+| `hif_cmd_link.lua` | `validPassword` |
+| `hif_cmd_pir.lua` | `uartHostEvtQry` 走 `bldHostEvtBody()` |
+| `hif_rx_dsl.lua` | `publishAck` / `recTimeRow`；TFFORMAT/WLED/IPCPOWEROFF 共用 ACK |
+| `hif_rx.lua` | 注册表分组注释 |
+| `hif_ipc_cloud.lua` | `flag01` / `liftFlag` |
+| `hif_ipc_encode.lua` | `packRows` 不再循环找第一行 |
+| `hif_ipc_hostq.lua` | `defineQuery` 对齐；SOFTPHOTO 字段名表 |
+| `hif_ipc_rec.lua` | `noteUartLinkOk = clearMissStreak` |
+| `hif_ipc_power.lua` | `waitBusyClear` 合成 while |
+| `hif_at.lua` | 分区注释；HOSTEVT 与 PIR exact 排一起 |
+| `hif_rx_dsl.lua` / `hif_rx_media.lua` | 二次：`trimStr` 并入 `normLine`；`asNum` 由 dsl 导出复用 |
+| `hif_ipc_encode.lua` / `hif_ipc_hostq.lua` | 二次：`optTable`/`asTbl` 复用 `utils.optTable` |
+| `hif_cmd_wled.lua` / `hif_ipc_cloud.lua` | 二次：删 `hostQuery` 永不读的死 `timeoutCfgKey`/`defaultTimeout`；cloud 快照只取一次 |
+| `hif_cmd_usb.lua` | 二次：USBRECOVERY `lastErr` 一行式 |
+
+`hif_ipc.lua` / `hif_ipc_tffmt.lua` / `hif_rx_media.lua` 本轮结构已短，未再拆。
+
+**不要再踩**：
+
+- `atSend`：`fn` 返回 `false` 时不能写成 `extra and fn(...) or fn(...)`（会调两次）。
+- `hif_cmd_usb` bind 头不要快照 `C.state`（handler 不用）。
+- WLED：表叫 `wledRuntime`，getter 叫 `wledGet`；同名会把表盖成函数，`+WLED:` 写 `.on` 会崩。AT+WLED? / AT+WLED= 走 `C.defineQuery` / `C.defineSet` 工厂（wled 由 `hif_cmd.bind` 早于 `hif_ipc.bind` 装载，工厂运行期经 `C` 惰性取用），**不要**在 wled 里直调 `hostQuery` 手拼 spec（原 `wledQuerySpec` 已删）。
+- `hostQuery(waitMs, opts)` 先置 `opts.timeoutMs = waitMs`：调用方传了非 nil 超时后，spec 里的 `timeoutCfgKey`/`defaultTimeout` 即为死字段（例外 `qryHostStat`：`t31x_ctrl` 可能传 nil，回退必须保留）。
+
+---
+
+**版本**：2026-09-02
+
+## 8. 超时常量真源（refactor_plan P2a，2026-09-04）
+
+host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（拿锁上限、IPCSTATUS/IPCSTAT 查询超时）在多处重复定义——R4 首版把 quiet 静默常量 `hostIdleMs=2000` 误当 acquire 预算即由此而来。P2a 起：
+
+| 键（`host_uart.lua` `TMO_SHARED`，经 `ctx.TMO_SHARED` 注入） | 值 | 消费方 |
+|---|---|---|
+| `acquireCapMs` | 8000 | `hif_ipc_power`（IPCPOWEROFF）、`hif_ipc_tffmt`（TFFORMAT） |
+| `statusQueryMs` | 2000 | `hif_ipc_rec`（`AT+IPCSTATUS?`）、`hif_ipc_power`（恢复链复查） |
+| `cloudStatQueryMs` | 2500（← `HOST_PROTO_TMO.ipcstat_query_ms`） | `hif_ipc_cloud`（`AT+IPCSTAT?`）、`host_uart` 首条 AT 后刷新；与 `net_mqtt.TMO_SHARED.ipcStatRefreshMs` 跨族同源 |
+| `qryDefaultMs` | 3000 | `hif_ipc.TMO.qry`（hostQuery 默认超时）、`hif_cmd_wled`（`AT+WLED?` ack）（P2b） |
+| `t31xWaitMs` | 800 | `hif_ipc.TMO.t31xWait`（`ensT31xHost` 默认等待）、`hif_cmd_wled`（P2b） |
+
+规则：**同一语义只在 `TMO_SHARED` 定义一次**；子模块本地表只留模块特有值（`tffmt.formatMs=120000`、`hostq.recOff=22000`、`power.readyDefaultMs` 等）。子模块头部写 `local TMO_SHARED = C.TMO_SHARED`，并在 `tools/debug/bind_header_specs.json` 对应 `c` 列表登记（`_gen_bind_header --check-all` 守护）。
+
+**跨族单源（架构 F 条，2026-09-05）**：config 片段 `user/host.lua` 新增 `_G.HOST_PROTO_TMO = { ipcstat_query_ms = 2500, record_stop_ms = 22000 }`。`host_uart.TMO_SHARED.cloudStatQueryMs` / `net_mqtt.TMO_SHARED.ipcStatRefreshMs` 同引 `ipcstat_query_ms`；`hif_ipc_hostq.TMO.recOff` / `mqtt_dl_pir.TIMEOUT.stopDefault` 同引 `record_stop_ms`。放在 config 域而非任一族 ctx，是因为两族互不 require（不能为一个常量引入 net_mqtt → host_uart 边）；`_config_key_check` 已把 `HOST_PROTO_TMO` 纳入 CONFIG.md 键索引（40 键）。
+
+**未并入（同值但语义待定）**：`hif_ipc_hostq.TMO.rec = 3000`（录像查询）与 `qryDefaultMs` 同值，是否同义待定。
+
+**已知同义不同值（本阶段不改数值，待维护者定）**：串口静默期 quiet——`hif_ipc.TMO.quiet = 1500`（hostQuery/hostSet 走 `armHost`）vs `hif_ipc_power.hostIdleCapMs = 2000` / `hif_ipc_tffmt.hostIdleMs = 2000`（直接 `waitHostIdle`）。统一到哪一个值需实机验证后再收进 `TMO_SHARED`。
+
+## 9. 串口并发模型：事务锁 / 破坏性会话 / per-query 重入（refactor_plan P3，2026-09-05，VERSION 156）
+
+三层保护各管一件事，`hostQuery`/`hostSet`（`hif_ipc.lua`）按下表顺序判定：
+
+| 层 | 状态 | 谁写 | 谁读 | 语义 |
+|---|---|---|---|---|
+| ① 事务锁 | `state.uart_txn_busy` + 持有协程/深度（`host_uart.uartAcquire/uartRelease`） | 每次「发 AT → 等 ACK」 | `hostQuery`/`hostSet`/`hostIpcPowerOff`/`formatHostTfCard` | 同一时刻只有一个请求在飞；可重入；`stop()`/首次 `start()` 复位 |
+| ② 破坏性会话 | `state.uart_session ∈ {nil, "tfformat", "poweroff", "usb_recovery"}` + 持有协程（`enterSession/leaveSession/sessionBlocks`） | `hif_ipc_tffmt`（格式化全程）、`hif_ipc_power`（`AT+IPCPOWEROFF` 全程）、`hif_ipc_rec`（USB 恢复任务） | `hostQuery` → 非持有协程走 `queryFallback`（缓存）；`hostSet` → `false, "busy"`；`isCloudBusy` → 1003 走缓存；`ipcQueryBusy` → 断电前等待非自身会话结束 | **T31x 处于不可打扰状态**；会话持有者自己仍可查询 |
+| ③ per-query 重入 | `state.<x>_query_busy` / `<x>_set_busy`（`opts.busyKey`） | `hostQuery`/`hostSet` 进入/退出 | 同类查询 + `HU_BUSY_KEYS`（1003 让路） | 同一种 AT 不并发两份 |
+
+P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery` 只看③自己的键：格式化期间 2007 `AT+TFCARD?` 仍会拿锁发出（体检 A2）。P3 起：
+- 三个旧键 `tfcard_format_busy` / `ipc_poweroff_busy` / `uart_recovery_busy` **删除**（`_host_uart_regression_check` 负向断言防回潮），`AT+GETCFG` 快照无此字段，T31x 侧无可见变化。
+- 行为变化（实机回归项，`USER_LIB_OPTIMIZATION_NEXT §6`）：2009 格式化期间下发 2007 → 1007 回缓存且串口无 `AT+TFCARD?`；2002 断电期间 2005 wled/2020 encode 查询 → 缓存 / `busy`；USB 恢复任务期间同理。
+- 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，恢复任务放弃本轮。
+- **断电与会话的仲裁（VERSION 161）**：① 策略触发的休眠（USB 拔出 / 电量 / `pir_watch_idle`，`skipPendingWorkCheck ~= true`）在任何会话进行中一律延后——`t31x_ctrl.blockSleep` 读 `host_uart.getUartSession()`，日志 `sleep_blocked_uart_session <name>`，与既有 `sleep_blocked_pending_work` 同一分支；② 用户显式 2002/AT 断电（`skipPendingWorkCheck`）不延后，但 `hostIpcPowerOff` 在其它会话进行中**有界等待**（≤ 本次 `poweroff_timeout_ms`，默认 30s，日志 `ipcpoweroff_rx wait_session`）其结束后再进入 poweroff 会话优雅断电；超时仍占用才回 false（`session_still_busy`）由 `gracePowOff` 硬切电。160 前二者都会在 500ms 内硬切电（写盘中拔卡）。
+
+## 10. bind 头规格：生成 + bind 时刻可用性（refactor_plan P7，2026-09-05）
+
+原计划把 70 键 `ctx` 拆成 `const / io / state` 三命名空间。执行时复核：ctx 字面表已按「运行时引用 / AT 响应格式化 / 模块工具 / 业务 helper / 子模块回填」分组注释，命名空间拆分需要重写 11 个子模块头部与生成器的全部匹配逻辑，**零行为、收益仅为可读性**，而真正导致过事故（107/108、158 前 `mqtt_dl_pir`）的是「头部快照的键在 bind 时尚未挂到 ctx」——这一点命名空间解决不了。因此 P7 改为在 `_gen_bind_header.py` 上落两项保证：
+
+| 能力 | 做法 |
+|---|---|
+| **bind 时刻可用性推导**（`--check-all` 新增） | 按装配顺序（host_uart `ctx` 字面表 → `ctx.k =` 回填 → `hif_cmd.bind` 内 `C.k =` → `hif_rx.bind` → `hif_ipc.bind` 内 `C.k =` / `local H = {…}` / `H.k =`）计算每个子模块 bind 那一行时 `C`/`H` 已有的键；头部任何 `local x = C.k` / `H.k` 直读快照若 k 不在集合内 → FAIL「bind 时快照 nil…改用 wrapper」。注入验证：给 `hif_ipc_cloud` 头部加 `local zz = C.hostQuery`（延迟键）即 FAIL |
+| **spec 由生成**（`--sync-specs`） | `bind_header_specs.json` 各模块 `c`/`h` 列表按头部同名直读快照 + wrapper + body 运行期用到的延迟键重写；改名快照（`local identityCfg = H.idCfgFn`）由 `inject` 表达。新增子模块 = 写头部 → `--sync-specs` → `--check-all`，不再手抄 JSON |
+
+`ctx` 三命名空间拆分登记为可选后续（无事故驱动不做）。
+
+## 11. AT 层不再反向调用业务层：`bizCall` provider 注入（架构 A 条，2026-09-05）
+
+AT 协议层（`host_uart` + 18 个 `hif_*`）此前经 `modCall("pir_ctrl"/"net_mqtt"/"battery_guard"/"t31x_policy"/"lp_wakeup"/"host_event"/"time_sync"/"sound_prompt", …)` 反向驱动业务层（25 处），是运行期 22 模块软环的主因，也让依赖方向从静态图上消失。现改为：
+
+- `app.buildBizProviders()`（`user/app.lua`）是**唯一真源**：22 个显式函数键（`shouldHostSleep`/`canHostSleep`/`markT31xWoken`/`mayPowerT31x`/`lpAppCfgFields`/`allowTcpChannel`/`closeTcpChannel`/`hostEvtEnabled`/`hostEvtSummarize`/`pirIsRecording`/`pirSyncStopT31x`/`pirApplyEffMedia`/`pirStatSnapshot`（H 条前为 `pirStatBody`）/`pirClearMarkers`/`pirResetCounters`/`onTimesetAck`/`onSoundAck`/`pubUploadDone`/`pubUploadNeed`/`setStatInterval`/`pubRaw`/`pubDeviceIdRef`），经 `host_uart.start{ biz = … }` 注入到 `hooks.biz`。
+- AT 层统一经 `ctx.bizCall(key, …)` 调用；provider 缺失（模块被 `MODULE_FLAGS` 裁剪）时返回 nil，与旧 `modCall` 对未加载模块的语义一致。**差异**：旧 `modCall` 用 `loader.load` 会把被裁剪模块强行加载再调用，新实现对被裁剪模块直接 no-op（更符合裁剪意图）。
+- 护栏：`_layer_check` R4（AT 层 ↛ 业务层）基线 15 → **0**；`_ref_name_check` 规则 F 校验 `bizCall("x")` 的 x ∈ provider 表键。软环 22 → 16 模块，`modCall` 46 → 17 处（余下均指向 `t31x_ctrl`/`runtime_power`/`device_id` 等基础设施）。
+
+## 12. `state` 语义键 setter 化（架构 C 条，2026-09-05）
+
+`host_uart.state` 中四个"有语义"的键不再允许子模块直写，统一经 `host_uart` 的 setter（`ctx.*` 导出）：
+
+| 键 | setter | 原写点数 → 1 | 说明 |
+|---|---|---|---|
+| `host_ipc_status` | `setHostIpcStatus(st, syncCloud)` | 7 → 1 | `syncCloud=true` 时顺带 `patchCloud{ipcReady=ipcReadyFrom(st)}`（`hif_cmd_t31x` 下行 IPCSTATUS + `hif_rx_dsl` URC 两条路径原各自 patch，现合一）；`hif_ipc_rec` 查询/`hif_ipc_power` 断电不同步（维持原行为） |
+| `host_at_ready` | `setHostAtReady(bool)` | 3 → 1 | `host_uart` 首条 AT / start；`hif_ipc_rec.resetHostLink` |
+| `host_tf_card` | `setHostTfCard(snap)` | 3 → 1 | `hif_cmd_t31x` / `hif_ipc_hostq` / `hif_rx_dsl` |
+| `host_ipc_cloud_stat` | `setHostCloudStat(snap)` | 3 → 1 | `commitIpcStat` raw 写、`resetHostLink` 清空、`mergeTfCloud` 建空表；`ipc_cloud_stat_ts` 仍只在 `commitIpcStat` 写 |
+
+护栏：`_protocol_regression_check SINGLE_WRITERS` 新增 4 条（`state.<键> =` 只许出现在 `user/host_uart.lua`）。实现细节：`host_uart` 需前向声明 `local ctx` 再 `ctx = {…}`（setter 运行期取 `ctx.patchCloud/ipcReadyFrom`），`_gen_bind_header` 的 ctx 字面量识别正则已兼容。缓存/计数类键（`t31x_wake_ts`、`last_command`、`miss_streak` 等）仍允许直写。零行为改动，VERSION 维持 161。

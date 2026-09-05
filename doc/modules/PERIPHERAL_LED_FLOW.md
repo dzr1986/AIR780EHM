@@ -1,8 +1,8 @@
 # peripheral / led_ctrl 按键与指示灯
 
-> **代码真源**：[`user/peripheral.lua`](../../user/peripheral.lua) · [`user/led_ctrl.lua`](../../user/led_ctrl.lua) · [`user/key_config.lua`](../../user/key_config.lua)  
-> **配置**：`KEY_CONFIG` · `LED_CFG`（[`config.lua`](../../user/config.lua)）  
-> **用户说明**：[LED_INDICATORS.md](../LED_INDICATORS.md) · [KEY_GPIO.md](../KEY_GPIO.md)  
+> **代码真源**：[`user/peripheral.lua`](../../user/peripheral.lua) · [`lib/led_ctrl.lua`](../../lib/led_ctrl.lua) · [`user/gpio_cfg.lua`](../../user/gpio_cfg.lua)（`KEY_CONFIG`）  
+> **配置**：`KEY_CONFIG`（`gpio_cfg.lua`）· `LED_CFG`（[`config.lua`](../../user/config.lua) 编排）  
+> **用户说明**：[LED_INDICATORS.md](../hardware/LED_INDICATORS.md) · [KEY_GPIO.md](../hardware/KEY_GPIO.md)  
 > **事件订阅**：[APP_EVENT_BUS.md](APP_EVENT_BUS.md)
 
 ---
@@ -11,7 +11,7 @@
 
 | 模块 | 职责 |
 |------|------|
-| **`key_config`** | 定义 PWR/BOOT/ready 引脚与 `APP_EVENTS` 事件名 |
+| **`gpio_cfg`** | 定义 `KEY_CONFIG`：PWR/BOOT/ready 引脚与事件键名（`APP_EVENTS` 值见 `events.lua`） |
 | **`peripheral`** | 聚合入口：`led_ctrl` + 按键 GPIO + `pir_ctrl.startHw` |
 | **`led_ctrl`** | GPIO21 蓝灯状态机；可选 GPIO 红灯（烧录失败等） |
 
@@ -34,7 +34,7 @@ flowchart TD
 | 键 | 默认长按 | 事件（`APP_EVENTS`） | app 订阅行为 |
 |----|----------|----------------------|--------------|
 | PWR | 3000ms | `GPIO_PWRKEY_SHORT` / `GPIO_PWRKEY_LONG` | 长按关机（USB 宽限期内忽略） |
-| BOOT | 2000ms | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 长按进入 T3x 烧录模式 |
+| BOOT | 2000ms | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 长按进入 T31x 烧录模式 |
 
 **防误触**：PWR 默认 `requireReleaseFirst=true`，上电若仍按住则先等释放再计时长按。
 
@@ -42,7 +42,7 @@ flowchart TD
 
 ### 2.1 coproc_ready（`setupReadySignal`）
 
-T3x 烧录完成拉高 ready 引脚 → `GPIO_COPROC_READY` → app 退出烧录、恢复 PIR/MQTT。
+T31x 烧录完成拉高 ready 引脚 → `GPIO_COPROC_READY` → app 退出烧录、恢复 PIR/MQTT。
 
 ---
 
@@ -68,7 +68,7 @@ flowchart TD
 | `ok` / `charging_ok` | 正常或充电中已联网 | 常亮 |
 | `unknown` | 尚无有效 ADC | 等待 |
 
-**充电抑制**：`suppress_low_when_charging=true` 时，USB 插入且 `isCharging()==1` 不因低电快闪（详见 [LED_INDICATORS.md](../LED_INDICATORS.md)）。
+**充电抑制**：`suppress_low_when_charging=true` 时，USB 插入且 `isCharging()==1` 不因低电快闪（详见 [LED_INDICATORS.md](../hardware/LED_INDICATORS.md)）。
 
 ### 3.1 开机序列
 
@@ -96,9 +96,9 @@ flowchart TD
 
 ---
 
-## 5. 与 T3x 网络灯（可选）
+## 5. 与 T31x 网络灯（可选）
 
-`LED_CFG.notify_t3x_net_led`：MQTT 联网态变化时经 `host_uart` 发 `+CAT1:MQTT,%d` 驱动 T3x PB17，与 GPIO21 蓝灯独立。
+`LED_CFG.notify_t31x_net_led`：MQTT 联网态变化时经 `host_uart` 发 `+CAT1:MQTT,%d` 驱动 T31x PB17，与 GPIO21 蓝灯独立。
 
 ---
 
@@ -106,7 +106,7 @@ flowchart TD
 
 | 配置项 | 位置 | 说明 |
 |--------|------|------|
-| `KEY_CONFIG.*.longPressMs` | `key_config.lua` | 长短按阈值 |
+| `KEY_CONFIG.*.longPressMs` | `gpio_cfg.lua` | 长短按阈值 |
 | `LED_CFG.low_percent` | `config.lua` | 与电量三档 20% 对齐 |
 | `LED_CFG.suppress_low_when_charging` | `config.lua` | 充电中不报低电快闪 |
 | `BATTERY_CFG.led.*` | `config.lua` | 旧版电量灯参数（`led_ctrl` 部分沿用 `medium_threshold`） |

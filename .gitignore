@@ -3,8 +3,12 @@ luac.out
 *.luac
 *.luac64
 
-# IDE / 编辑器
-.cursor/
+# IDE / 编辑器（保留 .cursor/rules 与 .cursor/agents 以便团队共用）
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/agents/
+!.cursor/agents/**
 .vscode/
 .idea/
 .trae/
@@ -12,8 +16,9 @@ luac.out
 *.swp
 *~
 
-# 审计/报告临时目录
-doc/_audit/
+# 审计/报告：doc/_audit/ 自 2026-09 主题归档起为「历史留档」目录（doc/README.md 登记，
+# 20+ 主题文档互链其中），必须入库；仅忽略其内工具产生的 json 快照
+doc/_audit/*.json
 
 # 本地工具缓存
 .qoder/
@@ -26,8 +31,11 @@ Luatools_v3.exe
 .specstory/
 ota_server/.specstory/
 
-# 发布包（体积大，需要时单独归档）
-release/
+# AI 会话记忆（本地，勿入 git）
+.ai-memory/
+
+# 发布包（体积大，需要时单独归档）；根锚定，勿误吞 doc/release/ 文档目录
+/release/
 firmware/*.soc
 firmware/*.bin
 *_量产/
@@ -45,3 +53,8 @@ Desktop.ini
 dist/
 build/
 __pycache__/
+
+# 大体积压缩包 / 日志 / 本地规格书（勿入 git）
+*.7z
+*.log
+datasheet/

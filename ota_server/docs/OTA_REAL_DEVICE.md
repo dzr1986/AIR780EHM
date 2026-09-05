@@ -81,7 +81,7 @@ python tools/cat1_flash.py pack-prod
 python tools/cat1_flash.py pack-prod --bump
 ```
 
-需要 `luatos-cli.exe`：放到 `_temp/luatos-cli/`，或设置 `CAT1_LUATOS_CLI`。说明见 [CAT1_FLASH_TOOL.md](../../doc/CAT1_FLASH_TOOL.md) §8。
+需要 `luatos-cli.exe`：放到 `_temp/luatos-cli/`，或设置 `CAT1_LUATOS_CLI`。说明见 [CAT1_FLASH_TOOL.md](../../doc/release/CAT1_FLASH_TOOL.md) §8。
 
 ### 3.2 手工步骤
 

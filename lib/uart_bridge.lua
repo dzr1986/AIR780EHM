@@ -6,95 +6,48 @@
 
 require "sys"
 require "config"
+local cfgm = require "config_manager"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
 local CRLF = "\r\n"
 local drv = {
     started = false,
-    uart_id = 0,
-    baud = 115200,
-    line_protocol = true,
-    rx_line_max = 0,
     rx_line_buf = "",
 }
 local handlers = {
-    on_raw = nil,
-    on_line = nil,
+    onRaw = nil,
+    onLine = nil,
 }
 local stats = {
     rx_bytes = 0,
     tx_bytes = 0,
-    last_rx_raw = nil,
-    last_tx_raw = nil,
-    last_line = nil,
 }
-local function loadUartCfg()
-    local c = _G.UART_CFG
-    if type(c) ~= "table" or c.id == nil or c.baud == nil or c.rx_line_max == nil then
-        return false
-    end
-    drv.uart_id = c.id
-    drv.baud = c.baud
+
+local function loadCfg()
+    local c = cfgm.get("UART_CFG")
+    drv.uart_id = c.id ~= nil and c.id or 1
+    drv.baud = tonumber(c.baud) or 115200
     drv.line_protocol = c.line_protocol ~= false
-    drv.rx_line_max = c.rx_line_max
-    return true
+    drv.rx_line_max = tonumber(c.rx_line_max) or 4096
 end
+loadCfg()
 
-local function bindHndl(options)
-    handlers.on_raw = nil
-    handlers.on_line = nil
-    if type(options) ~= "table" then
-        return
-    end
-    if options.onRaw ~= nil then
-        handlers.on_raw = options.onRaw
-    end
-    if options.onLine ~= nil then
-        handlers.on_line = options.onLine
-    end
-end
-
-local function write_raw(data)
-    if not drv.started then
-        return false
-    end
-    if data == nil then
-        return false
-    end
-    if #data == 0 then
-        return false
-    end
+function write(data)
+    if not drv.started or data == nil or #data == 0 then return false end
     uart.write(drv.uart_id, data)
-    stats.last_tx_raw = data
     stats.tx_bytes = stats.tx_bytes + #data
     return true
 end
 
-function write(data)
-    return write_raw(data)
-end
-
 function sendString(text, with_crlf)
-    if text == nil then
-        return false
-    end
-    if with_crlf ~= false then
-        text = text .. CRLF
-    end
-    return write_raw(text)
+    if text == nil then return false end
+    if with_crlf ~= false then text = text .. CRLF end
+    return write(text)
 end
 
-local function emit_line(line)
-    stats.last_line = line
-    local cb = handlers.on_line
-    if cb == nil then
-        return
-    end
-    cb(line)
-end
-
-local function feedLine(chunk)
+local function onFeed(chunk)
     drv.rx_line_buf = drv.rx_line_buf .. chunk
     if #drv.rx_line_buf > drv.rx_line_max then
         drv.rx_line_buf = ""
@@ -102,82 +55,55 @@ local function feedLine(chunk)
     end
     while true do
         local idx = drv.rx_line_buf:find(CRLF, 1, true)
-        if idx == nil then
-            break
-        end
+        if idx == nil then break end
         local line = drv.rx_line_buf:sub(1, idx - 1)
         drv.rx_line_buf = drv.rx_line_buf:sub(idx + 2)
-        emit_line(line)
+        if handlers.onLine then handlers.onLine(line) end
     end
 end
 
-local function on_rx_raw(data)
-    stats.last_rx_raw = data
-    stats.rx_bytes = stats.rx_bytes + #data
-    local cb = handlers.on_raw
-    if cb ~= nil then
-        cb(data)
-    end
-end
-
-local function on_uart_recv(id, len)
+local function onUartRx(id, len)
     local data = uart.read(id, len)
-    if data == nil then
-        return
-    end
-    if #data == 0 then
-        return
-    end
-    on_rx_raw(data)
-    if drv.line_protocol then
-        feedLine(data)
-    end
+    if data == nil or #data == 0 then return end
+    stats.rx_bytes = stats.rx_bytes + #data
+    if handlers.onRaw then handlers.onRaw(data) end
+    if drv.line_protocol then onFeed(data) end
 end
 
 function setOnLine(fn)
-    handlers.on_line = fn
+    handlers.onLine = fn
 end
 
 function start(options)
-    if drv.started then
-        return false
-    end
-    if not loadUartCfg() then
-        return false
-    end
-    bindHndl(options)
+    if drv.started then return true end
+    loadCfg()
+    options = type(options) == "table" and options or {}
+    handlers.onRaw = options.onRaw
+    handlers.onLine = options.onLine
     drv.rx_line_buf = ""
     uart.setup(drv.uart_id, drv.baud, 8, 0, 0, 0)
-    uart.on(drv.uart_id, "recv", on_uart_recv)
+    uart.on(drv.uart_id, "recv", onUartRx)
     drv.started = true
     return true
 end
 
 function stop()
-    if not drv.started then
-        return false
-    end
+    if not drv.started then return true end
     uart.close(drv.uart_id)
     drv.started = false
     drv.rx_line_buf = ""
-    handlers.on_raw = nil
-    handlers.on_line = nil
+    handlers.onLine = nil
+    handlers.onRaw = nil
     return true
 end
 
 function getState()
     return {
         started = drv.started,
-        uartId = drv.uart_id,
-        baud = drv.baud,
-        lineProtocol = drv.line_protocol,
-        rx_line_max = drv.rx_line_max,
         rx_pending = #drv.rx_line_buf,
-        last_rx_raw = stats.last_rx_raw,
-        last_tx_raw = stats.last_tx_raw,
-        last_line = stats.last_line,
         rx_bytes = stats.rx_bytes,
         tx_bytes = stats.tx_bytes,
     }
 end
+
 return _M

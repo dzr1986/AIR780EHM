@@ -17,7 +17,7 @@ import serial
 from _com7_probe import ensure_login, interrupt, send
 
 KEYS = (
-    "mqtt", "MQTT", "1001", "ipcReady", "T3x", "t3x", "UART", "uart",
+    "mqtt", "MQTT", "1001", "ipcReady", "T31x", "t31x", "UART", "uart",
     "GETCFG", "PERSONCNT", "HOSTIDLE", "PIR", "workMode", "VERSION",
     "001.000", "powered", "GPIO22", "NETREADY", "IP", "imei", "IMEI",
     "host_uart", "AT+", "ready", "boot",

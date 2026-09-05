@@ -94,4 +94,4 @@ HTTP 查询里的 `version` 是设备**当前**版本，用来匹配差分包；
 | [OTA_FOTA.md](OTA_FOTA.md) | 差分规则、循环保护 |
 | [OTA_PROTOCOL.md](OTA_PROTOCOL.md) | HTTP / MQTT 字段 |
 | [../deploy/DEPLOY.md](../deploy/DEPLOY.md) | 腾讯云部署 |
-| [../../doc/MQTT_DOWNLINK.md](../../doc/MQTT_DOWNLINK.md) §6.7 | 2004 带 url |
+| [../../doc/mqtt/MQTT_DOWNLINK.md](../../doc/mqtt/MQTT_DOWNLINK.md) §6.7 | 2004 带 url |

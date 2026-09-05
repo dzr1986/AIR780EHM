@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IPC 升级 · 4G OTA</title>
+  <style>
+    :root {
+      --nav:#1b3a5f; --nav-hover:#24507f; --accent:#2b7de1; --ok:#1a9e54;
+      --danger:#d94a4a; --bg:#f4f6f8; --card:#fff; --text:#1f2d3d; --muted:#6b7c8f; --line:#e4e8ee;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+    a { color: var(--accent); text-decoration: none; }
+    .top { background: var(--nav); color: #fff; display: flex; align-items: center; gap: 8px; padding: 0 20px; height: 52px; }
+    .brand { font-weight: 700; margin-right: 16px; }
+    .nav-btn { background: none; border: 0; color: #d7e4f5; padding: 16px 12px; cursor: pointer; font-size: 14px; }
+    .nav-btn.active, .nav-btn:hover { color: #fff; background: var(--nav-hover); }
+    .wrap { max-width: 1100px; margin: 20px auto; padding: 0 16px 40px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+    input, button { font: inherit; }
+    input[type=text], input[type=password] { width: 100%; padding: 8px 10px; border: 1px solid #cfd6de; border-radius: 6px; }
+    button { border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; background: var(--accent); color: #fff; }
+    button.ghost { background: #eef3f8; color: var(--nav); }
+    button.ok { background: var(--ok); }
+    button.danger { background: var(--danger); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+    .token-bar { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .token-bar input { width: 280px; }
+    pre { background: #0f1720; color: #d7e4f5; padding: 12px; border-radius: 6px; overflow: auto; font-size: 12px; min-height: 180px; max-height: 360px; }
+    .kv { display: grid; grid-template-columns: 100px 1fr; gap: 6px 12px; font-size: 14px; }
+    .kv b { color: var(--muted); font-weight: 600; }
+    .ops { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .hidden { display: none !important; }
+    .st-ok { color: var(--ok); font-weight: 600; }
+    .st-fail { color: var(--danger); font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { color: var(--muted); }
+    tr.picked { background: #eef6ff; }
+    th.ck, td.ck { width: 36px; }
+    textarea { width: 100%; padding: 8px 10px; border: 1px solid #cfd6de; border-radius: 6px; font: inherit; min-height: 88px; resize: vertical; }
+    .perm { padding: 4px 10px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">4G OTA</div>
+    <button class="nav-btn" onclick="location.href='admin.html'">模组 OTA</button>
+    <button class="nav-btn active">IPC 升级</button>
+  </div>
+  <div class="wrap">
+    <div class="card token-bar">
+      <div>
+        <label>Admin Token</label>
+        <input id="token" type="password" value="ota-7f3a9c2e4b18d6a0e5c1" placeholder="管理令牌">
+      </div>
+      <button onclick="boot()">登录 / 刷新</button>
+      <span id="loginHint" class="muted">登录后可上传 IPC 文件并下发升级</span>
+    </div>
+
+    <div id="app" class="hidden">
+      <div class="card">
+        <h1>绑定 IMEI</h1>
+        <p class="muted">IPC 挂在 Cat.1 模组上，升级按 15 位 IMEI 记账。实验室仍用 x86demo 拉包，结果写回该 IMEI。</p>
+        <div class="grid2">
+          <div>
+            <label>选择已有设备</label>
+            <select id="imeiSelect" onchange="onImeiPick()"></select>
+          </div>
+          <div>
+            <label>IMEI 列表（一行一个，也可加载 txt）</label>
+            <textarea id="imei" rows="5" placeholder="862323084068231"></textarea>
+          </div>
+        </div>
+        <div class="ops">
+          <input id="imeiFile" type="file" accept=".txt,.csv,.imei,text/plain">
+          <button class="ghost" onclick="run(loadImeiFile)">加载 IMEI 文件</button>
+          <button class="ghost" onclick="run(applyImeiList)">勾选这些 IMEI</button>
+        </div>
+      </div>
+      <div class="card">
+        <h1>设备状态</h1>
+        <p class="muted">勾选要升级的 IMEI。未点「允许」的设备不能下发。实验室仍共用一台 x86demo。</p>
+        <div class="kv" id="deviceKv"></div>
+        <div class="ops">
+          <button class="ok" onclick="run(() => batchPerm(true))">勾选 → 允许</button>
+          <button class="danger" onclick="run(() => batchPerm(false))">勾选 → 禁止</button>
+          <button class="busy-lock" onclick="run(doUpgrade)">勾选 → 下发升级</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th class="ck"><input type="checkbox" id="ckAll" onchange="toggleAll(this.checked)"></th>
+              <th>IMEI</th>
+              <th>模组版本</th>
+              <th>IPC 版本</th>
+              <th>IPC 权限</th>
+              <th>IPC 状态</th>
+              <th>最近 IPC 升级</th>
+            </tr>
+          </thead>
+          <tbody id="imeiRows"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h1>上传并升级</h1>
+        <p class="muted">选择 IPC 文件，服务器打成 ipc.tar + ipc.json。下发对象是上方<strong>勾选且已允许</strong>的 IMEI；未勾选时用当前填写的 IMEI。</p>
+        <div class="grid2">
+          <div>
+            <label>IPC 版本</label>
+            <input id="version" type="text" value="1.0.40">
+          </div>
+          <div>
+            <label>实验室 deviceId</label>
+            <input id="deviceId" type="text" value="T31-X86-DEMO">
+          </div>
+        </div>
+        <label>IPC 文件</label>
+        <input id="file" type="file">
+        <div class="ops">
+          <button class="busy-lock" onclick="run(doUpload)">1. 上传并打包</button>
+          <button class="busy-lock" onclick="run(doUpgrade)">2. 下发到勾选设备</button>
+          <button class="ok busy-lock" onclick="run(doLoop)">一键闭环</button>
+          <button class="ghost busy-lock" onclick="run(doPull)">拉取到本地</button>
+        </div>
+        <p class="muted" id="pkgHint">尚未上传</p>
+      </div>
+      <div class="card">
+        <h1>日志</h1>
+        <pre id="log"></pre>
+      </div>
+    </div>
+  </div>
+<script>
+const TOKEN_KEY = 'luat-ota-admin-token';
+const IMEI_KEY = 'luat-ota-ipc-imei';
+let lastPkg = null;
+let lastStatus = null;
+let busy = false;
+
+function token() { return document.getElementById('token').value.trim(); }
+function imeiText() { return (document.getElementById('imei').value || '').trim(); }
+function parseImeis(text) {
+  const valid = [];
+  const seen = new Set();
+  const invalid = [];
+  String(text || '').split(/[,;，、\s]+/).forEach(tok => {
+    const t = tok.trim();
+    if (!t) return;
+    if (/^\d{15}$/.test(t)) {
+      if (!seen.has(t)) { seen.add(t); valid.push(t); }
+    } else invalid.push(t);
+  });
+  return { valid, invalid };
+}
+function listedImeis() { return parseImeis(imeiText()).valid; }
+function currentImei() { return listedImeis()[0] || ''; }
+function requireImei() {
+  const list = listedImeis();
+  if (!list.length) throw new Error('请填写或加载 15 位 IMEI');
+  localStorage.setItem(IMEI_KEY, list.join('\n'));
+  return list[0];
+}
+function selectedImeis() {
+  return [...document.querySelectorAll('.ipc-ck:checked')].map(c => c.value);
+}
+function upgradeTargets() {
+  const picked = selectedImeis();
+  const listed = listedImeis();
+  const table = new Set([...document.querySelectorAll('.ipc-ck')].map(c => c.value));
+  if (picked.length) {
+    const extra = listed.filter(x => !table.has(x));
+    return picked.concat(extra.filter(x => !picked.includes(x)));
+  }
+  if (listed.length) return listed;
+  return [requireImei()];
+}
+function applyImeiList() {
+  const { valid, invalid } = parseImeis(imeiText());
+  if (!valid.length) throw new Error('没有合法的 15 位 IMEI');
+  document.getElementById('imei').value = valid.join('\n');
+  const want = new Set(valid);
+  let hit = 0;
+  document.querySelectorAll('.ipc-ck').forEach(c => {
+    c.checked = want.has(c.value);
+    if (c.checked) hit++;
+  });
+  log('勾选 ' + hit + '/' + valid.length + ' 台' + (invalid.length ? '，忽略 ' + invalid.length : ''));
+}
+function loadImeiFile() {
+  const input = document.getElementById('imeiFile');
+  const file = input.files && input.files[0];
+  if (!file) throw new Error('请先选择 txt / csv');
+  return file.text().then(text => {
+    const { valid, invalid } = parseImeis(text);
+    if (!valid.length) throw new Error(file.name + ' 里没有 15 位 IMEI');
+    document.getElementById('imei').value = valid.join('\n');
+    applyImeiList();
+    log('已加载 ' + file.name + '：' + valid.length + ' 个 IMEI' + (invalid.length ? '，忽略 ' + invalid.length : ''));
+  });
+}
+function deviceRec(imei) {
+  return ((lastStatus && lastStatus.devices) || []).find(d => d.imei === imei) || {};
+}
+function toggleAll(on) {
+  document.querySelectorAll('.ipc-ck').forEach(c => { c.checked = on; });
+}
+function fmtTime(v) {
+  if (!v) return '-';
+  return String(v).replace('T', ' ').replace('Z', '').slice(0, 19);
+}
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+  el.textContent += line;
+  el.scrollTop = el.scrollHeight;
+}
+function api(path, opts = {}) {
+  const headers = { 'X-Admin-Token': token(), ...(opts.headers || {}) };
+  return fetch('admin/api/ipc' + path, { ...opts, headers }).then(async r => {
+    const text = await r.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+    if (!r.ok) throw new Error((data.message || data.error || text || r.status).toString());
+    return data;
+  });
+}
+function setBusy(v) {
+  busy = v;
+  document.querySelectorAll('#app .busy-lock').forEach(b => b.disabled = v);
+}
+
+async function boot() {
+  try {
+    if (token()) localStorage.setItem(TOKEN_KEY, token());
+    const savedImei = localStorage.getItem(IMEI_KEY) || '';
+    if (savedImei && !document.getElementById('imei').value) {
+      document.getElementById('imei').value = savedImei;
+    }
+    const q = currentImei() && /^\d{15}$/.test(currentImei()) ? ('?imei=' + encodeURIComponent(currentImei())) : '';
+    const st = await api('/status' + q);
+    lastStatus = st;
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('loginHint').textContent = '已登录';
+    document.getElementById('loginHint').className = 'st-ok';
+    fillImeiSelect(st.devices || []);
+    renderDevice(st);
+    log('登录成功 imei=' + (currentImei() || '-') + ' demo=' + ((st.demo && st.demo.version) || st.deviceError || '-'));
+  } catch (e) {
+    document.getElementById('app').classList.add('hidden');
+    document.getElementById('loginHint').textContent = '登录失败: ' + e.message;
+    document.getElementById('loginHint').className = 'st-fail';
+  }
+}
+
+function fillImeiSelect(devices) {
+  const sel = document.getElementById('imeiSelect');
+  const cur = currentImei();
+  sel.innerHTML = '<option value="">选择设备…</option>' + devices.map(d =>
+    '<option value="' + d.imei + '"' + (d.imei === cur ? ' selected' : '') + '>' +
+    d.imei + (d.deviceName && d.deviceName !== d.imei ? ' · ' + d.deviceName : '') + '</option>'
+  ).join('');
+}
+
+function pickImei(imei) {
+  const { valid } = parseImeis(imeiText());
+  if (imei && !valid.includes(imei)) valid.push(imei);
+  document.getElementById('imei').value = valid.join('\n') || imei;
+  const sel = document.getElementById('imeiSelect');
+  if (sel) sel.value = imei;
+  localStorage.setItem(IMEI_KEY, valid.join('\n') || imei);
+  renderDevice(lastStatus || {});
+}
+
+function onImeiPick() {
+  const v = document.getElementById('imeiSelect').value;
+  if (v) pickImei(v);
+}
+
+function renderDevice(st) {
+  const imei = currentImei();
+  const rec = (st.selected && st.selected.imei === imei) ? st.selected
+    : ((st.devices || []).find(d => d.imei === imei) || {});
+  const demo = st.demo || st.device || {};
+  const allowed = !!rec.ipcEnabled;
+  document.getElementById('deviceKv').innerHTML =
+    '<b>IMEI</b><span>' + (imei || '未选择') + '</span>' +
+    '<b>模组版本</b><span>' + (rec.currentVersion || '-') + '</span>' +
+    '<b>IPC 版本</b><span>' + (rec.ipcVersion || '-') + '</span>' +
+    '<b>IPC 权限</b><span class="' + (allowed ? 'st-ok' : 'st-fail') + '">' + (allowed ? '允许' : '禁止') + '</span>' +
+    '<b>IPC 状态</b><span>' + (rec.ipcStatus || 'IDLE') + '</span>' +
+    '<b>实验室 IPC</b><span>' + (demo.deviceId || '-') + ' / ' + (demo.version || st.deviceError || '-') + '</span>' +
+    '<b>FileUrl</b><span><a href="' + (st.url || '#') + '" target="_blank">' + (st.url || '-') + '</a></span>';
+  const checked = new Set(selectedImeis());
+  document.getElementById('imeiRows').innerHTML = (st.devices || []).map(d => {
+    const on = !!d.ipcEnabled;
+    return '<tr class="' + (d.imei === imei ? 'picked' : '') + '">' +
+      '<td class="ck"><input class="ipc-ck" type="checkbox" value="' + d.imei + '"' + (checked.has(d.imei) ? ' checked' : '') + '></td>' +
+      '<td><a href="javascript:void(0)" onclick="pickImei(\'' + d.imei + '\')">' + d.imei + '</a></td>' +
+      '<td>' + (d.currentVersion || '-') + '</td>' +
+      '<td>' + (d.ipcVersion || '-') + '</td>' +
+      '<td><button class="perm ' + (on ? 'ok' : 'danger') + '" onclick="run(() => togglePerm(\'' + d.imei + '\', ' + on + '))">' +
+        (on ? '允许' : '禁止') + '</button></td>' +
+      '<td>' + (d.ipcStatus || 'IDLE') + '</td>' +
+      '<td>' + fmtTime(d.lastIpcUpgradeAt) + '</td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="7">暂无设备台账</td></tr>';
+  const all = document.getElementById('ckAll');
+  if (all) all.checked = false;
+}
+
+async function refreshStatus() {
+  const q = currentImei() && /^\d{15}$/.test(currentImei()) ? ('?imei=' + encodeURIComponent(currentImei())) : '';
+  lastStatus = await api('/status' + q);
+  fillImeiSelect(lastStatus.devices || []);
+  renderDevice(lastStatus);
+}
+
+async function togglePerm(imei, currentlyEnabled) {
+  if (currentlyEnabled && !confirm('确定禁止 ' + imei + ' 的 IPC 升级？')) return;
+  await api('/devices/' + encodeURIComponent(imei) + '/enabled', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !currentlyEnabled })
+  });
+  log('IMEI ' + imei + ' IPC 权限 → ' + (!currentlyEnabled ? '允许' : '禁止'));
+  await refreshStatus();
+}
+
+async function batchPerm(enabled) {
+  const imeis = selectedImeis();
+  if (!imeis.length) throw new Error('请先勾选设备');
+  if (!enabled && !confirm('确定禁止勾选的 ' + imeis.length + ' 台设备 IPC 升级？')) return;
+  const r = await api('/devices/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: enabled ? 'enable' : 'disable', imeis })
+  });
+  log((enabled ? '允许' : '禁止') + ' ' + r.updated + ' 台');
+  await refreshStatus();
+}
+
+async function doUpload() {
+  const file = document.getElementById('file').files[0];
+  if (!file) { alert('请先选择 IPC 文件'); return; }
+  const ver = document.getElementById('version').value.trim();
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('version', ver);
+  if (/^\d{15}$/.test(currentImei())) fd.append('imei', currentImei());
+  log('上传 ' + file.name + ' version=' + ver + ' imei=' + (currentImei() || '-'));
+  const pkg = await api('/upload', { method: 'POST', body: fd });
+  lastPkg = pkg;
+  document.getElementById('pkgHint').textContent = '已上传 ipc.tar  ' + pkg.size + ' 字节  md5=' + pkg.md5;
+  log('上传成功 ' + JSON.stringify(pkg));
+  return pkg;
+}
+
+async function upgradeOne(pkg, imei) {
+  const rec = deviceRec(imei);
+  if (!rec.ipcEnabled) throw new Error('IMEI ' + imei + ' 未允许 IPC 升级，请先点「允许」');
+  const payload = {
+    imei,
+    version: document.getElementById('version').value.trim(),
+    deviceId: document.getElementById('deviceId').value.trim(),
+    url: pkg.url,
+    md5: pkg.md5
+  };
+  log('下发 ipc_upgrade ' + JSON.stringify(payload));
+  const acc = await api('/upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const sid = acc.sessionId;
+  log('已受理 imei=' + imei + ' sessionId=' + sid);
+  let task = {};
+  for (let i = 0; i < 40; i++) {
+    task = await api('/tasks/' + sid + '?imei=' + encodeURIComponent(imei));
+    log('  stage=' + task.stage + '  ' + (task.message || ''));
+    if (task.stage === 'success' || task.stage === 'failed') break;
+    await new Promise(r => setTimeout(r, 400));
+  }
+  await refreshStatus();
+  const ok = task.stage === 'success' || deviceRec(imei).ipcStatus === 'SUCCESS';
+  log('IMEI ' + imei + ' IPC版本=' + (deviceRec(imei).ipcVersion || '-') + '  ' + (ok ? 'PASS' : 'FAIL'));
+  if (!ok) throw new Error('IMEI ' + imei + ' ipc_upgrade 未通过');
+  return task;
+}
+
+async function doUpgrade(pkg) {
+  pkg = pkg || lastPkg;
+  if (!pkg || !pkg.url) throw new Error('请先上传');
+  const targets = upgradeTargets();
+  const denied = targets.filter(imei => !deviceRec(imei).ipcEnabled);
+  if (denied.length) throw new Error('未允许 IPC 升级: ' + denied.join(', '));
+  let last = null;
+  for (const imei of targets) {
+    pickImei(imei);
+    last = await upgradeOne(pkg, imei);
+  }
+  return last;
+}
+
+async function doPull() {
+  const names = ['ipc.tar', 'ipc.json'];
+  for (const name of names) {
+    const r = await fetch('admin/api/ipc/file/' + name, { headers: { 'X-Admin-Token': token() } });
+    if (!r.ok) throw new Error('拉取 ' + name + ' 失败 ' + r.status);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    log('已拉取到本地下载目录 ' + name + '  ' + blob.size + ' 字节');
+  }
+}
+
+async function doLoop() {
+  const pkg = await doUpload();
+  await doUpgrade(pkg);
+  await doPull();
+  log('一键闭环完成');
+}
+
+async function run(fn) {
+  if (busy) return;
+  setBusy(true);
+  try { await fn(); }
+  catch (e) { log('失败: ' + e.message); alert(e.message); }
+  finally { setBusy(false); }
+}
+
+document.getElementById('token').addEventListener('keydown', e => { if (e.key === 'Enter') boot(); });
+const saved = localStorage.getItem(TOKEN_KEY);
+if (saved) document.getElementById('token').value = saved;
+if (document.getElementById('token').value.trim()) boot();
+</script>
+</body>
+</html>

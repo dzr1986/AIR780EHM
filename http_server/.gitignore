@@ -1,0 +1,7 @@
+# 忽略录像与构建产物
+**/incoming/**/*.ts
+**/incoming/**/*.json
+!**/incoming/**/.gitkeep
+**/__pycache__/
+*.pyc
+java_project/target/

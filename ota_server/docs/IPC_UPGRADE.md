@@ -91,21 +91,30 @@ T31 进程重、交叉编译麻烦时，用云主机 **x86demo** 代替嵌入式
 Token 与管理台相同：`ota-7f3a9c2e4b18d6a0e5c1`（`X-Admin-Token`）  
 4G OTA 顶栏也可点 **IPC 升级**。
 
-登录后：选 IPC 文件 → 上传并打包（Java 写成 `ipc.tar` + `ipc.json`）→ 下发 `ipc_upgrade` → 一键闭环 → 拉取到本地。
+登录后先在设备表把目标 IMEI 的 **IPC 权限** 点成「允许」（默认禁止），再勾选设备上传并下发。升级记录写在该 IMEI 的设备台账（`ipc_version` / `ipc_status` / `ipc_enabled`）。实验室拉包仍走 x86demo。
 
 | 接口 | 说明 |
 |------|------|
-| `GET /admin/api/ipc/status` | 登录校验 + 设备状态 |
-| `POST /admin/api/ipc/upload` | multipart `file` + `version` |
-| `POST /admin/api/ipc/upgrade` | 下发 x86demo |
-| `GET /admin/api/ipc/tasks/{id}` | 任务进度 |
+| `GET /admin/api/ipc/status?imei=` | 登录校验 + IMEI 列表 + 选中设备 IPC 状态 |
+| `PUT /admin/api/ipc/devices/{imei}/enabled` | `{enabled:true/false}` 单台允许/禁止 IPC 升级 |
+| `POST /admin/api/ipc/devices/batch` | `{action:enable\|disable, imeis:[...]}` 批量权限 |
+| `POST /admin/api/ipc/upload` | multipart `file` + `version` + 可选 `imei` |
+| `POST /admin/api/ipc/upgrade` | `{imei, version, url, md5}`，IMEI 必填且须已允许 |
+| `GET /admin/api/ipc/tasks/{id}?imei=` | 任务进度，成功则回写该 IMEI |
 | `GET /admin/api/ipc/file/ipc.tar` | 登录后下载到本机 |
 
 ---
 
 ## 4. Windows 测试工具
 
-双击 `tools\ipc_upgrade_gui.bat`（或 `python tools\ipc_upgrade_gui.py`）。
+推荐 Qt 统一工具（4G + IPC、多主题）：
+
+```text
+python ota_server\tools\ota_qt_gui.py
+python ota_server\tools\ota_qt_gui.py --once-ipc
+```
+
+双击 `tools\ota_qt_gui.bat`。旧版仅 IPC 打包：`tools\ipc_upgrade_gui.bat`。
 
 全部在 Windows 完成，不必再跑 Linux `./pack_tool`：
 

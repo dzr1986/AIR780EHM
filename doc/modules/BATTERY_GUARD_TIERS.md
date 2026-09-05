@@ -1,7 +1,7 @@
 # battery_guard 电量分档策略
 
 > **代码真源**：[`user/battery_guard.lua`](../../user/battery_guard.lua) · [`user/config.lua`](../../user/config.lua)  
-> **关联**：[POWER_USB_BATTERY_T3X_LOGIC.md](../POWER_USB_BATTERY_T3X_LOGIC.md) · [LOW_POWER_ENTER_STRATEGY.md](../LOW_POWER_ENTER_STRATEGY.md)
+> **关联**：[POWER_USB_BATTERY_T31X_LOGIC.md](../power/POWER_USB_BATTERY_T31X_LOGIC.md) · [LOW_POWER_ENTER_STRATEGY.md](../power/LOW_POWER_ENTER_STRATEGY.md)
 
 ---
 
@@ -52,9 +52,9 @@ flowchart TD
 
 | 函数 | 用途 |
 |------|------|
-| `shouldAllowHostIdleSleep()` | 仅 `host_idle` 档返回 true |
-| `canAcceptHostIdleSleep()` | 唤醒后 `host_idle_min_awake_sec` 内返回 false |
-| `noteT3xAwakeForHostIdle()` | PIR/唤醒时记录时间戳 |
+| `shouldHostSleep()` | 仅 `host_idle` 档返回 true |
+| `canHostSleep()` | 唤醒后 `host_idle_min_awake_sec` 内返回 false |
+| `notifyHostIdle()` | PIR/唤醒时记录时间戳 |
 
 调用方：`host_uart.uart_hostidle` → `+HOSTIDLE:BUSY` 或 `OK`
 
@@ -67,8 +67,8 @@ flowchart TD
 | 1 | `cancelShutdownTimer()` |
 | 2 | 清除 rest / PIR 挂起状态 |
 | 3 | 若在 rest → `onExitLowPower("usb_insert")`（**唯一唤醒链**） |
-| 4 | 否则且 `source≠"boot"` → `wake_t3x` |
-| 5 | 冷启动 USB → 跳过 `wake_t3x`，由 `t3x_ctrl.bootPowerOn` |
+| 4 | 否则且 `source≠"boot"` → `wake_t31x` |
+| 5 | 冷启动 USB → 跳过 `wake_t31x`，由 `t31x_ctrl.bootPowerOn` |
 
 ---
 
@@ -77,9 +77,9 @@ flowchart TD
 ```
 handleShutdownZone
   → suspendPir()
-  → enterBatteryRest() → hooks.on_enter_low_power("battery")
-       → app.onEnterLowPower → MQTT 1002 + t3x enterSleep
-  → scheduleShutdown(3s) → hooks.on_power_off → notifyPowerOff → pm.shutdown
+  → enterBatteryRest() → hooks.onEnterLowPower("battery")
+       → app.onEnterLowPower → MQTT 1002 + t31x enterSleep
+  → scheduleShutdown(3s) → hooks.onPowerOff → notifyPowerOff → pm.shutdown
 ```
 
 插 USB 可取消定时器；`onPowerOff` 内再次检查 `isUsbInserted()`。
@@ -90,7 +90,7 @@ handleShutdownZone
 
 | 阈值 | 行为 |
 |------|------|
-| ≤ `t3x_rest_percent`（10%） | 进 4G rest（连续确认 + 最短停留） |
+| ≤ `t31x_rest_percent`（10%） | 进 4G rest（连续确认 + 最短停留） |
 | `pir_suspend_percent` ~ `pir_resume_percent` | 挂起/恢复 PIR |
 | ≤ `shutdown_percent` | 同 battery 关机 |
 
@@ -100,10 +100,10 @@ handleShutdownZone
 
 | hook | app 绑定 |
 |------|----------|
-| `on_enter_low_power` | `onEnterLowPower` |
-| `on_exit_low_power` | `onExitLowPower` |
-| `on_power_off` | `onPowerOff("battery")` |
-| `wake_t3x` | `requestT3xWake("battery_usb", force)` |
+| `onEnterLowPower` | `onEnterLowPower` |
+| `onExitLowPower` | `onExitLowPower` |
+| `onPowerOff` | `onPowerOff("battery")` |
+| `wake_t31x` | `requestT31xWake("battery_usb", force)` |
 | `is_usb_inserted` | `usb_charge` / `power_status` |
 
 ---

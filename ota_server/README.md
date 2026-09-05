@@ -181,7 +181,7 @@ application.yml → luat.ota.latest-version
 
 **方式 B：MQTT 平台手动 Publish**
 
-在 MQTT 平台向 `/panshi/device/{IMEI}/` 手动 Publish 上述 JSON（见 [doc/MQTT_DOWNLINK.md](../doc/MQTT_DOWNLINK.md) §6.6），效果相同。
+在 MQTT 平台向 `/panshi/device/{IMEI}/` 手动 Publish 上述 JSON（见 [doc/mqtt/MQTT_DOWNLINK.md](../doc/mqtt/MQTT_DOWNLINK.md) §6.6），效果相同。
 
 > `AT+OTA` 未带 url 时不会打到本服务；请用方式 A/B 通过 MQTT 下发带 `url` 的 2004。
 
@@ -697,5 +697,5 @@ ota_server/
 |------|------|
 | 模组 HTTP OTA 参考 | https://docs.openluat.com/air780e/luatos/app/base/fotathird/ |
 | 模组 fota API | https://wiki.luatos.org/api/libs/libfota2.html |
-| 780EHM_PJ MQTT 下行 OTA | [doc/MQTT_DOWNLINK.md](../doc/MQTT_DOWNLINK.md) §6.3 / §6.6 |
-| 780EHM_PJ MQTT 协议总览 | [doc/MQTT_PROTOCOL.md](../doc/MQTT_PROTOCOL.md) |
+| 780EHM_PJ MQTT 下行 OTA | [doc/mqtt/MQTT_DOWNLINK.md](../doc/mqtt/MQTT_DOWNLINK.md) §6.3 / §6.6 |
+| 780EHM_PJ MQTT 协议总览 | [doc/mqtt/MQTT_PROTOCOL.md](../doc/mqtt/MQTT_PROTOCOL.md) |

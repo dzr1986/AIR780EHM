@@ -35,7 +35,27 @@ sequenceDiagram
 
 ---
 
-## 2. 管理台
+## 2. Windows Qt 测试工具（推荐）
+
+```text
+ota_server\tools\ota_qt_gui.bat
+python ota_server\tools\ota_qt_gui.py
+python ota_server\tools\ota_qt_gui.py --once-http
+python ota_server\tools\ota_qt_gui.py --once-ipc
+```
+
+PySide6 界面：顶栏连服务器（生产前缀 `/ota`），页签 **4G 模组 OTA** / **IPC 升级**，主题浅色 / 深色 / 海雾 / 暖光。字体微软雅黑 + Consolas。
+
+| 页签 | 闭环 |
+|------|------|
+| 4G | 上传量产 `.bin` → HTTP 拉包 → 上报 1004；或 MQTT 订阅 2004 |
+| IPC | 按 IMEI 允许权限 → 上传 → x86demo 拉包 → 回写该 IMEI |
+
+旧版 tkinter：`ota_test_gui.py`、`ipc_upgrade_gui.py` 仍可单独跑。
+
+---
+
+## 3. 管理台
 
 生产：http://43.136.55.143/admin.html（Token 已预填，打开即登录）
 
@@ -45,11 +65,11 @@ sequenceDiagram
 4. 输出 `ok: true`，设备当前版本变为目标版本
 5. **我的任务** 为成功；**调试日志** 有 `UPGRADE`
 
-本机图形工具：`python tools/ota_test_gui.py` 或双击 `tools/ota_test_gui.bat`。默认连接 `http://43.136.55.143`，可浏览量产目录、上传并跑 HTTP / MQTT 全流程。
+本机图形工具：双击 `tools/ota_qt_gui.bat`（Qt）。旧版 `tools/ota_test_gui.py` 仍可用。
 
 ---
 
-## 3. 命令行
+## 4. 命令行
 
 ```bash
 cd ota_server
@@ -63,7 +83,7 @@ python tools/sim_luat_client.py --mode mqtt
 
 ---
 
-## 4. 接口
+## 5. 接口
 
 | 能力 | 接口 |
 |------|------|
@@ -80,7 +100,7 @@ GET /api/site/firmware_upgrade?imei=862323084068999&project_key=ThOoUoR77b9EOwNp
 
 ---
 
-## 5. 判定标准
+## 6. 判定标准
 
 | 检查 | 通过标准 |
 |------|----------|
@@ -92,7 +112,7 @@ GET /api/site/firmware_upgrade?imei=862323084068999&project_key=ThOoUoR77b9EOwNp
 
 ---
 
-## 6. 实测记录（2026-08-17）
+## 7. 实测记录（2026-08-17）
 
 环境：腾讯云 `http://43.136.55.143`，Token `ota-7f3a9c2e4b18d6a0e5c1`，MQTT `tcp://112.86.146.218:2123` 已连接。
 
@@ -130,7 +150,7 @@ MQTT 闭环摘录：
 
 ---
 
-## 7. 实测记录（2026-08-18）
+## 8. 实测记录（2026-08-18）
 
 环境同上。本次把 **模拟客户端** 和 **样机 Cat.1** 都跑通。
 

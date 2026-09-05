@@ -21,7 +21,7 @@ T31x 当前默认先试 7003，失败再试本机 80，再回退南京 `112.86.1
 - `GET /admin/api/v1/videos?limit=200&type=2&begin=2026-08-17 19:00:00&end=2026-08-17 19:10:00`
 - `GET /apps/video/playback/<file.ts>` 直接下文件
 
-MQTT **2013/1013** 只传信令，文件仍走本接口。见 `doc/MQTT_2013_1013_UPLOAD_VIDEO.md`。
+MQTT **2013/1013** 只传信令，文件仍走本接口。见 `doc/mqtt/MQTT_2013_1013_UPLOAD_VIDEO.md`。
 
 ```json
 {

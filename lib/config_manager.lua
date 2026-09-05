@@ -1,40 +1,50 @@
 -- ================================================================
 -- Filename : config_manager.lua
 -- Module   : 配置管理：JSON 持久化读写、默认值合并、配置热更新
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 -- config_manager: 统一配置访问框架
 -- 替代各模块散落的 cfg() + 手工 merge 默认值逻辑
--- 约定见 doc/CAT1_MODULE_FRAMEWORK.md
+-- 约定见 doc/overview/CAT1_MODULE_FRAMEWORK.md
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
 
--- 取全局配置表（如 "LED_CFG"）；不存在返回空表，不缓存以支持运行时覆盖
+-- 取全局配置表（如 "LED_CFG"）；不存在返回空表，不缓存以支持运行时覆盖。
+-- 键名大小写敏感，须精确等于 config 片段注册的 _G.<键>（例：battery.lua 注册 t31x_POLICY_CFG，
+-- 若读 "T31X_POLICY_CFG" 会静默空表——见 doc/overview/USER_LIB_CODE_AUDIT §12）。未注册键仅告警一次。
+local warnOnce = {}
 function get(name)
     local t = _G[name]
-    return type(t) == "table" and t or {}
+    if type(t) ~= "table" then
+        if not warnOnce[name] then
+            warnOnce[name] = true
+            if log and log.warn then
+                log.warn("config_manager", "unknown cfg key '" .. tostring(name) .. "', fallback {} (check config fragment _G registration & case)")
+            end
+        end
+        return {}
+    end
+    return t
 end
 
--- 数值配置：t 可为表或全局配置名
+-- 解析配置来源：t 可为全局配置名或直接配置表
+local function resolve(t)
+    return type(t) == "string" and get(t) or (type(t) == "table" and t or {})
+end
+
+-- 取数值配置：t 为全局配置名或表；缺失/非数值用 default
 function num(t, key, default)
-    if type(t) == "string" then
-        t = get(t)
-    end
-    local v = tonumber(t and t[key])
-    if v == nil then
-        return default
-    end
-    return v
+    local v = resolve(t)[key]
+    return type(v) == "number" and v or default
 end
 
--- 布尔配置：nil 用默认值；false/0/"0" 为 false，其余为 true
+-- 取布尔配置：t 为全局配置名或表；nil 用 default；false/0/"0" 为 false。
+-- 语义与 lib/utils.lua parseBoolDef 等价；因 utils→module_loader→本模块 require 环禁 require utils 复用，
+-- 两处须同步维护（见 doc/overview/USER_LIB_CODE_AUDIT_20260904.md §14）。
 function bool(t, key, default)
-    if type(t) == "string" then
-        t = get(t)
-    end
-    local v = t and t[key]
+    local v = resolve(t)[key]
     if v == nil then
         return default
     end

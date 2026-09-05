@@ -1,7 +1,7 @@
 # usb_rndis USB 网卡（RNDIS）
 
 > **代码真源**：[`lib/usb_rndis.lua`](../../lib/usb_rndis.lua)  
-> **配置**：`RNDIS_CFG` · `MODULE_FLAGS.rndis`（[`config.lua`](../../user/config.lua) / [`app_config.lua`](../../user/app_config.lua)）  
+> **配置**：`RNDIS_CFG`（[`features.lua`](../../user/features.lua)）· `MODULE_FLAGS.rndis`（[`flags.lua`](../../user/flags.lua)）· 编排 [`config.lua`](../../user/config.lua)  
 > **启动**：[`user/main.lua`](../../user/main.lua)  
 > **关联**：[USB_CHARGE_POLICY.md](USB_CHARGE_POLICY.md)（USB 插入检测）
 
@@ -23,7 +23,7 @@ flowchart TD
     R -->|是| O[usb_rndis.open async]
     O --> W[waitCellularReady / refresh]
     W --> S[RNDIS_NET_STABLE]
-    S --> N[net_mqtt.bootstrapNetwork]
+    S --> N[net_mqtt.bootstrapNet]
     R -->|否| N
 ```
 
@@ -67,9 +67,9 @@ flowchart TD
 
 | 场景 | 行为 |
 |------|------|
-| T3x 烧录 | `app.shutdownServicesForT3xBurn` → `usbRndis.disable()` |
+| T31x 烧录 | `app.shutdownServicesForT31xBurn` → `usbRndis.disable()` |
 | 拔 USB 进 rest | `enterRestIfNeededAfterUsbRemove`：**RNDIS 仍开则跳过** 自动进 rest |
-| 充电检测 | `usbHostPresent()` 读 `APP_RUNTIME.usb_inserted` 或 `usb_policy` |
+| 充电检测 | `usbHostPresent()` 读 `APP_RUNTIME.usb_inserted` 或 `usb_charge.isUsbInserted` |
 
 ---
 
@@ -92,4 +92,4 @@ flowchart TD
 | `isRefreshing()` | 是否 refresh 中 |
 | `getStatus()` | mode、ip、csq、flymode、last_error 等 |
 
-全局别名：`_G.usbRndis = module`。
+模块引用：`app.lua` 以 `loader.opt("rndis", "usb_rndis")` 持 local `usbRndis`（无 `_G` 别名）。

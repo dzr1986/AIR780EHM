@@ -1,0 +1,23 @@
+---
+description: LuatOS Lua 写法（适配本仓库，不是游戏 Lua）
+globs: user/**/*.lua,lib/**/*.lua
+alwaysApply: false
+---
+
+# Lua / LuatOS
+
+模块保持合宙惯例，不要改成 `local M = {}` 或 metatable OOP：
+
+```lua
+-- ✅
+local _modname = ...
+module(_modname, package.seeall)
+_G[_modname] = _M
+```
+
+- 内部状态用 `local`，声明必须在**首次使用之前**（Lua 后置 `local` 会变成 `_G`，`stop` 对不上 `start`）。
+- 不要新写 `_G.xxx =`，除 `config.lua` / `main.lua` 平台约定。
+- 索引表先判 `nil`：`v = tbl and tbl.field or default`。
+- 循环里拼字符串用 `table.concat`，不要 `s = s .. x`。单次拼接可以用 `..`。
+- 数组用 `ipairs`，字典用 `pairs`，不要混整数键和字符串键当同一个表遍历。
+- 公开接口跟现有模块：`is` / `get` / `set` / `start` / `stop`。新文件不要再发明一套命名。

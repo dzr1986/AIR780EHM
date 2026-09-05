@@ -1,0 +1,20 @@
+[Unit]
+Description=T31x alarm video uploadVideo API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/video_upload
+Environment=VIDEO_UPLOAD_HOST=0.0.0.0
+Environment=VIDEO_UPLOAD_PORT=7003
+Environment=VIDEO_UPLOAD_DIR=/home/ubuntu/video_upload/incoming
+ExecStart=/usr/bin/python3 /home/ubuntu/video_upload/app.py
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

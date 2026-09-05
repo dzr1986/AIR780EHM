@@ -1,0 +1,109 @@
+# V7 · 产测 / 烧录 / 发布 / 工具链
+
+> **读者**：烧录、量产、发版、跑文档/代码护栏、复用调试脚本的人。
+> **真源**：`tools/README.md`（仓库根工具目录，doc 外不参与 md 互链检查）· `doc/release/`（无独立 README，由 doc/README 登记）· 各工具自身 `--help`/源码注释。
+> **代码真源**：仓库根 `tools/`、`doc/_tools/`、`config.mk`、`pack.ps1`、`package_project.bat`、`luatos.json`。
+> **手册链路**：← [总纲 README](README.md)（§2 任务矩阵）· 相关卷：[V1_SYSTEM](MANUAL_V1_SYSTEM.md)（产物/版本）· [V2_LUA_API](MANUAL_V2_LUA_API.md)（改码后回写）
+
+---
+
+## 1. 三十秒速查
+
+| 我要… | 用 |
+|--------|-----|
+| 日常三件事（流程检测/烧录/MQTT 测试） | 双击 `tools/` 下三个 bat（[§2](#2-日常图形工具-gui)） |
+| 产线量产交付 | `python tools/pack_mass_prod.py <版本>` → `{日期}_量产/`（[§4](#4-量产与发布)） |
+| 烧一台机 | `tools/cat1_flash_gui.py` 或 release 流程（[§3](#3-烧录流程)） |
+| 改完代码自检 | 回归/护栏脚本（[§6](#6-代码护栏与回归)） |
+| 改完文档自检 | 登记 + 链接护栏（[§5](#5-文档护栏与同步)） |
+
+## 2. 日常图形工具（gui）
+
+`tools/README.md`：**日常请只进 `gui/`**，双击三个 bat：
+
+| bat | 干什么 | 备注 |
+|-----|--------|------|
+| `flow_monitor_gui.bat` | 流程检测 GUI（1003 状态观测等） | 对应 `tools/flow_monitor_gui.py` |
+| `cat1_flash_gui.bat` | Cat.1 烧录 GUI | 对应 `tools/cat1_flash_gui.py`（另见 release 文档） |
+| `mqtt_tools_gui.bat` | MQTT 测试 GUI（加载 MQTT_PROTOCOL 做 200x 命令测试） | 对应 `tools/gui/mqtt/mqtt_tools_gui.py` |
+
+## 3. 烧录流程
+
+真源：[CAT1_FLASH_FLOW](../release/CAT1_FLASH_FLOW.md)（烧录主流程）· [CAT1_FLASH_TOOL](../release/CAT1_FLASH_TOOL.md)（GUI/CLI 工具）· [CAT1_USB_RNDIS_CFG_CRASH_FLASH](../release/CAT1_USB_RNDIS_CFG_CRASH_FLASH.md)（RNDIS cfg 崩溃恢复实机流程）。
+
+| 环节 | 要点 |
+|------|------|
+| 认 COM | 先确认设备枚举的 COM（含 RNDIS cfg 崩溃场景的 COM10 排查） |
+| 免 BOOT | 本方案烧录免手动进 BOOT |
+| 烧写 | `flash-script`/AgentBoot（`tools/agentboot/`） |
+| 烧完验收 | 验版本/行为，见 CAT1_FLASH_FLOW 末尾清单 |
+
+## 4. 量产与发布
+
+| 项 | 命令/位置 | 说明 |
+|----|-----------|------|
+| 量产打包 | `python tools/pack_mass_prod.py <VERSION>`（如 `001.000.036`） | 生成 `{日期}_量产/`（固件 + 烧录工具，见 `tools/README.md`） |
+| 仓库产物 | 根 `量产/`、`firmware/`、`780EHM_PJ_v1.2_*.zip` | 固件镜像（soc/bin/binpkg）与发布归档 |
+| 编译裁剪 | 根 `config.mk` | 与 `lib/` 模块 `MODULE_FLAGS`/懒加载配合（[CAT1_SLIMMING_FLOW](../power/CAT1_SLIMMING_FLOW.md)） |
+| 工程配置 | `luatos.json` / `VERSION` | 合宙 IoT 工程与版本 |
+| 打包脚本 | `pack.ps1` / `package_project.bat` | 项目打包辅助 |
+| 版本发布说明 | [RELEASE_v1.2](../release/RELEASE_v1.2.md) | v1.2 发布/备份说明 |
+
+## 5. 文档护栏与同步
+
+| 脚本 | 干什么 | 什么时候跑 |
+|------|--------|------------|
+| `python doc/_tools/doc_registry_check.py` | **登记护栏**：doc 主题下每个 md 必须被顶层或同主题 README 登记 | 新增/移动文档后（本手册目录已在检查范围） |
+| `python tools/debug/_doc_md_link_check.py` | **互链护栏**：doc 内 md 文件级互链断链（外部/待补走 EXEMPT）；`--no-exclude-archive` 连 `archive/`/`_audit/` 一起查 | 改链接后；恢复/迁移历史文档后 |
+| `python tools/debug/_config_key_check.py --write-doc` | **配置键索引同步**：按代码重生成 [CONFIG.md「配置键总索引」](../overview/CONFIG.md)（键 → 注册片段 → 消费模块）；不带参数 = 校验漂移 + 死配置 | 增删/移动 `_G.X_CFG` 或改消费方后 |
+| `python tools/sync_doc_naming.py` | 把 `doc/` 里的历史 API 别名收敛到真名 | 改 API 名后（见 [CAT1_API_NAMING §4](../overview/CAT1_API_NAMING.md)） |
+| `python tools/debug/_doc_archive_by_topic.py` | 按主题归档并重算全仓 md/html 链接 | doc 重新分目录时 |
+| `doc/_tools/doc_registry_check.py --export` | 打印待补登记行草稿 | 护栏报未登记时 |
+| 抽查 `doc/manual/` 各卷 `🟢 自包含` 表与真源一致性 | 发现速查表数值/字段与真源漂移（人工核对，无自动化脚本） | 协议/API/功耗行为上游变更后；发布前 |
+
+## 6. 代码护栏与回归
+
+| 脚本（tools/debug/） | 覆盖 | 场景 |
+|----------------------|------|------|
+| `_host_uart_regression_check.py` | host_uart 族（AT 表/bind）静态回归 | 动 `host_uart`/`hif_*` 后 |
+| `_net_mqtt_regression_check.py` | net_mqtt 族（命名/分发）静态回归 | 动 `mqtt_*`/`net_mqtt` 后 |
+| `_protocol_regression_check.py` | 协议层一致性 | 协议相关改动后 |
+| `_gen_bind_header.py --check-all` / `--sync-specs` | hif bind 头与规格一致 + **bind 时刻可用性**（头部快照的键须在该模块 bind 前已挂到 ctx/H）；`--sync-specs` 按头部重写 spec c/h（spec 由生成，勿手改） | 动 bind 后：先 `--sync-specs` 再 `--check-all` |
+| `_module_tree.py` / `_ref_name_check.py` | 模块树/引用名一致性 | 模块改名后 |
+| `_config_key_check.py` / `_gpio_opts_check.py` / `_doc_version_check.py` | 配置键注册↔消费 + CONFIG.md 索引；`gpio_util.setupInput` opts 键；文档现状版本锚点 ↔ `main.lua` | 改配置/改 GPIO 调用/升 VERSION 后（均在 `run_all_checks` 内） |
+| `_dep_graph.py` / `_layer_check.py` | 依赖图（五种边形态、硬环/软环/反向边，`--mermaid` 出图）/ 分层护栏（R1 lib↛user 业务、R2 config 域↛utils 系、R3 子模块↛主文件、**R4 AT 层↛业务层**（基线 0，经 `bizCall` provider 注入）、**R5 vendor 锁**（`sys.lua`/`libfota2.lua` sha256，`_vendor_lock.json`）；基线白名单只许收缩，`--save-baseline`） | 改 `require`/`loader.load` 拓扑后（`run_all_checks` 第 11 项） |
+| `_undef_global_check.py` | **未定义全局读**：`luac -l -l` 字节码 `GETTABUP _ENV` − 全库定义 − 平台白名单；`module()` 下拼错标识符静默变 nil 的唯一机器拦截（需 `lua5.3`，无则跳过） | 任何 Lua 改动后（`run_all_checks` 第 13 项） |
+| `_uplink_schema_check.py` | **上行字段护栏**：`MQTT_DOWNLINK`/`MQTT_PROTOCOL` 里 10xx JSON 样例的键 ⊆ 代码可发字段全集；缺口以 `_uplink_schema_baseline.json` 登记只许收缩（当前 1013 进度 5 键 + 1004 `hostEvtPollMs` = P10 待办）；`tests/fixtures/uplink_golden/<dataType>.json` 存在时另校验「真机黄金样本键 ⊆ 代码全集」 | 改上行字段或改协议文档样例后（`run_all_checks` 第 12 项） |
+| `_uplink_golden_capture.py` | **上行黄金样本采集（需真机）**：`MQTT_CFG.golden_tap=true` 后 `net_mqtt.pubLoop` 每次 publish 打 `MQTT_GOLDEN <topic> <payload>`；本脚本从 USB 日志口（或 `--from-file`）抓取，按 dataType 写 `tests/fixtures/uplink_golden/` | P8 字段表序列化前采样本；上行字段改动后重采 |
+| `_luatok.py`（库，不单独运行） | 最小 Lua 词法器：注释/字符串/调用实参/字面表键的**唯一**实现，`_config_key_check`/`_gpio_opts_check`/`_ref_name_check` 均基于它；新护栏一律 `from _luatok import …`，不要再写正则剥注释 | 写新护栏时 |
+| `python -m unittest tools/debug/tests/test_guards.py` | **护栏自身回归**：`_luatok` 词法单测 + `tests/fixtures/` 注入样本必 FAIL + 干净仓库基线 PASS（`run_all_checks` 第 10 项） | 改任何护栏脚本后 |
+| `run_all_checks.py` | 汇总运行全部 13 项静态护栏（含护栏自测、分层、上行字段、未定义全局） | 发布前整跑（须在非 Windows 平台也跑过一次） |
+
+## 7. 调试与一次性脚本族（tools/debug/，按用途选）
+
+| 族 | 脚本（名前缀） | 干什么 |
+|----|----------------|--------|
+| T31x 推机 | `tools/t31x/` | 把编译好的 ipc 经 COM7 推到 T31 |
+| COM7 交互/恢复 | `_com7_cmd` / `_com7_probe` / `_com7_raw` / `_com7_recover` / `_com7_uart_check` / `_com7_unstick_ps2` | 串口命令、探测、恢复、反卡死 |
+| 抓包/观测 | `_cat1_log_watch` / `_log_snapshot` / `_watch_1003_status` / `_watch_reboot` / `_reboot_capture` / `_usb_capture` / `_usb_lua_dump` / `_boot_wait` / `_eth0_check` | 日志/1003/重启/USB/eth0 观测 |
+| 自动化实测 | `_test_2002_closed_loop` / `_test_cat1_ota_e2e` / `_run_mqtt_autotest_params` / `_loop_2013_playback` / `_reboot_then_2007_2011` / `_clip_upload_audit` / `_clip_upload_full_audit` / `_test_1003_radio` | 单场景闭环/E2E 实测 |
+| 一次性补丁/改名 | `_patch_t31_*` / `_reset_syscfg_boot` / `_rename_lua_modules` / `_strip_config_comments` / `_shorten_logs` | 定点补丁与历史治理 |
+| GUI 后端 | `tools/gui/` | 三个图形界面实现 |
+
+> 脚本多为**一次性/诊断用途**，新维护优先看是否已有可复用脚本；不要造第四个"同款"脚本。
+
+## 8. 发布检查清单（维护约定）
+
+- [ ] 烧录产物出自 `pack_mass_prod.py`（量产）或 release 流程（单台）。
+- [ ] 代码护栏整跑：`run_all_checks.py` + 相关 regression。
+- [ ] 文档护栏：`doc_registry_check.py` + `_doc_md_link_check.py` 双 PASS（须在 **非 Windows** 平台也跑过一次，2026-09-04 曾因分隔符假绿漏掉 33 条断链，见 [DOC_HEALTH_REPORT](../_audit/DOC_HEALTH_REPORT_20260904.md)）。
+- [ ] `git status` 确认新增文档**已被 git 跟踪**（`.gitignore` 忽略目录一律根锚定 `/xxx/`，勿让 `doc/<同名目录>/` 被吞）。
+- [ ] API 改名则跑 `sync_doc_naming.py`，检查 `git diff -- doc/` 只有收敛差异。
+- [ ] 版本同步：`user/main.lua` `VERSION`、`luatos.json`、发布说明 [RELEASE_*](../release/)；README/manual/overview 10 处现状口径由 `_doc_version_check.py` 自动校验。
+
+## 9. 相关文档
+
+- 文档顶层索引：[doc/README](../README.md)（登记手册与全部主题）
+- 精简单测流程：[CAT1_SLIMMING_FLOW](../power/CAT1_SLIMMING_FLOW.md)
+- 服务端配套：`ota_server`/`video_upload_server`/`http_server`/`patch_server`（[doc/README 外部工程](../README.md)）
+- 工具链自动化报告（留档）：[CAT1_TOOLCHAIN_TEST_REPORT](../_audit/CAT1_TOOLCHAIN_TEST_REPORT.md)（2026-08-17，IMEI 124）

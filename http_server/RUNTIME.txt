@@ -1,0 +1,12 @@
+cloned_at=2026-08-20T13:35:27+08:00
+host=VM-0-2-ubuntu
+
+===== docker ps =====
+NAMES                      IMAGE                    STATUS                PORTS
+ota_server-ota-server-1    ota_server-ota-server    Up 27 hours           8080/tcp
+ota_server-ipc-x86demo-1   ota_server-ipc-x86demo   Up 2 days             8010/tcp
+ota_server-nginx-1         nginx:1.25-alpine        Up 2 days             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 0.0.0.0:8008->8008/tcp, [::]:8008->8008/tcp
+ota_server-mysql-1         mysql:8.0                Up 3 days (healthy)   127.0.0.1:3306->3306/tcp, 33060/tcp
+
+===== systemctl video-upload =====
+active

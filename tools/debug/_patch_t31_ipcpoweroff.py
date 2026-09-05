@@ -12,7 +12,7 @@ HOST_REMOTE = Path(
 def main() -> None:
     t = HOST_AT.read_text()
     old = """    g_ipc_shutting_down = 1;
-    ipc_supervision_push_state(host_module_session());
+    ipc_supv_push_state(host_module_session());
 
     ctx = (ipc_power_off_ctx_t *)calloc(1, sizeof(*ctx));
     if (ctx == NULL) {
@@ -53,7 +53,7 @@ def main() -> None:
     ipc_power_off_ctx_t *ctx = (ipc_power_off_ctx_t *)arg;
     int ret;
 
-    ipc_supervision_push_state(host_module_session());
+    ipc_supv_push_state(host_module_session());
     if (ctx->play_sound) {
 """
     if old2 not in t:
@@ -72,7 +72,7 @@ static void *cloud_remote_record_stop_thread(void *arg)
 	char *why = (char *)arg;
 	int ret = cloud_remote_record_stop(why);
 	if (ret != 0) {
-		(void)ipc_supervision_alert(host_module_session(), IPC_ALERT_RECORDCTRL_FAIL, "stop");
+		(void)ipc_supv_alert(host_module_session(), IPC_ALERT_RECORDCTRL_FAIL, "stop");
 	}
 	free(why);
 	return NULL;
@@ -87,7 +87,7 @@ static void *cloud_remote_record_stop_thread(void *arg)
     old3 = """	host_at_uart_write(serial, frame);
 	ret = cloud_remote_record_stop(reason);
 	if (ret != 0) {
-		(void)ipc_supervision_alert(host_module_session(), IPC_ALERT_RECORDCTRL_FAIL, "stop");
+		(void)ipc_supv_alert(host_module_session(), IPC_ALERT_RECORDCTRL_FAIL, "stop");
 	}
 	return ret;
 """
@@ -103,7 +103,7 @@ static void *cloud_remote_record_stop_thread(void *arg)
 	}
 	ret = cloud_remote_record_stop(reason);
 	if (ret != 0) {
-		(void)ipc_supervision_alert(host_module_session(), IPC_ALERT_RECORDCTRL_FAIL, "stop");
+		(void)ipc_supv_alert(host_module_session(), IPC_ALERT_RECORDCTRL_FAIL, "stop");
 	}
 	return ret;
 """

@@ -1,18 +1,17 @@
-# usb_charge / usb_policy 充电与 USB 策略
+# usb_charge 充电与 USB 策略
 
-> **代码真源**：[`lib/usb_charge.lua`](../../lib/usb_charge.lua) · [`lib/usb_policy.lua`](../../lib/usb_policy.lua)  
-> **配置**：`GPIO_IN.usb_det` / `chg_state` · `HOST_USB_CFG`（[`config.lua`](../../user/config.lua)）  
-> **用户说明**：[CHARGE_BATTERY.md](../CHARGE_BATTERY.md) · [LED_INDICATORS.md](../LED_INDICATORS.md)  
+> **代码真源**：[`lib/usb_charge.lua`](../../lib/usb_charge.lua)（含 `blocksHostIdle`/`blocks4gRest` 门禁，原 `usb_policy` 已并入）  
+> **配置**：`GPIO_IN.usb_det` / `chg_state` · `HOST_USB_CFG`（[`config.lua`](../../user/config.lua) 编排 · [`features.lua`](../../user/features.lua) 定义）  
+> **用户说明**：[CHARGE_BATTERY.md](../power/CHARGE_BATTERY.md) · [LED_INDICATORS.md](../hardware/LED_INDICATORS.md)  
 > **编排**：[APP_EVENT_BUS.md](APP_EVENT_BUS.md) · [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)
 
 ---
 
-## 1. 模块分工
+## 1. 模块职责
 
 | 模块 | 职责 |
 |------|------|
-| **`usb_charge`** | GPIO27 `USB_DET` + GPIO17 `CHG_STATE` 中断采样；发布插入/充电事件 |
-| **`usb_policy`** | 读 `HOST_USB_CFG`，在 USB 插入时门禁 HOSTIDLE / 4G rest |
+| **`usb_charge`** | GPIO27 `USB_DET` + GPIO17 `CHG_STATE` 中断采样；发布插入/充电事件；读 `HOST_USB_CFG` 提供 `blocksHostIdle`/`blocks4gRest` 门禁（原 `usb_policy`） |
 
 `MODULE_FLAGS.charge=false` 时不启动 `usb_charge`；`app` 可退化为 PMD `VBUS` 或 `gpio.VBUS` 轮询。
 
@@ -36,9 +35,9 @@ flowchart TD
     IRQ[GPIO 边沿中断] --> U[updateUsb / updateChg]
     U --> P1[GPIO_USB_DET_CHANGED]
     U --> P2[GPIO_CHG_STATE_CHANGED]
-    P1 --> APP[app.applyUsbInsertState]
+    P1 --> APP[app.applyUsbPower]
     P2 --> LED[led_ctrl 刷新灯态]
-    P2 --> MQTT[可选 publishStatus]
+    P2 --> MQTT[可选 pubStatus]
 ```
 
 ### 3.1 USB 插入副作用
@@ -55,32 +54,33 @@ flowchart TD
 | `isUsbInserted()` | GPIO27 是否插入 |
 | `isCharging()` | 未插入返回 `0`；插入且 CHG 有效返回 `1` |
 | `getState()` | `usb_inserted`、`charging`、`mode=irq` |
+| `blocksHostIdle()` | USB 插入且 `HOST_USB_CFG.block_host_idle_when_usb` 时返回 true |
+| `blocks4gRest()` | USB 插入且 `HOST_USB_CFG.block_4g_rest_when_usb` 时返回 true |
 
 ---
 
-## 4. app 侧 USB 编排（`applyUsbInsertState`）
+## 4. app 侧 USB 编排（`applyUsbPower`）
 
 | 边沿 | 行为 |
 |------|------|
-| **插入** | `APP_RUNTIME.power_status=1` · `battery_guard.onUsbInserted` · 退出 rest · `notifyT3xUsbHostIdlePolicy(true)` · 取消 PWR 长按 |
-| **拔出** | `power_status=0` · `notifyT3xUsbHostIdlePolicy(false)` · `battery_guard.onUsbRemoved`（按电量重评估，高电量不进 rest） |
+| **插入** | `APP_RUNTIME.power_status=1` · `battery_guard.onUsbInserted` · 退出 rest · `notifyUsbIdle(true)` · 取消 PWR 长按 |
+| **拔出** | `power_status=0` · `notifyUsbIdle(false)` · `battery_guard.onUsbRemoved`（按电量重评估，高电量不进 rest） |
 
 冷启动 `source=="boot"`：由 `bootPowerOn` 负责 T31 上电，避免与 `exitRest` 重复唤醒（见 [BATTERY_GUARD_TIERS.md](BATTERY_GUARD_TIERS.md)）。
 
-**PMD 回退**：`MODULE_FLAGS.charge` 关闭时，`handlePmdMessage` 用模组充电消息驱动 `applyUsbInsertState`。
+**PMD 回退**：`MODULE_FLAGS.charge` 关闭时，`handlePmdMessage` 用模组充电消息驱动 `applyUsbPower`。
 
 ---
 
-## 5. usb_policy 策略门禁
+## 5. 策略门禁（原 usb_policy 段）
 
 读 `HOST_USB_CFG`，仅在 **USB 插入** 且对应开关非 `false` 时生效：
 
-| 函数 | 配置键 | 默认 | 消费者 |
+| 门禁 | 配置键 | 默认 | 消费者 |
 |------|--------|------|--------|
 | `blocksHostIdle()` | `block_host_idle_when_usb` | true | `host_uart` HOSTIDLE / LOWPOWER ENTER |
 | `blocks4gRest()` | `block_4g_rest_when_usb` | true | `app.onEnterLowPower`、`net_mqtt` 2002 enter |
-| `mayEnterRest()` | 上项取反 | — | 辅助判断 |
-| `isUsbInserted()` | — | 委托 `usb_charge` 或 `power_status` | `t3x_policy`、`host_uart` |
+| `isUsbInserted()` | — | 由 `usb_charge` 或 `power_status`（PMD 回退）提供 | `t31x_policy`、`host_uart` |
 
 ```text
 USB 插入 + block_4g_rest_when_usb
@@ -89,17 +89,17 @@ USB 插入 + block_4g_rest_when_usb
   → battery_guard 跳过低电关机评估（ignore_when_usb_inserted）
 ```
 
-### 5.1 T3x 串口通知
+### 5.1 T31x 串口通知
 
-`HOST_USB_CFG.notify_t3x_usb_state`：`host_uart.push_usb_host_idle_state` 发 `+CAT1:USB,%d`，告知 T3x USB 期间勿 HOSTIDLE（见 [T3X_POWER_WAKEUP.md](T3X_POWER_WAKEUP.md)）。
+`HOST_USB_CFG.notify_t31x_usb_state`：`host_uart.pushUsbIdle` 发 `+CAT1:USB,%d`，告知 T31x USB 期间勿 HOSTIDLE（见 [T31X_POWER_WAKEUP.md](T31X_POWER_WAKEUP.md)）。
 
 ### 5.2 其它 HOST_USB_CFG
 
 | 键 | 说明 |
 |----|------|
 | `pwrkey_grace_ms` | USB 插入后忽略 PWR 长按（默认 5000ms） |
-| `allow_t3x_usb_reset` | 是否允许 `AT+USBRESET` |
-| `block_usb_reset_when_t3x_rest` | T3x rest 时拒绝 USB 复位 |
+| `allow_t31x_usb_reset` | 是否允许 `AT+USBRESET` |
+| `block_usb_reset_when_t31x_rest` | T31x rest 时拒绝 USB 复位 |
 | `boot_notify_delay_ms` | 冷启动 USB 状态通知延时 |
 
 ---

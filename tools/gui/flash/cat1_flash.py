@@ -273,6 +273,75 @@ def find_log_port(rows: list[dict] | None = None) -> str | None:
     return None
 
 
+def find_t31_port(rows: list[dict] | None = None) -> str | None:
+    """T31 debug UART：FTDI / CH340 等 USB 转串口，不是合宙复合口。"""
+    rows = rows if rows is not None else snapshot_ports()
+    for r in rows:
+        if r["kind"] == "uart-brg":
+            return r["device"]
+    return None
+
+
+def cat1_port_summary(rows: list[dict] | None = None) -> dict:
+    rows = rows if rows is not None else snapshot_ports()
+    hezhou = [r["device"] for r in rows if r["kind"] in CAT1_KINDS]
+    return {
+        "mode": port_mode_label(rows),
+        "log": find_log_port(rows),
+        "t31": find_t31_port(rows),
+        "hezhou": hezhou,
+        "boot": next((r["device"] for r in rows if r["kind"] == "boot-usb"), None),
+        "rows": rows,
+    }
+
+
+def read_runtime_info(seconds: float = 4.0) -> dict:
+    """打开日志口 x.2（921600）读 USB 打印，提取 IMEI / 版本 / 联网。"""
+    import serial
+    from serial import SerialException
+
+    info: dict = {"port": find_log_port(), "lines": []}
+    if not info["port"]:
+        info["error"] = "没有运行态日志口（x.2）。BOOT 单口时无法读 IMEI。"
+        return info
+    ctx: dict = {}
+    try:
+        ser = serial.Serial(info["port"], 921600, timeout=0.3, write_timeout=0.5)
+    except (SerialException, OSError) as e:
+        info["error"] = f"打开 {info['port']} 失败: {e}"
+        return info
+    try:
+        ser.reset_input_buffer()
+        ser.write(USB_LOG_ENABLE)
+        ser.flush()
+        deadline = time.time() + max(1.0, seconds)
+        while time.time() < deadline:
+            chunk = ser.read(4096)
+            for msg in decode_usb_log(ctx, chunk):
+                info["lines"].append(msg)
+                parsed = parse_status_line(msg)
+                for k, v in parsed.items():
+                    if v:
+                        info[k] = v
+                m = re.search(r"\b(86\d{13})\b", msg)
+                if m:
+                    info["imei"] = m.group(1)
+                m = re.search(r"(?:scriptVersion|VERSION)[=:\s\"]+(\d{3}\.\d{3}\.\d{3})", msg, re.I)
+                if m:
+                    info["script"] = m.group(1)
+                m = re.search(r"(?:firmwareVersion|IOT_VERSION)[=:\s\"]+(\d{4}\.\d{3}\.\d{3})", msg, re.I)
+                if m:
+                    info["iot"] = m.group(1)
+            if info.get("imei") and info.get("sys"):
+                break
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+    return info
+
+
 USB_LOG_ENABLE = bytes.fromhex("7E00007E")  # 打开 USB 日志 / probe
 USB_DIAG_ENTER_BOOT = bytes.fromhex("7E00027E")  # Luatools 进下载（cmd=0x02）
 # Luatools「重启模块」：x.2 命令口 AT；进下载再加 delay,799 + 7E00027E
@@ -458,6 +527,9 @@ def parse_status_line(line: str) -> dict[str, str]:
         name = m.group(2).rstrip(",")
         if "LuatOS-SoC" in name and "fw" not in out:
             out["fw"] = name
+    m = re.search(r"\b(86\d{13})\b", s)
+    if m and "imei" not in out:
+        out["imei"] = m.group(1)
     m = re.match(r"soc poweron:\s*(\d+)", s, re.I)
     if m:
         out["boot"] = POWERON_CN.get(int(m.group(1)), f"开机原因{m.group(1)}")
@@ -561,10 +633,14 @@ def list_ports():
         )
         printed.append((r["kind"], r["device"], r["desc"], r["vid"], r["pid"], r["loc"], r["hwid"]))
     mode = port_mode_label(rows)
+    t31 = find_t31_port(rows)
+    logp = find_log_port(rows)
     if mode == "RUN":
-        print("  → 当前为运行态（多 USB 口），不是 BOOT。烧录请按住 BOOT 后复位，直到只剩 1 个口。")
+        print(f"  → 运行态。日志口 {logp or '无'}，T31 {t31 or '无'}。烧录请按住 BOOT 后复位，直到只剩 1 个口。")
     elif mode == "BOOT":
         print("  → 当前像 BOOT 下载模式，可用 flash-script / flash-full。")
+    elif t31:
+        print(f"  → T31 串口 {t31}；未看到合宙 USB。")
     return printed
 
 
@@ -800,12 +876,12 @@ def collect_script_files(include_core: bool = False, compress: bool = True) -> l
     for folder in (ROOT / "user", ROOT / "lib"):
         if not folder.is_dir():
             continue
-        for path in sorted(folder.glob("*")):
+        for path in sorted(folder.rglob("*")):
             if not path.is_file():
                 continue
-            if path.suffix.lower() not in {".lua", ".json"}:
+            if path.suffix.lower() not in {".lua", ".json", ".ini", ".bin"}:
                 continue
-            name = path.name
+            name = str(path.relative_to(folder))
             if not include_core and name in SKIP_PACK_NAMES:
                 continue
             if name in seen:
@@ -813,7 +889,7 @@ def collect_script_files(include_core: bool = False, compress: bool = True) -> l
             seen.add(name)
             raw = path.read_bytes()
             # 空资源只占 LuaDB 头，且运行时 vfs 会报 not found，不必打进脚本区
-            if path.suffix.lower() == ".json" and len(raw.strip()) == 0:
+            if path.suffix.lower() in {".json", ".ini"} and len(raw.strip()) == 0:
                 continue
             if compress and path.suffix.lower() == ".lua":
                 raw = _compress_lua_bytes(raw)
@@ -1232,13 +1308,16 @@ def _open_burn_serial(
         hz = _hezhou_ports()
         if len(hz) == 1:
             port = hz[0].device
+        elif len(hz) == 0:
+            time.sleep(0.3)
+            continue
         try:
             ser = serial.Serial(port, baudrate=baud, timeout=timeout, write_timeout=write_timeout)
             ser.dtr = 1
             return ser
         except (OSError, serial.SerialException) as e:
             last_err = e
-            time.sleep(0.25)
+            time.sleep(0.35)
     msg = str(last_err) if last_err else port
     raise serial.SerialException(f"无法打开下载口 {port}: {msg}")
 
@@ -1335,7 +1414,7 @@ def try_mianboot_trigger() -> None:
     for dev in order:
         ser = None
         try:
-            ser = serial.Serial(dev, baudrate=921600, timeout=0.2, write_timeout=0.5)
+            ser = serial.Serial(dev, baudrate=921600, timeout=0.2, write_timeout=2.0)
             ser.dtr = True
             ser.rts = False
             ser.write(USB_LOG_ENABLE)
@@ -1347,7 +1426,6 @@ def try_mianboot_trigger() -> None:
             ser.flush()
             time.sleep(0.15)
             _info(f"  已向 {dev} 发送免 BOOT 序列")
-            break
         except (SerialException, OSError, ValueError) as e:
             _info(f"  {dev} 写入失败: {e}")
         finally:
@@ -1439,7 +1517,7 @@ def _burn_jdata(jdata: dict, port: str, parts: set[str]) -> int:
     baud = 921600
     log.info("打开 %s @ %s", port, baud)
     try:
-        burncom = _open_burn_serial(port, baud=baud, timeout=8.0, write_timeout=None, wait=12.0)
+        burncom = _open_burn_serial(port, baud=baud, timeout=8.0, write_timeout=None, wait=20.0)
     except serial.SerialException as e:
         return _err(
             f"{e}。下载口刚出现时 Windows 可能还没就绪，请再点一次下载；"
@@ -1447,9 +1525,13 @@ def _burn_jdata(jdata: dict, port: str, parts: set[str]) -> int:
         )
     log.info("已打开 %s", burncom.port)
     try:
+        # DLBOOT 握手最多约 50 次读；8s 超时会卡数分钟。先用短超时。
+        burncom.timeout = 0.25
+        time.sleep(0.4)
         log.info("同步 DLBOOT")
         if burn_sync(burncom, enSynHandshakeType.SYNC_HANDSHAKE_DLBOOT, 2) != 0:
             return _err("握手失败，确认已进 BOOT")
+        burncom.timeout = 8.0
         log.info("下载 AgentBoot")
         ag = _load_agentboot()
         if burn_agboot(burncom, ag, 921600) != 0:

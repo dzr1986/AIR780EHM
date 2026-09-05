@@ -9,73 +9,55 @@ require "config"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
-function trigger_mode(mode)
-    return ({ rising = 0, falling = 1, both = 2 })[mode] or 0
+
+local TRIGGER = { rising = 0, falling = 1, both = 2 }
+local PULL = { pullup = 1, pulldown = 2 }
+
+function triggerMode(mode)
+    return TRIGGER[mode] or 0
 end
 
 function pull(pull_name)
-    return ({ pullup = 1, pulldown = 2 })[pull_name] or 1
+    return PULL[pull_name] or 1
 end
 
-function in_pin(name)
-    local e = _G.GPIO_IN and _G.GPIO_IN[name]
-    return e and e.pin
-end
-
-function out_pin(name)
-    local e = _G.GPIO_OUT and _G.GPIO_OUT[name]
-    return e and e.pin
-end
-
-function setup_input(pin, callback, opts)
-    if not pin or not callback then
-        return false
-    end
+-- opts 同时接受 camelCase（triggerMode/debounce）与 GPIO_IN 表原生 snake_case
+-- （trigger_mode/debounce_ms）。9bcfc78 曾只留 camelCase，而 pir_ctrl/peripheral/usb_charge
+-- 仍传 snake_case → 按键 both 边沿与全部防抖静默失效（长按事件永不触发）。此处为唯一归一点。
+function setupInput(pin, callback, opts)
+    if pin == nil or not callback then return false end
     opts = opts or {}
     gpio.setup(
         pin,
         callback,
         pull(opts.pull or "pullup"),
-        trigger_mode(opts.trigger_mode or opts.triggerMode or "rising")
+        triggerMode(opts.triggerMode or opts.trigger_mode or "rising")
     )
-    local debounce = opts.debounce_ms or opts.debounce
+    local debounce = opts.debounce
+    if debounce == nil then debounce = opts.debounce_ms end
     if debounce and debounce > 0 then
         gpio.debounce(pin, debounce)
     end
     return true
 end
 
-function setup_input_entry(entry, callback, overrides)
-    if not entry or not entry.pin then
-        return false
-    end
+function setupInputEntry(entry, callback, overrides)
+    if not entry or entry.pin == nil then return false end
     local opts = {
         pull = entry.pull,
-        trigger_mode = entry.trigger_mode,
-        debounce_ms = entry.debounce_ms,
+        triggerMode = entry.trigger_mode,
+        debounce = entry.debounce_ms or entry.debounce,
     }
     if overrides then
-        for k, v in pairs(overrides) do
-            opts[k] = v
-        end
+        for k, v in pairs(overrides) do opts[k] = v end
     end
-    return setup_input(entry.pin, callback, opts)
+    return setupInput(entry.pin, callback, opts)
 end
 
-function setup_output(entry)
-    if not entry or not entry.pin then
-        return nil
-    end
-    local level = entry.init_level or 0
-    return gpio.setup(entry.pin, level)
+function setupOutput(entry)
+    if not entry or entry.pin == nil then return end
+    local lvl = entry.init_level ~= nil and entry.init_level or 0
+    return gpio.setup(entry.pin, lvl)
 end
 
-function set_output(entry, on)
-    if not entry or not entry.pin then
-        return false
-    end
-    local level = on and (entry.on_level or 1) or (entry.init_level or 0)
-    gpio.set(entry.pin, level)
-    return true
-end
 return _M

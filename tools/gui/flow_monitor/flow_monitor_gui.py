@@ -3,7 +3,7 @@
 """人形 / PIR / UART / MQTT 流程检测界面。
 
 通讯展示按 3GPP AT 习惯：命令 / 参数 / 结果码成对；相同帧合并计数，避免刷屏。
-对照 doc/PERSON_CNT_UART_MQTT_FLOW.md。不发 2011 / 2002 enter / 2004。
+对照 doc/power/PERSON_CNT_UART_MQTT_FLOW.md。不发 2011 / 2002 enter / 2004。
 """
 from __future__ import annotations
 
@@ -44,10 +44,14 @@ GRAY = "#777"
 MAX_LINES = 800
 MAX_COMM_ROWS = 400
 EXPECT_VER = "001.000.018"
-T31_PORT = "COM7"
-T31_BAUD = 115200
 PCNT_GAP_SEC = 30.0
 COALESCE_SEC = 5.0
+
+def t31_port() -> str:
+    return flash.find_t31_port() or "COM7"
+
+
+T31_BAUD = 115200
 T31_POLL_SEC = 5.0
 T31_PID_SEC = 15.0
 T31_NEW_LINES_MAX = 40
@@ -116,7 +120,7 @@ CHECKS = [
     ("cat1_usb", "g_link", "Cat.1 USB 运行态", "日志口 + 复合口（非 BOOT）"),
     ("cat1_ver", "g_link", "脚本版本", EXPECT_VER),
     ("mqtt_ok", "g_link", "MQTT 在线", "本机订到设备上行，或 heartbeat mqtt=1"),
-    ("t31_shell", "g_link", "T31 COM7", "要有 # 提示符；卡住 lrz 时自动 Ctrl+C/D 恢复"),
+    ("t31_shell", "g_link", "T31 串口", "要有 # 提示符；卡住 lrz 时自动 Ctrl+C/D 恢复"),
     ("t31_ipc", "g_link", "ipc 进程", "pidof ipc 有值"),
     ("sig_1003", "g_link", "★ 1003 状态 ← 看顶栏黄条", "完整 1003：射频 / 电源 / IPC"),
     ("g_boot", None, "二、开机 UART 握手（Host AT = UART1，不是 COM7）", ""),
@@ -135,7 +139,7 @@ CHECKS = [
     ("pcnt_gap", "g_ivs", "30s 限流", f"有人间隔≥{int(PCNT_GAP_SEC)}s，或 PERSONCNT skipped"),
     ("g_mq", None, "六、MQTT 后台", ""),
     ("no_upd", "g_mq", "人数不上 1010", "无 pirStatus=person_update"),
-    ("t3x_act", "g_mq", "录像同步可出现", "1010 t3x_active 允许，不算失败"),
+    ("t31x_act", "g_mq", "录像同步可出现", "1010 t31x_active 允许，不算失败"),
     ("g_clip", None, "七、抽片（无 eth0 时 HTTP 失败为预期）", ""),
     ("clip_q", "g_clip", "clip_upload 排队", "msg=person / queued"),
     ("clip_http", "g_clip", "HTTP 上传", "有 eth0 应成功；USB 占电脑则为警告"),
@@ -354,7 +358,7 @@ def _1003_got(data: dict) -> str:
         f"{data.get('usbRecovery')}/{data.get('usbRecoveryCount')}/{data.get('usbRecoveryLastErr')}  "
         f"ipc={data.get('ipcReady')} gb={data.get('gb28181Online')} tf={data.get('tfPresent')} "
         f"pd={data.get('personDetectEnabled')}/{data.get('personDetectAvailable')} "
-        f"sync={data.get('timeSynced')} rec={data.get('recordingT3x')} "
+        f"sync={data.get('timeSynced')} rec={data.get('recordingT31x')} "
         f"wled={data.get('wledEnable')} cat1={data.get('cat1Link')}  "
         f"{data.get('time') or ''}"
     ).strip()
@@ -377,7 +381,7 @@ class FlowApp(tk.Tk):
         self._pcnt_times: list[float] = []
         self._counts = {
             "pcnt": 0, "pcnt0": 0, "pir_ignore": 0, "pir_detect_mqtt": 0,
-            "person_update": 0, "t3x_active": 0, "mqtt_up": 0, "clip_q": 0,
+            "person_update": 0, "t31x_active": 0, "mqtt_up": 0, "clip_q": 0,
             "clip_fail": 0, "clip_ok": 0, "uart_frames": 0, "uart_shown": 0,
         }
         self._status: dict[str, dict] = {
@@ -436,7 +440,7 @@ class FlowApp(tk.Tk):
         ttk.Button(bar, text="清空通讯表", command=self._clear_comm).pack(side=tk.LEFT, padx=4)
         ttk.Button(bar, text="打开日志目录", command=self._open_log_dir).pack(side=tk.LEFT, padx=4)
         self.watch_t31 = tk.BooleanVar(value=True)
-        ttk.Checkbutton(bar, text="监视 T31 COM7", variable=self.watch_t31).pack(side=tk.LEFT, padx=6)
+        ttk.Checkbutton(bar, text="监视 T31 串口", variable=self.watch_t31).pack(side=tk.LEFT, padx=6)
         ttk.Checkbutton(bar, text="界面显示原始日志", variable=self._keep_raw).pack(side=tk.LEFT, padx=6)
         self.port_lbl = tk.Label(bar, text="串口: —", bg=BG, font=("Consolas", 9))
         self.port_lbl.pack(side=tk.LEFT, padx=8)
@@ -835,7 +839,7 @@ class FlowApp(tk.Tk):
             self.trace(kind, f"{name}  {got or self._st_cn(st)}", "判定", key=f"check:{cid}")
         elif st == "pass" and old == "wait" and cid in {
             "mqtt_ok", "t31_shell", "cat1_usb", "cat1_ver", "mode_pd",
-            "up_2013", "clip_http", "clip_q", "t3x_act", "pcnt_on", "sig_1003",
+            "up_2013", "clip_http", "clip_q", "t31x_act", "pcnt_on", "sig_1003",
         }:
             name = next((c[2] for c in CHECKS if c[0] == cid), cid)
             self.trace("ok", f"{name}  {got or '符合'}", "判定", key=f"check:{cid}")
@@ -902,7 +906,7 @@ class FlowApp(tk.Tk):
             f"有人发出 AT+PERSONCNT ×{sent}  限流丢弃 ×{skip.get('n', 0)}  "
             f"速率 {rate}  {verdict}    "
             f"PIR 静音 {c['pir_ignore']}    "
-            f"MQTT 1010 person_update={c['person_update']} detected={c['pir_detect_mqtt']} t3x_active={c['t3x_active']}"
+            f"MQTT 1010 person_update={c['person_update']} detected={c['pir_detect_mqtt']} t31x_active={c['t31x_active']}"
         )
 
     def refresh_ports(self):
@@ -910,7 +914,7 @@ class FlowApp(tk.Tk):
         mode = flash.port_mode_label(rows)
         logp = flash.find_log_port()
         hezhou = [r["device"] for r in rows if r.get("kind") in {"log-usb", "cat1-usb", "boot-usb"}]
-        self.port_lbl.config(text=f"串口: {mode}  日志={logp or '无'}  合宙={','.join(hezhou) or '无'}  T31={T31_PORT}")
+        self.port_lbl.config(text=f"串口: {mode}  日志={logp or '无'}  合宙={','.join(hezhou) or '无'}  T31={t31_port()}")
         if mode == "RUN" and logp:
             self.set_check("cat1_usb", "pass", f"{mode} {logp}", "运行态多口")
         elif mode == "BOOT":
@@ -1151,7 +1155,7 @@ class FlowApp(tk.Tk):
             f"ipcReady={data.get('ipcReady')}  国标={data.get('gb28181Online')}  "
             f"TF={data.get('tfPresent')}  人形={data.get('personDetectEnabled')}/"
             f"{data.get('personDetectAvailable')}  对时={data.get('timeSynced')}  "
-            f"录像={data.get('recordingT3x')}  白光={data.get('wledEnable')}  "
+            f"录像={data.get('recordingT31x')}  白光={data.get('wledEnable')}  "
             f"cat1={data.get('cat1Link')}    {data.get('time') or ''}"
         )
         fg = "#1a7f37"
@@ -1439,7 +1443,7 @@ class FlowApp(tk.Tk):
         pir = str(data.get("pirStatus") or "")
         if dt == "1010" and pir in {"person_update", "detected"}:
             tag = "bad"
-        elif dt == "1010" and pir == "t3x_active":
+        elif dt == "1010" and pir == "t31x_active":
             tag = "ok"
         last = self._last_mqtt
         iid = None
@@ -1515,7 +1519,7 @@ class FlowApp(tk.Tk):
                 self.set_check("cat1_ver", st, ver, msg)
         if "mqtt_conack" in low or ("heartbeat_status" in low and "mqtt=1" in low):
             self.set_check("mqtt_ok", "pass", "mqtt=1", msg)
-        if "t3x_ctrl power on 1" in low:
+        if "t31x_ctrl power on 1" in low:
             self.set_check("mode_ready", "pass", "T31 上电", msg)
         if "hw_ignored" in low and "t31_on" in low:
             self._counts["pir_ignore"] += 1
@@ -1617,9 +1621,9 @@ class FlowApp(tk.Tk):
             elif pir == "detected":
                 self._counts["pir_detect_mqtt"] += 1
                 self.set_check("pir_no_det", "fail", f"detected ×{self._counts['pir_detect_mqtt']}", ev)
-            elif pir == "t3x_active":
-                self._counts["t3x_active"] += 1
-                self.set_check("t3x_act", "pass", f"{self._counts['t3x_active']} 次", ev)
+            elif pir == "t31x_active":
+                self._counts["t31x_active"] += 1
+                self.set_check("t31x_act", "pass", f"{self._counts['t31x_active']} 次", ev)
             if self._counts["person_update"] == 0:
                 self.set_check("no_upd", "pass", "无 person_update")
             if self._counts["pir_detect_mqtt"] == 0:
@@ -1838,18 +1842,19 @@ class FlowApp(tk.Tk):
 
     def _run_t31(self):
         import serial
+        port = t31_port()
         try:
             ser = serial.Serial(
-                T31_PORT, T31_BAUD, timeout=0.3, write_timeout=3,
+                port, T31_BAUD, timeout=0.3, write_timeout=3,
                 xonxoff=False, rtscts=False, dsrdtr=False,
             )
         except Exception as e:
-            self.ui(self.set_check, "t31_shell", "fail", "打不开 COM7", str(e))
+            self.ui(self.set_check, "t31_shell", "fail", f"打不开 {port}", str(e))
             occ = "拒绝访问" in str(e) or "PermissionError" in str(e) or "Access is denied" in str(e)
             hint = (
-                f"打不开 {T31_PORT}：{e}。请先关掉 Xshell / 串口助手里占用 COM7 的会话，再重新开始检测。"
+                f"打不开 {port}：{e}。请先关掉 Xshell / 串口助手里占用该口的会话，再重新开始检测。"
                 if occ else
-                f"打不开 {T31_PORT}：{e}。UART 会话来自 COM7 读 /tmp/ipc/cat1_uart.log"
+                f"打不开 {port}：{e}。UART 会话来自 T31 串口读 /tmp/ipc/cat1_uart.log"
             )
             self.ui(self._uart_empty_hint, hint)
             return
@@ -1872,7 +1877,7 @@ class FlowApp(tk.Tk):
             if not ok:
                 self.ui(self.set_check, "t31_shell", "fail", "仍无 #", detail)
                 return
-            self.ui(self.set_check, "t31_shell", "pass", T31_PORT, detail)
+            self.ui(self.set_check, "t31_shell", "pass", port, detail)
             if "恢复" in detail:
                 self.ui(self.trace, "ok", detail, "t31", "shell_ok")
             uart_path = "/tmp/ipc/cat1_uart.log"
@@ -1914,7 +1919,7 @@ class FlowApp(tk.Tk):
                             self.ui(self.set_check, "t31_shell", "wait", "掉线恢复", "监视中丢了 #，正在 Ctrl+C/D")
                             ok, detail = self._t31_login(ser)
                             if ok:
-                                self.ui(self.set_check, "t31_shell", "pass", T31_PORT, detail)
+                                self.ui(self.set_check, "t31_shell", "pass", port, detail)
                                 pid_txt = self._t31_send(ser, "pidof ipc", 4.0)
                             else:
                                 self.ui(self.set_check, "t31_shell", "fail", "又丢了 #", detail)
@@ -1928,7 +1933,7 @@ class FlowApp(tk.Tk):
                 time.sleep(0.2)
         except Exception as e:
             if not self._stop.is_set():
-                self.ui(self.trace, "bad", f"COM7 {e}", "t31")
+                self.ui(self.trace, "bad", f"{port} {e}", "t31")
         finally:
             try:
                 ser.close()

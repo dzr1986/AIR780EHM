@@ -22,8 +22,8 @@ _G.device_imei（app 联网后写入）
 | 函数 | 返回值 |
 |------|--------|
 | `getImei()` | IMEI 或 nil |
-| `getDeviceId()` | IMEI 或 `"unknown_device"` |
-| `getDisplayId()` | IMEI 或 `"unknown"` |
+| `getDeviceNo()` | IMEI 或 `"unknown_device"` |
+| `getDisplayNo()` | IMEI 或 `"unknown"` |
 
 ### 1.2 消费者
 
@@ -79,6 +79,20 @@ mergeConfig(WDT_CFG)
 关机前 `app` 可 `stopWatchdogBeforePowerOff` 避免关机流程中被 WDT 复位（见 `app.lua`）。
 
 ---
+
+## 2b. utils → svc：跨域懒加载桥迁出（refactor_plan P1b，2026-09-04）
+
+`lib/utils.lua` 原有 `hostUart()` / `uartBridge()` / `t31xOn(tag, extra, default)` 三座桥经 `module_loader.load` 反向懒加载 `user/` 业务模块，
+是 `_layer_check` R1（lib ↛ user 业务）的仅有两条违规边，也是 27 模块软环把 `utils` 卷进去的原因。P1b 起：
+
+| 项 | 结果 |
+|----|------|
+| 新位置 | `user/svc.lua`（31 行，只 require `module_loader`；实现逐字等价） |
+| 调用方 | `net_mqtt`（含 ctx 注入 `hostUart = svc.hostUart`）、`t31x_ctrl`、`time_sync`、`sound_prompt`；`mqtt_conn` 改走 ctx `C.hostUart` |
+| `utils` | 不再 require `module_loader`，回归纯 helper（JSON/表/字符串/时间/IP） |
+| 护栏 | `_layer_check` 基线 2 → 0；软环 27 → 22 模块 |
+
+`svc` 只准 require `module_loader`，不得 require 任何业务模块——否则运行期软环会变成加载期硬环。
 
 ## 3. 与其它模块关系
 

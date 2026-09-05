@@ -1,0 +1,129 @@
+-- ================================================================
+-- Filename : t31x_policy.lua
+-- Module   : T31x 唤醒门禁：USB 优先、rest 白名单、低电阻断，统一 mayPowerT31x/reqT31xWake
+-- Layer    : L2 协处理器服务（被 host_uart / app / pir_ctrl 等大量模块作为底层依赖 require）
+-- Arch     : doc/modules/T31X_POLICY_GATE.md
+-- ================================================================
+
+require "sys"
+require "config"
+local loader = require "module_loader"
+local cfgm = require "config_manager"
+local rntmPwr = require "runtime_power"
+local t31x_notify = require "t31x_notify"
+local _modname = ...
+module(_modname, package.seeall)
+_G[_modname] = _M
+
+local lastMqttWakeAt = 0
+local burnActive = false
+
+local function policyCfg()
+    -- 键名规范：t31x_ 前缀小写 + 大写下划线后缀（T31X_NAMING.md），
+    -- 由 battery.lua 注册 _G.t31x_POLICY_CFG；全大写 T31X_POLICY_CFG 读不到（cfgm.get 大小写敏感）
+    return cfgm.get("t31x_POLICY_CFG")
+end
+
+local function guardCfg()
+    return cfgm.get("BATTERY_CFG").guard or {}
+end
+
+function setBurnActive(active)
+    burnActive = active == true
+end
+
+function isBurnActive()
+    return burnActive
+end
+
+local function isPirWake(reason)
+    reason = tostring(reason or "")
+    return reason == "ntfHost" or reason == "pir_media"
+        or reason == "exit_low_power" or reason:sub(1, 9) == "pir_stop"
+end
+
+local function allowWakeRest(reason)
+    if policyCfg().allow_wled_wake_in_rest ~= false and tostring(reason or "") == "wled" then
+        return true
+    end
+    return isPirWake(reason) and (
+        policyCfg().allow_pir_wake_in_rest ~= false
+        or (policyCfg().allow_pir_wake_in_battery_rest ~= false and rntmPwr.isBatDynRest())
+    )
+end
+
+local function policyOff()
+    return policyCfg().enabled == false or not loader.enabled("t31x_policy")
+end
+
+-- USB 在位时放行，mqtt_offline 例外：仅当 block_mqtt_offline_wake_when_usb 显式为 false 才放行
+-- （原读未注册键 allow_mqtt_offline_wake_when_usb，恒 nil → 等价「永不放行」，与默认 true 行为相同）
+local function passUsbGate(reason)
+    return rntmPwr.isUsbInserted()
+        and (reason ~= "mqtt_offline" or policyCfg().block_mqtt_offline_wake_when_usb == false)
+end
+
+local function passLpGate(reason)
+    return policyCfg().block_wake_in_low_power == false
+        or not rntmPwr.isLowPowerMode()
+        or allowWakeRest(reason)
+end
+
+local function passBatGate()
+    local mv = rntmPwr.getBatteryMv()
+    local blockMv = tonumber(policyCfg().block_wake_below_mv) or tonumber(guardCfg().shutdown_mv)
+    if blockMv and mv and mv <= blockMv then
+        return false
+    end
+    local pct = rntmPwr.getBatteryPercent()
+    local blockPct = tonumber(policyCfg().block_wake_below_percent)
+        or tonumber(guardCfg().pir_suspend_percent) or 15
+    return pct == nil or pct > blockPct
+end
+
+function mayPowerT31x(reason, opts)
+    opts = type(opts) == "table" and opts or {}
+    if policyOff() or isBurnActive() or passUsbGate(reason) or opts.forceWake then
+        return true
+    end
+    return passLpGate(reason) and passBatGate()
+end
+
+function shdWakeOffline()
+    local cfg = policyCfg()
+    if cfg.block_mqtt_offline_wake ~= false then
+        if rntmPwr.isLowPowerMode() then return false end
+        local cd = tonumber(cfg.mqtt_offline_wake_cooldown_sec)
+        if cd and cd > 0 and lastMqttWakeAt > 0
+            and os.time() - lastMqttWakeAt < cd then
+            return false
+        end
+        if cfg.block_mqtt_offline_wake_when_usb ~= false and rntmPwr.isUsbInserted() then
+            return false
+        end
+    end
+    return mayPowerT31x("mqtt_offline")
+end
+
+local function recMqttWake(reason)
+    if reason == "mqtt_offline" then
+        lastMqttWakeAt = os.time()
+    end
+end
+
+function reqT31xWake(reason, sid, evt, opts)
+    sid = sid or cfgm.get("HOST_WAKE_CFG").default_sid or 1
+    evt = evt or 0
+    opts = type(opts) == "table" and opts or {}
+    return mayPowerT31x(reason, opts) and t31x_notify.wakeHost(sid, evt, {
+        onDone = function()
+            recMqttWake(reason)
+        end,
+    })
+end
+
+function bootPowerOn(t31xModule)
+    return mayPowerT31x("boot") and t31xModule ~= nil and t31xModule.powerOn()
+end
+
+return _M

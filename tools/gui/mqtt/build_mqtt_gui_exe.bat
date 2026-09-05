@@ -10,7 +10,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo 已生成: %CD%\dist\PanshiMqttClient.exe
-echo 双击即可打开图形界面（首次运行会在 exe 旁写出 config.json 和 doc\MQTT_PROTOCOL.md）
+echo PySide6 Qt 界面。双击即可（首次运行会在 exe 旁写出 config.json 和 doc\MQTT_PROTOCOL.md）
 exit /b 0
 
 :fail

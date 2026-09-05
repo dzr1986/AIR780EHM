@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : libfota2.lua
 -- Module   : FOTA 下载引擎：合宙差分升级协议、HTTP(S)、断点续传、校验写盘
--- Arch     : 见 doc/LUA_MODULES.md
+-- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
 local libfota2 = {}

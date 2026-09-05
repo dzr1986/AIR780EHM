@@ -24,7 +24,7 @@ BOLD_DT_RE = re.compile(r"\*\*([12]0\d{2})\*\*")
 
 DANGER_ACTIONS = {"reboot", "off", "ota", "format"}
 DANGER_TYPES = {"2009", "2011", "2012"}
-T3X_TYPES = {
+T31X_TYPES = {
     "2006", "2007", "2009", "2012", "2013",
     "2020", "2021", "2022", "2023", "2024", "2025", "2026", "2027",
     "2028", "2029", "2030", "2031",
@@ -41,7 +41,7 @@ class ProtocolEntry:
     heading: str = ""
     examples: list[dict] = field(default_factory=list)
     notes: str = ""
-    need_t3x: bool = False
+    need_t31x: bool = False
     danger: bool = False
 
     def topic(self, imei: str) -> str:
@@ -116,7 +116,7 @@ class ProtocolCatalog:
             "peer": entry.peer if entry else "",
             "topic_suffix": entry.topic_suffix if entry else suffix,
             "heading": entry.heading if entry else "",
-            "need_t3x": bool(entry and entry.need_t3x),
+            "need_t31x": bool(entry and entry.need_t31x),
             "danger": bool(entry and entry.danger) or _payload_danger(payload),
             "known": entry is not None,
             "suffix_ok": matched_suffix if entry else None,
@@ -181,7 +181,7 @@ def _ensure(catalog: ProtocolCatalog, data_type: str, **kwargs) -> ProtocolEntry
             continue
         if not cur:
             setattr(entry, key, value)
-    entry.need_t3x = entry.need_t3x or data_type in T3X_TYPES
+    entry.need_t31x = entry.need_t31x or data_type in T31X_TYPES
     entry.danger = entry.danger or data_type in DANGER_TYPES
     return entry
 
@@ -276,7 +276,7 @@ def merge_commands(catalog: ProtocolCatalog, commands: dict) -> list[dict]:
             entry = catalog.get(dt)
             if entry:
                 row.setdefault("name", entry.name)
-                row.setdefault("need_t3x", entry.need_t3x)
+                row.setdefault("need_t31x", entry.need_t31x)
                 if group == "danger":
                     entry.danger = True
                 if not entry.examples and payload:
@@ -292,13 +292,13 @@ def merge_commands(catalog: ProtocolCatalog, commands: dict) -> list[dict]:
             continue
         payload = dict(entry.examples[0]) if entry.examples else {"dataType": entry.data_type}
         payload["dataType"] = entry.data_type
-        group = "danger" if entry.danger else ("extra" if entry.need_t3x else "safe")
+        group = "danger" if entry.danger else ("extra" if entry.need_t31x else "safe")
         out.append({
             "id": entry.data_type,
             "name": entry.name,
             "expect": entry.peer or None,
             "payload": payload,
-            "need_t3x": entry.need_t3x,
+            "need_t31x": entry.need_t31x,
             "danger": entry.danger,
             "_group": group,
         })

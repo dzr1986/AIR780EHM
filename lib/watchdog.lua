@@ -5,36 +5,38 @@
 -- ================================================================
 
 require "sys"
+require "config"
+local cfgm = require "config_manager"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
 local started = false
 local feedTimerId = nil
-local config = {
+-- 模块内置兜底默认（仅 WDT_CFG 缺失时生效）；net.lua WDT_CFG 为产品权威默认，两处改动须同步
+local DEF_TIMEOUT_MS = 9000
+local DEF_FEED_IV_MS = 3000
+local runtime = {
     enabled = true,
-    timeout_ms = 9000,
-    feed_interval_ms = 3000,
+    timeout_ms = DEF_TIMEOUT_MS,
+    feed_interval_ms = DEF_FEED_IV_MS,
 }
+
 local function isModuleBsp()
-    if not rtos or not rtos.bsp then
-        return true
-    end
+    if not rtos or not rtos.bsp then return true end
     local bsp = rtos.bsp() or ""
     return bsp:find("780") ~= nil
         or bsp:find("718") ~= nil
         or bsp:find("EC618") ~= nil
 end
 
-local function mergeConfig(opts)
-    if type(opts) ~= "table" then
-        return config
-    end
-    if opts.enabled ~= nil then config.enabled = opts.enabled ~= false end
-    if opts.timeout_ms then config.timeout_ms = opts.timeout_ms end
-    if opts.feed_interval_ms then config.feed_interval_ms = opts.feed_interval_ms end
-    if opts.timeout then config.timeout_ms = opts.timeout end
-    if opts.feed_interval then config.feed_interval_ms = opts.feed_interval end
-    return config
+local function applyCfg(opts)
+    local o = type(opts) == "table" and opts or cfgm.get("WDT_CFG")
+    if o.enabled ~= nil then runtime.enabled = o.enabled ~= false end
+    if o.timeout_ms then runtime.timeout_ms = o.timeout_ms end
+    if o.feed_interval_ms then runtime.feed_interval_ms = o.feed_interval_ms end
+    if o.timeout then runtime.timeout_ms = o.timeout end
+    if o.feed_interval then runtime.feed_interval_ms = o.feed_interval end
 end
 
 local function feedOnce()
@@ -45,26 +47,22 @@ local function feedOnce()
     return false
 end
 
-function start(opts)
-    if started then
-        return true
-    end
-    mergeConfig(opts or _G.WDT_CFG)
-    if config.enabled == false then
-        return false
-    end
-    if not wdt or not wdt.init then
-        return false
-    end
-    if not isModuleBsp() then
-        return false
-    end
-    local timeout = tonumber(config.timeout_ms) or 9000
-    local interval = tonumber(config.feed_interval_ms) or 3000
+local function clampFeedIv(timeout, interval)
     if interval >= timeout then
         interval = math.floor(timeout / 3)
         if interval < 500 then interval = 500 end
     end
+    return interval
+end
+
+function start(opts)
+    if started then return true end
+    applyCfg(opts)
+    if runtime.enabled == false or not wdt or not wdt.init or not isModuleBsp() then
+        return false
+    end
+    local timeout = tonumber(runtime.timeout_ms) or DEF_TIMEOUT_MS
+    local interval = clampFeedIv(timeout, tonumber(runtime.feed_interval_ms) or DEF_FEED_IV_MS)
     wdt.init(timeout)
     feedOnce()
     feedTimerId = sys.timerLoopStart(feedOnce, interval)
@@ -72,18 +70,17 @@ function start(opts)
     return true
 end
 
+-- start/feed/stop/getState/getConfig = 看门狗 API 族（LIB_RUNTIME_UTILS.md §2.1 登记，
+-- P3-4 复核=有意保留）：start/stop 由 app.setupWatchdog 消费；feed/getConfig 零外部直连
+-- 但属族内标准接口（feed=手动喂一次、getConfig=调试快照），勿按死代码摘除。
 function feed()
-    if started then
-        return feedOnce()
-    end
-    return false
+    return started and feedOnce() or false
 end
 
 function stop()
-    if feedTimerId then
-        sys.timerStop(feedTimerId)
-        feedTimerId = nil
-    end
+    if not started then return true end
+    if feedTimerId then sys.timerStop(feedTimerId) end
+    feedTimerId = nil
     started = false
     return true
 end
@@ -91,15 +88,13 @@ end
 function getState()
     return {
         started = started,
-        enabled = config.enabled ~= false,
         bsp = rtos.bsp and rtos.bsp() or nil,
-        timeout_ms = config.timeout_ms,
-        feed_interval_ms = config.feed_interval_ms,
         has_wdt_api = wdt and wdt.init ~= nil,
     }
 end
 
 function getConfig()
-    return config
+    return runtime
 end
+
 return _M

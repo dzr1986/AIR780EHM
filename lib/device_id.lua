@@ -7,20 +7,25 @@
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
+local cachedImei
+
+local function validImei(id)
+    return id and id ~= "" and id ~= "unknown"
+end
+
+function setImei(id)
+    cachedImei = id
+end
+
 function getImei()
-    if _G.device_imei and _G.device_imei ~= "" and _G.device_imei ~= "unknown" then
-        return tostring(_G.device_imei)
+    if validImei(cachedImei) then
+        return tostring(cachedImei)
     end
-    if _G.aliyuncs_imei and _G.aliyuncs_imei ~= "" then
-        return tostring(_G.aliyuncs_imei)
-    end
-    if mobile and mobile.imei then
-        local id = mobile.imei()
-        if id and id ~= "" then
-            return tostring(id)
-        end
-    end
-    return nil
+    local id = mobile and mobile.imei and mobile.imei()
+    -- mobile 无卡时可能回 "unknown"，与 cachedImei 同一过滤口径，
+    -- 避免字面 "unknown" 绕过 getDeviceId() 的 "unknown_device" 兜底
+    return validImei(id) and tostring(id) or nil
 end
 
 function getDeviceId()
@@ -30,4 +35,5 @@ end
 function getDisplayId()
     return getImei() or "unknown"
 end
+
 return _M

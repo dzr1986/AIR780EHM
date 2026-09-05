@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>4G OTA 管理台</title>
+  <style>
+    :root {
+      --nav:#1b3a5f; --nav-hover:#24507f; --accent:#2b7de1; --ok:#1a9e54;
+      --danger:#d94a4a; --bg:#f4f6f8; --card:#fff; --text:#1f2d3d; --muted:#6b7c8f; --line:#e4e8ee;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+    a { color: var(--accent); text-decoration: none; cursor: pointer; }
+    .top { background: var(--nav); color: #fff; display: flex; align-items: center; gap: 8px; padding: 0 20px; height: 52px; }
+    .brand { font-weight: 700; margin-right: 16px; }
+    .nav-btn { background: none; border: 0; color: #d7e4f5; padding: 16px 12px; cursor: pointer; font-size: 14px; }
+    .nav-btn.active, .nav-btn:hover { color: #fff; background: var(--nav-hover); }
+    .nav-drop { position: relative; height: 52px; }
+    .nav-menu { position: absolute; top: 52px; left: 0; min-width: 168px; background: #fff; border: 1px solid var(--line); z-index: 15; }
+    .nav-menu button { display: block; width: 100%; text-align: left; background: #fff; color: var(--text); border-radius: 0; padding: 10px 14px; }
+    .nav-menu button:hover, .nav-menu button.active { background: #eef3f8; color: var(--accent); }
+    .wrap { max-width: 1400px; margin: 20px auto; padding: 0 16px 40px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
+    h1 { font-size: 20px; margin: 0; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; background: #fafbfc; }
+    .muted { color: var(--muted); font-size: 12px; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid #cfd6de; border-radius: 6px; }
+    textarea { min-height: 64px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+    button { border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; background: var(--accent); color: #fff; }
+    button.ghost { background: #eef3f8; color: var(--nav); }
+    button.danger { background: var(--danger); }
+    button.ok { background: var(--ok); }
+    .ops button { margin: 0 4px 4px 0; }
+    .hidden { display: none !important; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+    .token-bar { display: flex; gap: 8px; align-items: end; }
+    .token-bar input { width: 280px; }
+    .tag-yes { color: var(--ok); }
+    .tag-no { color: var(--danger); }
+    pre { background: #0f1720; color: #d7e4f5; padding: 12px; border-radius: 6px; overflow: auto; font-size: 12px; max-height: 260px; }
+    .crumb { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+    .pager { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .st-ok { color: var(--ok); font-weight: 600; }
+    .st-fail { color: var(--danger); font-weight: 600; }
+    .st-run { color: var(--accent); font-weight: 600; }
+    .filter-row { display: grid; grid-template-columns: 1fr 180px auto; gap: 12px; align-items: end; }
+    @media (max-width: 800px) { .filter-row { grid-template-columns: 1fr; } }
+    .btn-blue { background: #2b7de1; }
+    .btn-yellow { background: #e6a23c; }
+    .btn-pink { background: #e07a7a; }
+    .btn-green { background: #3cb37a; }
+    .btn-dgreen { background: #1a8f5a; }
+    .keybox { background: #e8f3ff; border: 1px solid #b7d4f5; padding: 8px 10px; border-radius: 6px; font-family: Consolas, monospace; word-break: break-all; }
+    .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; align-items: start; font-size: 14px; }
+    .kv b { color: var(--muted); font-weight: 600; }
+    .modal { position: fixed; inset: 0; background: rgba(15,23,32,.45); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+    .modal-box { background: #fff; width: min(640px, 100%); max-height: 88vh; overflow: auto; border-radius: 8px; }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); font-weight: 700; }
+    .modal-body { padding: 16px; }
+    .modal-foot { padding: 12px 16px; border-top: 1px solid var(--line); text-align: right; }
+    .switch { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">4G OTA</div>
+    <button class="nav-btn active" data-view="projects" onclick="showView('projects')">我的项目</button>
+    <button class="nav-btn" data-view="devices" onclick="showView('devices')">我的设备</button>
+    <div class="nav-drop">
+      <button class="nav-btn" data-view="firmware" id="navUpgradeBtn" onclick="toggleUpgradeMenu(event)">固件升级 ▾</button>
+      <div id="navUpgradeMenu" class="nav-menu hidden">
+        <button id="menuMyFw" onclick="openMyFirmware()">我的固件</button>
+        <button id="menuProdFw" onclick="openProdFirmware()">量产固件</button>
+        <button id="menuTrigger" onclick="showView('upgrade')">下发升级</button>
+      </div>
+    </div>
+    <button class="nav-btn" data-view="tasks" onclick="showView('tasks')">我的任务</button>
+    <button class="nav-btn" data-view="logs" onclick="showView('logs')">调试日志</button>
+    <button class="nav-btn" data-view="loop" onclick="showView('loop')">闭环测试</button>
+    <button class="nav-btn" onclick="location.href='/ipc.html'">IPC 升级</button>
+  </div>
+
+  <div class="wrap">
+    <div class="card token-bar">
+      <div>
+        <label>Admin Token</label>
+        <input id="token" type="password" value="ota-7f3a9c2e4b18d6a0e5c1" placeholder="管理令牌">
+      </div>
+      <button onclick="boot()">登录 / 刷新</button>
+      <span id="mqttHint" class="muted"></span>
+    </div>
+
+    <section id="view-projects">
+      <div class="toolbar">
+        <h1>我的项目</h1>
+        <div class="ops">
+          <input id="projSearch" placeholder="项目名" style="width:200px;display:inline-block" onkeydown="if(event.key==='Enter')loadProjects()">
+          <button class="btn-green" onclick="loadProjects()">搜索项目</button>
+          <label class="switch" style="display:inline-flex"><input type="checkbox" id="hideHidden" checked onchange="loadProjects()"> 不显示隐藏项目</label>
+          <button class="ok" onclick="openCreateProject()">+ 新建项目</button>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>编号</th><th>名称</th><th>描述</th><th>创建人</th><th>创建时间</th><th>操作</th></tr></thead>
+          <tbody id="projectRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-firmware" class="hidden">
+      <div class="toolbar">
+        <h1 id="fwTitle">我的固件</h1>
+      </div>
+      <div class="card">
+        <div class="filter-row" style="grid-template-columns: 220px 1fr auto auto;">
+          <div>
+            <label>项目</label>
+            <select id="fwProject" onchange="onFwProjectChange()"></select>
+          </div>
+          <div>
+            <label>搜索固件名</label>
+            <input id="fwSearch" placeholder="PANSHI_CAT1" onkeydown="if(event.key==='Enter')reloadFirmware()">
+          </div>
+          <button class="btn-green" onclick="reloadFirmware()">搜索</button>
+          <button class="ok" onclick="openCreateFirmware()">+ 创建固件</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>编号</th>
+              <th>固件名</th>
+              <th>备注</th>
+              <th>版本号</th>
+              <th>core</th>
+              <th>升级文件</th>
+              <th>允许升级</th>
+              <th>升级全部设备</th>
+              <th>指定 IMEI</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="fwRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-prod" class="hidden">
+      <div class="toolbar">
+        <h1>量产固件</h1>
+      </div>
+      <div class="card">
+        <p class="muted">对应平台里的量产固件入口：选择本地 <code>量产/</code> 目录下的脚本 <code>.bin</code> 上传到当前项目，随后出现在「我的固件」。不要选 <code>.soc</code> / <code>.binpkg</code>（那是烧录包）。</p>
+        <div class="filter-row" style="grid-template-columns: 220px auto 1fr;">
+          <div>
+            <label>项目</label>
+            <select id="prodProject" onchange="onProdProjectChange()"></select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button type="button" class="ok" onclick="document.getElementById('prodFile').click()">选择本地量产文件</button>
+          </div>
+          <div>
+            <label>已选文件</label>
+            <div id="prodFileName" class="muted" style="padding-top:8px">未选择</div>
+          </div>
+        </div>
+        <input id="prodFile" type="file" accept=".bin" class="hidden" onchange="onProdFile()">
+        <div class="grid2" style="margin-top:8px">
+          <div>
+            <label>固件名 *</label>
+            <input id="prodFirmwareName" placeholder="PANSHI_CAT1_LuatOS-SoC_Air780EHM">
+            <label>版本号 *</label>
+            <input id="prodVersion" placeholder="2044.001.004">
+            <label>源版本（设备当前版本）</label>
+            <input id="prodSourceVersion" placeholder="2044.001.002">
+          </div>
+          <div>
+            <label>core 版本</label>
+            <input id="prodCoreVersion" value="0">
+            <label>指定设备 IMEI（逗号分隔；不填则需勾选全部）</label>
+            <input id="prodImeis" placeholder="862323084068124">
+            <label><input type="checkbox" id="prodAllowUpgrade" checked> 允许升级</label>
+            <label><input type="checkbox" id="prodUpgradeAll"> 升级全部设备</label>
+            <button class="ok" style="margin-top:12px" onclick="uploadProdPackage()">上传量产包到我的固件</button>
+          </div>
+        </div>
+        <pre id="prodUploadResult" class="hidden"></pre>
+      </div>
+    </section>
+
+    <section id="view-devices" class="hidden">
+      <div class="toolbar">
+        <div>
+          <div class="crumb"><a onclick="showView('projects')">我的项目</a> / 设备列表</div>
+          <h1>我的设备</h1>
+        </div>
+      </div>
+      <div class="card">
+        <div class="filter-row">
+          <div>
+            <label>当前项目</label>
+            <select id="devProject" onchange="onDevProjectChange()"></select>
+          </div>
+          <div>
+            <label>IMEI 前缀</label>
+            <input id="devImei" placeholder="86232308406" onkeydown="if(event.key==='Enter')loadDevices()">
+          </div>
+          <div class="ops">
+            <button class="btn-green" onclick="loadDevices()">搜索前缀</button>
+            <button class="ghost" onclick="openAddDevice()">添加设备</button>
+          </div>
+        </div>
+      </div>
+      <div class="card hidden" id="addDevBox">
+        <label>IMEI *</label>
+        <input id="addImei" placeholder="15 位 IMEI">
+        <label>设备名 / 备注</label>
+        <input id="addRemark" placeholder="默认等于 IMEI">
+        <button onclick="addDevice()">保存</button>
+      </div>
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>序号</th>
+              <th>IMEI</th>
+              <th>设备名</th>
+              <th>设备版本</th>
+              <th>固件名</th>
+              <th>升级状态</th>
+              <th>Debug 状态</th>
+              <th>最近访问服务器</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="devRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-upgrade" class="hidden">
+      <div class="toolbar"><h1>下发升级</h1></div>
+      <div class="card">
+        <p class="muted">先在「我的固件」上传差分包，并勾选升级全部或指定 IMEI。再填写设备 IMEI 与目标版本，通过 MQTT 通知模组来本服务器拉包。</p>
+        <p class="muted">点「下发 OTA」后<strong>下方黑框必须出现 JSON</strong>。<code>"status": "PUBLISHED"</code> 表示 2004 已发出。设备已经是该版本时会提示无需下发，不会再发 MQTT。</p>
+        <label>拉包地址</label>
+        <div class="keybox" id="selfUrlHint">http://43.136.55.143/api/site/firmware_upgrade?</div>
+        <label>IMEI 列表</label>
+        <input id="triggerImeis" placeholder="862323084068124">
+        <label>目标版本（内核.XXX.ZZZ，如 2044.001.018）</label>
+        <input id="triggerVersion" placeholder="2044.001.018">
+        <div class="ops" style="margin-top:12px">
+          <button type="button" id="btnTriggerOta" onclick="triggerOta()">下发 OTA</button>
+          <button type="button" class="ghost" onclick="triggerOutdated()">批量升级落后设备</button>
+        </div>
+        <pre id="triggerResult">点「下发 OTA」后这里会显示结果</pre>
+      </div>
+    </section>
+
+    <section id="view-tasks" class="hidden">
+      <div class="toolbar"><h1>我的任务</h1></div>
+      <div class="card">
+        <div class="filter-row">
+          <div>
+            <label>按 IMEI 搜索</label>
+            <input id="taskImei" placeholder="862323084068124" onkeydown="if(event.key==='Enter'){taskPage=0;loadTasks()}">
+          </div>
+          <div>
+            <label>状态</label>
+            <select id="taskStatus">
+              <option value="">全部</option>
+              <option value="PENDING">待下发</option>
+              <option value="PUBLISHED">已下发</option>
+              <option value="ACCEPTED">设备已受理</option>
+              <option value="IN_PROGRESS">进行中</option>
+              <option value="SUCCESS">成功</option>
+              <option value="FAILED">失败</option>
+              <option value="TIMEOUT">超时</option>
+            </select>
+          </div>
+          <button onclick="taskPage=0;loadTasks()">搜索</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>创建人</th>
+              <th>IMEI</th>
+              <th>创建时间</th>
+              <th>开始 / 结束</th>
+              <th>状态</th>
+              <th>备注</th>
+              <th>错误信息</th>
+            </tr>
+          </thead>
+          <tbody id="taskRows"></tbody>
+        </table>
+        <div class="pager">
+          <button class="ghost" onclick="changeTaskPage(-1)">上一页</button>
+          <span id="taskPager" class="muted">第 1 页</span>
+          <button class="ghost" onclick="changeTaskPage(1)">下一页</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-loop" class="hidden">
+      <div class="toolbar"><h1>闭环测试</h1></div>
+      <div class="card">
+        <p class="muted">用模拟设备走完整升级。可点「选择本地量产文件」加载 <code>量产/</code> 下的 <code>.bin</code>，再跑 HTTP / MQTT 全流程。不选文件则用服务器生成的小差分包。</p>
+        <div class="ops" style="margin-bottom:12px">
+          <button type="button" class="ok" onclick="document.getElementById('loopFile').click()">选择本地量产文件</button>
+          <span id="loopFileName" class="muted">未选择（将使用模拟小包）</span>
+          <button type="button" class="ghost" onclick="clearLoopFile()">清除文件</button>
+        </div>
+        <input id="loopFile" type="file" accept=".bin" class="hidden" onchange="onLoopFile()">
+        <div class="grid2">
+          <div>
+            <label>模拟 IMEI</label>
+            <input id="loopImei" value="862323084068999">
+            <label>项目 Key</label>
+            <input id="loopKey" value="ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x">
+            <label>固件名</label>
+            <input id="loopFw" value="PANSHI_CAT1_LuatOS-SoC_Air780EHM">
+          </div>
+          <div>
+            <label>当前版本（源）</label>
+            <input id="loopSrc" value="2044.001.002">
+            <label>目标版本</label>
+            <input id="loopDst" value="2044.001.010">
+            <label>步骤</label>
+            <div class="ops">
+              <button onclick="loopPrepare()">1. 加载 / 上传</button>
+              <button class="ok" onclick="loopHttp()">2. HTTP 全流程</button>
+              <button class="ghost" onclick="loopMqtt()">3. 下发 MQTT 2004</button>
+              <button class="ghost" onclick="loopRefresh()">刷新状态</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <pre id="loopOut">选择量产 .bin 后点「HTTP 全流程」：上传 → GET 拉包 → 上报 1004 success → 设备版本变为目标版本。</pre>
+      </div>
+    </section>
+
+    <section id="view-logs" class="hidden">
+      <div class="toolbar"><h1>调试日志</h1></div>
+      <div class="card">
+        <div class="filter-row">
+          <div>
+            <label>IMEI</label>
+            <input id="logImei" placeholder="可选" onkeydown="if(event.key==='Enter')loadLogs()">
+          </div>
+          <div></div>
+          <button onclick="loadLogs()">搜索</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>IMEI</th>
+              <th>固件名</th>
+              <th>当前 / 目标</th>
+              <th>决策</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody id="logRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div id="modal" class="modal hidden" onclick="if(event.target.id==='modal')closeModal()">
+    <div class="modal-box">
+      <div class="modal-head"><span id="modalTitle">弹窗</span><button class="ghost" onclick="closeModal()">×</button></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+<script>
+let currentProject = null;
+let allProjects = [];
+let taskPage = 0;
+const TASK_PAGE_SIZE = 20;
+const TOKEN_KEY = 'luat-ota-admin-token';
+const views = ['projects','firmware','prod','devices','upgrade','tasks','logs','loop'];
+const DEFAULT_PROJECT_KEY = 'ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x';
+
+const api = (path, opts = {}) => {
+  const token = document.getElementById('token').value.trim();
+  return fetch('/admin/api' + path, {
+    ...opts,
+    headers: { 'X-Admin-Token': token, ...(opts.headers || {}) }
+  }).then(async r => {
+    const text = await r.text();
+    let body = text;
+    try { body = JSON.parse(text); } catch (_) {}
+    if (!r.ok) throw new Error(typeof body === 'object' ? JSON.stringify(body) : body);
+    return body;
+  });
+};
+
+function showView(name) {
+  closeUpgradeMenu();
+  views.forEach(v => {
+    const el = document.getElementById('view-' + v);
+    if (el) el.classList.toggle('hidden', v !== name);
+  });
+  const fwGroup = name === 'firmware' || name === 'prod' || name === 'upgrade';
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    const v = b.dataset.view;
+    b.classList.toggle('active', v === name || (fwGroup && v === 'firmware'));
+  });
+  document.getElementById('menuMyFw').classList.toggle('active', name === 'firmware');
+  document.getElementById('menuProdFw').classList.toggle('active', name === 'prod');
+  document.getElementById('menuTrigger').classList.toggle('active', name === 'upgrade');
+  if (name === 'tasks') loadTasks();
+  if (name === 'logs') loadLogs();
+  if (name === 'devices') {
+    fillDevProjects();
+    ensureDefaultProject();
+    if (!document.getElementById('devProject').value && currentProject && currentProject.projectKey) {
+      document.getElementById('devProject').value = currentProject.projectKey;
+    }
+    loadDevices();
+  }
+}
+
+function toggleUpgradeMenu(ev) {
+  ev.stopPropagation();
+  document.getElementById('navUpgradeMenu').classList.toggle('hidden');
+}
+
+function closeUpgradeMenu() {
+  const m = document.getElementById('navUpgradeMenu');
+  if (m) m.classList.add('hidden');
+}
+
+function ensureDefaultProject() {
+  if (currentProject && currentProject.id) return currentProject;
+  const def = allProjects.find(p => p.projectKey === DEFAULT_PROJECT_KEY) || allProjects[0];
+  if (def) currentProject = { id: def.id, name: def.name, projectKey: def.projectKey };
+  return currentProject;
+}
+
+function fillProjectSelect(selId) {
+  const sel = document.getElementById(selId);
+  if (!sel) return;
+  const cur = (currentProject && String(currentProject.id)) || '';
+  sel.innerHTML = allProjects.map(p =>
+    `<option value="${p.id}" ${String(p.id) === cur ? 'selected' : ''}>${esc(p.name)}</option>`
+  ).join('');
+}
+
+function applyProjectId(id) {
+  const p = allProjects.find(x => String(x.id) === String(id));
+  if (p) currentProject = { id: p.id, name: p.name, projectKey: p.projectKey };
+}
+
+function openMyFirmware() {
+  ensureDefaultProject();
+  fillProjectSelect('fwProject');
+  if (currentProject && currentProject.id) document.getElementById('fwProject').value = currentProject.id;
+  reloadFirmware();
+}
+
+function openProdFirmware() {
+  ensureDefaultProject();
+  fillProjectSelect('prodProject');
+  if (currentProject && currentProject.id) document.getElementById('prodProject').value = currentProject.id;
+  showView('prod');
+}
+
+function onFwProjectChange() {
+  applyProjectId(document.getElementById('fwProject').value);
+  reloadFirmware();
+}
+
+function onProdProjectChange() {
+  applyProjectId(document.getElementById('prodProject').value);
+}
+
+function reloadFirmware() {
+  if (!currentProject || !currentProject.id) {
+    ensureDefaultProject();
+  }
+  if (!currentProject || !currentProject.id) return;
+  openFirmware(currentProject.id, currentProject.name, currentProject.projectKey);
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+}
+
+function openModal(title, bodyHtml, footHtml) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalFoot').innerHTML = footHtml || '<button class="ghost" onclick="closeModal()">关闭</button>';
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+function fmtTime(v) {
+  if (!v) return '-';
+  return String(v).replace('T', ' ').replace('Z', '').slice(0, 19);
+}
+
+async function boot() {
+  try {
+    const token = document.getElementById('token').value.trim();
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    const mqtt = await api('/mqtt/status');
+    document.getElementById('mqttHint').textContent =
+      (mqtt.connected ? 'MQTT 已连接 ' + mqtt.broker : 'MQTT 未连接')
+      + (mqtt.otaPublicUrl ? '  ·  ' + mqtt.otaPublicUrl : '');
+    const urlHint = document.getElementById('selfUrlHint');
+    if (urlHint && mqtt.otaPublicUrl) urlHint.textContent = mqtt.otaPublicUrl;
+    await loadProjects();
+    showView('projects');
+  } catch (e) {
+    alert('登录失败: ' + e.message);
+  }
+}
+
+async function loadProjects() {
+  allProjects = await api('/projects');
+  const q = (document.getElementById('projSearch').value || '').trim().toLowerCase();
+  const hide = document.getElementById('hideHidden').checked;
+  const rows = allProjects.filter(p => {
+    if (hide && p.hidden) return false;
+    if (q && !(p.name || '').toLowerCase().includes(q) && !(p.description || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  fillDevProjects();
+  document.getElementById('projectRows').innerHTML = rows.map((p, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><b>${esc(p.name)}</b>${p.hidden ? '<div class="muted">已隐藏</div>' : ''}</td>
+      <td>${esc(p.description || '')}</td>
+      <td>管理员</td>
+      <td>${fmtTime(p.createdAt)}</td>
+      <td class="ops">
+        <button class="btn-blue" onclick="copyKey('${esc(p.projectKey)}')">查看/点击复制</button>
+        <button class="btn-yellow" onclick="openDetail(${p.id})">详情</button>
+        <button class="btn-pink" onclick="openEditProject(${p.id})">编辑</button>
+        <button class="btn-green" onclick="openDevices('${esc(p.projectKey)}','${esc(p.name)}',${p.id})">设备列表</button>
+        <button class="btn-dgreen" onclick="openFirmware(${p.id},'${esc(p.name)}','${esc(p.projectKey)}')">固件列表</button>
+        <button class="danger" onclick="deleteProject(${p.id})">删除</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6">暂无项目，请新建</td></tr>';
+}
+
+function copyKey(key) {
+  navigator.clipboard.writeText(key).then(() => alert('已复制项目 Key:\n' + key), () => alert(key));
+}
+
+function openCreateProject() {
+  openModal('新建项目', `
+    <label>项目名称 *</label>
+    <input id="projName" placeholder="例如：4G 标准模块">
+    <label>项目描述</label>
+    <textarea id="projDesc" placeholder="单片机+AT指令780EHM+君正T31ZX"></textarea>
+    <label>项目Key（留空自动生成，创建后不可改）</label>
+    <input id="projKey" placeholder="对齐 PRODUCT_KEY / project_key">
+    <input type="hidden" id="editProjectId">
+  `, `<button class="ghost" onclick="closeModal()">关闭</button> <button onclick="saveProject()">提交</button>`);
+}
+
+async function openEditProject(id) {
+  const p = await api('/projects/' + id);
+  openModal('编辑项目', `
+    <input type="hidden" id="editProjectId" value="${p.id}">
+    <label>项目名称 *</label>
+    <input id="projName" value="${esc(p.name || '')}">
+    <label>项目描述</label>
+    <textarea id="projDesc">${esc(p.description || '')}</textarea>
+    <label>项目Key（不可改）</label>
+    <div class="keybox">${esc(p.projectKey)}</div>
+    <label class="switch"><input type="checkbox" id="projHidden" ${p.hidden ? 'checked' : ''}> 隐藏项目</label>
+    <p class="muted">远程升级规则：规则0（按固件列表的允许升级 / 指定 IMEI）</p>
+  `, `<button class="ghost" onclick="closeModal()">关闭</button> <button onclick="saveProject()">提交</button>`);
+}
+
+async function saveProject() {
+  const id = document.getElementById('editProjectId').value;
+  const body = {
+    name: document.getElementById('projName').value.trim(),
+    description: document.getElementById('projDesc').value.trim(),
+    projectKey: document.getElementById('projKey') ? document.getElementById('projKey').value.trim() : '',
+    hidden: !!(document.getElementById('projHidden') && document.getElementById('projHidden').checked)
+  };
+  try {
+    if (id) await api('/projects/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    else await api('/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    closeModal();
+    await loadProjects();
+    showView('projects');
+  } catch (e) { alert(e.message); }
+}
+
+async function openDetail(id) {
+  const p = await api('/projects/' + id);
+  currentProject = p;
+  openModal('项目详情', `
+    <div class="kv">
+      <b>项目名称</b><div>${esc(p.name)}</div>
+      <b>项目描述</b><div>${esc(p.description || '-')}</div>
+      <b>创建时间</b><div>${fmtTime(p.createdAt)}</div>
+      <b>项目Key</b><div class="keybox">${esc(p.projectKey)} <button class="ghost" onclick="copyKey('${esc(p.projectKey)}')">复制</button></div>
+      <b>设备数</b><div><a onclick="closeModal();openDevices('${esc(p.projectKey)}','${esc(p.name)}',${p.id})">${p.deviceCount || 0}</a></div>
+      <b>固件数</b><div><a onclick="closeModal();openFirmware(${p.id},'${esc(p.name)}','${esc(p.projectKey)}')">${p.firmwareCount || 0}</a></div>
+    </div>
+    <p class="muted" style="margin-top:16px">专属固件：烧录带本项目 Key 的量产包后，设备首次拉包会自动归属本项目。支持 Air780E / EHM / EHV 等。</p>
+  `, `
+    <button class="btn-green" onclick="closeModal();openDevices('${esc(p.projectKey)}','${esc(p.name)}',${p.id})">设备列表</button>
+    <button class="btn-dgreen" onclick="closeModal();openFirmware(${p.id},'${esc(p.name)}','${esc(p.projectKey)}')">固件列表</button>
+    <button class="ghost" onclick="closeModal()">关闭</button>
+  `);
+}
+
+async function deleteProject(id) {
+  if (!confirm('确认删除该项目及其固件？设备台账会保留。')) return;
+  await api('/projects/' + id, { method: 'DELETE' });
+  await loadProjects();
+}
+
+async function openFirmware(projectId, name, projectKey) {
+  currentProject = Object.assign(currentProject || {}, { id: projectId, name, projectKey });
+  document.getElementById('fwTitle').textContent = '我的固件';
+  fillProjectSelect('fwProject');
+  if (projectId) document.getElementById('fwProject').value = projectId;
+  const q = (document.getElementById('fwSearch') && document.getElementById('fwSearch').value || '').trim().toLowerCase();
+  const pkgs = (await api('/firmware-packages?projectId=' + projectId)).filter(p =>
+    !q || (p.firmwareName || '').toLowerCase().includes(q) || (p.remark || '').toLowerCase().includes(q)
+  );
+  document.getElementById('fwRows').innerHTML = pkgs.map((p, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${esc(p.firmwareName)}</td>
+      <td>${esc(p.remark || '-')}</td>
+      <td>${esc(p.version)}<div class="muted">源 ${esc(p.sourceVersion || '-')}</div></td>
+      <td>${esc(p.coreVersion || '0')}</td>
+      <td class="ops">
+        <button class="btn-blue" onclick="copyFileUrl('${esc(p.fileName)}')">查看/复制</button>
+        <button class="ghost" onclick="downloadFw('${esc(p.fileName)}')">下载</button>
+      </td>
+      <td><button class="${p.allowUpgrade?'ok':'danger'}" onclick="toggleAllow(${p.id}, ${!p.allowUpgrade})">${p.allowUpgrade?'是':'否'}</button></td>
+      <td><button class="${p.upgradeAll?'ok':'danger'}" onclick="toggleUpgradeAll(${p.id}, ${!p.upgradeAll})">${p.upgradeAll?'是':'否'}</button></td>
+      <td>${p.upgradeAll ? '全部' : esc((p.assignedImeis || []).join(', ') || '未指定')}</td>
+      <td>${fmtTime(p.createdAt)}</td>
+      <td class="ops">
+        <button class="ghost" onclick="assignDevices(${p.id})">指定设备</button>
+        <button class="danger" onclick="deletePackage(${p.id})">删除</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="11">暂无固件，请创建</td></tr>';
+  showView('firmware');
+}
+
+function copyFileUrl(fileName) {
+  const url = location.origin + '/firmware/' + fileName;
+  copyKey(url);
+}
+
+function downloadFw(fileName) {
+  window.open('/firmware/' + encodeURIComponent(fileName), '_blank');
+}
+
+async function toggleAllow(id, allowUpgrade) {
+  await api('/firmware-packages/' + id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowUpgrade })
+  });
+  openFirmware(currentProject.id, currentProject.name, currentProject.projectKey);
+}
+
+function openCreateFirmware() {
+  if (!ensureDefaultProject() || !currentProject.id) return alert('请先选择项目');
+  openModal('创建固件 · ' + (currentProject.name || ''), `
+    <p class="muted">点「选择本地量产文件」加载量产目录下的脚本 .bin，按文件名自动填固件名和版本。必须勾选「升级全部设备」或填写指定 IMEI。</p>
+    <p class="muted">不要选 .soc / .binpkg（烧录包）。升内核请用差分包。</p>
+    <div class="ops" style="margin:8px 0">
+      <button type="button" class="ok" onclick="document.getElementById('pkgFile').click()">选择本地量产文件</button>
+      <span id="pkgFileName" class="muted">未选择</span>
+    </div>
+    <input id="pkgFile" type="file" accept=".bin" class="hidden" onchange="onPkgFile()">
+    <div class="grid2">
+      <div>
+        <label>固件名 firmware_name *</label>
+        <input id="pkgFirmwareName" placeholder="PANSHI_CAT1_LuatOS-SoC_Air780EHM">
+        <label>版本号 version *</label>
+        <input id="pkgVersion" placeholder="2044.001.003">
+        <label>源版本 sourceVersion</label>
+        <input id="pkgSourceVersion" placeholder="2044.001.002">
+        <label>core 版本</label>
+        <input id="pkgCoreVersion" value="0">
+      </div>
+      <div>
+        <label>备注</label>
+        <textarea id="pkgRemark"></textarea>
+        <label><input type="checkbox" id="pkgAllowUpgrade" checked> 允许升级</label>
+        <label><input type="checkbox" id="pkgUpgradeAll"> 升级全部设备</label>
+        <label>指定设备 IMEI</label>
+        <input id="pkgImeis" placeholder="862323084068124">
+      </div>
+    </div>
+    <pre id="pkgUploadResult" class="hidden"></pre>
+  `, `<button class="ghost" onclick="closeModal()">关闭</button> <button class="ok" onclick="uploadPackage()">提交固件</button>`);
+}
+
+async function onPkgFile() {
+  const f = document.getElementById('pkgFile').files[0];
+  const nameEl = document.getElementById('pkgFileName');
+  if (!f) {
+    nameEl.textContent = '未选择';
+    return;
+  }
+  nameEl.textContent = f.name + '  (' + f.size + ' 字节)';
+  try {
+    const r = await api('/firmware/parse-name?filename=' + encodeURIComponent(f.name));
+    if (r.parsed) {
+      document.getElementById('pkgFirmwareName').value = r.firmwareName || '';
+      document.getElementById('pkgVersion').value = r.version || '';
+      document.getElementById('pkgCoreVersion').value = r.coreVersion || '0';
+      document.getElementById('pkgRemark').value = f.name;
+      if (r.version) {
+        const src = document.getElementById('pkgSourceVersion');
+        if (src) src.value = suggestSource(r.version);
+      }
+    }
+  } catch (_) {}
+}
+
+async function uploadPackage() {
+  const f = document.getElementById('pkgFile').files[0];
+  if (!f) return alert('请选择升级文件');
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('firmwareName', document.getElementById('pkgFirmwareName').value);
+  fd.append('version', document.getElementById('pkgVersion').value);
+  fd.append('sourceVersion', document.getElementById('pkgSourceVersion').value);
+  fd.append('coreVersion', document.getElementById('pkgCoreVersion').value);
+  if (currentProject && currentProject.id) fd.append('projectId', currentProject.id);
+  fd.append('allowUpgrade', document.getElementById('pkgAllowUpgrade').checked);
+  fd.append('upgradeAll', document.getElementById('pkgUpgradeAll').checked);
+  fd.append('remark', document.getElementById('pkgRemark').value);
+  fd.append('imeis', document.getElementById('pkgImeis').value);
+  const token = document.getElementById('token').value.trim();
+  const r = await fetch('/admin/api/firmware-packages/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
+  const body = await r.json();
+  if (!r.ok) return alert(JSON.stringify(body));
+  closeModal();
+  openFirmware(currentProject.id, currentProject.name, currentProject.projectKey);
+}
+
+async function onProdFile() {
+  const f = document.getElementById('prodFile').files[0];
+  const nameEl = document.getElementById('prodFileName');
+  if (!f) {
+    nameEl.textContent = '未选择';
+    return;
+  }
+  nameEl.textContent = f.name + '  (' + f.size + ' 字节)';
+  try {
+    const r = await api('/firmware/parse-name?filename=' + encodeURIComponent(f.name));
+    if (r.parsed) {
+      document.getElementById('prodFirmwareName').value = r.firmwareName || '';
+      document.getElementById('prodVersion').value = r.version || '';
+      document.getElementById('prodCoreVersion').value = r.coreVersion || '0';
+      document.getElementById('prodSourceVersion').value = suggestSource(r.version);
+    }
+  } catch (_) {}
+}
+
+async function uploadProdPackage() {
+  if (!ensureDefaultProject() || !currentProject.id) return alert('请先选择项目');
+  const f = document.getElementById('prodFile').files[0];
+  if (!f) return alert('请选择本地量产 .bin');
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('firmwareName', document.getElementById('prodFirmwareName').value);
+  fd.append('version', document.getElementById('prodVersion').value);
+  fd.append('sourceVersion', document.getElementById('prodSourceVersion').value);
+  fd.append('coreVersion', document.getElementById('prodCoreVersion').value);
+  fd.append('projectId', currentProject.id);
+  fd.append('allowUpgrade', document.getElementById('prodAllowUpgrade').checked);
+  fd.append('upgradeAll', document.getElementById('prodUpgradeAll').checked);
+  fd.append('remark', f.name);
+  fd.append('imeis', document.getElementById('prodImeis').value);
+  const token = document.getElementById('token').value.trim();
+  const r = await fetch('/admin/api/firmware-packages/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
+  const body = await r.json();
+  const out = document.getElementById('prodUploadResult');
+  out.classList.remove('hidden');
+  out.textContent = JSON.stringify(body, null, 2);
+  if (!r.ok) return alert(JSON.stringify(body));
+  alert('已上传到我的固件');
+  openMyFirmware();
+}
+
+async function assignDevices(id) {
+  const imeis = prompt('指定设备 IMEI，逗号分隔（须 15 位）');
+  if (imeis == null) return;
+  const list = String(imeis).split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+  const bad = list.filter(s => !/^\d{15}$/.test(s));
+  if (bad.length) {
+    alert('IMEI 须为 15 位数字，无效：' + bad.join(', '));
+    return;
+  }
+  await api('/firmware-packages/' + id + '/devices', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imeis })
+  });
+  openFirmware(currentProject.id, currentProject.name, currentProject.projectKey);
+}
+
+async function toggleUpgradeAll(id, upgradeAll) {
+  await api('/firmware-packages/' + id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ upgradeAll })
+  });
+  openFirmware(currentProject.id, currentProject.name, currentProject.projectKey);
+}
+
+async function deletePackage(id) {
+  if (!confirm('删除该固件？')) return;
+  await api('/firmware-packages/' + id, { method: 'DELETE' });
+  openFirmware(currentProject.id, currentProject.name, currentProject.projectKey);
+}
+
+function fillDevProjects() {
+  const sel = document.getElementById('devProject');
+  if (!sel) return;
+  const cur = (currentProject && currentProject.projectKey) || sel.value;
+  sel.innerHTML = '<option value="">全部项目</option>' + allProjects.map(p =>
+    `<option value="${esc(p.projectKey)}" ${p.projectKey === cur ? 'selected' : ''}>${esc(p.name)}</option>`
+  ).join('');
+}
+
+function onDevProjectChange() {
+  const key = document.getElementById('devProject').value;
+  const p = allProjects.find(x => x.projectKey === key);
+  currentProject = p ? { id: p.id, name: p.name, projectKey: p.projectKey } : {};
+  loadDevices();
+}
+
+async function openDevices(projectKey, name, projectId) {
+  currentProject = Object.assign(currentProject || {}, { projectKey, name, id: projectId });
+  document.getElementById('devImei').value = '';
+  fillDevProjects();
+  if (projectKey) document.getElementById('devProject').value = projectKey;
+  await loadDevices();
+  showView('devices');
+}
+
+async function loadDevices() {
+  const imei = document.getElementById('devImei').value.trim();
+  const key = document.getElementById('devProject').value || (currentProject && currentProject.projectKey);
+  const q = new URLSearchParams();
+  if (imei) q.set('imei', imei);
+  if (key && !imei) q.set('projectKey', key);
+  const devices = await api('/devices' + (q.toString() ? '?' + q : ''));
+  document.getElementById('devRows').innerHTML = devices.map((d, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${esc(d.imei)} <button class="ghost" onclick="copyKey('${esc(d.imei)}')">复制</button></td>
+      <td>${esc(d.deviceName || d.remark || d.imei)}</td>
+      <td>${esc(d.currentVersion || '-')}${d.currentVersion ? '(' + esc(d.coreVersion || '0') + ')' : ''}</td>
+      <td>${esc(d.firmwareName || '-')}</td>
+      <td><button class="${d.otaEnabled?'ok':'danger'}" onclick="toggleBan('${esc(d.imei)}', ${!!d.otaEnabled})">${d.otaEnabled?'允许':'禁止'}</button>${d.otaBanReason ? '<div class="muted">'+esc(d.otaBanReason)+'</div>' : (d.otaLoopCount>1 ? '<div class="muted">连续下发 '+d.otaLoopCount+' 次</div>' : '')}</td>
+      <td><button class="${d.debugEnabled?'ok':'danger'}" onclick="toggleDebug('${esc(d.imei)}', ${!!d.debugEnabled})">${d.debugEnabled?'开':'关'}</button></td>
+      <td>${fmtTime(d.lastSeenAt || d.lastOtaCheckAt)}</td>
+      <td>${fmtTime(d.createdAt)}</td>
+      <td class="ops">
+        <button class="btn-blue" onclick="viewDevice('${esc(d.imei)}')">查看</button>
+        <button class="btn-yellow" onclick="editDevice('${esc(d.imei)}')">设置</button>
+        <button class="danger" onclick="delDevice('${esc(d.imei)}')">删除</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="10">无设备。启动种子或首次 OTA 检查会写入 MySQL。</td></tr>';
+}
+
+async function viewDevice(imei) {
+  const d = await api('/devices/' + encodeURIComponent(imei));
+  openModal('设备详情', `
+    <div class="kv">
+      <b>IMEI</b><div>${esc(d.imei)}</div>
+      <b>设备名</b><div>${esc(d.deviceName || d.remark || d.imei)}</div>
+      <b>项目Key</b><div class="keybox">${esc(d.projectKey || '-')}</div>
+      <b>固件名</b><div>${esc(d.firmwareName || '-')}</div>
+      <b>设备版本</b><div>${esc(d.currentVersion || '-')}${d.currentVersion ? '(' + esc(d.coreVersion || '0') + ')' : ''}</div>
+      <b>目标版本</b><div>${esc(d.targetVersion || '-')}</div>
+      <b>升级状态</b><div>${d.otaEnabled ? '允许' : '禁止'} · ${esc(d.otaStatus || '-')}</div>
+      <b>循环保护</b><div>${d.otaLoopCount || 0} / 6${d.otaBanReason ? ' · ' + esc(d.otaBanReason) : ''}</div>
+      <b>Debug</b><div>${d.debugEnabled ? '开' : '关'}</div>
+      <b>最近访问</b><div>${fmtTime(d.lastSeenAt || d.lastOtaCheckAt)}</div>
+      <b>创建时间</b><div>${fmtTime(d.createdAt)}</div>
+    </div>
+  `);
+}
+
+async function editDevice(imei) {
+  const d = await api('/devices/' + encodeURIComponent(imei));
+  openModal('设置设备', `
+    <input type="hidden" id="editImei" value="${esc(d.imei)}">
+    <label>设备名</label>
+    <input id="editName" value="${esc(d.deviceName || d.remark || d.imei)}">
+    <label>备注</label>
+    <input id="editRemark" value="${esc(d.remark || '')}">
+    <label>固件名</label>
+    <input id="editFwName" value="${esc(d.firmwareName || '')}">
+    <label class="switch"><input type="checkbox" id="editOtaEn" ${d.otaEnabled ? 'checked' : ''}> 允许升级</label>
+    <label class="switch"><input type="checkbox" id="editDbg" ${d.debugEnabled ? 'checked' : ''}> Debug 开</label>
+  `, `<button class="ghost" onclick="closeModal()">关闭</button> <button onclick="saveDevice()">提交</button>`);
+}
+
+async function saveDevice() {
+  const imei = document.getElementById('editImei').value;
+  await api('/devices', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      imei,
+      deviceName: document.getElementById('editName').value.trim(),
+      remark: document.getElementById('editRemark').value.trim(),
+      firmwareName: document.getElementById('editFwName').value.trim(),
+      otaEnabled: document.getElementById('editOtaEn').checked,
+      debugEnabled: document.getElementById('editDbg').checked
+    })
+  });
+  closeModal();
+  loadDevices();
+}
+
+function openAddDevice() {
+  document.getElementById('addDevBox').classList.toggle('hidden');
+}
+
+async function addDevice() {
+  const imei = document.getElementById('addImei').value.trim();
+  if (!imei) return alert('IMEI 必填');
+  await api('/devices', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      imei,
+      deviceName: document.getElementById('addRemark').value.trim() || imei,
+      remark: document.getElementById('addRemark').value.trim(),
+      projectKey: currentProject && currentProject.projectKey,
+      otaEnabled: true,
+      debugEnabled: false
+    })
+  });
+  document.getElementById('addDevBox').classList.add('hidden');
+  loadDevices();
+}
+
+async function toggleBan(imei, currentlyEnabled) {
+  if (currentlyEnabled) {
+    if (!confirm('禁止该设备升级？')) return;
+  } else if (!confirm('确认异常升级包已处理后再解除禁止。')) {
+    return;
+  }
+  await api('/devices/' + encodeURIComponent(imei) + '/ota-enabled', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !currentlyEnabled })
+  });
+  loadDevices();
+}
+
+async function toggleDebug(imei, currentlyEnabled) {
+  await api('/devices/' + encodeURIComponent(imei) + '/debug', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !currentlyEnabled })
+  });
+  loadDevices();
+}
+
+async function delDevice(imei) {
+  if (!confirm('删除设备 ' + imei + '？')) return;
+  await api('/devices/' + encodeURIComponent(imei), { method: 'DELETE' });
+  loadDevices();
+}
+
+function showTriggerResult(value) {
+  const el = document.getElementById('triggerResult');
+  el.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+
+async function triggerOta() {
+  const btn = document.getElementById('btnTriggerOta');
+  const imeis = document.getElementById('triggerImeis').value.split(',').map(s => s.trim()).filter(Boolean);
+  const targetVersion = document.getElementById('triggerVersion').value.trim();
+  if (!imeis.length) {
+    showTriggerResult('请填写 IMEI');
+    return;
+  }
+  if (!targetVersion) {
+    showTriggerResult('请填写目标版本，例如 2044.001.020');
+    return;
+  }
+  if (btn) btn.disabled = true;
+  showTriggerResult('正在下发 MQTT 2004 …');
+  try {
+    const r = await api('/ota/trigger', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imeis, targetVersion })
+    });
+    showTriggerResult(r);
+  } catch (e) {
+    showTriggerResult('下发失败：' + (e && e.message ? e.message : e));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function triggerOutdated() {
+  const targetVersion = document.getElementById('triggerVersion').value.trim();
+  if (!targetVersion) {
+    showTriggerResult('请填写目标版本，例如 2044.001.020');
+    return;
+  }
+  showTriggerResult('正在批量下发 …');
+  try {
+    const r = await api('/ota/trigger/outdated', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetVersion })
+    });
+    showTriggerResult(r);
+  } catch (e) {
+    showTriggerResult('下发失败：' + (e && e.message ? e.message : e));
+  }
+}
+
+const TASK_STATUS = {
+  PENDING: ['待下发', ''],
+  PUBLISHED: ['已下发', 'st-run'],
+  ACCEPTED: ['设备已受理', 'st-run'],
+  IN_PROGRESS: ['进行中', 'st-run'],
+  SUCCESS: ['成功', 'st-ok'],
+  FAILED: ['失败', 'st-fail'],
+  TIMEOUT: ['超时', 'st-fail']
+};
+const TASK_CREATOR = { ADMIN: '管理员', BATCH: '批量任务' };
+const LOG_DECISION = {
+  UPGRADE: ['下发差分包', 'st-ok'],
+  NO_UPDATE: ['无需升级', ''],
+  FORBIDDEN: ['无权限(25)', 'st-fail'],
+  NOT_FOUND: ['未匹配', 'st-fail']
+};
+
+function changeTaskPage(delta) {
+  taskPage = Math.max(0, taskPage + delta);
+  loadTasks();
+}
+
+async function loadTasks() {
+  const imei = document.getElementById('taskImei').value.trim();
+  const status = document.getElementById('taskStatus').value;
+  const q = new URLSearchParams({ page: String(taskPage), size: String(TASK_PAGE_SIZE) });
+  if (imei) q.set('imei', imei);
+  if (status) q.set('status', status);
+  const page = await api('/ota/tasks?' + q);
+  const rows = page.content || [];
+  const totalPages = Math.max(page.totalPages || 1, 1);
+  if (taskPage >= totalPages) {
+    taskPage = totalPages - 1;
+  }
+  document.getElementById('taskRows').innerHTML = rows.map(t => {
+    const st = TASK_STATUS[t.status] || [t.status, ''];
+    const remark = [t.targetVersion ? '目标 ' + t.targetVersion : '', t.lastStage || '', t.lastMessage || '']
+      .filter(Boolean).join(' · ') || '-';
+    return `<tr>
+      <td>${esc(TASK_CREATOR[t.triggerSource] || t.triggerSource || '管理员')}</td>
+      <td>${esc(t.imei)}<div class="muted">${esc(t.messageId || '')}</div></td>
+      <td>${fmtTime(t.createdAt)}</td>
+      <td>${fmtTime(t.createdAt)}<div class="muted">${fmtTime(t.completedAt)}</div></td>
+      <td class="${st[1]}">${esc(st[0])}</td>
+      <td>${esc(remark)}</td>
+      <td class="${t.errorMessage ? 'st-fail' : ''}">${esc(t.errorMessage || '-')}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7">暂无任务。在「固件升级」下发后会出现在这里。</td></tr>';
+  document.getElementById('taskPager').textContent =
+    `第 ${ (page.page || 0) + 1 } / ${totalPages} 页 · 共 ${page.totalElements || 0} 条`;
+}
+
+async function loadLogs() {
+  const imei = document.getElementById('logImei').value.trim();
+  const q = imei ? '?imei=' + encodeURIComponent(imei) + '&limit=80' : '?limit=80';
+  const logs = await api('/logs' + q);
+  document.getElementById('logRows').innerHTML = (logs || []).map(r => {
+    const d = LOG_DECISION[r.decision] || [r.decision || '-', ''];
+    return `<tr>
+      <td>${fmtTime(r.time)}</td>
+      <td>${esc(r.imei || r.deviceId || '-')}</td>
+      <td>${esc(r.firmwareName || '-')}</td>
+      <td>${esc(r.currentVersion || '-')} / ${esc(r.targetVersion || '-')}</td>
+      <td class="${d[1]}">${esc(d[0])}</td>
+      <td>${esc(r.message || '-')}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6">暂无调试日志。设备 HTTP 拉包后会出现在这里。</td></tr>';
+}
+
+function loopBody() {
+  return {
+    imei: document.getElementById('loopImei').value.trim(),
+    projectKey: document.getElementById('loopKey').value.trim(),
+    firmwareName: document.getElementById('loopFw').value.trim(),
+    sourceVersion: document.getElementById('loopSrc').value.trim(),
+    targetVersion: document.getElementById('loopDst').value.trim()
+  };
+}
+
+function loopPrint(obj) {
+  document.getElementById('loopOut').textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+}
+
+function suggestSource(target) {
+  const parts = String(target || '').split('.');
+  if (parts.length < 3) return '2044.001.002';
+  const last = parseInt(parts[parts.length - 1], 10);
+  if (Number.isNaN(last)) return '2044.001.002';
+  parts[parts.length - 1] = String(Math.max(0, last - 1)).padStart(3, '0');
+  return parts.join('.');
+}
+
+async function onLoopFile() {
+  const f = document.getElementById('loopFile').files[0];
+  const nameEl = document.getElementById('loopFileName');
+  if (!f) {
+    nameEl.textContent = '未选择（将使用模拟小包）';
+    return;
+  }
+  nameEl.textContent = f.name + '  (' + f.size + ' 字节)';
+  try {
+    const r = await api('/firmware/parse-name?filename=' + encodeURIComponent(f.name));
+    if (r.parsed) {
+      document.getElementById('loopFw').value = r.firmwareName || '';
+      document.getElementById('loopDst').value = r.version || '';
+      document.getElementById('loopSrc').value = suggestSource(r.version);
+    }
+  } catch (_) {}
+}
+
+function clearLoopFile() {
+  document.getElementById('loopFile').value = '';
+  document.getElementById('loopFileName').textContent = '未选择（将使用模拟小包）';
+}
+
+async function loopPrepareOnce() {
+  const f = document.getElementById('loopFile').files[0];
+  const p = loopBody();
+  if (!f) {
+    return api('/loop-test/prepare', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p)
+    });
+  }
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('imei', p.imei);
+  fd.append('projectKey', p.projectKey);
+  fd.append('firmwareName', p.firmwareName);
+  fd.append('sourceVersion', p.sourceVersion);
+  fd.append('targetVersion', p.targetVersion);
+  const token = document.getElementById('token').value.trim();
+  const r = await fetch('/admin/api/loop-test/prepare-upload', {
+    method: 'POST', headers: { 'X-Admin-Token': token }, body: fd
+  });
+  const text = await r.text();
+  let body = text;
+  try { body = JSON.parse(text); } catch (_) {}
+  if (!r.ok) throw new Error(typeof body === 'object' ? JSON.stringify(body) : body);
+  if (body.firmwareName) document.getElementById('loopFw').value = body.firmwareName;
+  if (body.sourceVersion) document.getElementById('loopSrc').value = body.sourceVersion;
+  if (body.targetVersion) document.getElementById('loopDst').value = body.targetVersion;
+  return body;
+}
+
+async function loopPrepare() {
+  try {
+    loopPrint(await loopPrepareOnce());
+  } catch (e) { loopPrint('加载/上传失败: ' + e.message); }
+}
+
+async function loopHttp() {
+  try {
+    const prep = await loopPrepareOnce();
+    const p = {
+      imei: prep.imei || loopBody().imei,
+      sourceVersion: prep.sourceVersion,
+      targetVersion: prep.targetVersion
+    };
+    let mid = 'ota-sim-' + Date.now();
+    let trigger = null;
+    try {
+      trigger = await api('/ota/trigger', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imeis: [p.imei], targetVersion: p.targetVersion })
+      });
+      if (trigger && trigger[0] && trigger[0].messageId) mid = trigger[0].messageId;
+    } catch (te) {
+      trigger = { skipped: true, reason: String(te.message) };
+    }
+    const pull = await fetch(prep.pullUrl);
+    const hdr = {
+      status: pull.status,
+      target: pull.headers.get('X-Ota-Target-Version'),
+      release: pull.headers.get('X-Ota-Release-Id'),
+      error: pull.headers.get('X-Ota-Error-Code'),
+      bytes: (await pull.arrayBuffer()).byteLength
+    };
+    if (pull.status !== 200) {
+      loopPrint({ step: 'HTTP 拉包未升级', prepare: prep, trigger, http: hdr });
+      return;
+    }
+    await api('/ota/uplink', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imei: p.imei, dataType: '1004', action: 'ota', reply: 1, ret: 0,
+        message: 'ota_accepted', messageId: mid
+      })
+    });
+    await api('/ota/uplink', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imei: p.imei, dataType: '1004', stage: 'starting', ret: 0, messageId: mid
+      })
+    });
+    await api('/ota/uplink', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imei: p.imei, dataType: '1004', stage: 'success', ret: 0,
+        currentVersion: p.sourceVersion, targetVersion: p.targetVersion, messageId: mid
+      })
+    });
+    const st = await api('/loop-test/status?imei=' + encodeURIComponent(p.imei));
+    loopPrint({
+      ok: st.device && st.device.currentVersion === p.targetVersion,
+      prepare: prep,
+      trigger,
+      http: hdr,
+      device: st.device,
+      latestTask: st.latestTask
+    });
+  } catch (e) { loopPrint('闭环失败: ' + e.message); }
+}
+
+async function loopMqtt() {
+  try {
+    const prep = await loopPrepareOnce();
+    const r = await api('/ota/trigger', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imeis: [prep.imei], targetVersion: prep.targetVersion })
+    });
+    loopPrint({
+      hint: '已下发 2004。可用本机「OTA 闭环测试」工具接收并拉包，或再点「HTTP 全流程」补上报。',
+      prepare: prep,
+      trigger: r
+    });
+  } catch (e) { loopPrint('MQTT 下发失败: ' + e.message); }
+}
+
+async function loopRefresh() {
+  try {
+    const imei = document.getElementById('loopImei').value.trim();
+    loopPrint(await api('/loop-test/status?imei=' + encodeURIComponent(imei)));
+  } catch (e) { loopPrint(e.message); }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.getElementById('token').addEventListener('keydown', e => { if (e.key === 'Enter') boot(); });
+document.addEventListener('click', closeUpgradeMenu);
+const savedToken = localStorage.getItem(TOKEN_KEY);
+if (savedToken) document.getElementById('token').value = savedToken;
+if (document.getElementById('token').value.trim()) boot();
+</script>
+</body>
+</html>
