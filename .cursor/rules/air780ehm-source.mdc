@@ -5,7 +5,7 @@ alwaysApply: true
 
 # 真源与硬约束
 
-- 分层与依赖方向见 `.cursor/rules/arch-layering.mdc`（HAL 驱动 → 平台抽象 → 业务逻辑 → 应用，只许上层调下层）。
+- 架构决策总览见仓库根 **`AGENTS.md`**（ADR 表、单写点、暂缓项、提交门槛）；分层细则见 `.cursor/rules/arch-layering.mdc`（HAL 驱动 → 平台抽象 → 业务逻辑 → 应用，只许上层调下层）。
 - 只改仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`（旧副本）。
 - 不要合并、不要再拆 `app`。
 - `host_uart` 已拆：`host_uart.lua`（锁/分发/ctx）+ `hif_at` + `hif_cmd`(+`hif_cmd_usb/link/pir/t31x/wled`) + `hif_rx`(+`hif_rx_dsl/media`) + `hif_ipc`(+`hif_ipc_cloud/rec/hostq/power/tffmt/encode`)，文件名 ≤24 字节。不要把互斥锁/`SYS_EVT`/`state` 再拆出主文件。

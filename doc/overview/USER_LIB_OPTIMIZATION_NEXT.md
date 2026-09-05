@@ -214,6 +214,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-05 | **架构 H 条：PIRSTAT 文本拼装出业务层（零行为）**：`pir_ctrl.buildStatBody` → 数据快照 `getStatSnapshot()`；`+PIRSTAT:` 文本由 `hif_cmd_pir.buildPirStatBody` 拼装（字段顺序逐字一致）；provider 键 `pirStatBody`→`pirStatSnapshot`。详见 [PIR_CTRL_FLOW §8](../modules/PIR_CTRL_FLOW.md) |
 | 2026-09-05 | **架构 I 条：lib 去 T31x 语义 + vendor 锁（零行为）**：`utils.waitT31xAck` → 通用 `waitEventUntil`（sound_prompt/time_sync 两处改引）；`sys.lua`/`libfota2.lua` 标 vendor 层并以 `_layer_check` R5 sha256 锁守护（Luatools 限制不能物理挪目录）。详见 [LUA_MODULES vendor 段](LUA_MODULES.md) |
 | 2026-09-05 | **架构 G 条：上行黄金样本采集链路（真机步骤待执行）**：`MQTT_CFG.golden_tap`（默认 false，零开销）→ `net_mqtt.pubLoop` `MQTT_GOLDEN` 日志行 → `tools/debug/_uplink_golden_capture.py`（串口 / `--from-file`）→ `tests/fixtures/uplink_golden/`；`_uplink_schema_check` 有样本即校验「真机键 ⊆ 代码全集」并提示文档漂移。**待办**：真机开 tap 采一轮（覆盖 1001–1013）后提交样本 |
+| 2026-09-05 | **新增 `AGENTS.md`（仓库根）**：固化四层架构 ADR、冻结项 F-01–F-06、单写点/ provider / 暂缓项 D-01–D-05、提交门槛、子代理索引；Agent 决策真源，流水仍写本节 |
 | 2026-09-05 | **arch-guard-reviewer 首次试跑修复**：`host_uart.resetUartTxn` 里 `uartSessionOwner = nil` 早于 `local` 声明 → 写成全局（P3 引入，效果上无害但属隐式全局）；`local` 上移。`_undef_global_check` 新增规则 2「顶层 local 先用后声明」（fixture + 单测，15 tests OK）。同批修正文档：provider 键数 26→22、`pirStatBody`→`pirStatSnapshot`、`setLowPowerMode` 链路→`requestRest/requestNormal`、`buildStatBodyy` 残留 6 处、hard-constraints 9→13 项、`arch-layering` 把 `svc` 归 L2 基础设施 |
 
 ---

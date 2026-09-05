@@ -372,3 +372,5 @@ python3 tools/debug/run_all_checks.py     # 9 项护栏（本报告生成时 ALL
 | I | lib 含 T31x 语义（`utils.waitT31xAck`）；vendor 脚本无标注 | 改名 `waitEventUntil`；`sys.lua`/`libfota2.lua` 标 vendor 层 + sha256 锁（Luatools 只扫 lib/，不能物理挪目录） | `_layer_check` R5 |
 
 除 B/D（VERSION 161）外均为零行为改动；A 的唯一差异是被 `MODULE_FLAGS` 裁剪的模块从"被 `loader.load` 强行加载再调用"变为 no-op。`run_all_checks` 13 项 ALL PASS。
+
+**Agent 可读摘要**：仓库根 [`AGENTS.md`](../AGENTS.md) 将本节 A–I、P0–P10、冻结项与提交门槛整理为 ADR 表。
