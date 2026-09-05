@@ -49,9 +49,9 @@ function bind(C, H)
         end
         return {
             enabled = r.enabled ~= false and c.enabled ~= false,
-            miss_threshold = tonumber(r.miss_threshold) or LIMITMO_SHARED.missThreshold,
-            max_attempts = tonumber(r.max_attempts) or LIMITMO_SHARED.maxAttempts,
-            cooldown_sec = tonumber(r.cooldown_sec) or LIMITMO_SHARED.cooldownSec,
+            miss_threshold = tonumber(r.miss_threshold) or LIMITS.missThreshold,
+            max_attempts = tonumber(r.max_attempts) or LIMITS.maxAttempts,
+            cooldown_sec = tonumber(r.cooldown_sec) or LIMITS.cooldownSec,
             power_off_ms = tonumber(r.power_off_ms) or TIMEOUT.powerOffMs,
             power_on_wait_ms = tonumber(r.power_on_wait_ms) or TIMEOUT.powerOnWaitMs,
         }
