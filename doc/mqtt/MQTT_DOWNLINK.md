@@ -1,5 +1,8 @@
 # MQTT 下行命令手册（平台 → 设备）
 
+> **机器对照（P8，2026-09-05）**：本文与 `MQTT_PROTOCOL.md` 中 `dataType=10xx` 的 ```json 样例键集由 `tools/debug/_uplink_schema_check.py` 对照固件可发字段；新增样例字段而固件未实现会 FAIL。当前已知缺口（`_uplink_schema_baseline.json`，P10 待办）：1013 进度上报 `percent/sentBytes/totalBytes/alarmTs/alarmTime`（需 T31x `AT+UPLOADPROGRESS`）、1004 `hostEvtPollMs`（`hostevt_poll` 未实现）。
+
+
 > **端到端联调**：[MQTT_CLIENT_E2E_TEST.md](MQTT_CLIENT_E2E_TEST.md)（MQTTX 配置、冒烟步骤、mosquitto 命令）  
 > **全指令流程与实机**：[MQTT_ALL_CMD_FLOW_TEST.md](MQTT_ALL_CMD_FLOW_TEST.md)  
 > **现网对本机 IMEI**：**`862323084068124`**（2026-08-17 实机 2008；ClientId / deviceNo 同源）  

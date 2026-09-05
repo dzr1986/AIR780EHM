@@ -22,7 +22,7 @@
 | P6a | PSM · 低功耗态单写点 | A3, A7, §4.1 | 5 | **有** | +1 |
 | P6b | PSM · 录像态单入口 + 禁写护栏 | A3, §4.1 | 8 | **有** | +1 |
 | P7a–c | ctx 三命名空间（三批，别名过渡） | A4 | 6 / 7 / 4 | 无 | 维持 | ← 改为 bind 时刻可用性 + spec 生成（见 P7 节结论） |
-| P8 | 协议字段表驱动 + 文档 ⊆ 校验 | A8 | 6 | 无（字节等价） | 维持 |
+| P8 | 协议字段表驱动 + 文档 ⊆ 校验 | A8 | 6 | 无（字节等价） | 维持 | ← 护栏半落地，序列化重写不做（见 P8 节） |
 | P9 | `modCall` 签名校验 + 重复实现收敛 | A5, §4.3 | 6 | 无 | 维持 |
 | P10 | **对外接口变更**（1013 / hostevt_poll / 2011 文案 / hybrid 配置 / 构建口径） | A8, A9, A11 | 8 | **有，需云端+T31x 配合** | +1 |
 
@@ -208,6 +208,9 @@
 ---
 
 ## P8 · 协议字段表驱动 + 文档 ⊆ 校验
+
+> **执行结论（2026-09-05）：护栏半已落地，序列化重写不做。** `_uplink_schema_check.py`（`run_all_checks` #12）静态对照 `MQTT_DOWNLINK`/`MQTT_PROTOCOL` 中 10xx 样例键集 ⊆ 代码可发字段，缺口基线登记 6 键（1013 进度 5 键、1004 `hostEvtPollMs`）——正是 P10 输入。把 `string.format` 手拼改为字段表序列化需逐 dataType 黄金样本逐字节比对，离线无真机/无 LuatOS 运行时无法可靠生成样本；字段顺序/空值/引号差异一旦漏检即为对外协议回归，收益（可读性）不抵风险，登记为可选后续。
+
 
 **目标**：A8——10xx 上行字段以 Lua 表声明（`fields = { deviceNo=…, dataType=…, … }` → 统一序列化），`MQTT_DOWNLINK.md` 中各 10xx JSON 样例的键集 ⊆ 代码字段表由护栏校验；输出字节与今日**逐字等价**。
 **改动范围**（6）：`user/mqtt_uplink.lua`（序列化 helper + 1001–1009）、`user/mqtt_ul_pir.lua`（1010–1012）、`user/mqtt_ul_upload.lua`（1013）、`user/mqtt_downlink.lua`（`pubReply` 走 helper）、`tools/debug/_protocol_regression_check.py`（文档样例键集 ⊆ 字段表；字段顺序快照比对）、`doc/mqtt/MQTT_DOWNLINK.md`（样例块加 `<!-- SCHEMA:1013 -->` 标记供护栏定位）。
