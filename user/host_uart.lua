@@ -43,9 +43,18 @@ local CRLF = "\r\n"
 local RSP_ERROR = CRLF .. "ERROR" .. CRLF
 local HOST_PUSH_QUIET_MS = 300
 
+-- host_uart 族共享超时（refactor_plan P2a）：同一语义只在此定义一次，子模块经 ctx.TMO_SHARED 读取。
+-- 各子模块本地 TIMEOUT/TMO 只保留模块特有值（如 tffmt.formatMs / hostq.recOff）。
+-- 已知同义不同值（本阶段不改数值，登记待定）：quiet 静默期 hif_ipc.TMO.quiet=1500 vs
+-- hif_ipc_power.hostIdleCapMs=2000 / hif_ipc_tffmt.hostIdleMs=2000，见 HOST_UART_AT_DISPATCH.md「超时常量真源」。
+local TMO_SHARED = {
+    acquireCapMs = 8000,      -- 拿串口事务锁最多等待（power / tffmt）
+    statusQueryMs = 2000,     -- AT+IPCSTATUS? 单次超时（rec / power）
+    cloudStatQueryMs = 2500,  -- AT+IPCSTAT? 单次超时（cloud / 首条 AT 后刷新）
+}
+
 local TIMEOUT = {
     firstAtCloudWait = 300,
-    firstAtCloudQuery = 2500,
     txnWaitSlice = 80,
     txnWaitMin = 20,
     hostIdleSliceMin = 20,
@@ -424,6 +433,7 @@ local ctx = {
     state = state,
     hooks = hooks,
     SYS_EVT = SYS_EVT,
+    TMO_SHARED = TMO_SHARED,
     E = E,
     LOG_TAG = LOG_TAG,
     hostNowMs = hostNowMs,
@@ -535,7 +545,7 @@ local function onFirstHostAt(atLine)
         if not ctx.M.canQueryT31() then
             return
         end
-        ctx.M.qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
+        ctx.M.qryIpcCloudStat(TMO_SHARED.cloudStatQueryMs)
         ctx.M.mergeTfCloud()
     end)
     sys.publish(E.HOST_UART_FIRST_AT, atLine or "")

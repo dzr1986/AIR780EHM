@@ -19,18 +19,18 @@
     "hif_cmd_usb.lua": 258,
     "hif_cmd_wled.lua": 181,
     "hif_ipc.lua": 384,
-    "hif_ipc_cloud.lua": 306,
+    "hif_ipc_cloud.lua": 307,
     "hif_ipc_encode.lua": 203,
     "hif_ipc_hostq.lua": 344,
-    "hif_ipc_power.lua": 203,
-    "hif_ipc_rec.lua": 184,
-    "hif_ipc_tffmt.lua": 171,
+    "hif_ipc_power.lua": 204,
+    "hif_ipc_rec.lua": 185,
+    "hif_ipc_tffmt.lua": 172,
     "hif_rx.lua": 69,
     "hif_rx_dsl.lua": 550,
     "hif_rx_media.lua": 275,
     "host.lua": 110,
     "host_event.lua": 158,
-    "host_uart.lua": 699,
+    "host_uart.lua": 709,
     "ipc_supv.lua": 188,
     "led_pir.lua": 68,
     "lp_wakeup.lua": 116,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13714
+      "lines": 13728
     },
     "lib": {
       "files": 15,
       "lines": 2548
     },
-    "all": 16262
+    "all": 16276
   }
 }

@@ -19,9 +19,10 @@ function bind(C, H)
     local getCfg = H.getCfg
     local qryHostStat = H.qryHostStat
 
+    local TMO_SHARED = C.TMO_SHARED
     local TIMEOUT = {
         powerOffFloorMs = 5000,
-        acquireCapMs = 8000,
+        acquireCapMs = TMO_SHARED.acquireCapMs,
         busyClearCapMs = 3000,
         hostIdleCapMs = 2000,
         pollSliceMs = 50,
@@ -30,7 +31,7 @@ function bind(C, H)
         sliceFloorMs = 20,
         readyDefaultMs = 120000,
         readyPollMs = 1000,
-        statusQueryMs = 2000,
+        statusQueryMs = TMO_SHARED.statusQueryMs,
     }
 
     ----------------------------------------------------------------

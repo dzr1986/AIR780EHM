@@ -259,3 +259,17 @@ exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只�
 ---
 
 **版本**：2026-09-02
+
+## 8. 超时常量真源（refactor_plan P2a，2026-09-04）
+
+host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（拿锁上限、IPCSTATUS/IPCSTAT 查询超时）在多处重复定义——R4 首版把 quiet 静默常量 `hostIdleMs=2000` 误当 acquire 预算即由此而来。P2a 起：
+
+| 键（`host_uart.lua` `TMO_SHARED`，经 `ctx.TMO_SHARED` 注入） | 值 | 消费方 |
+|---|---|---|
+| `acquireCapMs` | 8000 | `hif_ipc_power`（IPCPOWEROFF）、`hif_ipc_tffmt`（TFFORMAT） |
+| `statusQueryMs` | 2000 | `hif_ipc_rec`（`AT+IPCSTATUS?`）、`hif_ipc_power`（恢复链复查） |
+| `cloudStatQueryMs` | 2500 | `hif_ipc_cloud`（`AT+IPCSTAT?`）、`host_uart` 首条 AT 后刷新 |
+
+规则：**同一语义只在 `TMO_SHARED` 定义一次**；子模块本地表只留模块特有值（`tffmt.formatMs=120000`、`hostq.recOff=22000`、`power.readyDefaultMs` 等）。子模块头部写 `local TMO_SHARED = C.TMO_SHARED`，并在 `tools/debug/bind_header_specs.json` 对应 `c` 列表登记（`_gen_bind_header --check-all` 守护）。
+
+**已知同义不同值（本阶段不改数值，待维护者定）**：串口静默期 quiet——`hif_ipc.TMO.quiet = 1500`（hostQuery/hostSet 走 `armHost`）vs `hif_ipc_power.hostIdleCapMs = 2000` / `hif_ipc_tffmt.hostIdleMs = 2000`（直接 `waitHostIdle`）。统一到哪一个值需实机验证后再收进 `TMO_SHARED`。

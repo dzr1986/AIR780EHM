@@ -21,12 +21,13 @@ function bind(C, H)
     local ensT31xHost = H.ensT31xHost
     local hostBoot = H.hostBoot
 
+    local TMO_SHARED = C.TMO_SHARED
     local TIMEOUT = {
         formatMs = 120000,
         startDeadlineMs = 8000,
         hostIdleMs = 2000,
         ackSliceMs = 5000,
-        acquireCapMs = 8000, -- 与 hif_ipc_power 同口径：拿串口锁最多等 8s，勿用 quiet 常量
+        acquireCapMs = TMO_SHARED.acquireCapMs, -- 单源于 host_uart.TMO_SHARED
     }
 
     ----------------------------------------------------------------

@@ -26,9 +26,10 @@ function bind(C, H)
     local utils = C.utils
     local setRecActive = C.setRecActive
 
+    local TMO_SHARED = C.TMO_SHARED
     local TIMEOUT = {
         gb28181Query = 3000,
-        cloudStatQuery = 2500,
+        cloudStatQuery = TMO_SHARED.cloudStatQueryMs,
         statusRefreshCap = 1500,
         recordReconcile = 3500,
         cacheMaxAgeDefault = 90,
