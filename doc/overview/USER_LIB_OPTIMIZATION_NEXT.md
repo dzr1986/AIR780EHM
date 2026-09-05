@@ -210,6 +210,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-05 | **架构 A 条：AT 层反向 modCall 全部改 provider 注入（零行为，VERSION 维持 161）**：`app.buildBizProviders` 26 键经 `host_uart.start{biz}` 注入，`ctx.bizCall` 统一调用；25 处 `modCall(业务模块)` 清零；`_layer_check` R4 基线 15→0；软环 22→16 模块；`_ref_name_check` 规则 F。差异仅在被 `MODULE_FLAGS` 裁剪的模块上（旧 modCall 会强行 load，新为 no-op）。详见 [HOST_UART_AT_DISPATCH §11](../modules/HOST_UART_AT_DISPATCH.md) |
 | 2026-09-05 | **架构 C 条：host_uart.state 语义键 setter 化（零行为）**：`setHostIpcStatus(st, syncCloud)` / `setHostAtReady` / `setHostTfCard` / `setHostCloudStat` 四个单写点，16 处直写收敛为 4；`SINGLE_WRITERS` +4 条护栏（负向验证 FAIL）。详见 [HOST_UART_AT_DISPATCH §12](../modules/HOST_UART_AT_DISPATCH.md) |
 | 2026-09-05 | **架构 E 条：PSM 副作用表（零行为）**：`runtime_power.bindPowerHooks{onEnterRest,onExitRest}`，`requestRest/requestNormal` 内统一触发；app 的 `enterLowPower/onExitLowPower` 退化为一行，副作用体改名 `onRestEntered/onRestExited` 由 PSM 回调。详见 [LOW_POWER_WAKEUP 附](../modules/LOW_POWER_WAKEUP.md) |
+| 2026-09-05 | **架构 F 条：跨族协议常量单源（零行为）**：config 片段 `host.lua` `_G.HOST_PROTO_TMO{ipcstat_query_ms=2500, record_stop_ms=22000}`；`host_uart`/`net_mqtt` 两族 `TMO_SHARED` 与 `hif_ipc_hostq.recOff`/`mqtt_dl_pir.stopDefault` 改引；CONFIG.md 键索引 39→40。详见 [HOST_UART_AT_DISPATCH §8](../modules/HOST_UART_AT_DISPATCH.md) |
 
 ---
 

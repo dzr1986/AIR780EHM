@@ -33,7 +33,7 @@ function bind(C, shared)
         recordIdleCheck = 3000,
         recordStart = 10000,
         defaultMaxSec = 90,
-        stopDefault = 22000,
+        stopDefault = _G.HOST_PROTO_TMO.record_stop_ms, -- 与 hif_ipc_hostq recOff 同源（F 条）
     }
 
     local function asNum(v)

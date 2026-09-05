@@ -34,7 +34,7 @@ function bind(C, H)
         mic = 8000,
         photo = 8000,
         recOn = 8000,
-        recOff = 22000,
+        recOff = _G.HOST_PROTO_TMO.record_stop_ms, -- 与 mqtt_dl_pir stopDefault 同源（F 条）
     }
 
     local function recCfg()

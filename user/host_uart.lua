@@ -50,7 +50,7 @@ local HOST_PUSH_QUIET_MS = 300
 local TMO_SHARED = {
     acquireCapMs = 8000,      -- 拿串口事务锁最多等待（power / tffmt）
     statusQueryMs = 2000,     -- AT+IPCSTATUS? 单次超时（rec / power）
-    cloudStatQueryMs = 2500,  -- AT+IPCSTAT? 单次超时（cloud / 首条 AT 后刷新）
+    cloudStatQueryMs = _G.HOST_PROTO_TMO.ipcstat_query_ms,  -- AT+IPCSTAT? 单次超时（cloud / 首条 AT 后刷新）；跨族单源 config host.lua
     qryDefaultMs = 3000,      -- 通用 AT 查询默认超时（hif_ipc.hostQuery / cmd_wled AT+WLED?）
     t31xWaitMs = 800,         -- ensT31xHost 上电后等待默认值（配置 t31x_power_wait_ms 缺省时）
 }

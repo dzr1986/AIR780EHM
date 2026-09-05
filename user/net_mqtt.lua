@@ -137,9 +137,9 @@ local POWEROFF_MSG = {
 }
 
 -- net_mqtt 族共享超时（refactor_plan P2b）：同一语义只在此定义一次，子模块经 ctx.TMO_SHARED 读取。
--- 注：与 host_uart.TMO_SHARED.cloudStatQueryMs 同值同义（IPCSTAT 刷新），跨族单源待 P7 ctx.const 统一。
+-- 注：与 host_uart.TMO_SHARED.cloudStatQueryMs 同值同义（IPCSTAT 刷新），跨族单源在 config 片段 host.lua HOST_PROTO_TMO（F 条）。
 local TMO_SHARED = {
-    ipcStatRefreshMs = 2500,  -- 1003 前 / PIR 云状态刷新 refCloudStat 超时（uplink / dl_pir）
+    ipcStatRefreshMs = _G.HOST_PROTO_TMO.ipcstat_query_ms,  -- 1003 前 / PIR 云状态刷新 refCloudStat 超时（uplink / dl_pir）
 }
 
 local TIMEOUT = {
