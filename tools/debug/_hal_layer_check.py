@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""L0/L1 HAL 分层护栏：user/ 禁止 HAL 直调与 require power_hal；lib/ 仅白名单含 HAL 调用。
+"""L0/L1 硬件访问分层护栏：user/ 禁止 HAL 直调与 require power_hal；lib/ 仅白名单含 HAL 调用。
 
 规则（arch-layering.mdc §4 / AGENTS.md §6 / L1 ADR-L1-01）：
   * user/*.lua：不得 HAL 直调；不得 require "power_hal"（经 runtime_power 收口）
@@ -25,7 +25,8 @@ RE_HAL = re.compile(
 )
 RE_USER_REQ_POWER_HAL = re.compile(r"""require\s+["']power_hal["']""")
 
-# lib/ 内允许直调 HAL 的模块（L0 驱动封装 + vendor）
+# lib/ 内允许直调 HAL 的硬件访问边界（纯 HAL、Driver、硬件相关 Service + vendor）。
+# 白名单表示“允许触达 LuatOS 硬件 API”，不要求全部模块以 *_hal 命名。
 LIB_HAL_OK = frozenset({
     "power_hal.lua",
     "adc_hal.lua",

@@ -27,7 +27,7 @@
 
 | 层 | 落点 | 职责 |
 |---|---|---|
-| **L0 HAL 驱动** | LuatOS 内核库 + `lib/power_hal`、`lib/adc_hal`、`lib/uart_bridge`、`lib/gpio_util`、`lib/led_ctrl`、`lib/usb_*`、`lib/watchdog`、`lib/cell_boot` | **全仓库唯一**允许 `pm.*/pmd.*/adc.*`/`uart.setup`/`gpio.setup` 等；`user/` 零直调（`_hal_layer_check` #14） |
+| **L0 硬件访问** | **HAL**：`power_hal`、`adc_hal`、`gpio_util`、`watchdog`；**Driver**：`uart_bridge`、`usb_charge`、`usb_vuart`；硬件相关服务：`led_ctrl`、`cell_boot`、`usb_rndis` | `lib/` 是**全仓库唯一**允许 `pm.*/pmd.*/adc.*`/`uart.setup`/`gpio.setup` 等直接硬件调用的边界；并非所有硬件相关模块都是 HAL，`user/` 零直调（`_hal_layer_check` #14） |
 | **L1 平台抽象** | `lib/utils`、`runtime_power`、`config_manager`、`module_loader`、`device_id`；config 域（`user/config.lua` + 10 片段）；vendor：`sys.lua`、`libfota2.lua` | 与业务无关的平台能力；`APP_RUNTIME` **只**经 `runtime_power` 读写 |
 | **L2 业务逻辑** | `user/` 除 app/config 外全部（含基础设施 `svc`、`t31x_ctrl`、`host_uart`+`hif_*`、`net_mqtt`+`mqtt_*`、`pir_ctrl` …） | 协议、状态机、策略 |
 | **L3 应用** | `main.lua`、`user/app.lua` | 装配、事件桥接、**provider 注入**；不放业务算法 |
@@ -133,6 +133,8 @@
 | `lib/gpio_util.lua` | `getLevel`（+ `setupInput` / `setupOutput`） |
 
 **机器护栏**：`tools/debug/_hal_layer_check.py`（`run_all_checks` #14）— user/ 零容忍；lib/ 仅白名单 12 文件。
+
+> 命名准则：仅“某类 LuatOS API 的薄封装”使用 `*_hal`；含引脚/中断或端口协议的模块使用领域名（Driver），含网络、事件或状态机编排的模块使用领域服务名。稳定模块名同时是 Luatools 打包、`require`/`loader` 和文档引用的契约，禁止仅为统一后缀重命名。
 
 **巡检**（应无输出）：`rg -n "\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\(" user/*.lua`
 

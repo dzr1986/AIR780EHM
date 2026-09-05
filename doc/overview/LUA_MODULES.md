@@ -151,6 +151,17 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 
 > 旧名对照：`cellular_bootstrap`→`cell_boot`；`low_power_wakeup`→`user/lp_wakeup`；`usb_policy`/`usb_host_evt` 等已并入 `usb_charge`/config 片段。
 
+#### 硬件相关 lib 命名
+
+| 分类 | 模块 | 命名原则 |
+|------|------|------|
+| HAL | `power_hal`、`adc_hal`、`gpio_util`、`watchdog` | 直封装一种 LuatOS 硬件 API；`gpio_util`/`watchdog` 因稳定调用契约保留历史文件名 |
+| Driver | `uart_bridge`、`usb_charge`、`usb_vuart` | 管理端口、引脚或中断等设备资源；不强制使用 `*_hal` |
+| 硬件相关 Service | `led_ctrl`、`cell_boot`、`usb_rndis` | 含事件、网络、状态机或产品策略，不是薄硬件抽象 |
+| Vendor | `sys`、`libfota2` | 原厂锁定文件，文件名与内容均不可改 |
+
+文件名同时被 `require`、`loader`、Luatools 静态扫描和文档引用使用；不为统一后缀而改名。主机 UART 由 `uart_bridge` 管理，`usb_vuart` 只管理独立 VUART 口。
+
 ---
 
 ## 2. 启动与事件总线

@@ -10,7 +10,7 @@
 
 | 原则 | 实现 |
 |------|------|
-| 单 UART 硬件入口 | 仅 `uart_bridge` 调用 `uart.setup` / `uart.write` |
+| 主机 UART 硬件入口 | `uart_bridge` 独占产品主 UART 的 `uart.setup` / `uart.write`；`usb_vuart` 仅操作独立 VUART 口 |
 | GPIO 配置统一 | `gpio_util` 将 `GPIO_IN/OUT` 条目转为 `gpio.setup` 参数 |
 | lib 不反向依赖 user | `host_uart` / `peripheral` / `usb_charge` 通过回调或 `require` 使用 |
 
