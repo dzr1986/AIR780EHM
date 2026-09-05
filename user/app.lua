@@ -17,7 +17,6 @@ local hostEvt = require "host_event"
 local t31xNotify = require "t31x_notify"
 local deviceId = require "device_id"
 local uart_bridge = require "uart_bridge"
-local powerHal = require "power_hal"
 local gpio_util = require "gpio_util"
 local pirCtrl = require "pir_ctrl"
 local batteryGuard = require "battery_guard"
@@ -216,7 +215,7 @@ end
 local function onReboot()
     appWarn("device_reboot_request")
     stopWatchdogBeforePowerOff()
-    powerHal.reboot(TIMEOUT.rebootDelay)
+    rntmPwr.requestDeviceReboot(TIMEOUT.rebootDelay)
 end
 
 local function onPowerOff(reason)
@@ -226,7 +225,7 @@ local function onPowerOff(reason)
             return
         end
         stopWatchdogBeforePowerOff()
-        powerHal.shutdown()
+        rntmPwr.requestDeviceShutdown()
     end
 
     local function runShutdown()
@@ -393,7 +392,7 @@ end
 
 local function setupPmd()
     -- pmd 仅部分内核带；MSG_PMD 存在但 pmd 库缺失时不能裸调 pmd.init
-    powerHal.initPmd(onPmdMsg)
+    rntmPwr.initPmd(onPmdMsg)
 end
 
 local function setupWdt()

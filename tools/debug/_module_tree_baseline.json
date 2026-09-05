@@ -1,9 +1,9 @@
 {
   "date": "2026-09-05",
   "user": {
-    "app.lua": 1020,
+    "app.lua": 1019,
     "battery.lua": 106,
-    "battery_guard.lua": 392,
+    "battery_guard.lua": 391,
     "cellular.lua": 25,
     "config.lua": 30,
     "events.lua": 49,
@@ -71,7 +71,7 @@
     "libfota2.lua": 180,
     "module_loader.lua": 59,
     "power_hal.lua": 52,
-    "runtime_power.lua": 276,
+    "runtime_power.lua": 301,
     "sys.lua": 394,
     "uart_bridge.lua": 109,
     "usb_charge.lua": 131,
@@ -83,12 +83,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13947
+      "lines": 13945
     },
     "lib": {
       "files": 17,
-      "lines": 2766
+      "lines": 2791
     },
-    "all": 16713
+    "all": 16736
   }
 }

@@ -128,11 +128,11 @@ local app = require "app"
 local peripheral = require "peripheral"
 local net = require "net_mqtt"
 local t31xCtrl = require "t31x_ctrl"
-local powerHal = require "power_hal"
+local rntmPwr = require "runtime_power"
 if not isEntry then
     return app
 end
-powerHal.initPwkMode()
+rntmPwr.initPwkMode()
 do
     local usb_vuart = loader.load("usb_vuart")
     if usb_vuart then

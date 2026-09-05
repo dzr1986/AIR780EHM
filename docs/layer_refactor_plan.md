@@ -8,8 +8,8 @@
 | 阶段 | 层 | 目标 | 状态 |
 |---|---|---|---|
 | **L0** | HAL 驱动 | user/ 零硬件直调；`power_hal` / `adc_hal` / `gpio_util.getLevel` | **已完成**（2026-09-05） |
-| **L1** | 平台抽象 | `runtime_power` 收口设备级 power 语义；config 域零业务泄漏 | 待做 |
-| **L2** | 业务逻辑 | AT/MQTT 族边界巩固；剩余跨族常量进 `HOST_PROTO_TMO`；`patchCloud(keepTs)` 统一 | 待做 |
+| **L1** | 平台抽象 | `runtime_power` 收口设备级 power 语义；config 域零业务泄漏 | **已完成**（2026-09-05） |
+| **L2** | 业务逻辑 | AT/MQTT 族边界巩固；剩余跨族常量进 `HOST_PROTO_TMO`；`patchCloud(keepTs)` 统一 | **下一步** |
 | **L3** | 应用 | `app.lua` 只做装配（provider/事件/hooks），业务算法不下沉 | 持续 |
 
 ---
@@ -46,36 +46,34 @@
 
 ---
 
-## L1 · 平台抽象层（下一步）
+## L1 · 平台抽象层（已完成，2026-09-05）
 
-### 目标
+### 决策 ADR-L1-01
 
-1. **`runtime_power` 设备 power 语义单入口**  
-   - 新增 `requestDeviceShutdown()` / `requestDeviceReboot(delayMs)`，内部调 `power_hal`  
-   - L2/L3 不再 `require "power_hal"`（仅 L1/L3 bootstrap 例外：`main` 冷启动 `initPwkMode` 可保留）
+**设备级 `pm/pmd` 语义经 `runtime_power` 导出**，内部调 `power_hal`（L1→L0）；`user/` **零** `require "power_hal"`。
 
-2. **config 域纯化复核**  
-   - 确认 10 片段无 `require` user 业务模块  
-   - 跨族常量已进 `HOST_PROTO_TMO` 的，禁止再在 L2 写字面量
+| API（`runtime_power`） | 原调用方 | 内部 |
+|---|---|---|
+| `requestDeviceShutdown()` | `app.onPowerOff`、`battery_guard` fallback | `power_hal.shutdown` |
+| `requestDeviceReboot(delayMs)` | `app.onReboot` | `power_hal.reboot` |
+| `requestModemHibernate()` | `t31x_ctrl.enterSleep`（modem hibernate 路径） | `power_hal.hibernate` |
+| `initPwkMode()` | `main.lua` 冷启动 | `power_hal.initPwkMode` |
+| `initPmd(onMsg)` | `app.setupPmd` | `power_hal.initPmd` |
 
-3. **`module_loader` / `svc` 边界文档化**  
-   - `svc` 明确为 L2 基础设施（已在 arch-layering 修正）
+PSM 低功耗态（`requestRest`/`requestNormal`）与设备关机/重启**正交**：前者改 `APP_RUNTIME.power.rest` + hooks；后者直接调 pm 原语。
 
-### 改动范围（预估 ≤8 文件）
+### 护栏
 
-- `lib/runtime_power.lua`
-- `user/app.lua`、`user/battery_guard.lua`、`user/t31x_ctrl.lua`（改调 `runtime_power` 而非 `power_hal`）
-- `AGENTS.md`、`doc/modules/LIB_RUNTIME_UTILS.md`
+`_hal_layer_check.py` 扩展：`user/` 出现 `require "power_hal"` → FAIL（负向 fixture `hal_require_power_bad.lua`）。
 
 ### 验收
 
-- `_layer_check` R1 仍 0
-- `_hal_layer_check` 仍 PASS（user/ 无 power_hal require 后的 pm 直调）
-- user/ 中 `require "power_hal"` 仅允许 `main.lua`（或 0 处若 init 迁入 cell_boot）
+- `rg 'require "power_hal"' user/` = 0
+- 零行为，VERSION 维持 161
 
 ---
 
-## L2 · 业务逻辑层
+## L2 · 业务逻辑层（下一步）
 
 ### 目标
 

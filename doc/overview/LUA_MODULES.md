@@ -136,7 +136,7 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 | `usb_rndis.lua` | 311 | USB 网卡 tethering、IP_READY 刷新 |
 | `led_ctrl.lua` | 225 | 蓝/红 LED 模式状态机 |
 | `utils.lua` | 185 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
-| `runtime_power.lua` | 193 | 工作模式 + USB/充电/电量/在线访问器（`APP_RUNTIME` 唯一入口） |
+| `runtime_power.lua` | 210 | `APP_RUNTIME` 唯一入口 + PSM（`requestRest/Normal`）+ **L1 设备 power**（`requestDeviceShutdown/Reboot/ModemHibernate/initPwkMode/initPmd`→`power_hal`） |
 | `libfota2.lua` | 180 | FOTA 下载引擎（**vendor**，R5 sha256 锁） |
 | `usb_charge.lua` | 131 | GPIO27/CHG_STATE 中断 → `GPIO_USB_DET_CHANGED` |
 | `uart_bridge.lua` | 109 | 唯一 `uart.setup`；行/原始 RX 回调 |
@@ -427,7 +427,7 @@ SIM/APN 探测、`IP_READY` 等待、运营商映射。`main` 与 `net_mqtt` 共
 | 模块 | 行数 | 职责 |
 |------|------|------|
 | `sys` | 394 | LuatOS 调度核心（**vendor**，勿动；R5 sha256 锁） |
-| `runtime_power` | 193 | `APP_RUNTIME` 嵌套表**唯一读写入口**（访问器收口） |
+| `runtime_power` | 210 | `APP_RUNTIME` 嵌套表**唯一读写入口** + PSM + L1 设备 power（见 LOW_POWER_WAKEUP §PSM） |
 | `config_manager` | 69 | `cfgm.get/merge/set` 配置访问 |
 | `module_loader` | 59 | `load/opt/start/stopAll/enabled`（`MODULE_FLAGS` 裁剪） |
 | `libfota2` | 180 | 差分 OTA 下载引擎（**vendor**，勿动；R5 sha256 锁） |

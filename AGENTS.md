@@ -136,7 +136,18 @@
 
 **巡检**（应无输出）：`rg -n "\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\(" user/*.lua`
 
-逐层计划 → [`docs/layer_refactor_plan.md`](docs/layer_refactor_plan.md)（**L0 完成**；L1 下一步：`runtime_power` 收口 device shutdown/reboot）。
+逐层计划 → [`docs/layer_refactor_plan.md`](docs/layer_refactor_plan.md)（**L0+L1 完成**；L2 下一步：`patchCloud(keepTs)` / 跨族常量 / `vbat→adc_hal` 收口）。
+
+### L1 设备 power 单入口（ADR-L1-01，2026-09-05）
+
+| API | 用途 |
+|---|---|
+| `requestDeviceShutdown()` | 4G 关机（`pm.shutdown`） |
+| `requestDeviceReboot(delayMs)` | 4G 重启 |
+| `requestModemHibernate()` | _modem_ hibernate 路径（T31x sleep 时 `opts.modemHibernate`） |
+| `initPwkMode()` / `initPmd(onMsg)` | 冷启动 / 充电消息 |
+
+`user/` 禁止 `require "power_hal"`（`_hal_layer_check`）；与 PSM `requestRest/requestNormal` 正交。
 
 ---
 

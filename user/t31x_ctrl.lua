@@ -9,9 +9,9 @@ require "config"
 local utils = require "utils"
 local svc = require "svc"
 local gpio_util = require "gpio_util"
-local powerHal = require "power_hal"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
+local rntmPwr = require "runtime_power"
 local t31xPolicy = require "t31x_policy"
 local hostEvt = require "host_event"
 local _modname = ...
@@ -286,7 +286,7 @@ function enterSleep(opts)
     state.power_state = "sleeping"
     state.rest_enter_time = os.time()
     if opts.modemHibernate == true then
-        powerHal.hibernate()
+        rntmPwr.requestModemHibernate()
         return
     end
     sleepInProgress = true

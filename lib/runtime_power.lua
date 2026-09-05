@@ -5,12 +5,14 @@
 -- Arch     : 见 doc/overview/LUA_MODULES.md、doc/modules/LOW_POWER_WAKEUP.md §PSM、
 --            doc/overview/ARCHITECTURE_REVIEW_POWER_PSM.md（R1 主案）
 -- Note     : 转移门禁（低功耗开关 / USB 拦截 / 烧录态）由 app 经 bindPowerGates 注入；
---            副作用（T31x 断电、1002、提示音、lp_wakeup 钩子）留在 app，本模块只裁决与改状态。
+--            副作用（T31x 断电、1002、提示音、lp_wakeup 钩子）经 bindPowerHooks 注入（E 条）。
+--            设备级 pm/pmd 原语（关机/重启/hibernate/pmd 初始化）经 L1 导出，内部调 power_hal（L1→L0）。
 -- ================================================================
 
 require "config"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
+local powerHal = require "power_hal"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -271,6 +273,29 @@ function isCharging()
     local uc = usbCharge()
     local v = uc and uc.isCharging()
     return v == 1 or v == true
+end
+
+----------------------------------------------------------------
+-- L1 设备级 power 语义（逐层重构 L1）：user/L2 禁止 require "power_hal"，统一经本模块。
+----------------------------------------------------------------
+function requestDeviceShutdown()
+    powerHal.shutdown()
+end
+
+function requestDeviceReboot(delayMs)
+    powerHal.reboot(delayMs)
+end
+
+function requestModemHibernate()
+    powerHal.hibernate()
+end
+
+function initPwkMode()
+    powerHal.initPwkMode()
+end
+
+function initPmd(onMsg)
+    return powerHal.initPmd(onMsg)
 end
 
 return _M

@@ -10,7 +10,6 @@ local utils = require "utils"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
-local powerHal = require "power_hal"
 local t31xPolicy = require "t31x_policy"
 local pir_ctrl = require "pir_ctrl"
 local _modname = ...
@@ -215,7 +214,7 @@ local function schedShutdown()
         if type(hooks.onPowerOff) == "function" then
             hooks.onPowerOff()
         else
-            powerHal.shutdown()
+            rntmPwr.requestDeviceShutdown()
         end
     end, delay)
 end

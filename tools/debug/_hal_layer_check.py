@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""L0 HAL 分层护栏：user/ 禁止直调硬件寄存器 API；lib/ 仅白名单模块允许。
+"""L0/L1 HAL 分层护栏：user/ 禁止 HAL 直调与 require power_hal；lib/ 仅白名单含 HAL 调用。
 
-规则（arch-layering.mdc §4 / AGENTS.md §6）：
-  * user/*.lua：不得出现 uart./gpio.setup|debounce|get/adc./wdt./pm./pmd./i2c./spi./pwm. 调用（mcu.ticks/sys/log/json 除外）
-  * lib/*.lua：仅 HAL 白名单模块可出现上述调用；其它 lib 模块出现即 FAIL
+规则（arch-layering.mdc §4 / AGENTS.md §6 / L1 ADR-L1-01）：
+  * user/*.lua：不得 HAL 直调；不得 require "power_hal"（经 runtime_power 收口）
+  * lib/*.lua：仅 HAL 白名单模块可出现 HAL 调用；runtime_power→power_hal 允许（L1→L0）
 
 用法：
     python tools/debug/_hal_layer_check.py
@@ -23,6 +23,7 @@ LIB = ROOT / "lib"
 RE_HAL = re.compile(
     r"\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\("
 )
+RE_USER_REQ_POWER_HAL = re.compile(r"""require\s+["']power_hal["']""")
 
 # lib/ 内允许直调 HAL 的模块（L0 驱动封装 + vendor）
 LIB_HAL_OK = frozenset({
@@ -44,12 +45,15 @@ LIB_HAL_OK = frozenset({
 def scan_file(path: Path, allowed: bool) -> list[str]:
     rel = path.relative_to(ROOT).as_posix()
     hits = []
-    for i, ln in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    for i, ln in enumerate(text.splitlines(), 1):
         if ln.lstrip().startswith("--"):
             continue
         if RE_HAL.search(ln):
             if not allowed:
-                hits.append(f"{rel}:{i}  {ln.strip()[:120]}")
+                hits.append(f"{rel}:{i} HAL直调  {ln.strip()[:100]}")
+        if path.parent == USER and RE_USER_REQ_POWER_HAL.search(ln):
+            hits.append(f"{rel}:{i} require power_hal  {ln.strip()[:100]}（L1 应经 runtime_power）")
     return hits
 
 
