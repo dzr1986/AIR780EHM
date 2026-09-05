@@ -33,7 +33,6 @@ LIB_HAL_OK = frozenset({
     "uart_bridge.lua",
     "led_ctrl.lua",
     "usb_charge.lua",
-    "usb_rndis.lua",
     "usb_vuart.lua",
     "watchdog.lua",
     "cell_boot.lua",

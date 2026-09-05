@@ -8,6 +8,7 @@ require "sys"
 require "config"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
+local powerHal = require "power_hal"
 local utils = require "utils"
 local _modname = ...
 module(_modname, package.seeall)
@@ -73,17 +74,11 @@ local function refAllowed()
         and (c.refresh_only_usb == false or rntmPwr.isUsbInserted())
 end
 
-local function pmUsbApply()
-    if not pm then return end
-    if pm.request then pm.request(pm.IDLE) end
-    if pm.power and pm.USB then pm.power(pm.USB, true) end
-end
-
 local function openRndis(force)
     if not force then
         local mode = readUsbEthMode()
         if mode == RNDIS_USB_ETHERNET_MODE then
-            pmUsbApply()
+            powerHal.prepareUsbRndis()
             return
         end
     end
@@ -91,7 +86,7 @@ local function openRndis(force)
     sys.wait(FLYMODE_WAIT_MS)
     mobile.config(mobile.CONF_USB_ETHERNET, RNDIS_USB_ETHERNET_MODE)
     mobile.flymode(0, false)
-    pmUsbApply()
+    powerHal.prepareUsbRndis()
 end
 
 local function closeRndisCore(pauseMs)
@@ -197,14 +192,7 @@ end
 stop = disable
 
 local function softReenum(pauseMs)
-    if not pm or not pm.power or not pm.USB then return false end
-    local ms = tonumber(pauseMs) or 500
-    if ms < 100 then ms = 100 end
-    pcall(pm.power, pm.USB, false)
-    sys.wait(ms)
-    pcall(pm.power, pm.USB, true)
-    pmUsbApply()
-    return true
+    return powerHal.cycleUsbPower(pauseMs)
 end
 
 function rebind(opts)

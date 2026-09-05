@@ -41,7 +41,7 @@ flowchart TD
 | `rebind(opts)` | 快速关开重绑 |
 | `enableAsync` | taskInit 包装 open/enable |
 
-内部：`rndisOpenCore` / `rndisCloseCore` 均经 **flymode 包裹** 修改 USB 以太网模式，并 `pm.power(pm.USB, true)`。
+内部：`openRndis` / `closeRndisCore` 均经 **flymode 包裹** 修改 USB 以太网模式，USB 电源经 `power_hal.prepareUsbRndis()`（`pm.request(IDLE)` + `pm.power(USB,true)`）。
 
 ---
 

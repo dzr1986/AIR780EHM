@@ -133,16 +133,16 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 |------|------|------|
 | `sys.lua` | 394 | LuatOS 协程调度核心（**vendor**，R5 sha256 锁） |
 | `cell_boot.lua` | 373 | 蜂窝引导：SIM/APN、`IP_READY`、运营商映射 |
-| `usb_rndis.lua` | 311 | USB 网卡 tethering、IP_READY 刷新 |
-| `led_ctrl.lua` | 225 | 蓝/红 LED 模式状态机 |
-| `utils.lua` | 185 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
-| `runtime_power.lua` | 210 | `APP_RUNTIME` 唯一入口 + PSM（`requestRest/Normal`）+ **L1 设备 power**（`requestDeviceShutdown/Reboot/ModemHibernate/initPwkMode/initPmd`→`power_hal`） |
+| `runtime_power.lua` | 315 | `APP_RUNTIME` 唯一入口 + PSM（`requestRest/Normal`）+ **L1 设备 power**（`requestDeviceShutdown/Reboot/ModemHibernate/initPwkMode/initPmd`→`power_hal`） |
+| `usb_rndis.lua` | 299 | USB 网卡 tethering、IP_READY 刷新（pm 经 `power_hal.prepareUsbRndis`/`cycleUsbPower`） |
+| `led_ctrl.lua` | 226 | 蓝/红 LED 模式状态机 |
+| `utils.lua` | 186 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
 | `libfota2.lua` | 180 | FOTA 下载引擎（**vendor**，R5 sha256 锁） |
-| `usb_charge.lua` | 131 | GPIO27/CHG_STATE 中断 → `GPIO_USB_DET_CHANGED` |
+| `usb_charge.lua` | 144 | GPIO27/CHG_STATE 中断 → `GPIO_USB_DET_CHANGED` |
 | `uart_bridge.lua` | 109 | 唯一 `uart.setup`；行/原始 RX 回调 |
 | `usb_vuart.lua` | 103 | USB 虚拟串口、VCOM、透传 |
-| `watchdog.lua` | 94 | 硬件 WDT 初始化与喂狗 |
-| `power_hal.lua` | 52 | **L0 HAL** — 全仓库唯一 `pm.*/pmd.*` 封装（shutdown/reboot/hibernate/initPwkMode/initPmd） |
+| `watchdog.lua` | 100 | 硬件 WDT 初始化与喂狗 |
+| `power_hal.lua` | 87 | **L0 HAL** — 全仓库唯一 `pm.*/pmd.*` 封装（shutdown/reboot/hibernate/initPwkMode/initPmd/prepareUsbRndis/cycleUsbPower） |
 | `module_loader.lua` | 59 | 懒加载/裁剪/stopAll（`MODULE_FLAGS` 驱动） |
 | `config_manager.lua` | 69 | 配置访问（默认值合并、热更新、持久化） |
 | `adc_hal.lua` | 72 | **L0 HAL** — 全仓库唯一 `adc.*` 封装（vbat 采样） |
@@ -390,7 +390,7 @@ bootPowerOn → t31x_ctrl.powerOn（经 mayPowerT31x("boot")）
 | 模块 | 职责 |
 |------|------|
 | `usb_charge` | GPIO27/CHG_STATE 中断；发布 `GPIO_USB_DET_CHANGED` |
-| `usb_rndis` | USB 网卡 tethering、IP_READY 刷新（见 [USB_RNDIS_FLOW.md](../modules/USB_RNDIS_FLOW.md)） |
+| `usb_rndis` | USB 网卡 tethering、IP_READY 刷新；`pm.*` 经 `power_hal`（见 [USB_RNDIS_FLOW.md](../modules/USB_RNDIS_FLOW.md)） |
 | `usb_vuart` | USB 虚拟串口、VCOM、透传（见 [USB_RNDIS_FLOW.md](../modules/USB_RNDIS_FLOW.md)） |
 
 > `usb_policy` 旧文件已并入 `usb_charge` 与 config 片段，无独立模块。

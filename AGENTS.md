@@ -128,7 +128,7 @@
 
 | HAL 模块 | API |
 |---|---|
-| `lib/power_hal.lua` | `shutdown` / `reboot` / `hibernate` / `initPwkMode` / `initPmd` |
+| `lib/power_hal.lua` | `shutdown` / `reboot` / `hibernate` / `initPwkMode` / `initPmd` / `prepareUsbRndis` / `cycleUsbPower` |
 | `lib/adc_hal.lua` | `configure` / `open` / `close` / `readMv` |
 | `lib/gpio_util.lua` | `getLevel`（+ `setupInput` / `setupOutput`） |
 

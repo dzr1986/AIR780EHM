@@ -64,20 +64,20 @@
     "vbat.lua": 237
   },
   "lib": {
-    "adc_hal.lua": 74,
+    "adc_hal.lua": 79,
     "cell_boot.lua": 373,
     "config_manager.lua": 83,
     "device_id.lua": 39,
     "gpio_util.lua": 71,
-    "led_ctrl.lua": 225,
+    "led_ctrl.lua": 226,
     "libfota2.lua": 180,
     "module_loader.lua": 59,
-    "power_hal.lua": 52,
-    "runtime_power.lua": 301,
+    "power_hal.lua": 87,
+    "runtime_power.lua": 315,
     "sys.lua": 394,
     "uart_bridge.lua": 109,
-    "usb_charge.lua": 131,
-    "usb_rndis.lua": 311,
+    "usb_charge.lua": 144,
+    "usb_rndis.lua": 299,
     "usb_vuart.lua": 103,
     "utils.lua": 186,
     "watchdog.lua": 100
@@ -89,8 +89,8 @@
     },
     "lib": {
       "files": 17,
-      "lines": 2791
+      "lines": 2847
     },
-    "all": 16929
+    "all": 16985
   }
 }
