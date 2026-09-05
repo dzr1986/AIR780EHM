@@ -126,16 +126,14 @@ local state = {
     host_ipc_cloud_stat = nil,
     ipc_status_query_busy = false,
     ipc_cloud_stat_query_busy = false,
-    ipc_poweroff_busy = false,
     encode_venc_rows = nil,
     encode_audio_rows = nil,
     encode_query_busy = false,
     encode_set_busy = false,
     t31x_rec_active = 0,
     t31x_last_reason = "idle",
-    tfcard_format_busy = false,
     ipc_uart_miss_streak = 0,
-    uart_recovery_busy = false,
+    uart_session = nil,        -- 破坏性串口会话：nil | "tfformat" | "poweroff" | "usb_recovery"（P3）
     uart_recovery_attempts = 0,
     uart_recovery_last_sec = 0,
     host_push_quiet_until = 0,
@@ -247,6 +245,36 @@ local function resetUartTxn()
     uartTxnOwner = nil
     uartTxnDepth = 0
     state.uart_txn_busy = false
+    state.uart_session = nil
+    uartSessionOwner = nil
+end
+
+----------------------------------------------------------------
+-- 破坏性串口会话（refactor_plan P3）：格式化 / 断电 / USB 恢复期间，
+-- 除会话持有协程外，所有 hostQuery 走 fallback、hostSet 回 busy、1003 刷新走缓存。
+-- 与事务锁的分工：锁 = 「同时只有一个请求在飞」；会话 = 「T31x 处于不可打扰状态」。
+----------------------------------------------------------------
+local uartSessionOwner = nil
+
+local function enterSession(name)
+    if state.uart_session then
+        return false
+    end
+    state.uart_session = name
+    uartSessionOwner = coroutine.running()
+    return true
+end
+
+local function leaveSession(name)
+    if state.uart_session == name then
+        state.uart_session = nil
+        uartSessionOwner = nil
+    end
+end
+
+-- 当前协程是否被会话拦截（会话持有者自己可继续发查询）
+local function sessionBlocks()
+    return state.uart_session ~= nil and uartSessionOwner ~= coroutine.running()
 end
 
 local function uartRelease()
@@ -468,6 +496,9 @@ local ctx = {
     waitHostIdle = waitHostIdle,
     uartAcquire = uartAcquire,
     uartRelease = uartRelease,
+    enterSession = enterSession,
+    leaveSession = leaveSession,
+    sessionBlocks = sessionBlocks,
     hostBusy = hostBusy,
     noteHostPush = noteHostPush,
     parseSvcArgs = parseSvcArgs,

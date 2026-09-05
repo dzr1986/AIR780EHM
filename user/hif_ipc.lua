@@ -24,6 +24,7 @@ function bind(C)
     local state = C.state
     local uartAcquire = C.uartAcquire
     local uartRelease = C.uartRelease
+    local sessionBlocks = C.sessionBlocks
     local waitHostIdle = C.waitHostIdle
     local uart_bridge = C.uart_bridge
     local modCall = C.modCall
@@ -132,7 +133,8 @@ function bind(C)
 
     local function hostQuery(waitMs, opts)
         opts.timeoutMs = waitMs
-        if not coroutine.running() or state[opts.busyKey] then
+        -- 破坏性会话（格式化/断电/恢复）期间非持有协程一律走缓存，不再抢锁发 AT（P3）
+        if not coroutine.running() or state[opts.busyKey] or sessionBlocks() then
             return queryFallback(opts)
         end
         local cfg = opts.cfg or idCfg()
@@ -176,7 +178,7 @@ function bind(C)
     local function hostSet(spec)
         spec = spec or {}
         local busy = spec.busyKey
-        if busy and state[busy] then
+        if (busy and state[busy]) or sessionBlocks() then
             return false, "busy", nil
         end
         if busy then

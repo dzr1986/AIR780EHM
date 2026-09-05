@@ -35,11 +35,11 @@ function bind(C, H)
         cacheMaxAgeDefault = 90,
     }
 
+    -- per-query 重入键 + 事务锁；破坏性会话统一看 state.uart_session（P3）
     local HU_BUSY_KEYS = {
         "uart_txn_busy", "encode_query_busy", "encode_set_busy",
         "record_query_busy", "recordtime_query_busy", "tf_card_query_busy",
         "ipc_status_query_busy", "ipc_cloud_stat_query_busy",
-        "ipc_poweroff_busy", "tfcard_format_busy", "uart_recovery_busy",
     }
 
     -- 云状态 9 键 + 上报序唯一真源（1003 IPCSTAT 载荷契约，勿随意增删/换序）：
@@ -191,6 +191,9 @@ function bind(C, H)
     end
 
     local function isCloudBusy()
+        if state.uart_session then
+            return true
+        end
         for i = 1, #HU_BUSY_KEYS do
             if state[HU_BUSY_KEYS[i]] then
                 return true

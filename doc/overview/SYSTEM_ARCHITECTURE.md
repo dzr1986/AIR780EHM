@@ -254,7 +254,7 @@ Web/API 触发 → ota_server 发布 MQTT 2004 {action:ota,url:…/firmware_upgr
         │                                                 │
         └── 下载差分包成功 → 升级 → 回 MQTT 1004(进度/结果) ──┘
 ```
-版本号双轨：脚本版 `001.000.155` ↔ IoT 版 `内核号.001.155`（`2034.001.155`），服务器统一 IoT 格式。详见 `ota_server/docs/OTA_FLOW.md`。
+版本号双轨：脚本版 `001.000.156` ↔ IoT 版 `内核号.001.156`（`2034.001.156`），服务器统一 IoT 格式。详见 `ota_server/docs/OTA_FLOW.md`。
 
 ### 6.6 低功耗 / USB / 唤醒（Cat.1 自身状态机）
 

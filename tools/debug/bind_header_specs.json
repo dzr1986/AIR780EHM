@@ -62,7 +62,7 @@
     "hif_ipc_rec.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle", "pushUsbIdle", "TMO_SHARED"],
+      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle", "pushUsbIdle", "TMO_SHARED", "enterSession", "leaveSession"],
       "h": ["getCfg", "hostQuery"]
     },
     "hif_ipc_hostq.lua": {
@@ -81,14 +81,14 @@
     "hif_ipc_power.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud", "TMO_SHARED"],
+      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud", "TMO_SHARED", "enterSession", "leaveSession"],
       "h": ["getCfg", "qryHostStat"]
     },
     "hif_ipc_tffmt.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs", "uartAcquire", "uartRelease", "TMO_SHARED"],
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs", "uartAcquire", "uartRelease", "TMO_SHARED", "enterSession", "leaveSession"],
       "h": ["ensT31xHost", "hostBoot"]
     },
     "hif_ipc_encode.lua": {

@@ -277,3 +277,18 @@ host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（�
 **未并入（同值但语义待定）**：`hif_ipc_hostq.TMO.rec = 3000`（录像查询）与 `qryDefaultMs` 同值，是否同义待定；`mqtt_dl_pir.stopDefault = 22000` 与 `hif_ipc_hostq.TMO.recOff = 22000` 跨族同值，待 P7 ctx.const 统一。
 
 **已知同义不同值（本阶段不改数值，待维护者定）**：串口静默期 quiet——`hif_ipc.TMO.quiet = 1500`（hostQuery/hostSet 走 `armHost`）vs `hif_ipc_power.hostIdleCapMs = 2000` / `hif_ipc_tffmt.hostIdleMs = 2000`（直接 `waitHostIdle`）。统一到哪一个值需实机验证后再收进 `TMO_SHARED`。
+
+## 9. 串口并发模型：事务锁 / 破坏性会话 / per-query 重入（refactor_plan P3，2026-09-05，VERSION 156）
+
+三层保护各管一件事，`hostQuery`/`hostSet`（`hif_ipc.lua`）按下表顺序判定：
+
+| 层 | 状态 | 谁写 | 谁读 | 语义 |
+|---|---|---|---|---|
+| ① 事务锁 | `state.uart_txn_busy` + 持有协程/深度（`host_uart.uartAcquire/uartRelease`） | 每次「发 AT → 等 ACK」 | `hostQuery`/`hostSet`/`hostIpcPowerOff`/`formatHostTfCard` | 同一时刻只有一个请求在飞；可重入；`stop()`/首次 `start()` 复位 |
+| ② 破坏性会话 | `state.uart_session ∈ {nil, "tfformat", "poweroff", "usb_recovery"}` + 持有协程（`enterSession/leaveSession/sessionBlocks`） | `hif_ipc_tffmt`（格式化全程）、`hif_ipc_power`（`AT+IPCPOWEROFF` 全程）、`hif_ipc_rec`（USB 恢复任务） | `hostQuery` → 非持有协程走 `queryFallback`（缓存）；`hostSet` → `false, "busy"`；`isCloudBusy` → 1003 走缓存；`ipcQueryBusy` → 断电前等待非自身会话结束 | **T31x 处于不可打扰状态**；会话持有者自己仍可查询 |
+| ③ per-query 重入 | `state.<x>_query_busy` / `<x>_set_busy`（`opts.busyKey`） | `hostQuery`/`hostSet` 进入/退出 | 同类查询 + `HU_BUSY_KEYS`（1003 让路） | 同一种 AT 不并发两份 |
+
+P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery` 只看③自己的键：格式化期间 2007 `AT+TFCARD?` 仍会拿锁发出（体检 A2）。P3 起：
+- 三个旧键 `tfcard_format_busy` / `ipc_poweroff_busy` / `uart_recovery_busy` **删除**（`_host_uart_regression_check` 负向断言防回潮），`AT+GETCFG` 快照无此字段，T31x 侧无可见变化。
+- 行为变化（实机回归项，`USER_LIB_OPTIMIZATION_NEXT §6`）：2009 格式化期间下发 2007 → 1007 回缓存且串口无 `AT+TFCARD?`；2002 断电期间 2005 wled/2020 encode 查询 → 缓存 / `busy`；USB 恢复任务期间同理。
+- 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，`hostIpcPowerOff` 回 false（调用方 `enterSleep` 走 GPIO 直接断电兜底），恢复任务放弃本轮。

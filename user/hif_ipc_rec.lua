@@ -20,6 +20,7 @@ function bind(C, H)
     local pushUsbIdle = C.pushUsbIdle
 
     local TMO_SHARED = C.TMO_SHARED
+    local enterSession, leaveSession = C.enterSession, C.leaveSession
     local TIMEOUT = {
         powerOffMs = 500,
         powerOnWaitMs = 800,
@@ -107,7 +108,7 @@ function bind(C, H)
             clearMissStreak()
             return
         end
-        if state.uart_recovery_busy then
+        if state.uart_session then
             return
         end
         state.ipc_uart_miss_streak = (tonumber(state.ipc_uart_miss_streak) or 0) + 1
@@ -120,11 +121,13 @@ function bind(C, H)
         if recoveryCooldownActive(rc) then
             return
         end
-        state.uart_recovery_busy = true
         state.uart_recovery_attempts = state.uart_recovery_attempts + 1
         sys.taskInit(function()
+            if not enterSession("usb_recovery") then
+                return
+            end
             pcall(powerCycleHost)
-            state.uart_recovery_busy = false
+            leaveSession("usb_recovery")
         end)
     end
 

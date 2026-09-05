@@ -18,6 +18,7 @@ function bind(C, H)
     local t31xUartOff = C.t31xUartOff
     local hostNowMs = C.hostNowMs
     local uartAcquire, uartRelease = C.uartAcquire, C.uartRelease
+    local enterSession, leaveSession = C.enterSession, C.leaveSession
     local ensT31xHost = H.ensT31xHost
     local hostBoot = H.hostBoot
 
@@ -69,7 +70,7 @@ function bind(C, H)
         if cfg.enabled == false then
             return false, "disabled"
         end
-        if state.tfcard_format_busy then
+        if state.uart_session then
             return false, "busy"
         end
         if t31xUartOff() then
@@ -120,7 +121,7 @@ function bind(C, H)
 
     -- 与 hostQuery / hostIpcPowerOff 同序：先拿串口事务锁 → 上电 → 等 boot/quiet → 发 AT → 等终态。
     -- 整段持锁（含最长 format_timeout_ms=120s 的等待）：格式化期间 T31x 本就不应被任何 AT 打扰；
-    -- 1003 刷新不受影响——tfcard_format_busy 在 HU_BUSY_KEYS 内，refCloudStat1003 全程走缓存；
+    -- 1003 刷新不受影响——uart_session 期间 isCloudBusy 为真，refCloudStat1003 全程走缓存；
     -- 其它 hostQuery 在锁上等到自身 timeout 后走 fallback 缓存。
     local function runFormatSession(opts, cfg, reboot, timeoutMs, outcome)
         if not uartAcquire(math.min(timeoutMs, TIMEOUT.acquireCapMs)) then
@@ -150,11 +151,13 @@ function bind(C, H)
         end
         local timeoutMs = tonumber(opts.timeoutMs) or tonumber(cfg.format_timeout_ms) or TIMEOUT.formatMs
         local reboot = rebootFlag(opts, cfg)
-        state.tfcard_format_busy = true -- 预检通过即刻置位（预检无 yield），后续 yield 前已互斥
+        if not enterSession("tfformat") then -- 预检后即刻进入会话（预检无 yield），后续 yield 前已互斥
+            return false, "busy"
+        end
         local outcome = { ok = false, reason = "unknown" }
         local okRun, errRun = pcall(runFormatSession, opts, cfg, reboot, timeoutMs, outcome)
         uartRelease() -- 唯一释放点（acquire 失败时非持有者调用为 no-op）
-        state.tfcard_format_busy = false
+        leaveSession("tfformat")
         if outcome.ok then
             return true, outcome.detail
         end
