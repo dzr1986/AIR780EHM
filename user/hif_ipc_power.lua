@@ -18,6 +18,7 @@ function bind(C, H)
     local hostNowMs = C.hostNowMs
     local patchCloud = C.patchCloud
     local setRecActive = C.setRecActive
+    local setHostIpcStatus = C.setHostIpcStatus
     local logPowerOffRx = C.logPowerOffRx
     local getCfg = H.getCfg
     local qryHostStat = H.qryHostStat
@@ -68,7 +69,7 @@ function bind(C, H)
     end
 
     local function applyPowerOffSuccess()
-        state.host_ipc_status = "idle"
+        setHostIpcStatus("idle")
         setRecActive(0)
         patchCloud({ ipcReady = 0 })
     end

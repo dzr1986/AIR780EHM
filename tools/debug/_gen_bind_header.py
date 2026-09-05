@@ -317,7 +317,7 @@ def available_at_bind(module_file: str) -> tuple[set[str], set[str]]:
     """返回 (C 可用键, H 可用键)。module_file 如 hif_ipc_cloud.lua。"""
     mod = module_file[:-4]
     hu = HOST_UART.read_text(encoding="utf-8").splitlines()
-    ctx_keys, _ = _literal_keys(hu, r"^local ctx = \{")
+    ctx_keys, _ = _literal_keys(hu, r"^(?:local )?ctx = \{")  # host_uart 前向声明 local ctx 后以 ctx = { 赋值
     fam = next((f for f, mods in FAMILY_OF.items() if mod in mods), None)
     if fam is None:
         return set(), set()

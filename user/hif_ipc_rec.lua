@@ -21,6 +21,7 @@ function bind(C, H)
 
     local TMO_SHARED = C.TMO_SHARED
     local enterSession, leaveSession = C.enterSession, C.leaveSession
+    local setHostIpcStatus, setHostAtReady, setHostCloudStat = C.setHostIpcStatus, C.setHostAtReady, C.setHostCloudStat
     local TIMEOUT = {
         powerOffMs = 500,
         powerOnWaitMs = 800,
@@ -132,20 +133,20 @@ function bind(C, H)
     end
 
     local function resetHostLink()
-        state.host_at_ready = false
+        setHostAtReady(false)
         state.first_host_at = nil
-        state.host_ipc_status = nil
-        state.host_ipc_cloud_stat = nil
+        setHostIpcStatus(nil)
+        setHostCloudStat(nil)
         clearMissStreak()
     end
 
     local function onIpcStatusResponse(got, st)
         if got and st then
             noteUartLinkOk()
-            state.host_ipc_status = st
+            setHostIpcStatus(st)
             return st
         end
-        state.host_ipc_status = "idle"
+        setHostIpcStatus("idle")
         tryUartRecovery("ipc_status")
         return "idle"
     end

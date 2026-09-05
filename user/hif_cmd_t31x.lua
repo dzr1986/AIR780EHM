@@ -16,6 +16,7 @@ function bind(C)
     local bizCall = C.bizCall
     local RSP_ERROR = C.RSP_ERROR
     local utils = C.utils
+    local setHostIpcStatus, setHostTfCard = C.setHostIpcStatus, C.setHostTfCard
     local function parseIpcStat(...)
         return C.parseIpcStat(...)
     end
@@ -161,8 +162,7 @@ function bind(C)
         if not st then
             return RSP_ERROR
         end
-        state.host_ipc_status = st
-        patchCloud({ ipcReady = ipcReadyFrom(st) })
+        setHostIpcStatus(st, true) -- 含 cloud.ipcReady 同步
         sys.publish(SYS_EVT.IPCSTATUS_ACK, st)
         return rspFmt("IPCSTATUS", "OK,status=%s", st)
     end
@@ -189,7 +189,7 @@ function bind(C)
         if not snap.parsed then
             return RSP_ERROR
         end
-        state.host_tf_card = snap
+        setHostTfCard(snap)
         patchCloud({ tfPresent = utils.to01(snap.present) })
         sys.publish(SYS_EVT.TFCARD_ACK, snap)
         return rspLineOk("TFCARD")

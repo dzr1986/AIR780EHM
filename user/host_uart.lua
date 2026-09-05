@@ -169,6 +169,36 @@ end
 -- battery_guard / t31x_policy / lp_wakeup / host_event / time_sync / sound_prompt），改由 app.start 经
 -- host_uart.start{ biz = {...} } 注入显式函数表；未注入（模块被裁剪）时返回 nil，与 modCall 对未加载模块的语义一致。
 -- 键名清单真源：user/app.lua buildBizProviders；_ref_name_check 规则 F 校验 bizCall("x") 的 x ∈ 该表。
+----------------------------------------------------------------
+-- state 语义键 setter（架构 C 条）：host_ipc_status / host_at_ready / host_tf_card / host_ipc_cloud_stat
+-- 只能经这里写（_protocol_regression_check SINGLE_WRITERS 守护）；缓存/计数键仍可直写。
+-- setHostIpcStatus(st, syncCloud=true) 同步 cloud.ipcReady（cmd_t31x / rx_dsl 两条 IPCSTATUS 路径原各自 patchCloud）。
+----------------------------------------------------------------
+local ctx -- 前向声明：setter 需运行期取 ctx.ipcReadyFrom / ctx.patchCloud（子模块 bind 后回填）
+
+local function setHostIpcStatus(st, syncCloud)
+    state.host_ipc_status = st
+    if syncCloud and ctx and ctx.patchCloud and ctx.ipcReadyFrom then
+        ctx.patchCloud({ ipcReady = ctx.ipcReadyFrom(st) })
+    end
+    return st
+end
+
+local function setHostAtReady(v)
+    state.host_at_ready = v == true
+    return state.host_at_ready
+end
+
+local function setHostTfCard(snap)
+    state.host_tf_card = snap
+    return snap
+end
+
+local function setHostCloudStat(snap)
+    state.host_ipc_cloud_stat = snap
+    return snap
+end
+
 local function bizCall(name, ...)
     local biz = hooks.biz
     local f = biz and biz[name]
@@ -476,7 +506,7 @@ end
 --   下半：子模块在 bind 时回填（见各编排器末尾的“注册”段）
 ----------------------------------------------------------------
 
-local ctx = {
+ctx = {
     -- 运行时引用
     M = _M,
     state = state,
@@ -500,6 +530,10 @@ local ctx = {
     -- 模块工具
     modCall = modCall,
     bizCall = bizCall,
+    setHostIpcStatus = setHostIpcStatus,
+    setHostAtReady = setHostAtReady,
+    setHostTfCard = setHostTfCard,
+    setHostCloudStat = setHostCloudStat,
     loader = loader,
     utils = utils,
     uart_bridge = uart_bridge,
@@ -589,7 +623,7 @@ local function onFirstHostAt(atLine)
     if state.host_at_ready then
         return
     end
-    state.host_at_ready = true
+    setHostAtReady(true)
     state.first_host_at = atLine
     state.host_ready_seen = true
     if ctx.noteUartLinkOk then
@@ -710,7 +744,7 @@ function start(opts)
     -- require 兜底仅兼容裸启动/独立单测；产品路径必经 app.start 显式注入（见 FUNCTIONAL_ARCHITECTURE §7.2 S2）
     t31xModule = opts.t31x or require "t31x_ctrl"
     t31xFallback = t31xModule
-    state.host_at_ready = false
+    setHostAtReady(false)
     state.first_host_at = nil
     if not started then resetUartTxn() end
     bindStartHooks(opts)

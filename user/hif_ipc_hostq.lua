@@ -18,6 +18,7 @@ function bind(C, H)
     local state = C.state
     local SYS_EVT = C.SYS_EVT
     local utils = C.utils
+    local setHostTfCard = C.setHostTfCard
     local defineQuery = H.defineQuery
     local defineSet = H.defineSet
     local identityCfg = H.idCfgFn
@@ -307,7 +308,7 @@ function bind(C, H)
         at = "AT+TFCARD?", ev = SYS_EVT.TFCARD_ACK,
         rsp = function(got, snap)
             if got and type(snap) == "table" and snap.parsed then
-                state.host_tf_card = snap
+                setHostTfCard(snap)
                 return snap
             end
             return nil

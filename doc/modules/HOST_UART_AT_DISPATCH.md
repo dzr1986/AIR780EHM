@@ -312,3 +312,16 @@ AT 协议层（`host_uart` + 18 个 `hif_*`）此前经 `modCall("pir_ctrl"/"net
 - `app.buildBizProviders()`（`user/app.lua`）是**唯一真源**：26 个显式函数键（`shouldHostSleep`/`canHostSleep`/`markT31xWoken`/`mayPowerT31x`/`lpAppCfgFields`/`allowTcpChannel`/`closeTcpChannel`/`hostEvtEnabled`/`hostEvtSummarize`/`pirIsRecording`/`pirSyncStopT31x`/`pirApplyEffMedia`/`pirStatBody`/`pirClearMarkers`/`pirResetCounters`/`onTimesetAck`/`onSoundAck`/`pubUploadDone`/`pubUploadNeed`/`setStatInterval`/`pubRaw`/`pubDeviceIdRef`），经 `host_uart.start{ biz = … }` 注入到 `hooks.biz`。
 - AT 层统一经 `ctx.bizCall(key, …)` 调用；provider 缺失（模块被 `MODULE_FLAGS` 裁剪）时返回 nil，与旧 `modCall` 对未加载模块的语义一致。**差异**：旧 `modCall` 用 `loader.load` 会把被裁剪模块强行加载再调用，新实现对被裁剪模块直接 no-op（更符合裁剪意图）。
 - 护栏：`_layer_check` R4（AT 层 ↛ 业务层）基线 15 → **0**；`_ref_name_check` 规则 F 校验 `bizCall("x")` 的 x ∈ provider 表键。软环 22 → 16 模块，`modCall` 46 → 17 处（余下均指向 `t31x_ctrl`/`runtime_power`/`device_id` 等基础设施）。
+
+## 12. `state` 语义键 setter 化（架构 C 条，2026-09-05）
+
+`host_uart.state` 中四个"有语义"的键不再允许子模块直写，统一经 `host_uart` 的 setter（`ctx.*` 导出）：
+
+| 键 | setter | 原写点数 → 1 | 说明 |
+|---|---|---|---|
+| `host_ipc_status` | `setHostIpcStatus(st, syncCloud)` | 7 → 1 | `syncCloud=true` 时顺带 `patchCloud{ipcReady=ipcReadyFrom(st)}`（`hif_cmd_t31x` 下行 IPCSTATUS + `hif_rx_dsl` URC 两条路径原各自 patch，现合一）；`hif_ipc_rec` 查询/`hif_ipc_power` 断电不同步（维持原行为） |
+| `host_at_ready` | `setHostAtReady(bool)` | 3 → 1 | `host_uart` 首条 AT / start；`hif_ipc_rec.resetHostLink` |
+| `host_tf_card` | `setHostTfCard(snap)` | 3 → 1 | `hif_cmd_t31x` / `hif_ipc_hostq` / `hif_rx_dsl` |
+| `host_ipc_cloud_stat` | `setHostCloudStat(snap)` | 3 → 1 | `commitIpcStat` raw 写、`resetHostLink` 清空、`mergeTfCloud` 建空表；`ipc_cloud_stat_ts` 仍只在 `commitIpcStat` 写 |
+
+护栏：`_protocol_regression_check SINGLE_WRITERS` 新增 4 条（`state.<键> =` 只许出现在 `user/host_uart.lua`）。实现细节：`host_uart` 需前向声明 `local ctx` 再 `ctx = {…}`（setter 运行期取 `ctx.patchCloud/ipcReadyFrom`），`_gen_bind_header` 的 ctx 字面量识别正则已兼容。缓存/计数类键（`t31x_wake_ts`、`last_command`、`miss_streak` 等）仍允许直写。零行为改动，VERSION 维持 161。

@@ -14,6 +14,7 @@ _G[_modname] = _M
 
 function bind(C, H)
     local state, SYS_EVT, E = C.state, C.SYS_EVT, C.E
+    local setHostCloudStat = C.setHostCloudStat
     local modCall = C.modCall
     local bizCall = C.bizCall
     local hostBusy = C.hostBusy
@@ -184,8 +185,7 @@ function bind(C, H)
     local function mergeTfCloud()
         local cloud = state.host_ipc_cloud_stat
         if type(cloud) ~= "table" then
-            cloud = {}
-            state.host_ipc_cloud_stat = cloud
+            cloud = setHostCloudStat({})
         end
         applyTfToCloud(cloud)
         applyRecordToCloud(cloud)

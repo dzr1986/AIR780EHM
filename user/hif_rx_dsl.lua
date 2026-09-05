@@ -196,7 +196,7 @@ function bind(C)
             return nil
         end
         snap = normIpcCloud(snap)
-        state.host_ipc_cloud_stat = snap
+        C.setHostCloudStat(snap)
         if keepTs ~= true then
             state.ipc_cloud_stat_ts = os.time()
         end
@@ -204,7 +204,7 @@ function bind(C)
             state.t31x_rec_active = asNum(snap.recordingt31x)
         end
         if snap.ipcReady == 1 and not state.host_ipc_status then
-            state.host_ipc_status = "ready"
+            C.setHostIpcStatus("ready")
         end
         if notify == true then
             sys.publish(SYS_EVT.IPCSTAT_ACK, snap)
@@ -344,7 +344,7 @@ function bind(C)
         if not snap.parsed then
             return false
         end
-        state.host_tf_card = snap
+        C.setHostTfCard(snap)
         patchCloud({ tfPresent = utils.to01(snap.present) })
         sys.publish(SYS_EVT.TFCARD_ACK, snap)
         return true
@@ -488,8 +488,7 @@ function bind(C)
         if not st then
             return false
         end
-        state.host_ipc_status = st
-        patchCloud({ ipcReady = C.ipcReadyFrom(st) })
+        C.setHostIpcStatus(st, true) -- 含 cloud.ipcReady 同步
         noteLinkOk()
         sys.publish(SYS_EVT.IPCSTATUS_ACK, st)
         return true
