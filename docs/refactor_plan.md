@@ -24,7 +24,7 @@
 | P7a–c | ctx 三命名空间（三批，别名过渡） | A4 | 6 / 7 / 4 | 无 | 维持 | ← 改为 bind 时刻可用性 + spec 生成（见 P7 节结论） |
 | P8 | 协议字段表驱动 + 文档 ⊆ 校验 | A8 | 6 | 无（字节等价） | 维持 | ← 护栏半落地，序列化重写不做（见 P8 节） |
 | P9 | `modCall` 签名校验 + 重复实现收敛 | A5, §4.3 | 6 | 无 | 维持 | ← 执行时成员校验抓出 4 处 nil 调用并修复 → 实际 VERSION +1（159） |
-| P10 | **对外接口变更**（1013 / hostevt_poll / 2011 文案 / hybrid 配置 / 构建口径） | A8, A9, A11 | 8 | **有，需云端+T31x 配合** | +1 |
+| P10 | **对外接口变更**（1013 / hostevt_poll / 2011 文案 / hybrid 配置 / 构建口径） | A8, A9, A11 | 8 | **有，需云端+T31x 配合** | +1 | ← 代码可决部分已做（stage/2011 文案，VERSION 160），余 5 项三方待决 |
 
 依赖链：P0 → P0.5 → P1a → P1b → P2a → P2b → P3 → P4 → P5 → P6a → P6b → P7a → P7b → P7c → P8 → P9 → P10。P5、P8、P9 与主线弱耦合，可穿插；P10 必须最后且需联调窗口。
 
@@ -232,6 +232,19 @@
 ---
 
 ## P10 · 对外接口变更（最后阶段，需云端 / T31x / 产线配合）
+
+> **执行结论（2026-09-05，VERSION 160）**：代码侧可单方面决定的部分已落地，其余登记为**三方待决**，不越权：
+>
+> | 项 | 状态 | 说明 |
+> |---|---|---|
+> | 1013 `stage` 字段 | **已做** | `pubUploadReply` 受理 `queued`/`fail`、`pubUploadDone` `uploaded`/`fail`、`pubUploadNeed`（need=1）`queued`；纯增字段，旧后台无害，与 §10b 一致 |
+> | 2011「无即时 1004」文案 | **已做** | `MQTT_DOWNLINK §10` 按现网 `dlPirStop`（先 1004 `pir_stop` 再 1011）修正 |
+> | 1013 进度 `uploading/percent/sentBytes/totalBytes/alarmTs/alarmTime` + `AT+UPLOADPROGRESS` 解析 + `+UPLOADNEED` 解析 `file/msgId/type/alarmTs` | **待决（T31x 固件）** | 需 T31x 侧先实现推送；4G 侧解析可在其固件版本确定后一个阶段补齐；`_uplink_schema_baseline.json` 登记 5 键 |
+> | `need=1` 防抖按 `messageId` 去重 | **待决（云端契约）** | 依赖 `+UPLOADNEED` 带 `msgId`，随上条 |
+> | `hostevt_poll` / `hostevt_poll_query`（1004 `hostEvtPollMs`） | **待决（产品）** | 实现或删文档二选一；基线登记 1 键 |
+> | `BATTERY_CFG.guard` hybrid 6 字段 + `LOW_POWER_ENTER_STRATEGY` 删除 | **待决（产品，配置键=对外）** | 删除不可热回退（需重烧）；若保留 hybrid 须先补状态机 |
+> | `luatos.json core` 内核号 | **待决（产线）** | `RELEASE_v1.2.md` 已登记三口径并存，等产线确认后回写 |
+
 
 **目标**：A8、A9、A11 中涉及平台契约、T31x 固件、配置键、构建口径的变更，集中一次联调窗口处理。
 

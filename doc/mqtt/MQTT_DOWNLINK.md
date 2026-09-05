@@ -928,7 +928,7 @@
 
 条件：正在录像且 `stopOnCloud=1`。
 
-> **无即时 1004**：`requestStopFromCloud()` → `publishStopRecording(device)` → **1011**（`reason=device`）。T31x 写盘中可能 `source=t31x`。
+> **先回 1004 再停录**（2026-09-05 按现网代码 `mqtt_dl_pir.dlPirStop` 修正，此前误写「无即时 1004」）：`pirCtrl.reqStopCloud` 受理 → **1004** `action=pir_stop, ret=0, message=ok`（4G 侧无会话但 T31x 在录：`message=t31x_stop`；两者皆无：`ret=-1, not_recording`）→ `pubStopRec(device)` → **1011**（`reason=device`）；T31x 在线时另发 `AT+RECORDCTRL=0,cloud`，写盘中可能 `source=t31x`。与 `MQTT_CLOUD_REMOTE_CTRL_FLOW.md` / 实机闭环一致。
 
 **应答主题**：`/panshi/app/862323084068124/event`
 

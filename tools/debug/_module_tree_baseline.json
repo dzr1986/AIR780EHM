@@ -45,7 +45,7 @@
     "mqtt_downlink.lua": 191,
     "mqtt_hproto.lua": 473,
     "mqtt_ul_pir.lua": 191,
-    "mqtt_ul_upload.lua": 147,
+    "mqtt_ul_upload.lua": 151,
     "mqtt_uplink.lua": 537,
     "net.lua": 82,
     "net_mqtt.lua": 673,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13776
+      "lines": 13780
     },
     "lib": {
       "files": 15,
       "lines": 2613
     },
-    "all": 16389
+    "all": 16393
   }
 }

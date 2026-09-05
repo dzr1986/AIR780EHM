@@ -53,6 +53,8 @@
 | `cancelled` | `action=cancel` 受理 |
 | `fail` | T31x 回 `AT+UPLOADRESULT=` 失败或下发失败 |
 
+`stage`（160 起，P10）：受理 `queued`（ret=0）/ `fail`（ret≠0）；完成 `uploaded`/`fail`；人形 `need=1` 主动上报 `queued`。`uploading`（进度）需 T31x `AT+UPLOADPROGRESS`，待 T31x 固件（P10 待决）。
+
 > 与 `MQTT_DOWNLINK.md §10b` 的 `stage` 字段差距见 `USER_LIB_CODE_AUDIT_20260904.md §18.3`（P10）。
 
 ## 5. 1010–1012 / 2010–2012（PIR）

@@ -76,13 +76,15 @@ function bind(C)
         pubUplink({
             suffix = "event",
             dataType = DT.UL_UPLOAD_VIDEO,
+            -- stage（P10，MQTT_DOWNLINK §10b）：受理 queued / 拒绝 fail；额外键对旧后台无害
             fields = string.format(
-                ',"reply":1,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"%s"%s%s%s',
+                ',"reply":1,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"%s"%s%s%s%s',
                 escJson(messageId or ""),
                 tostring(retCode ~= nil and retCode or -1),
                 escJson(message or ""),
                 need,
                 escJson(extra.action or "upload_video"),
+                fmtStrField("stage", extra.stage or ((retCode == 0) and "queued" or "fail")),
                 fmtStrField("reason", extra.reason),
                 fmtStrField("recordPath", extra.recordPath),
                 winField)
@@ -97,11 +99,12 @@ function bind(C)
             suffix = "event",
             dataType = DT.UL_UPLOAD_VIDEO,
             fields = string.format(
-                ',"reply":0,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"upload_video"%s%s%s%s%s%s',
+                ',"reply":0,"messageId":"%s","ret":%s,"message":"%s","needUpload":%d,"action":"upload_video"%s%s%s%s%s%s%s',
                 escJson(messageId or ""),
                 tostring(retCode ~= nil and retCode or -1),
                 escJson(extra.message or (retCode == 0 and "uploaded" or "fail")),
                 need,
+                fmtStrField("stage", extra.stage or ((retCode == 0) and "uploaded" or "fail")),
                 fmtStrField("reason", extra.reason),
                 fmtStrField("fileName", extra.fileName),
                 fmtStrField("httpPath", extra.httpPath),
@@ -127,11 +130,12 @@ function bind(C)
             suffix = "event",
             dataType = DT.UL_UPLOAD_VIDEO,
             fields = string.format(
-                ',"needUpload":%d,"action":"%s","reason":"%s","source":"%s"%s%s',
+                ',"needUpload":%d,"action":"%s","reason":"%s","source":"%s"%s%s%s',
                 need,
                 escJson(opts.action or "upload_video"),
                 escJson(opts.reason or "record_done"),
                 escJson(opts.source or "4g"),
+                fmtStrField("stage", need == 1 and "queued" or nil),
                 fmtStrField("pirStatus", opts.pirStatus),
                 fmtStrField("recordPath", opts.recordPath))
         })
