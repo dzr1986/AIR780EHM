@@ -1,7 +1,7 @@
 {
   "date": "2026-09-05",
   "user": {
-    "app.lua": 1019,
+    "app.lua": 897,
     "battery.lua": 106,
     "battery_guard.lua": 391,
     "cellular.lua": 25,
@@ -55,6 +55,7 @@
     "sound_prompt.lua": 132,
     "svc.lua": 31,
     "t31x_burn.lua": 19,
+    "t31x_burn_ctrl.lua": 212,
     "t31x_ctrl.lua": 384,
     "t31x_notify.lua": 87,
     "t31x_policy.lua": 129,
@@ -82,13 +83,13 @@
   },
   "totals": {
     "user": {
-      "files": 59,
-      "lines": 13949
+      "files": 60,
+      "lines": 14039
     },
     "lib": {
       "files": 17,
       "lines": 2791
     },
-    "all": 16740
+    "all": 16830
   }
 }

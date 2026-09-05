@@ -25,7 +25,7 @@
 | `LOW_POWER_WAKEUP_CFG` | `user/features.lua` | `user/lp_wakeup.lua` |
 | `RNDIS_CFG` | `user/features.lua` | `lib/usb_rndis.lua` |
 | `CELLULAR_CFG` | `user/cellular.lua` | `lib/cell_boot.lua` |
-| `t31x_BURN_CFG` | `user/t31x_burn.lua` | `user/app.lua` |
+| `t31x_BURN_CFG` | `user/t31x_burn.lua` | `user/t31x_burn_ctrl.lua` |
 | `GPIO_IN` | `user/gpio_cfg.lua` | `user/app.lua`、`user/led_pir.lua`、`lib/usb_charge.lua` |
 | `GPIO_OUT` | `user/gpio_cfg.lua` | `user/app.lua`、`user/t31x_ctrl.lua`、`lib/led_ctrl.lua` |
 | `KEY_CONFIG` | `user/gpio_cfg.lua` | `user/peripheral.lua` |

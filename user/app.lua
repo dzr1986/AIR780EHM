@@ -23,6 +23,7 @@ local batteryGuard = require "battery_guard"
 local host_uart = require "host_uart"
 local ipcSupv = require "ipc_supv"
 local t31x_ctrl = require "t31x_ctrl"
+local t31xBurnCtrl = require "t31x_burn_ctrl"
 local net_tcp = require "net_tcp"
 local batAdc = loader.opt("battery", "vbat")
 local usbCharge = loader.opt("charge", "usb_charge")
@@ -48,7 +49,6 @@ local state = {
     mqtt_started = false,
     last_wake_event = nil,
     heartbeat_count = 0,
-    t31x_burn_active = false,
     heartbeat_paused = false,
     usb_insert_tick = 0,
     pir_watch_sleep_timer = nil,
@@ -58,7 +58,6 @@ local TIMEOUT = {
     rebootDelay = 500,
     t31xSleepWait = 35000,
     usbExitRestWait = 5000,
-    burnPrepWait = 300,
     bootUsbNotifyDefault = 1500,
     pirWatchSleep = 5000,
     pirStopFbDefault = 15000,
@@ -67,13 +66,8 @@ local TIMEOUT = {
 }
 
 ----------------------------------------------------------------
--- 烧录态 / USB 探测
+-- 烧录态 / USB 探测（烧录策略见 t31x_burn_ctrl）
 ----------------------------------------------------------------
-local function setBurnMode(active)
-    state.t31x_burn_active = active == true
-    t31xPolicy.setBurnActive(active == true)
-end
-
 local function isUsbInserted(opts)
     opts = opts or {}
     if opts.bootGpio and not loader.enabled("charge") then
@@ -196,11 +190,10 @@ local function onRestExited(reason, changed)
             return
         end
         local st = t31x.getState()
-        if state.t31x_burn_active or (st and st.in_boot_mode) then
+        if t31xBurnCtrl.isActive() or (st and st.in_boot_mode) then
             appWarn("exit_low_power_clear_burn")
             t31x.extBootMode()
-            setBurnMode(false)
-            state.heartbeat_paused = false
+            t31xBurnCtrl.setActive(false)
             pirCtrl.resume()
         end
         t31x.ensNormalPwrOn("exit_low_power:" .. tostring(reason))
@@ -410,7 +403,7 @@ stopWatchdogBeforePowerOff = function()
 end
 
 function startMqtt()
-    if state.t31x_burn_active then
+    if t31xBurnCtrl.isActive() then
         appWarn("mqtt_start_skip_burn_mode")
         return false
     end
@@ -464,122 +457,6 @@ local function setupRndis()
     end
 end
 
-local function getBurnBatteryPercent()
-    local pct = rntmPwr.getBatteryPercent()
-    if pct and pct >= 0 then
-        return pct
-    end
-    if batAdc then
-        pct = tonumber(batAdc.getPercent())
-        if pct and pct > 0 then
-            return pct
-        end
-    end
-    return nil
-end
-
-local function checkBurnAttempt(attemptIndex, attemptTotal)
-    local cfg = _G.t31x_BURN_CFG or {}
-    local minPct = tonumber(cfg.min_battery_percent) or 20
-    local allowRepeat = cfg.allow_repeat_enter_boot ~= false
-    local failReason = nil
-    local pct = getBurnBatteryPercent()
-    if cfg.require_battery_valid ~= false then
-        if not pct then
-            failReason = "battery_invalid"
-        elseif pct < minPct then
-            failReason = "batL"
-        end
-    end
-    if not t31xModule then
-        failReason = failReason or "noT3"
-    else
-        local st = t31xModule.getState() or {}
-        if st.in_boot_mode and not allowRepeat then
-            failReason = failReason or "boot"
-        end
-    end
-    if failReason then
-        return false, failReason
-    end
-    return true, pct
-end
-
-local function checkBurnAllowed()
-    local cfg = _G.t31x_BURN_CFG or {}
-    local retryCount = math.max(0, tonumber(cfg.burn_check_retry_count) or 2)
-    local maxAttempts = 1 + retryCount
-    local retryMs = tonumber(cfg.burn_check_retry_interval_ms) or 800
-    local lastFailRsn = nil
-    local lastPassPct
-    for attempt = 1, maxAttempts do
-        local ok, detail = checkBurnAttempt(attempt, maxAttempts)
-        if ok then
-            lastPassPct = detail
-            return true, lastPassPct
-        end
-        lastFailRsn = detail
-        if attempt < maxAttempts then
-            sys.wait(retryMs)
-        end
-    end
-    return false, lastFailRsn
-end
-
-local function shutdownForBurn(cfg)
-    cfg = cfg or _G.t31x_BURN_CFG or {}
-    appWarn("t31x_burn_prepare")
-    setBurnMode(true)
-    state.heartbeat_paused = true
-    if cfg.suspend_pir ~= false then
-        pirCtrl.suspend()
-    end
-    if cfg.stop_mqtt ~= false and state.mqtt_started and netModule then
-        netModule.stop()
-        state.mqtt_started = false
-        appInfo("t31x_burn_mqtt_stopped")
-    end
-    if cfg.stop_uart ~= false then
-        uart_bridge.stop()
-    end
-    if cfg.stop_rndis ~= false and usbRndis then
-        local rndisOk, rndisErr = usbRndis.disable()
-        if rndisOk then
-            appInfo("t31x_burn_rndis_disabled")
-        else
-            appWarn("t31x_burn_rndis_disable_fail", tostring(rndisErr or ""))
-        end
-    end
-    if cfg.turn_off_led ~= false and gpioModule then
-        gpioModule.turnOffLed()
-    end
-    sys.wait(TIMEOUT.burnPrepWait)
-    return true
-end
-
-local function tryEnterBurnMode()
-    local cfg = _G.t31x_BURN_CFG or {}
-    local ok, detail = checkBurnAllowed()
-    if not ok then
-        appWarn("t31x_burn_denied", tostring(detail or "unknown"))
-        if gpioModule then
-            gpioModule.runLedPattern("blink_red")
-        end
-        return false
-    end
-    shutdownForBurn(cfg)
-    if not t31xModule then
-        appError("t31x_burn_no_t31x_module")
-        return false
-    end
-    if not t31xModule.entBootMode() then
-        appError("t31x_burn_enter_bootmode_fail")
-        return false
-    end
-    appWarn("t31x_burn_entered")
-    return true
-end
-
 local function wakeT31xFor(tag, sid, evt)
     if loader.enabled("battery_guard") then
         batteryGuard.notifyHostIdle()
@@ -629,7 +506,7 @@ local function schedDelayedStat(delayMs)
 end
 
 local function onPirMediaAction(action, uploadMode, quality)
-    if state.t31x_burn_active then
+    if t31xBurnCtrl.isActive() then
         return
     end
     maybePubWakeup(uploadMode)
@@ -759,18 +636,11 @@ local function onPwrKeyLong()
 end
 
 local function onBootKeyLong()
-    sys.taskInit(tryEnterBurnMode)
+    sys.taskInit(t31xBurnCtrl.tryEnter)
 end
 
 local function onCoprocReady()
-    if t31xModule then
-        t31xModule.extBootMode()
-    end
-    if state.t31x_burn_active then
-        pirCtrl.resume()
-        setBurnMode(false)
-        state.heartbeat_paused = false
-    end
+    t31xBurnCtrl.onCoprocReady()
 end
 
 local function onUsbDet(inserted)
@@ -897,7 +767,7 @@ local function startHeartbeat()
         intervalMs = TIMEOUT.heartbeatMin
     end
     sys.timerLoopStart(function()
-        if state.heartbeat_paused or state.t31x_burn_active then
+        if state.heartbeat_paused or t31xBurnCtrl.isActive() then
             return
         end
         state.heartbeat_count = state.heartbeat_count + 1
@@ -923,6 +793,16 @@ function start(gpio, net, t31x_ctrl)
     if started then return true end
     appInfo("app_start")
     gpioModule, netModule, t31xModule = gpio, net, t31x_ctrl
+    t31xBurnCtrl.bind({
+        getT31x = function() return t31xModule end,
+        getNet = function() return netModule end,
+        getGpio = function() return gpioModule end,
+        getBatAdc = function() return batAdc end,
+        getUsbRndis = function() return usbRndis end,
+        isMqttStarted = function() return state.mqtt_started end,
+        setMqttStarted = function(v) state.mqtt_started = v == true end,
+        setHeartbeatPaused = function(v) state.heartbeat_paused = v == true end,
+    })
     deviceId.setImei(deviceId.getDisplayId())
     hostEvt.bindMqttPending(function()
         return netModule and netModule.hasHostQueue() == true
@@ -972,9 +852,7 @@ function start(gpio, net, t31x_ctrl)
             isUsbInserted = function()
                 return isUsbInserted()
             end,
-            isBurnActive = function()
-                return state.t31x_burn_active
-            end,
+            isBurnActive = t31xBurnCtrl.isActive,
         })
     end
     if loader.enabled("watchdog") then setupWdt() end

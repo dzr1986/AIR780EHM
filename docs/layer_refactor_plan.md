@@ -95,13 +95,22 @@ PSM 低功耗态（`requestRest`/`requestNormal`）与设备关机/重启**正�
 
 ---
 
-## L3 · 应用层
+## L3 · 应用层（进行中）
 
 ### 目标
 
 - `app.buildBizProviders` 为 AT 层唯一业务入口（已完成 A 条）
 - `bindPowerHooks` 为 PSM 副作用唯一入口（已完成 E 条）
 - 逐步把 `app.lua` 内可下沉 L2 的纯策略迁出（**不拆文件**，F-01 冻结）
+
+### 已完成（2026-09-05）
+
+- **烧录模式策略** → `user/t31x_burn_ctrl.lua`（电量门禁、服务裁剪、`entBootMode`）；`app` 仅 `bind` + 事件桥；`state.t31x_burn_active` 收进 `t31xPolicy.isBurnActive()`
+
+### 下一步
+
+- PIR→MQTT 桥接表驱动（可选迁 `pir_ctrl` bindBridge）
+- `bootMqtt` 等时序常量进 `net.lua` / `MQTT_CFG`
 
 ---
 
