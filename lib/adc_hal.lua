@@ -11,6 +11,19 @@ _G[_modname] = _M
 
 local readMvFn -- "read" | "get" | nil，首次成功后缓存，避免每采样双 pcall
 
+local function tryRead(ad, fnName, channel)
+    local fn = ad[fnName]
+    if not fn then
+        return nil
+    end
+    local ok, mv = pcall(fn, channel)
+    if ok and mv ~= nil and mv >= 0 then
+        readMvFn = fnName
+        return mv
+    end
+    return nil
+end
+
 function available()
     local ad = adc
     return ad ~= nil and (ad.open ~= nil or ad.read ~= nil or ad.get ~= nil)
@@ -54,26 +67,14 @@ function readMv(channel)
     if not ad then
         return nil
     end
-    local function tryRead(fnName)
-        local fn = ad[fnName]
-        if not fn then
-            return nil
-        end
-        local ok, mv = pcall(fn, channel)
-        if ok and mv ~= nil and mv >= 0 then
-            readMvFn = fnName
-            return mv
-        end
-        return nil
-    end
     if readMvFn then
-        local mv = tryRead(readMvFn)
+        local mv = tryRead(ad, readMvFn, channel)
         if mv ~= nil then
             return mv
         end
         readMvFn = nil
     end
-    return tryRead("read") or tryRead("get")
+    return tryRead(ad, "read", channel) or tryRead(ad, "get", channel)
 end
 
 return _M

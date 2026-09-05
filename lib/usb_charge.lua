@@ -80,10 +80,10 @@ local function pubUsbChange(inserted, fromIrq)
     lastUsb = inserted
     if inserted and fromIrq and cancelPressHook then cancelPressHook() end
     sys.publish(APP_EVENTS.GPIO_USB_DET_CHANGED, inserted and 1 or 0)
-    updateCharging(effectiveCharging(), fromIrq)
+    updateCharging(effectiveCharging())
 end
 
-updateCharging = function(charging, fromIrq)
+updateCharging = function(charging)
     if lastCharging == charging then return end
     lastCharging = charging
     sys.publish(APP_EVENTS.GPIO_CHG_STATE_CHANGED, charging and 1 or 0)
@@ -94,7 +94,7 @@ local function onUsbIrq(_level)
 end
 
 local function onChgIrq(_level)
-    updateCharging(effectiveCharging(), true)
+    updateCharging(effectiveCharging())
 end
 
 function start()

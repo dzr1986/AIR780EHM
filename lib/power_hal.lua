@@ -30,14 +30,14 @@ function hibernate()
     end
 end
 
--- RNDIS USB 网卡：进入 IDLE 并打开 USB 电源（原 usb_rndis.pmUsbApply）
-function requestIdle()
+-- RNDIS USB 网卡：进入 IDLE 并打开 USB 电源。
+local function requestIdle()
     if pm and pm.request and pm.IDLE then
         pm.request(pm.IDLE)
     end
 end
 
-function setUsbPower(on)
+local function setUsbPower(on)
     if not pm or not pm.power or not pm.USB then
         return false
     end
@@ -58,9 +58,9 @@ function cycleUsbPower(pauseMs)
     if ms < 100 then
         ms = 100
     end
-    pcall(pm.power, pm.USB, false)
+    setUsbPower(false)
     sys.wait(ms)
-    pcall(pm.power, pm.USB, true)
+    setUsbPower(true)
     prepareUsbRndis()
     return true
 end

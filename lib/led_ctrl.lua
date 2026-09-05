@@ -137,7 +137,7 @@ local function setupBlue(gout, pinNum)
         end
         return
     end
-    raw = gpio.setup(pinNum, 1)
+    raw = gpio_util.setupOutput({ pin = pinNum, init_level = 1 })
     bluePin = function(logical) raw(logical == 1 and 0 or 1) end
 end
 

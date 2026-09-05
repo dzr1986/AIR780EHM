@@ -132,9 +132,9 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `sys.lua` | 394 | LuatOS 协程调度核心（**vendor**，R5 sha256 锁） |
-| `cell_boot.lua` | 373 | 蜂窝引导：SIM/APN、`IP_READY`、运营商映射 |
+| `cell_boot.lua` | 362 | 蜂窝引导：SIM/APN、`IP_READY`、运营商映射 |
 | `runtime_power.lua` | 315 | `APP_RUNTIME` 唯一入口 + PSM（`requestRest/Normal`）+ **L1 设备 power**（`requestDeviceShutdown/Reboot/ModemHibernate/initPwkMode/initPmd`→`power_hal`） |
-| `usb_rndis.lua` | 299 | USB 网卡 tethering、IP_READY 刷新（pm 经 `power_hal.prepareUsbRndis`/`cycleUsbPower`） |
+| `usb_rndis.lua` | 295 | USB 网卡 tethering、IP_READY 刷新（pm 经 `power_hal.prepareUsbRndis`/`cycleUsbPower`） |
 | `led_ctrl.lua` | 226 | 蓝/红 LED 模式状态机 |
 | `utils.lua` | 186 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
 | `libfota2.lua` | 180 | FOTA 下载引擎（**vendor**，R5 sha256 锁） |
@@ -145,7 +145,7 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 | `power_hal.lua` | 87 | **L0 HAL** — 全仓库唯一 `pm.*/pmd.*` 封装（shutdown/reboot/hibernate/initPwkMode/initPmd/prepareUsbRndis/cycleUsbPower） |
 | `module_loader.lua` | 59 | 懒加载/裁剪/stopAll（`MODULE_FLAGS` 驱动） |
 | `config_manager.lua` | 69 | 配置访问（默认值合并、热更新、持久化） |
-| `adc_hal.lua` | 72 | **L0 HAL** — 全仓库唯一 `adc.*` 封装（vbat 采样） |
+| `adc_hal.lua` | 80 | **L0 HAL** — 全仓库唯一 `adc.*` 封装（vbat 采样） |
 | `gpio_util.lua` | 68 | `GPIO_IN/OUT` → `gpio.setup`；`getLevel` 读电平 |
 | `device_id.lua` | 37 | IMEI / deviceNo |
 

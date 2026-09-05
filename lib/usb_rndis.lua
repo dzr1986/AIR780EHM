@@ -191,10 +191,6 @@ function disable()
 end
 stop = disable
 
-local function softReenum(pauseMs)
-    return powerHal.cycleUsbPower(pauseMs)
-end
-
 function rebind(opts)
     opts = type(opts) == "table" and opts or {}
     local waitMs = tonumber(opts.waitMs) or 500
@@ -214,7 +210,7 @@ function rebind(opts)
     local ok, err = pcall(function()
         if soft then
             -- HOST_USB_CFG.usb_reset_soft_rebind：只拨 USB 电源，失败也不进飞行模式（会掐 MQTT）
-            if not softReenum(waitMs) then
+            if not powerHal.cycleUsbPower(waitMs) then
                 softOk = false
                 runtime.last_error = "soft_reenum_fail"
                 return
