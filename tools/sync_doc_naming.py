@@ -137,6 +137,10 @@ REPLACEMENTS: list[tuple[str, str]] = [
     ("cancelShutdownTmr", "cancelShutdownTimer"),
     ("useSelfSrv", "useSelfServer"),
     ("selfSrvUrl", "selfServerUrl"),
+    # P1b（2026-09-04）：跨域懒加载桥 lib/utils → user/svc
+    ("utils.hostUart", "svc.hostUart"),
+    ("utils.uartBridge", "svc.uartBridge"),
+    ("utils.t31xOn", "svc.t31xOn"),
 ]
 
 SKIP_FILES = {

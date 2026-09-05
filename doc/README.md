@@ -36,7 +36,7 @@
 |------|------|
 | [overview/CAT1_API_NAMING.md](overview/CAT1_API_NAMING.md) | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…；对齐代码 001.000.155，151 批 rename 后无 API 变更） |
 | [overview/T31X_NAMING.md](overview/T31X_NAMING.md) | 协处理器系列写法（`t31x` / `T31x` / `T31X`） |
-| [overview/LUA_MODULES.md](overview/LUA_MODULES.md) | **模块树真源**（user 58 + lib 15 = 73） |
+| [overview/LUA_MODULES.md](overview/LUA_MODULES.md) | **模块树真源**（user 59 + lib 15 = 74） |
 
 **同步脚本**：`python tools/sync_doc_naming.py`（批量刷新 `doc/` 内 API 引用）。
 

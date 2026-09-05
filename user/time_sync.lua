@@ -7,6 +7,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local svc = require "svc"
 local cfgm = require "config_manager"
 local loader = require "module_loader"
 local t31xPolicy = require "t31x_policy"
@@ -59,7 +60,7 @@ function isTimeValid(t)
 end
 
 local function hostReady()
-    local hif = utils.hostUart()
+    local hif = svc.hostUart()
     return hif and hif.isHostAtReady()
 end
 
@@ -74,7 +75,7 @@ local function waitHostReady(timeoutMs)
 end
 
 local function ensT31xPower(extra)
-    return utils.t31xOn("time_sync", extra, {
+    return svc.t31xOn("time_sync", extra, {
         t31xPowerWaitMs = tonumber(timeCfg().t31x_power_wait_ms) or 800,
     })
 end
@@ -96,7 +97,7 @@ function pushToHost(force)
             return true
         end
     end
-    local ub = utils.uartBridge()
+    local ub = svc.uartBridge()
     if not ub then
         tsWarn("uart_unavailable")
         return false
@@ -139,7 +140,7 @@ function pushBeforeNotify(sid, evt)
     if enabled() and cfg.sync_before_wake ~= false and isTimeValid() and ensT31xPower() then
         pushToHost(false)
     end
-    local hif = utils.hostUart()
+    local hif = svc.hostUart()
     if hif then hif.ntfHost(sid, evt) end
 end
 

@@ -181,7 +181,7 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function pushNetLed(online)
-        local ok, hif = pcall(utils.hostUart)
+        local ok, hif = pcall(C.hostUart) -- 经 net_mqtt ctx 注入（svc.hostUart），utils 已不再提供跨域桥
         if ok and hif and hif.pushNetLedSt then
             pcall(hif.pushNetLedSt, hif, online)
         end

@@ -10,7 +10,7 @@
 |------|------|
 | [CAT1_API_NAMING.md](CAT1_API_NAMING.md) 🟢 | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…，对齐代码 001.000.155，151 批 rename 后无 API 变更） |
 | [T31X_NAMING.md](T31X_NAMING.md) 🟢 | 协处理器写法规范（`t31x` 代码 / `T31x` 行文 / `T31X` 常量·文件名） |
-| [LUA_MODULES.md](LUA_MODULES.md) 🟢 | **模块树真源**（user 58 + lib 15 = 73，config 片段族、设计原则） |
+| [LUA_MODULES.md](LUA_MODULES.md) 🟢 | **模块树真源**（user 59 + lib 15 = 74，config 片段族、设计原则） |
 
 ## 架构与现状（入口先读 📌）
 

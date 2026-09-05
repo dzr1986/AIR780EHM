@@ -102,7 +102,7 @@ ctx 键：`hostNowMs`、`noteUartLinkOk`、`wledGet`、`okTail`、`hexLine`、`s
 
 | API | 说明 |
 |-----|------|
-| `getHostUart()` / `getUartBridge()` | 懒加载模块 |
+| `svc.hostUart()` / `svc.uartBridge()` / `svc.t31xOn(tag, extra, default)` | 跨域懒加载桥（**P1b 起在 `user/svc.lua`**，原 `utils.*`；lib 不再反向懒加载 user 业务） |
 | `mkLogFns(tag)` | 日志表 |
 | `gpio_util.setupInput` / `setupInputEntry` / `setupOutput` | GPIO 封装 |
 | `gpio_util.triggerMode` | 边沿枚举（配置键仍为 `trigger_mode`） |

@@ -7,6 +7,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local svc = require "svc"
 local gpio_util = require "gpio_util"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
@@ -241,7 +242,7 @@ end
 
 local function blockSleep(opts)
     if opts.skipPendingWorkCheck == true then return false end
-    local hif = utils.hostUart()
+    local hif = svc.hostUart()
     return hif ~= nil and hostEvt.shouldBlockT31xSleep(hif.bldHostEvtBody()) == true
 end
 
@@ -334,7 +335,7 @@ end
 
 function gracePowOff(opts)
     opts = utils.optTable(opts)
-    local hif = utils.hostUart()
+    local hif = svc.hostUart()
     local ipc = cfgm.get("HOST_IPC_CFG")
     local playSound = opts.playSound
     if playSound == nil then playSound = ipc.poweroff_play_sound ~= false end
@@ -353,7 +354,7 @@ end
 function pwrOnReady(opts)
     opts = utils.optTable(opts)
     if not utils.inSysTask() then return false end
-    local hif = utils.hostUart()
+    local hif = svc.hostUart()
     local ipc = cfgm.get("HOST_IPC_CFG")
     local ipcOn = ipc.enabled ~= false and hif
     if ipcOn and hif.qryHostStat(opts.statusTimeoutMs) == "ready" then

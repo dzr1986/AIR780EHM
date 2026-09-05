@@ -1,6 +1,6 @@
 # 技术工作流总图（按设备生命周期理顺功能逻辑）
 
-> **定位**：L1 导航/汇编层（与 `manual/` 同层，无真源权）。把 `doc/` 130+ 篇主题文档与 73 个 Lua 模块，
+> **定位**：L1 导航/汇编层（与 `manual/` 同层，无真源权）。把 `doc/` 130+ 篇主题文档与 74 个 Lua 模块，
 > **按设备从上电到关机的技术工作流**串成一条线：每个工作流回答「谁触发 → 代码走到哪 → 发了什么协议/事件 → 在哪个门禁上会被拦 → 在哪观测 → 真源在哪」。
 > **冲突判据**：代码 > 主题真源 > 本图。模块/函数名以 [`CAT1_API_NAMING`](CAT1_API_NAMING.md)、[`LUA_MODULES`](LUA_MODULES.md) 为准；本页只做定位，不复制协议正文。
 > **配套**：任务视角看 [`manual/`](../manual/README.md)（改什么去哪卷）；本页是**运行时视角**（设备正在做什么、下一步会发生什么）。
@@ -54,7 +54,7 @@ flowchart TB
 | `vbat` / `battery_guard` / `usb_charge` / `runtime_power` | ● | ● | ● | | ● | | ● | | | |
 | `fota_svc` / `libfota2` | | | | ● | | | | ● | | |
 | `time_sync` / `sound_prompt` | | | ● | | | | ● | | ● | |
-| `ipc_supv` / `watchdog` / `utils` | | | ● | | | | | | | ● |
+| `ipc_supv` / `watchdog` / `utils` / `svc`（跨域桥） | | | ● | | | | | | | ● |
 
 ---
 

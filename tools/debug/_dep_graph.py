@@ -6,7 +6,7 @@
     bind       require("x").bind(...)                    —— 子模块装配（也是加载期）
     loader     loader.load("x") / loader.opt(flag, "x")  —— 运行期懒加载（module_loader 缓存）
     modCall    modCall("x", "fn", ...)                   —— 运行期字符串调用
-    utils-lazy utils.hostUart() / utils.uartBridge() / utils.t31xOn()  —— lib 提供的反向懒加载桥
+    utils-lazy svc.hostUart() / svc.uartBridge() / svc.t31xOn()（P1b 前为 utils.*）—— 跨域懒加载桥
 
 用法：
     python tools/debug/_dep_graph.py                 # 摘要：节点/边/硬环/软环/反向边
@@ -38,7 +38,8 @@ RE_REQUIRE = re.compile(r'require\s*\(?\s*["\']([A-Za-z_]\w*)["\']\s*\)?')
 RE_BIND = re.compile(r'require\s*\(\s*["\']([A-Za-z_]\w*)["\']\s*\)\s*\.bind')
 RE_LOADER = re.compile(r'loader\.(?:load|opt)\s*\(\s*(?:["\'][^"\']*["\']\s*,\s*)?["\']([A-Za-z_]\w*)["\']')
 RE_MODCALL = re.compile(r'modCall\s*\(\s*["\']([A-Za-z_]\w*)["\']')
-RE_UTILS_LAZY = re.compile(r'utils\.(hostUart|uartBridge|t31xOn)\s*\(')
+# 跨域懒加载桥：P1b 起位于 user/svc.lua（历史在 lib/utils），两种前缀都识别以便对比前后
+RE_UTILS_LAZY = re.compile(r'(?:utils|svc)\.(hostUart|uartBridge|t31xOn)\s*\(')
 UTILS_LAZY_TARGET = {"hostUart": "host_uart", "uartBridge": "uart_bridge", "t31xOn": "t31x_ctrl"}
 
 

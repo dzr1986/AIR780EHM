@@ -2,7 +2,7 @@
 
 技术文档：**[`doc/README.md`](doc/README.md)** · 模块树：**[`doc/overview/LUA_MODULES.md`](doc/overview/LUA_MODULES.md)** · 命名约定：**[`doc/overview/T31X_NAMING.md`](doc/overview/T31X_NAMING.md)** · API 真源：**[`doc/overview/CAT1_API_NAMING.md`](doc/overview/CAT1_API_NAMING.md)**
 
-Air780EHM + T31x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`，真源共 **58 + 15 = 73** 个模块，2026-09-03 实测）。
+Air780EHM + T31x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`，真源共 **59 + 15 = 74** 个模块，2026-09-04 实测）。
 
 ## 架构一览
 
@@ -34,7 +34,7 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 
 | 路径 | 说明 |
 |------|------|
-| `user/` | 入口 / 编排 / config 片段 / MQTT 族 / T31x `hif_*` 族 / PIR / 外设 / FOTA / 授时（58 文件） |
+| `user/` | 入口 / 编排 / config 片段 / MQTT 族 / T31x `hif_*` 族 / PIR / 外设 / FOTA / 授时 / `svc` 服务定位器（59 文件） |
 | `lib/` | 驱动与公共库：串口 / GPIO / USB / 蜂窝引导 / 唤醒策略 / 加载器 / 系统（15 文件） |
 | `doc/` | 文档库（按主题分目录：`overview/` `hardware/` `power/` `pir/` `mqtt/` `t31x/` `release/` `modules/`，`_audit/` 历史留档、`archive/` 迁移 stub；索引见 [doc/README.md](doc/README.md)） |
 | `archive/` | 历史归档（已删模块留档、旧文档迁移表） |
@@ -58,7 +58,7 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 | `device_id.lua` | 设备标识（IMEI 等） |
 | `utils.lua` / `sys.lua` / `watchdog.lua` / `libfota2.lua` | 工具 / 平台封装 / 模组 WDT / OTA 引擎 |
 
-## user/ 主路径（58）
+## user/ 主路径（59）
 
 | 文件 | 职责 |
 |------|------|
@@ -105,4 +105,4 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 
 ---
 
-**工程包** v1.2 · **固件 VERSION** `001.000.155`（`user/main.lua`）· **更新** 2026-09-04（架构/配置口径对齐 73 模块真源；152–155 为审计行为修复；模块名与引导链以 `user/`、`lib/` 实测为准）
+**工程包** v1.2 · **固件 VERSION** `001.000.155`（`user/main.lua`）· **更新** 2026-09-04（架构/配置口径对齐 74 模块真源；152–155 为审计行为修复；模块名与引导链以 `user/`、`lib/` 实测为准）

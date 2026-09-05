@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-04",
+  "date": "2026-09-05",
   "user": {
     "app.lua": 973,
     "battery.lua": 106,
@@ -34,7 +34,7 @@
     "ipc_supv.lua": 188,
     "led_pir.lua": 68,
     "lp_wakeup.lua": 116,
-    "main.lua": 171,
+    "main.lua": 172,
     "mqtt_conn.lua": 347,
     "mqtt_dispatch.lua": 110,
     "mqtt_dl_ctrl.lua": 216,
@@ -48,16 +48,17 @@
     "mqtt_ul_upload.lua": 147,
     "mqtt_uplink.lua": 537,
     "net.lua": 82,
-    "net_mqtt.lua": 665,
+    "net_mqtt.lua": 666,
     "net_tcp.lua": 35,
     "peripheral.lua": 178,
     "pir_ctrl.lua": 728,
-    "sound_prompt.lua": 131,
+    "sound_prompt.lua": 132,
+    "svc.lua": 31,
     "t31x_burn.lua": 19,
-    "t31x_ctrl.lua": 373,
+    "t31x_ctrl.lua": 374,
     "t31x_notify.lua": 87,
     "t31x_policy.lua": 129,
-    "time_sync.lua": 218,
+    "time_sync.lua": 219,
     "vbat.lua": 250
   },
   "lib": {
@@ -74,18 +75,18 @@
     "usb_charge.lua": 131,
     "usb_rndis.lua": 311,
     "usb_vuart.lua": 103,
-    "utils.lua": 200,
+    "utils.lua": 185,
     "watchdog.lua": 100
   },
   "totals": {
     "user": {
-      "files": 58,
-      "lines": 13678
+      "files": 59,
+      "lines": 13714
     },
     "lib": {
       "files": 15,
-      "lines": 2563
+      "lines": 2548
     },
-    "all": 16241
+    "all": 16262
   }
 }

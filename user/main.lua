@@ -112,6 +112,7 @@ if _G.__LUATOOLS_SCAN_ANCHOR__ then
     require "net_tcp"
     require "runtime_power"
     require "sound_prompt"
+    require "svc"
     require "t31x_notify"
     require "t31x_policy"
     require "time_sync"

@@ -1,13 +1,13 @@
 # Lua 模块专题文档
 
-> 总览：[LUA_MODULES.md](../overview/LUA_MODULES.md)（§1.1 **模块树真源**：user 58 + lib 15 = 73）· 拆分后治理：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](../overview/USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)
+> 总览：[LUA_MODULES.md](../overview/LUA_MODULES.md)（§1.1 **模块树真源**：user 59 + lib 15 = 74）· 拆分后治理：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](../overview/USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)
 > API 命名：[CAT1_API_NAMING.md](../overview/CAT1_API_NAMING.md) · 合并与实机回归：[PR_MERGE_REGRESSION.md](PR_MERGE_REGRESSION.md)
 > 协议真源：[MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md) · [UART_AT_COMMANDS.md](../mqtt/UART_AT_COMMANDS.md)
 > 工作流位置：每个专题在设备生命周期里的先后与门禁见 [TECH_WORKFLOWS.md §0.2 工作流 × 模块矩阵](../overview/TECH_WORKFLOWS.md#02-工作流--模块矩阵谁参与哪条线)。
 
 本目录按 **host_uart 族 / net_mqtt 族 / user 业务 / lib 策略与底层** 四类索引，共 **20** 份专题 + 1 份合并回归清单。
 
-> **2026-09-03 更新**：表内文件名已对齐 `user/`（58）/ `lib/`（15）真实文件。**子模块名仅作语义分组**，行数/bind 顺序真源见 [LUA_MODULES.md](../overview/LUA_MODULES.md) §1.1。
+> **2026-09-03 更新**：表内文件名已对齐 `user/`（59，P1b +`svc`）/ `lib/`（15）真实文件。**子模块名仅作语义分组**，行数/bind 顺序真源见 [LUA_MODULES.md](../overview/LUA_MODULES.md) §1.1。
 
 ---
 

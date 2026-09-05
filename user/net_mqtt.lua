@@ -7,6 +7,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local svc = require "svc"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
@@ -236,7 +237,7 @@ local function pubUplink(opts)
 end
 
 local function getWledState()
-    local hif = utils.hostUart()
+    local hif = svc.hostUart()
     if hif then
         return hif.wledState() == 1 and 1 or 0
     end
@@ -245,7 +246,7 @@ end
 
 local ctx = {
     DT = DT,
-    hostUart = utils.hostUart,
+    hostUart = svc.hostUart,
     pubUplink = pubUplink,
     pubAppEvent = pubAppEvent,
     escJson = escJson,

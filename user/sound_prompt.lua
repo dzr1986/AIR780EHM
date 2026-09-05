@@ -7,6 +7,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local svc = require "svc"
 local cfgm = require "config_manager"
 local loader = require "module_loader"
 local t31xPolicy = require "t31x_policy"
@@ -58,7 +59,7 @@ function shouldPlay(scene)
 end
 
 local function ensT31xPower(extra)
-    return utils.t31xOn("sound_prompt", extra, {
+    return svc.t31xOn("sound_prompt", extra, {
         t31xPowerWaitMs = tonumber(soundCfg().t31x_power_wait_ms) or 800,
     })
 end
@@ -69,7 +70,7 @@ function playBlocking(name, scene)
         or (not scene and not enabled()) then
         return false
     end
-    local ub = utils.uartBridge()
+    local ub = svc.uartBridge()
     if not ub then return false end
     ensT31xPower()
     if scene == "boot_cold" then coldBootPlayed = true end

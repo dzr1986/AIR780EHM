@@ -35,7 +35,7 @@ main.lua
 
 ---
 
-## 1.1 模块树（2026-09-03 实测真源）
+## 1.1 模块树（2026-09-04 实测真源，user 59 + lib 15 = 74）
 
 > 行数可用 `python tools/debug/_module_tree.py` 刷新。协议 handler **禁止**子模块 `require "host_uart"` / `require "net_mqtt"`。
 > 文件都在 `user/` / `lib/` 顶层；文件名即模块名，**无子目录**（旧头注释中的 `config/xxx` 仅表示片段归属）。
@@ -103,11 +103,12 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 
 **主文件 bind 顺序（真源 net_mqtt.lua）**：`conn.bind`（L160）→ `mqtt_uplink.bind`（L262）→ `mqtt_downlink.bind`（L266，产出 `DOWNLINK_HANDLERS`）→ `mqtt_dispatch.bind`（L271）。
 
-### 其余 user 模块（16 文件，业务）
+### 其余 user 模块（17 文件，业务）
 
 | 模块 | 行数 | 职责摘要 |
 |------|------|----------|
-| `main` | 167 | 入口、VERSION、蜂窝/RNDIS、`app.start`、`sys.run()` |
+| `main` | 172 | 入口、VERSION、蜂窝/RNDIS、`app.start`、`sys.run()` |
+| `svc` | 31 | 服务定位器：`hostUart`/`uartBridge`/`t31xOn` 跨域懒加载桥（P1b 自 `lib/utils` 迁入，lib 回归业务无感） |
 | `app` | 972 | 事件总线、低功耗/USB/PIR 编排（**冻结不拆**） |
 | `pir_ctrl` | 722 | PIR 硬件、录像会话、2010–2012 关联 |
 | `battery_guard` | 391 | 电量三档、HOSTIDLE、关机定时器 |
@@ -134,7 +135,7 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 | `cell_boot.lua` | 373 | 蜂窝引导：SIM/APN、`IP_READY`、运营商映射 |
 | `usb_rndis.lua` | 311 | USB 网卡 tethering、IP_READY 刷新 |
 | `led_ctrl.lua` | 225 | 蓝/红 LED 模式状态机 |
-| `utils.lua` | 196 | JSON/表/字符串通用 helper、`lazyLoad` |
+| `utils.lua` | 185 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
 | `runtime_power.lua` | 193 | 工作模式 + USB/充电/电量/在线访问器（`APP_RUNTIME` 唯一入口） |
 | `libfota2.lua` | 180 | FOTA 下载引擎（差分协议/断点续传） |
 | `usb_charge.lua` | 131 | GPIO27/CHG_STATE 中断 → `GPIO_USB_DET_CHANGED` |
@@ -428,7 +429,7 @@ SIM/APN 探测、`IP_READY` 等待、运营商映射。`main` 与 `net_mqtt` 共
 | `config_manager` | 69 | `cfgm.get/merge/set` 配置访问 |
 | `module_loader` | 59 | `load/opt/start/stopAll/enabled`（`MODULE_FLAGS` 裁剪） |
 | `libfota2` | 180 | 差分 OTA 下载引擎（勿动） |
-| `utils` | 196 | JSON/表/字符串 helper、`lazyLoad` |
+| `utils` | 185 | JSON/表/字符串 helper（跨域桥已迁 `user/svc`） |
 
 ---
 
@@ -512,4 +513,4 @@ evaluate ≤5% → suspendPir + onEnterLowPower(battery) + scheduleShutdown(3s)
 
 ---
 
-**版本**：2026-09-03 · 对齐实测真源（user 58 + lib 15 = 73）；`module_tree.py` 可刷新行数
+**版本**：2026-09-04 · 对齐实测真源（user 59 + lib 15 = 74，P1b +`svc`）；`module_tree.py` 可刷新行数
