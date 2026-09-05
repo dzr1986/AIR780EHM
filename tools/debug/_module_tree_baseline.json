@@ -47,8 +47,8 @@
     "mqtt_ul_pir.lua": 191,
     "mqtt_ul_upload.lua": 151,
     "mqtt_uplink.lua": 537,
-    "net.lua": 82,
-    "net_mqtt.lua": 673,
+    "net.lua": 83,
+    "net_mqtt.lua": 677,
     "net_tcp.lua": 35,
     "peripheral.lua": 178,
     "pir_ctrl.lua": 725,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13955
+      "lines": 13960
     },
     "lib": {
       "files": 15,
       "lines": 2632
     },
-    "all": 16587
+    "all": 16592
   }
 }

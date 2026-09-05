@@ -213,6 +213,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-05 | **架构 F 条：跨族协议常量单源（零行为）**：config 片段 `host.lua` `_G.HOST_PROTO_TMO{ipcstat_query_ms=2500, record_stop_ms=22000}`；`host_uart`/`net_mqtt` 两族 `TMO_SHARED` 与 `hif_ipc_hostq.recOff`/`mqtt_dl_pir.stopDefault` 改引；CONFIG.md 键索引 39→40。详见 [HOST_UART_AT_DISPATCH §8](../modules/HOST_UART_AT_DISPATCH.md) |
 | 2026-09-05 | **架构 H 条：PIRSTAT 文本拼装出业务层（零行为）**：`pir_ctrl.buildStatBody` → 数据快照 `getStatSnapshot()`；`+PIRSTAT:` 文本由 `hif_cmd_pir.buildPirStatBody` 拼装（字段顺序逐字一致）；provider 键 `pirStatBody`→`pirStatSnapshot`。详见 [PIR_CTRL_FLOW §8](../modules/PIR_CTRL_FLOW.md) |
 | 2026-09-05 | **架构 I 条：lib 去 T31x 语义 + vendor 锁（零行为）**：`utils.waitT31xAck` → 通用 `waitEventUntil`（sound_prompt/time_sync 两处改引）；`sys.lua`/`libfota2.lua` 标 vendor 层并以 `_layer_check` R5 sha256 锁守护（Luatools 限制不能物理挪目录）。详见 [LUA_MODULES vendor 段](LUA_MODULES.md) |
+| 2026-09-05 | **架构 G 条：上行黄金样本采集链路（真机步骤待执行）**：`MQTT_CFG.golden_tap`（默认 false，零开销）→ `net_mqtt.pubLoop` `MQTT_GOLDEN` 日志行 → `tools/debug/_uplink_golden_capture.py`（串口 / `--from-file`）→ `tests/fixtures/uplink_golden/`；`_uplink_schema_check` 有样本即校验「真机键 ⊆ 代码全集」并提示文档漂移。**待办**：真机开 tap 采一轮（覆盖 1001–1013）后提交样本 |
 
 ---
 

@@ -50,7 +50,7 @@
 | `SOUND_CFG` | `user/host.lua` | `user/sound_prompt.lua`、`user/t31x_ctrl.lua` |
 | `TIME_SYNC_CFG` | `user/host.lua` | `user/app.lua`、`user/hif_cmd.lua`、`user/hif_ipc.lua`、`user/t31x_ctrl.lua`、`user/time_sync.lua` |
 | `FOTA_CFG` | `user/net.lua` | `user/fota_svc.lua`、`user/mqtt_dl_ctrl.lua` |
-| `MQTT_CFG` | `user/net.lua` | `user/mqtt_conn.lua` |
+| `MQTT_CFG` | `user/net.lua` | `user/mqtt_conn.lua`、`user/net_mqtt.lua` |
 | `UART_CFG` | `user/net.lua` | `lib/uart_bridge.lua` |
 | `WDT_CFG` | `user/net.lua` | `user/app.lua`、`lib/watchdog.lua` |
 | `MODULE_FLAGS` | `user/flags.lua` | `user/hif_cmd.lua`、`user/host_event.lua`、`user/t31x_notify.lua`、`lib/module_loader.lua` |

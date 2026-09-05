@@ -488,6 +488,7 @@ local function mqttTask()
     if not statFlags.timerStarted then
         stat.startStatReporter()
     end
+    local goldenTap = (cfgm.get("MQTT_CFG") or {}).golden_tap == true
 	while true do
         local ret, pubTopicName, data, qos = sys.waitUntil("mqtt_pub", TIMEOUT.pubLoopWait)
 		if ret then
@@ -496,6 +497,9 @@ local function mqttTask()
             end
             if isConnected then
                 mqttClient:publish(pubTopicName, data, qos)
+                if goldenTap then
+                    log.info("MQTT_GOLDEN", pubTopicName, data) -- 黄金样本采集口（MQTT_CFG.golden_tap，默认关）
+                end
             end
         end
     end
