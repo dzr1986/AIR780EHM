@@ -1,1 +1,17 @@
-[]
+[
+ "R4 hif_cmd -> battery_guard",
+ "R4 hif_cmd -> net_mqtt",
+ "R4 hif_cmd -> pir_ctrl",
+ "R4 hif_cmd_link -> lp_wakeup",
+ "R4 hif_cmd_link -> net_mqtt",
+ "R4 hif_cmd_pir -> host_event",
+ "R4 hif_cmd_pir -> pir_ctrl",
+ "R4 hif_cmd_t31x -> net_mqtt",
+ "R4 hif_cmd_t31x -> pir_ctrl",
+ "R4 hif_ipc_cloud -> pir_ctrl",
+ "R4 hif_rx_dsl -> sound_prompt",
+ "R4 hif_rx_dsl -> time_sync",
+ "R4 host_uart -> battery_guard",
+ "R4 host_uart -> lp_wakeup",
+ "R4 host_uart -> t31x_policy"
+]
