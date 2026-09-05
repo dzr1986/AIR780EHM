@@ -1,7 +1,7 @@
 {
   "date": "2026-09-05",
   "user": {
-    "app.lua": 897,
+    "app.lua": 791,
     "battery.lua": 106,
     "battery_guard.lua": 391,
     "cellular.lua": 25,
@@ -47,10 +47,11 @@
     "mqtt_ul_pir.lua": 191,
     "mqtt_ul_upload.lua": 151,
     "mqtt_uplink.lua": 537,
-    "net.lua": 83,
+    "net.lua": 84,
     "net_mqtt.lua": 677,
     "net_tcp.lua": 35,
     "peripheral.lua": 178,
+    "pir_app_bridge.lua": 169,
     "pir_ctrl.lua": 725,
     "sound_prompt.lua": 132,
     "svc.lua": 31,
@@ -83,13 +84,13 @@
   },
   "totals": {
     "user": {
-      "files": 60,
-      "lines": 14039
+      "files": 61,
+      "lines": 14103
     },
     "lib": {
       "files": 17,
       "lines": 2791
     },
-    "all": 16830
+    "all": 16894
   }
 }

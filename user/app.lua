@@ -19,6 +19,7 @@ local deviceId = require "device_id"
 local uart_bridge = require "uart_bridge"
 local gpio_util = require "gpio_util"
 local pirCtrl = require "pir_ctrl"
+local pirAppBridge = require "pir_app_bridge"
 local batteryGuard = require "battery_guard"
 local host_uart = require "host_uart"
 local ipcSupv = require "ipc_supv"
@@ -51,7 +52,6 @@ local state = {
     heartbeat_count = 0,
     heartbeat_paused = false,
     usb_insert_tick = 0,
-    pir_watch_sleep_timer = nil,
 }
 
 local TIMEOUT = {
@@ -59,8 +59,6 @@ local TIMEOUT = {
     t31xSleepWait = 35000,
     usbExitRestWait = 5000,
     bootUsbNotifyDefault = 1500,
-    pirWatchSleep = 5000,
-    pirStopFbDefault = 15000,
     delayedStat = 2000,
     heartbeatMin = 1000,
 }
@@ -428,10 +426,10 @@ local function bootMqtt()
     sys.taskInit(function()
         -- RNDIS open 会 flymode；须等 stable 后再起 MQTT，避免与 IP_LOSE 竞态
         if usbRndis and not usbRndis.isBootStable() then
-            usbRndis.waitForNetStable(300000)
+            usbRndis.waitForNetStable(tonumber(cfgm.get("MQTT_CFG").boot_net_wait_ms) or 300000)
         end
         if not utils.localIp() then
-            sys.waitUntil("net_ready", 300000)
+            sys.waitUntil("net_ready", tonumber(cfgm.get("MQTT_CFG").boot_net_wait_ms) or 300000)
         end
         deviceId.setImei(deviceId.getDisplayId())
         startMqtt()
@@ -478,21 +476,8 @@ local function subscribeAll(handlers)
 end
 
 ----------------------------------------------------------------
--- PIR → MQTT / t31x 桥
+-- 事件 handler（PIR 桥见 pir_app_bridge）
 ----------------------------------------------------------------
-
-local function pubPirEvent(overrides)
-    if netModule then
-        netModule.pubPirEvent(overrides)
-    end
-end
-
-local function maybePubWakeup(uploadMode)
-    if (uploadMode == "auto" or uploadMode == nil) and not rntmPwr.isLowPowerMode()
-        and netModule then
-        netModule.pubWakeup()
-    end
-end
 
 local function schedDelayedStat(delayMs)
     delayMs = tonumber(delayMs) or TIMEOUT.delayedStat
@@ -505,108 +490,12 @@ local function schedDelayedStat(delayMs)
     end, delayMs)
 end
 
-local function onPirMediaAction(action, uploadMode, quality)
-    if t31xBurnCtrl.isActive() then
-        return
-    end
-    maybePubWakeup(uploadMode)
-    wakeT31xFor("pir_media")
-end
-
-local function isT31xRecording()
-    return host_uart.getT31xRecActive() == 1
-end
-
-local function schedPirSleep(delayMs)
-    if not rntmPwr.isPirWatch() then
-        return
-    end
-    if state.pir_watch_sleep_timer then sys.timerStop(state.pir_watch_sleep_timer) end
-    state.pir_watch_sleep_timer = sys.timerStart(function()
-        state.pir_watch_sleep_timer = nil
-        if not rntmPwr.isPirWatch() then
-            return
-        end
-        if isT31xRecording() then
-            return
-        end
-        if t31xModule then
-            appInfo("pir_watch_idle_sleep")
-            t31xModule.enterSleep({ skipPendingWorkCheck = true, reason = "pir_watch_idle" })
-        end
-    end, tonumber(delayMs) or TIMEOUT.pirWatchSleep)
-end
-
-local function schedMqttStopFb(reason, uploadMode, quality)
-    local waitMs = tonumber(cfgm.get("PIR_RECORD_CFG").stop_mqtt_fallback_ms) or TIMEOUT.pirStopFbDefault
-    sys.taskInit(function()
-        sys.wait(waitMs)
-        if not pirCtrl.canStopMqtt() then
-            return
-        end
-        local st = pirCtrl.getState()
-        if st.last_stop_reason ~= reason then
-            return
-        end
-        if netModule then
-            netModule.pubPirStop(reason, uploadMode, quality, { source = "4g" })
-        end
-    end)
-end
-
-local function onPirStop(reason, uploadMode, quality)
-    local preferT31x = (reason == "timer" or reason == "device" or reason == "manual")
-        and isT31xRecording()
-    if not preferT31x and netModule then
-        netModule.pubPirStop(reason, uploadMode, quality, { source = "4g" })
-    elseif preferT31x then
-        schedMqttStopFb(reason, uploadMode, quality)
-    end
-    wakeT31xFor("pir_stop")
-    schedPirSleep(TIMEOUT.pirWatchSleep)
-end
-
-local PIR_STOP_TIMER = pirCtrl.APP_PIR_CONFIG.STOP_REASON.TIMER
-
 local function mqttCall(name)
     return function(...)
         if netModule then
             netModule[name](...)
         end
     end
-end
-
-local function onPirMedia(action)
-    pubPirEvent({ pirStatus = "media_sync", action = action })
-end
-
-local function onPirReqStop(reason)
-    wakeT31xFor("pir_stop_" .. tostring(reason))
-end
-
-local function onPersonCnt()
-    -- 有人才走 AT+PERSONCNT；IVS 抖动由 T31 30s 限流。
-    -- 人数不上 MQTT 1010，避免后台刷屏。抽片在 T31 本地完成。
-end
-
-local function onT31xRecStop(reason, uploadMode, quality)
-    if netModule then
-        netModule.pubT31xStop(reason, uploadMode, quality)
-    end
-    schedPirSleep(3000)
-end
-
-local function onPirTimer()
-    pirCtrl.pubStopRec(PIR_STOP_TIMER)
-end
-
-local function onGpioPir(pirStatus, action, uploadMode, quality)
-    pubPirEvent({
-        pirStatus = pirStatus or "detected",
-        action = action,
-        uploadMode = uploadMode,
-        quality = quality,
-    })
 end
 
 local function onPwrEnterRest()
@@ -685,17 +574,17 @@ local EVNT_HNDL = {
     { E.BATTERY_UPDATE, onBatUpd },
     { E.MQTT_OFFLINE, onMqttOffline },
     { E.HOST_UART_FIRST_AT, onHostFirstAt },
-    { E.PIR_WAKE_T31X, onPirMediaAction },
-    { E.PIR_MEDIA_EFFECTIVE, onPirMedia },
-    { E.PIR_REQUEST_T31X_STOP, onPirReqStop },
-    { E.PIR_STOP_RECORDING, onPirStop },
+    { E.PIR_WAKE_T31X, pirAppBridge.onPirMediaAction },
+    { E.PIR_MEDIA_EFFECTIVE, pirAppBridge.onPirMedia },
+    { E.PIR_REQUEST_T31X_STOP, pirAppBridge.onPirReqStop },
+    { E.PIR_STOP_RECORDING, pirAppBridge.onPirStop },
     { E.T31X_SNAPSHOT_DONE, mqttCall("pubSnapDone") },
     { E.T31X_RECORD_ACTIVE, mqttCall("pubRecActive") },
-    { E.T31X_PERSON_CNT, onPersonCnt },
-    { E.T31X_RECORD_STOP, onT31xRecStop },
+    { E.T31X_PERSON_CNT, pirAppBridge.onPersonCnt },
+    { E.T31X_RECORD_STOP, pirAppBridge.onT31xRecStop },
     { E.T31X_IPC_ALERT, ipcSupv.pubAlert },
-    { E.PIR_TIMER_EXPIRED, onPirTimer },
-    { E.GPIO_PIR_TRIGGERED, onGpioPir },
+    { E.PIR_TIMER_EXPIRED, pirAppBridge.onPirTimer },
+    { E.GPIO_PIR_TRIGGERED, pirAppBridge.onGpioPir },
 }
 
 local function setupEvents()
@@ -802,6 +691,11 @@ function start(gpio, net, t31x_ctrl)
         isMqttStarted = function() return state.mqtt_started end,
         setMqttStarted = function(v) state.mqtt_started = v == true end,
         setHeartbeatPaused = function(v) state.heartbeat_paused = v == true end,
+    })
+    pirAppBridge.bind({
+        getNet = function() return netModule end,
+        getT31x = function() return t31xModule end,
+        wakeT31x = wakeT31xFor,
     })
     deviceId.setImei(deviceId.getDisplayId())
     hostEvt.bindMqttPending(function()

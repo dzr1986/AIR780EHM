@@ -1,6 +1,6 @@
 # pir_ctrl PIR 侦测与录像会话
 
-> **代码真源**：[`user/pir_ctrl.lua`](../../user/pir_ctrl.lua) · [`user/app.lua`](../../user/app.lua)（事件桥）  
+> **代码真源**：[`user/pir_ctrl.lua`](../../user/pir_ctrl.lua) · [`user/pir_app_bridge.lua`](../../user/pir_app_bridge.lua)（PIR→MQTT/T31x 桥，app 经 `bind` 注入 net/t31x）  
 > **协议**：[PIR_PROTOCOL.md](../pir/PIR_PROTOCOL.md) · [T31X_RECORD_MQTT_FLOW.md](../pir/T31X_RECORD_MQTT_FLOW.md)
 
 ---
