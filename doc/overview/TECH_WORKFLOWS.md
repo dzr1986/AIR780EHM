@@ -132,7 +132,7 @@ flowchart TB
 | 7 | 合并进 1003 | `ipc_supv.refCloudStat` / `mergeHostCache` → `mqtt_uplink.pubStatus` | 1003 `ipcReady/recordingt31x/tfPresent/…` | `refCloudStat1003(timeout, force)` 带缓存 |
 | 8 | 休眠门禁（T31x 侧问 4G） | `AT+HOSTIDLE?/=1` → `hif_cmd.checkHostIdleGate` → `usbBlockHost`/`battery_guard.shouldHostSleep`/`host_event.hasPendingWork` | `+HOSTIDLE:OK/USB/BUSY/…` | 155 修复双 OK；`HOST_USB_CFG.block_host_idle_when_usb` |
 | 9 | 待办事件汇总 | `AT+HOSTEVT?` → `hif_cmd_pir.bldPirWake` + `host_event.summarize`（wake/pir/record/mqtt 四位） | `+HOSTEVT:has_event=…` | `HOST_EVT_CFG.types_mask`；`MODULE_FLAGS.host_evt`（155 接入） |
-| 10 | 断电 | `t31x_ctrl.enterSleep(opts)` → `gracePowOff`（`AT+IPCPOWEROFF` 等 `+IPCPOWEROFF:OK`）→ `powerOff` | `SYS_EVT.IPCPOWEROFF_*` | `HOST_IPC_CFG.graceful_poweroff/poweroff_timeout_ms` |
+| 10 | 断电 | `t31x_ctrl.enterSleep(opts)` → `blockSleep`（待办事件或 **`uart_session` 进行中** → 延后）→ `gracePowOff` → `hostIpcPowerOff`（其它会话进行中有界等待 ≤ `poweroff_timeout_ms`）→ `AT+IPCPOWEROFF` 等 `+IPCPOWEROFF:OK` → `powerOff` | `SYS_EVT.IPCPOWEROFF_*` | `HOST_IPC_CFG.graceful_poweroff/poweroff_timeout_ms`；仲裁见 `HOST_UART_AT_DISPATCH §9` |
 
 **门禁/决策点**：W3-1 总门禁 · `HOST_IPC_CFG.enabled` · `uartAcquire` 串口事务锁（`hostQuery/hostSet/TFFORMAT/IPCPOWEROFF` 共用；stop/首次 start 复位）· **`state.uart_session` 破坏性会话**（格式化/断电/USB 恢复期间非持有协程查询走缓存、设置回 busy，`HOST_UART_AT_DISPATCH §9`）· `state.host_at_ready`（`waitBoot`）· `waitHostIdle`（quiet，`skipQuiet` 可跳）。
 **观测点**：`t31x_ctrl` 标签；`host_uart`/`hif_*` 日志（`uart_recovery_*`、`ipcpoweroff_rx`）；`AT+GETCFG`、`AT+IPCSTAT?`、`AT+HOSTIDLE?`；1003 的 `ipcReady`。

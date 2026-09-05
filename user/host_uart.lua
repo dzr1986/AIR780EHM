@@ -565,6 +565,7 @@ local ipc = require("hif_ipc").bind(ctx)
 for k, fn in pairs(ipc) do _M[k] = fn end
 -- 外部模块（ipc_supv）经 host_uart._M 使用的本文件 local / rx 能力：显式导出，否则为 nil 调用（P9 成员校验）
 _M.hostBusy = hostBusy
+_M.getUartSession = function() return state.uart_session end -- t31x_ctrl.blockSleep 仲裁用（P3 会话）
 _M.patchCloud = rx.patchCloud -- 仅限非 recordingt31x 的云状态补丁（recordingt31x 走 setRecActive，护栏守护）
 
 ----------------------------------------------------------------

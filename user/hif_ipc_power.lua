@@ -141,8 +141,18 @@ function bind(C, H)
         if cfg.enabled == false or not uart_bridge.sendString then
             return false
         end
+        -- 另一破坏性会话（格式化/恢复）进行中：有界等待其结束再优雅断电，而不是立刻放弃让调用方硬切电
+        -- （gracePowOff 收到 false 会直接 powerOff）。上限 = 本次 poweroff 预算 timeoutMs（默认 30s）。
+        if state.uart_session and state.uart_session ~= "poweroff" then
+            local waitUntil = hostNowMs() + timeoutMs
+            logPowerOffRx("wait_session", state.uart_session)
+            while state.uart_session and hostNowMs() < waitUntil do
+                sys.wait(TIMEOUT.pollSliceMs)
+            end
+        end
         if not enterSession("poweroff") then
-            return false -- 另一破坏性会话（格式化/恢复）进行中
+            logPowerOffRx("session_still_busy", state.uart_session)
+            return false
         end
         local success = false
         local ok = pcall(function()

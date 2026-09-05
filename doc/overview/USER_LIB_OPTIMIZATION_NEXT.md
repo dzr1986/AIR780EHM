@@ -2,7 +2,7 @@
 
 > **真源**：仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`。  
 > **基线版本**：`001.000.068`（2026-08-30）  
-> **当前版本**：`001.000.160`（152–160 = 审计/重构行为修复，见 §8 末尾）  
+> **当前版本**：`001.000.161`（152–161 = 审计/重构行为修复，见 §8 末尾）  
 > **拆分后治理计划**（文件树 / P0–P4 / 回归）：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)  
 > **API 命名真源**：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) · **历史缩写对照**：[FUNCTION_NAME_MAP.md](../_audit/FUNCTION_NAME_MAP.md)（134 前实验，只读）
 
@@ -206,6 +206,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-05 | **P9 modCall 签名校验 + host_uart 成员校验 + 重复实现收敛（VERSION 159）**：`_ref_name_check` 规则 D/E 落地即抓出 4 处 nil 成员调用（`ipc_supv.hostBusy/patchCloud`、`mqtt_dl_tf.getCachedHostTfCard`、`mqtt_dl_dev.getCachedHostGb28181Id`）→ host_uart 显式导出 / hostq、cloud 补导出；零行为收敛：`logPowerOffRx` 单源 ctx、`mqtt_ul_pir.optTable`→`utils.optTable`、`hif_cmd_t31x` tfPresent→`utils.to01`、`hif_ipc_cloud.defaultCloudSkeleton`→`ipcReadyFrom`；P7/P8 以护栏形态落地（bind 时刻可用性 + spec 生成；上行字段文档⊆代码）。详见 [audit §18.4](USER_LIB_CODE_AUDIT_20260904.md) |
 | 2026-09-05 | **P10 对外接口·代码可决部分（VERSION 160）**：1013 三条上行加 `stage`（`queued/uploaded/fail`，`MQTT_DOWNLINK §10b`）；`MQTT_DOWNLINK §10` 2011 文案按现网修正（先 1004 再 1011）。待决 5 项（1013 进度/UPLOADPROGRESS、need 去重、hostevt_poll、hybrid 配置删除、内核号）登记 `docs/refactor_plan.md` P10。**refactor_plan P0–P10 执行完毕**：P4 复核不实施、P7/P8 以护栏形态落地、其余按计划；VERSION 155→160；护栏 7→12 项 |
 | 2026-09-05 | **评审修复 + 两条新护栏（VERSION 维持 160）**：修 P2a 批量替换误伤 `hif_ipc_rec.lua:52-54 LIMITMO_SHARED`（未定义全局 → USB 串口恢复链必崩）；新增 `_undef_global_check.py`（字节码级未定义全局读，run_all_checks #13，负向验证 FAIL）；`_layer_check` 加 R4「AT 层 `host_uart`/`hif_*` ↛ 业务层」基线 15 条只许收缩（`t31x_ctrl` 视为基础设施）。护栏 12→13 项 |
+| 2026-09-05 | **评审 #2/#3 处置（VERSION 161）**：#2 会话仲裁——`t31x_ctrl.blockSleep` 在 `host_uart.getUartSession()` 非空时延后策略休眠；`hostIpcPowerOff` 遇其它会话有界等待（≤ `poweroff_timeout_ms`）再优雅断电，超时才回 false 硬切。#3 `setRecActive` 经 `patchCloud(fields, keepTs=true)`/`commitIpcStat(snap, notify, keepTs)`，单键补丁不刷新 `ipc_cloud_stat_ts`（含 155 起 cmd_t31x/power 两处原本刷新的路径，统一为「局部补丁不算新鲜快照」）。详见 [HOST_UART_AT_DISPATCH §9](../modules/HOST_UART_AT_DISPATCH.md)、[PIR_CTRL_FLOW §10](../modules/PIR_CTRL_FLOW.md) |
 
 ---
 
@@ -231,6 +232,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 - [ ] 2002 进/出 rest、USB 插拔 1003
 - [ ] 蜂窝 SIM/APN 1005
 - [ ] 烧录确认 `scriptVersion`
+- [ ] **161 新增（会话仲裁 + keepTs）**：2009 格式化进行中 USB 拔出 → 日志 `sleep_blocked_uart_session tfformat`、T31x 不断电，格式化结束后由 HOSTIDLE/下一策略触发再休眠；格式化进行中 2002 enter → `ipcpoweroff_rx wait_session` 等待 ≤30s 后优雅 `AT+IPCPOWEROFF`（格式化 >30s 才硬切）；T31x `AT+RECORD=1/0` 后下一次 1003 仍发 `AT+IPCSTAT?`（`ipc_cloud_stat_ts` 未被刷新）
 - [ ] **160 新增（P10 1013 stage）**：2013 受理 1013 含 `stage=queued`（拒绝 `fail`）、完成含 `stage=uploaded|fail`、人形 need=1 含 `stage=queued`；后台解析不受额外键影响
 - [ ] **159 新增（P9 成员导出）**：IPC 告警（`AT+IPCALERT=tf_mount_fail`）后 1003 `tfPresent=0` 生效；电量 1003 发布后云状态防抖刷新任务不再报 nil；2007/2006 查询超时时 1007/1006 回缓存值而非崩
 - [ ] **158 新增（P6b 录像态单入口）**：2011 云停成功 → 1011 `force=true` 确实发出（157 前 `hif.patchCloud` nil 崩，不发）；T31x `AT+RECORD=1/0`、2002 断电、`+RECORD:` 应答、reconcile 四条路径后 1003 `recordingt31x` 与 `AT+PIRSTAT?` 一致；四条停录路径 1011 各一次不重复

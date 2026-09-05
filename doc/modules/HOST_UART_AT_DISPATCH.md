@@ -291,7 +291,8 @@ host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（�
 P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery` 只看③自己的键：格式化期间 2007 `AT+TFCARD?` 仍会拿锁发出（体检 A2）。P3 起：
 - 三个旧键 `tfcard_format_busy` / `ipc_poweroff_busy` / `uart_recovery_busy` **删除**（`_host_uart_regression_check` 负向断言防回潮），`AT+GETCFG` 快照无此字段，T31x 侧无可见变化。
 - 行为变化（实机回归项，`USER_LIB_OPTIMIZATION_NEXT §6`）：2009 格式化期间下发 2007 → 1007 回缓存且串口无 `AT+TFCARD?`；2002 断电期间 2005 wled/2020 encode 查询 → 缓存 / `busy`；USB 恢复任务期间同理。
-- 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，`hostIpcPowerOff` 回 false（调用方 `enterSleep` 走 GPIO 直接断电兜底），恢复任务放弃本轮。
+- 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，恢复任务放弃本轮。
+- **断电与会话的仲裁（VERSION 161）**：① 策略触发的休眠（USB 拔出 / 电量 / `pir_watch_idle`，`skipPendingWorkCheck ~= true`）在任何会话进行中一律延后——`t31x_ctrl.blockSleep` 读 `host_uart.getUartSession()`，日志 `sleep_blocked_uart_session <name>`，与既有 `sleep_blocked_pending_work` 同一分支；② 用户显式 2002/AT 断电（`skipPendingWorkCheck`）不延后，但 `hostIpcPowerOff` 在其它会话进行中**有界等待**（≤ 本次 `poweroff_timeout_ms`，默认 30s，日志 `ipcpoweroff_rx wait_session`）其结束后再进入 poweroff 会话优雅断电；超时仍占用才回 false（`session_still_busy`）由 `gracePowOff` 硬切电。160 前二者都会在 500ms 内硬切电（写盘中拔卡）。
 
 ## 10. bind 头规格：生成 + bind 时刻可用性（refactor_plan P7，2026-09-05）
 

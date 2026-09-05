@@ -240,10 +240,19 @@ function extBootMode()
     return true
 end
 
+-- 策略触发的休眠（USB 拔出 / 电量 / pir_watch_idle）在两种情况下延后：T31x 有待办事件，或
+-- 串口处于破坏性会话（TF 格式化 / 断电中 / USB 恢复）——此时切电等于写盘中拔卡。
+-- 用户显式 2002/AT（skipPendingWorkCheck）不在此拦，由 hostIpcPowerOff 有界等待会话结束再优雅断电。
 local function blockSleep(opts)
     if opts.skipPendingWorkCheck == true then return false end
     local hif = svc.hostUart()
-    return hif ~= nil and hostEvt.shouldBlockT31xSleep(hif.bldHostEvtBody()) == true
+    if not hif then return false end
+    local session = hif.getUartSession and hif.getUartSession()
+    if session then
+        t31xWarn("sleep_blocked_uart_session", tostring(session))
+        return true
+    end
+    return hostEvt.shouldBlockT31xSleep(hif.bldHostEvtBody()) == true
 end
 
 local function shutdownT31x(opts)

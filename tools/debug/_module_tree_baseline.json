@@ -18,19 +18,19 @@
     "hif_cmd_t31x.lua": 221,
     "hif_cmd_usb.lua": 258,
     "hif_cmd_wled.lua": 182,
-    "hif_ipc.lua": 385,
+    "hif_ipc.lua": 386,
     "hif_ipc_cloud.lua": 313,
     "hif_ipc_encode.lua": 203,
     "hif_ipc_hostq.lua": 346,
-    "hif_ipc_power.lua": 205,
+    "hif_ipc_power.lua": 215,
     "hif_ipc_rec.lua": 188,
     "hif_ipc_tffmt.lua": 164,
     "hif_rx.lua": 69,
-    "hif_rx_dsl.lua": 544,
+    "hif_rx_dsl.lua": 547,
     "hif_rx_media.lua": 275,
     "host.lua": 110,
     "host_event.lua": 158,
-    "host_uart.lua": 753,
+    "host_uart.lua": 754,
     "ipc_supv.lua": 188,
     "led_pir.lua": 68,
     "lp_wakeup.lua": 116,
@@ -55,7 +55,7 @@
     "sound_prompt.lua": 132,
     "svc.lua": 31,
     "t31x_burn.lua": 19,
-    "t31x_ctrl.lua": 374,
+    "t31x_ctrl.lua": 383,
     "t31x_notify.lua": 87,
     "t31x_policy.lua": 129,
     "time_sync.lua": 219,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13780
+      "lines": 13804
     },
     "lib": {
       "files": 15,
       "lines": 2613
     },
-    "all": 16393
+    "all": 16417
   }
 }

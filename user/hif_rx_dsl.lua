@@ -189,13 +189,16 @@ function bind(C)
     -- notify=true 仅用于 T31x 完整快照（+IPCSTAT: 应答 / AT+IPCSTAT= 主动上报）；
     -- patchCloud 局部补丁（WLED/RECORD/TFCARD/IPCSTATUS/poweroff…）不得发 IPCSTAT_ACK，
     -- 否则会抢答正在 waitUntil(IPCSTAT_ACK) 的 qryIpcCloudStat，使 AT+IPCSTAT? 误判成功早退
-    local function commitIpcStat(snap, notify)
+    -- keepTs=true：局部补丁不把缓存标为「新鲜」，isIpcCloudStatStale 仍按上次完整 +IPCSTAT: 快照计时
+    local function commitIpcStat(snap, notify, keepTs)
         if type(snap) ~= "table" or next(snap) == nil then
             return nil
         end
         snap = normIpcCloud(snap)
         state.host_ipc_cloud_stat = snap
-        state.ipc_cloud_stat_ts = os.time()
+        if keepTs ~= true then
+            state.ipc_cloud_stat_ts = os.time()
+        end
         if snap.recordingt31x ~= nil then
             state.t31x_rec_active = asNum(snap.recordingt31x)
         end
@@ -208,7 +211,7 @@ function bind(C)
         return snap
     end
 
-    local function patchCloud(fields)
+    local function patchCloud(fields, keepTs)
         local cloud = state.host_ipc_cloud_stat
         if type(cloud) ~= "table" then
             cloud = {}
@@ -217,7 +220,7 @@ function bind(C)
         for k, v in pairs(fields) do
             cloud[k] = v
         end
-        return commitIpcStat(cloud)
+        return commitIpcStat(cloud, nil, keepTs)
     end
 
     local function parseIpcStat(line)
