@@ -19,10 +19,12 @@ function bind(C, H)
     local hostQuery = H.hostQuery
     local pushUsbIdle = C.pushUsbIdle
 
+    local TMO_SHARED = C.TMO_SHARED
+    local enterSession, leaveSession = C.enterSession, C.leaveSession
     local TIMEOUT = {
         powerOffMs = 500,
         powerOnWaitMs = 800,
-        statusQueryMs = 2000,
+        statusQueryMs = TMO_SHARED.statusQueryMs,
     }
 
     local LIMITS = {
@@ -47,9 +49,9 @@ function bind(C, H)
         end
         return {
             enabled = r.enabled ~= false and c.enabled ~= false,
-            miss_threshold = tonumber(r.miss_threshold) or LIMITS.missThreshold,
-            max_attempts = tonumber(r.max_attempts) or LIMITS.maxAttempts,
-            cooldown_sec = tonumber(r.cooldown_sec) or LIMITS.cooldownSec,
+            miss_threshold = tonumber(r.miss_threshold) or LIMITMO_SHARED.missThreshold,
+            max_attempts = tonumber(r.max_attempts) or LIMITMO_SHARED.maxAttempts,
+            cooldown_sec = tonumber(r.cooldown_sec) or LIMITMO_SHARED.cooldownSec,
             power_off_ms = tonumber(r.power_off_ms) or TIMEOUT.powerOffMs,
             power_on_wait_ms = tonumber(r.power_on_wait_ms) or TIMEOUT.powerOnWaitMs,
         }
@@ -106,7 +108,7 @@ function bind(C, H)
             clearMissStreak()
             return
         end
-        if state.uart_recovery_busy then
+        if state.uart_session then
             return
         end
         state.ipc_uart_miss_streak = (tonumber(state.ipc_uart_miss_streak) or 0) + 1
@@ -119,11 +121,13 @@ function bind(C, H)
         if recoveryCooldownActive(rc) then
             return
         end
-        state.uart_recovery_busy = true
         state.uart_recovery_attempts = state.uart_recovery_attempts + 1
         sys.taskInit(function()
+            if not enterSession("usb_recovery") then
+                return
+            end
             pcall(powerCycleHost)
-            state.uart_recovery_busy = false
+            leaveSession("usb_recovery")
         end)
     end
 

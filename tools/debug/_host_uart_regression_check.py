@@ -91,6 +91,17 @@ CHECKS: list[tuple[str, str, str]] = [
         "user/hif_ipc_hostq.lua",
         r"qryHostRecord = qryRecord[\s\S]*queryHostRecordTime = qryRecTime[\s\S]*setHostRecordTime = setRecTime",
     ),
+    (
+        "P3 破坏性会话只经 enterSession/leaveSession（hostQuery/hostSet 准入看 sessionBlocks）",
+        "user/hif_ipc.lua",
+        r"sessionBlocks\(\)[\s\S]*return queryFallback\(opts\)[\s\S]*sessionBlocks\(\)[\s\S]*return false, \"busy\", nil",
+    ),
+]
+
+# 负向断言：三个旧 busy 键（P3 已并入 state.uart_session）不得回潮
+FORBIDDEN = [
+    (r"\b(tfcard_format_busy|ipc_poweroff_busy|uart_recovery_busy)\b",
+     "旧破坏性 busy 键回潮（应改用 enterSession/leaveSession + state.uart_session）"),
 ]
 
 
@@ -116,6 +127,18 @@ def main() -> int:
         if not ok:
             fail += 1
             print(f"        file: {rel}")
+
+    print("\n=== 负向断言（不得出现） ===")
+    for pattern, why in FORBIDDEN:
+        hits = []
+        for name in MODULES:
+            text = read(f"user/{name}")
+            for m in re.finditer(pattern, text):
+                hits.append(f"{name}:{text.count(chr(10), 0, m.start()) + 1}")
+        ok = not hits
+        print(f"  {'PASS' if ok else 'FAIL':4} {why}" + ("" if ok else "  → " + ", ".join(hits)))
+        if not ok:
+            fail += 1
 
     # 每个子模块必须有 function bind 与 return _M
     print("\n=== 子模块 bind/return ===")

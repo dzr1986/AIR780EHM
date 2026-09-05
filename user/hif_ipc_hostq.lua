@@ -338,6 +338,8 @@ function bind(C, H)
         queryHostSoftPhoto = qryPhoto,
         setHostSoftPhoto = setPhoto,
         queryHostTfCard = qryTf,
+        -- mqtt_dl_tf 查询超时后的缓存回退（P9 前该成员不存在 → nil 调用）
+        getCachedHostTfCard = function() return state.host_tf_card end,
     }
 end
 

@@ -54,7 +54,8 @@
 | 脚本 | 干什么 | 什么时候跑 |
 |------|--------|------------|
 | `python doc/_tools/doc_registry_check.py` | **登记护栏**：doc 主题下每个 md 必须被顶层或同主题 README 登记 | 新增/移动文档后（本手册目录已在检查范围） |
-| `python tools/debug/_doc_md_link_check.py` | **互链护栏**：doc 内 md 文件级互链断链（外部/待补走 EXEMPT） | 改链接后 |
+| `python tools/debug/_doc_md_link_check.py` | **互链护栏**：doc 内 md 文件级互链断链（外部/待补走 EXEMPT）；`--no-exclude-archive` 连 `archive/`/`_audit/` 一起查 | 改链接后；恢复/迁移历史文档后 |
+| `python tools/debug/_config_key_check.py --write-doc` | **配置键索引同步**：按代码重生成 [CONFIG.md「配置键总索引」](../overview/CONFIG.md)（键 → 注册片段 → 消费模块）；不带参数 = 校验漂移 + 死配置 | 增删/移动 `_G.X_CFG` 或改消费方后 |
 | `python tools/sync_doc_naming.py` | 把 `doc/` 里的历史 API 别名收敛到真名 | 改 API 名后（见 [CAT1_API_NAMING §4](../overview/CAT1_API_NAMING.md)） |
 | `python tools/debug/_doc_archive_by_topic.py` | 按主题归档并重算全仓 md/html 链接 | doc 重新分目录时 |
 | `doc/_tools/doc_registry_check.py --export` | 打印待补登记行草稿 | 护栏报未登记时 |
@@ -67,9 +68,14 @@
 | `_host_uart_regression_check.py` | host_uart 族（AT 表/bind）静态回归 | 动 `host_uart`/`hif_*` 后 |
 | `_net_mqtt_regression_check.py` | net_mqtt 族（命名/分发）静态回归 | 动 `mqtt_*`/`net_mqtt` 后 |
 | `_protocol_regression_check.py` | 协议层一致性 | 协议相关改动后 |
-| `_gen_bind_header.py --check-all` | hif bind 头与代码一致 | 动 bind 后（`--emit hif_cmd_xxx.lua` 生成） |
+| `_gen_bind_header.py --check-all` / `--sync-specs` | hif bind 头与规格一致 + **bind 时刻可用性**（头部快照的键须在该模块 bind 前已挂到 ctx/H）；`--sync-specs` 按头部重写 spec c/h（spec 由生成，勿手改） | 动 bind 后：先 `--sync-specs` 再 `--check-all` |
 | `_module_tree.py` / `_ref_name_check.py` | 模块树/引用名一致性 | 模块改名后 |
-| `run_all_checks.py` | 汇总运行主要检查 | 发布前整跑 |
+| `_config_key_check.py` / `_gpio_opts_check.py` / `_doc_version_check.py` | 配置键注册↔消费 + CONFIG.md 索引；`gpio_util.setupInput` opts 键；文档现状版本锚点 ↔ `main.lua` | 改配置/改 GPIO 调用/升 VERSION 后（均在 `run_all_checks` 内） |
+| `_dep_graph.py` / `_layer_check.py` | 依赖图（五种边形态、硬环/软环/反向边，`--mermaid` 出图）/ 分层护栏（R1 lib↛user 业务、R2 config 域↛utils 系、R3 子模块↛主文件；基线白名单只许收缩，`--save-baseline`） | 改 `require`/`loader.load` 拓扑后（`run_all_checks` 第 11 项） |
+| `_uplink_schema_check.py` | **上行字段护栏**：`MQTT_DOWNLINK`/`MQTT_PROTOCOL` 里 10xx JSON 样例的键 ⊆ 代码可发字段全集；缺口以 `_uplink_schema_baseline.json` 登记只许收缩（当前 1013 进度 5 键 + 1004 `hostEvtPollMs` = P10 待办） | 改上行字段或改协议文档样例后（`run_all_checks` 第 12 项） |
+| `_luatok.py`（库，不单独运行） | 最小 Lua 词法器：注释/字符串/调用实参/字面表键的**唯一**实现，`_config_key_check`/`_gpio_opts_check`/`_ref_name_check` 均基于它；新护栏一律 `from _luatok import …`，不要再写正则剥注释 | 写新护栏时 |
+| `python -m unittest tools/debug/tests/test_guards.py` | **护栏自身回归**：`_luatok` 词法单测 + `tests/fixtures/` 注入样本必 FAIL + 干净仓库基线 PASS（`run_all_checks` 第 10 项） | 改任何护栏脚本后 |
+| `run_all_checks.py` | 汇总运行全部 12 项静态护栏（含护栏自测、分层、上行字段） | 发布前整跑（须在非 Windows 平台也跑过一次） |
 
 ## 7. 调试与一次性脚本族（tools/debug/，按用途选）
 
@@ -88,9 +94,10 @@
 
 - [ ] 烧录产物出自 `pack_mass_prod.py`（量产）或 release 流程（单台）。
 - [ ] 代码护栏整跑：`run_all_checks.py` + 相关 regression。
-- [ ] 文档护栏：`doc_registry_check.py` + `_doc_md_link_check.py` 双 PASS。
+- [ ] 文档护栏：`doc_registry_check.py` + `_doc_md_link_check.py` 双 PASS（须在 **非 Windows** 平台也跑过一次，2026-09-04 曾因分隔符假绿漏掉 33 条断链，见 [DOC_HEALTH_REPORT](../_audit/DOC_HEALTH_REPORT_20260904.md)）。
+- [ ] `git status` 确认新增文档**已被 git 跟踪**（`.gitignore` 忽略目录一律根锚定 `/xxx/`，勿让 `doc/<同名目录>/` 被吞）。
 - [ ] API 改名则跑 `sync_doc_naming.py`，检查 `git diff -- doc/` 只有收敛差异。
-- [ ] 版本同步：`user/main.lua` `VERSION`、`luatos.json`、发布说明 [RELEASE_*](../release/)、[CAT1_API_NAMING](../overview/CAT1_API_NAMING.md) 头部版本口径。
+- [ ] 版本同步：`user/main.lua` `VERSION`、`luatos.json`、发布说明 [RELEASE_*](../release/)；README/manual/overview 10 处现状口径由 `_doc_version_check.py` 自动校验。
 
 ## 9. 相关文档
 

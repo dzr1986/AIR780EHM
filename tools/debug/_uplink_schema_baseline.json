@@ -1,0 +1,12 @@
+{
+ "1004": [
+  "hostEvtPollMs"
+ ],
+ "1013": [
+  "alarmTime",
+  "alarmTs",
+  "percent",
+  "sentBytes",
+  "totalBytes"
+ ]
+}

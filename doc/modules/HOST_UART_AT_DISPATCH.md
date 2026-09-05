@@ -259,3 +259,47 @@ exact 项顺序不影响分发（哈希）。`HOSTEVT` 与 PIR 排在一起只�
 ---
 
 **版本**：2026-09-02
+
+## 8. 超时常量真源（refactor_plan P2a，2026-09-04）
+
+host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（拿锁上限、IPCSTATUS/IPCSTAT 查询超时）在多处重复定义——R4 首版把 quiet 静默常量 `hostIdleMs=2000` 误当 acquire 预算即由此而来。P2a 起：
+
+| 键（`host_uart.lua` `TMO_SHARED`，经 `ctx.TMO_SHARED` 注入） | 值 | 消费方 |
+|---|---|---|
+| `acquireCapMs` | 8000 | `hif_ipc_power`（IPCPOWEROFF）、`hif_ipc_tffmt`（TFFORMAT） |
+| `statusQueryMs` | 2000 | `hif_ipc_rec`（`AT+IPCSTATUS?`）、`hif_ipc_power`（恢复链复查） |
+| `cloudStatQueryMs` | 2500 | `hif_ipc_cloud`（`AT+IPCSTAT?`）、`host_uart` 首条 AT 后刷新 |
+| `qryDefaultMs` | 3000 | `hif_ipc.TMO.qry`（hostQuery 默认超时）、`hif_cmd_wled`（`AT+WLED?` ack）（P2b） |
+| `t31xWaitMs` | 800 | `hif_ipc.TMO.t31xWait`（`ensT31xHost` 默认等待）、`hif_cmd_wled`（P2b） |
+
+规则：**同一语义只在 `TMO_SHARED` 定义一次**；子模块本地表只留模块特有值（`tffmt.formatMs=120000`、`hostq.recOff=22000`、`power.readyDefaultMs` 等）。子模块头部写 `local TMO_SHARED = C.TMO_SHARED`，并在 `tools/debug/bind_header_specs.json` 对应 `c` 列表登记（`_gen_bind_header --check-all` 守护）。
+
+**未并入（同值但语义待定）**：`hif_ipc_hostq.TMO.rec = 3000`（录像查询）与 `qryDefaultMs` 同值，是否同义待定；`mqtt_dl_pir.stopDefault = 22000` 与 `hif_ipc_hostq.TMO.recOff = 22000` 跨族同值，待 P7 ctx.const 统一。
+
+**已知同义不同值（本阶段不改数值，待维护者定）**：串口静默期 quiet——`hif_ipc.TMO.quiet = 1500`（hostQuery/hostSet 走 `armHost`）vs `hif_ipc_power.hostIdleCapMs = 2000` / `hif_ipc_tffmt.hostIdleMs = 2000`（直接 `waitHostIdle`）。统一到哪一个值需实机验证后再收进 `TMO_SHARED`。
+
+## 9. 串口并发模型：事务锁 / 破坏性会话 / per-query 重入（refactor_plan P3，2026-09-05，VERSION 156）
+
+三层保护各管一件事，`hostQuery`/`hostSet`（`hif_ipc.lua`）按下表顺序判定：
+
+| 层 | 状态 | 谁写 | 谁读 | 语义 |
+|---|---|---|---|---|
+| ① 事务锁 | `state.uart_txn_busy` + 持有协程/深度（`host_uart.uartAcquire/uartRelease`） | 每次「发 AT → 等 ACK」 | `hostQuery`/`hostSet`/`hostIpcPowerOff`/`formatHostTfCard` | 同一时刻只有一个请求在飞；可重入；`stop()`/首次 `start()` 复位 |
+| ② 破坏性会话 | `state.uart_session ∈ {nil, "tfformat", "poweroff", "usb_recovery"}` + 持有协程（`enterSession/leaveSession/sessionBlocks`） | `hif_ipc_tffmt`（格式化全程）、`hif_ipc_power`（`AT+IPCPOWEROFF` 全程）、`hif_ipc_rec`（USB 恢复任务） | `hostQuery` → 非持有协程走 `queryFallback`（缓存）；`hostSet` → `false, "busy"`；`isCloudBusy` → 1003 走缓存；`ipcQueryBusy` → 断电前等待非自身会话结束 | **T31x 处于不可打扰状态**；会话持有者自己仍可查询 |
+| ③ per-query 重入 | `state.<x>_query_busy` / `<x>_set_busy`（`opts.busyKey`） | `hostQuery`/`hostSet` 进入/退出 | 同类查询 + `HU_BUSY_KEYS`（1003 让路） | 同一种 AT 不并发两份 |
+
+P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery` 只看③自己的键：格式化期间 2007 `AT+TFCARD?` 仍会拿锁发出（体检 A2）。P3 起：
+- 三个旧键 `tfcard_format_busy` / `ipc_poweroff_busy` / `uart_recovery_busy` **删除**（`_host_uart_regression_check` 负向断言防回潮），`AT+GETCFG` 快照无此字段，T31x 侧无可见变化。
+- 行为变化（实机回归项，`USER_LIB_OPTIMIZATION_NEXT §6`）：2009 格式化期间下发 2007 → 1007 回缓存且串口无 `AT+TFCARD?`；2002 断电期间 2005 wled/2020 encode 查询 → 缓存 / `busy`；USB 恢复任务期间同理。
+- 会话互斥：`enterSession` 在已有会话时返回 false——`formatHostTfCard` 回 `busy`，`hostIpcPowerOff` 回 false（调用方 `enterSleep` 走 GPIO 直接断电兜底），恢复任务放弃本轮。
+
+## 10. bind 头规格：生成 + bind 时刻可用性（refactor_plan P7，2026-09-05）
+
+原计划把 70 键 `ctx` 拆成 `const / io / state` 三命名空间。执行时复核：ctx 字面表已按「运行时引用 / AT 响应格式化 / 模块工具 / 业务 helper / 子模块回填」分组注释，命名空间拆分需要重写 11 个子模块头部与生成器的全部匹配逻辑，**零行为、收益仅为可读性**，而真正导致过事故（107/108、158 前 `mqtt_dl_pir`）的是「头部快照的键在 bind 时尚未挂到 ctx」——这一点命名空间解决不了。因此 P7 改为在 `_gen_bind_header.py` 上落两项保证：
+
+| 能力 | 做法 |
+|---|---|
+| **bind 时刻可用性推导**（`--check-all` 新增） | 按装配顺序（host_uart `ctx` 字面表 → `ctx.k =` 回填 → `hif_cmd.bind` 内 `C.k =` → `hif_rx.bind` → `hif_ipc.bind` 内 `C.k =` / `local H = {…}` / `H.k =`）计算每个子模块 bind 那一行时 `C`/`H` 已有的键；头部任何 `local x = C.k` / `H.k` 直读快照若 k 不在集合内 → FAIL「bind 时快照 nil…改用 wrapper」。注入验证：给 `hif_ipc_cloud` 头部加 `local zz = C.hostQuery`（延迟键）即 FAIL |
+| **spec 由生成**（`--sync-specs`） | `bind_header_specs.json` 各模块 `c`/`h` 列表按头部同名直读快照 + wrapper + body 运行期用到的延迟键重写；改名快照（`local identityCfg = H.idCfgFn`）由 `inject` 表达。新增子模块 = 写头部 → `--sync-specs` → `--check-all`，不再手抄 JSON |
+
+`ctx` 三命名空间拆分登记为可选后续（无事故驱动不做）。

@@ -175,3 +175,13 @@ makeHostQuerySetHandler(spec)
 ---
 
 **版本**：2026-06-30
+
+## 超时常量真源（refactor_plan P2b，2026-09-04）
+
+`net_mqtt.lua` 顶部 `TMO_SHARED`（经 `ctx.TMO_SHARED` 注入）是 net_mqtt 族共享超时的唯一定义处：
+
+| 键 | 值 | 消费方 |
+|---|---|---|
+| `ipcStatRefreshMs` | 2500 | `mqtt_uplink`（1003 前 `ipcSupv.refCloudStat`）、`mqtt_dl_pir`（PIR 云状态刷新） |
+
+子模块本地 `TIMEOUT` 只留模块特有值（`mqtt_dl_tf.ipcReadyWait=20000`、`mqtt_hproto.defaultMs=12000` 等，本阶段确认无跨模块重复，未动）。与 `host_uart.TMO_SHARED.cloudStatQueryMs`（同为 2500，IPCSTAT 查询）跨族同义，两族在加载期不能互相 require，跨族单源留待 P7 `ctx.const`。

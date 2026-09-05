@@ -23,9 +23,12 @@ local function hostEvtCfg()
     return cfgm.get("HOST_EVT_CFG")
 end
 
+-- 三层开关任一为 false 即关：FEATURE_CFG.host_evt（宏）/ MODULE_FLAGS.host_evt（裁剪）/ HOST_EVT_CFG.enabled
+-- MODULE_FLAGS.host_evt 默认由 FEATURE_CFG 派生（flags.lua），此处显式消费，避免拨 flags 无效
 function isEnabled()
-    local fc = cfgm.get("FEATURE_CFG")
-    return fc.host_evt ~= false and hostEvtCfg().enabled ~= false
+    return cfgm.get("FEATURE_CFG").host_evt ~= false
+        and cfgm.get("MODULE_FLAGS").host_evt ~= false
+        and hostEvtCfg().enabled ~= false
 end
 
 local function typeEnabled(name)

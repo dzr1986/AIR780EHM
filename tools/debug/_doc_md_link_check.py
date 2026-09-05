@@ -61,6 +61,18 @@ def is_excluded(p: Path) -> bool:
     return any(rel.parts[0] == d for d in EXCLUDE_DIRS)
 
 
+_ROOT_RESOLVED = ROOT.resolve()
+
+
+def is_within_root(p: Path) -> bool:
+    """按路径组件判断，避免手拼分隔符导致跨平台（Windows `\\` / POSIX `/`）误判。"""
+    try:
+        p.relative_to(_ROOT_RESOLVED)
+        return True
+    except ValueError:
+        return False
+
+
 def main() -> int:
     exclude_archive = "--no-exclude-archive" not in sys.argv
     files = [p for p in iter_md() if not (exclude_archive and is_excluded(p))]
@@ -95,9 +107,7 @@ def main() -> int:
                 continue
             target = Path(path_part)
             cand = (md.parent / target).resolve()
-            cand_s = str(cand).lower().rstrip("\\/") + "\\"
-            root_s = str(ROOT.resolve()).lower().rstrip("\\/") + "\\"
-            if not cand_s.startswith(root_s):
+            if not is_within_root(cand):
                 out_of_root.append((md, dest, cand))
             elif not cand.exists():
                 broken.append((md, dest, cand))

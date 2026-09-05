@@ -131,3 +131,17 @@ flowchart TD
 ---
 
 **版本**：2026-06-30
+
+## 10. 录像态真源与唯一写点（refactor_plan P6b，VERSION 158，2026-09-05）
+
+「T31x 是否在录」有三份表示，P6b 起写入路径唯一：
+
+| 表示 | 位置 | 谁写 |
+|---|---|---|
+| `state.t31x_rec_active`（影子态，0/1） | `host_uart` state | **只有** `hif_rx_dsl.commitIpcStat` raw 写（以 `cloud.recordingt31x` 回填） |
+| `state.host_ipc_cloud_stat.recordingt31x`（云状态 9 键之一，进 1003） | 同上 | `commitIpcStat`（完整 `+IPCSTAT:` 快照）或 `hif_ipc.setRecActive(flag)` → `patchCloud({recordingt31x})` |
+| `pir_ctrl.session.recording`（4G 侧会话） | `pir_ctrl` | `pir_ctrl` 自己（`startVideoSession`/`endRecSession`） |
+
+**业务侧一律调 `setRecActive(flag)`**（`hif_ipc` 定义；子模块经 `C.setRecActive`，外部经 `host_uart.setRecActive`）：`hif_cmd_t31x.uartRecord`（T31x `AT+RECORD=1/0`）、`hif_ipc_power.applyPowerOffSuccess`、`hif_ipc_cloud.reconcileRecord`、`hif_rx_dsl.applyRecordState`（`+RECORD:` 应答）、`mqtt_dl_pir.stopHostRecord`（2011/2010 云停成功）。`_protocol_regression_check` 单一写入点断言：`state.t31x_rec_active =` 只允许 `hif_rx_dsl`/`host_uart` 初值；`patchCloud({recordingt31x…})` 只允许 `hif_ipc`。
+
+**顺带修复的 P0**：`mqtt_dl_pir.stopHostRecord` 成功路径原调 `hif.patchCloud(...)`，而 `host_uart._M` 从未导出 `patchCloud`（只在 ctx 上）→ 每次 2011 成功停录都会 `attempt to call a nil value`，后续 `publishForcedPirStop`（1011 `force=true`）不发。158 起改 `hif.setRecActive(0)`（已导出）。

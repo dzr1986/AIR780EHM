@@ -12,16 +12,20 @@ _G[_modname] = _M
 function bind(C, H)
     local state, SYS_EVT = C.state, C.SYS_EVT
     local uartAcquire, uartRelease = C.uartAcquire, C.uartRelease
+    local enterSession, leaveSession = C.enterSession, C.leaveSession
     local waitHostIdle = C.waitHostIdle
     local uart_bridge = C.uart_bridge
     local hostNowMs = C.hostNowMs
     local patchCloud = C.patchCloud
+    local setRecActive = C.setRecActive
+    local logPowerOffRx = C.logPowerOffRx
     local getCfg = H.getCfg
     local qryHostStat = H.qryHostStat
 
+    local TMO_SHARED = C.TMO_SHARED
     local TIMEOUT = {
         powerOffFloorMs = 5000,
-        acquireCapMs = 8000,
+        acquireCapMs = TMO_SHARED.acquireCapMs,
         busyClearCapMs = 3000,
         hostIdleCapMs = 2000,
         pollSliceMs = 50,
@@ -30,7 +34,7 @@ function bind(C, H)
         sliceFloorMs = 20,
         readyDefaultMs = 120000,
         readyPollMs = 1000,
-        statusQueryMs = 2000,
+        statusQueryMs = TMO_SHARED.statusQueryMs,
     }
 
     ----------------------------------------------------------------
@@ -55,7 +59,8 @@ function bind(C, H)
 
     local function ipcQueryBusy()
         return state.record_query_busy or state.ipc_status_query_busy
-            or state.ipc_cloud_stat_query_busy or state.uart_recovery_busy
+            or state.ipc_cloud_stat_query_busy
+            or (state.uart_session ~= nil and state.uart_session ~= "poweroff")
     end
 
     local function powerOffAckOk(val)
@@ -64,19 +69,14 @@ function bind(C, H)
 
     local function applyPowerOffSuccess()
         state.host_ipc_status = "idle"
-        patchCloud({ recordingt31x = 0, ipcReady = 0 })
+        setRecActive(0)
+        patchCloud({ ipcReady = 0 })
     end
 
     local function waitBusyClear(deadlineMs)
         local untilMs = hostNowMs() + deadlineMs
         while hostNowMs() < untilMs and ipcQueryBusy() do
             sys.wait(TIMEOUT.pollSliceMs)
-        end
-    end
-
-    local function logPowerOffRx(tag, line)
-        if log and log.info then
-            log.info("host_uart", "ipcpoweroff_rx", tag, line or "error")
         end
     end
 
@@ -134,14 +134,16 @@ function bind(C, H)
     local function hostIpcPowerOff(playSound, timeoutMs)
         local cfg = ipcCfg()
         timeoutMs = clampTimeout(timeoutMs, cfg.poweroff_timeout_ms, TIMEOUT.powerOffFloorMs)
-        if state.ipc_poweroff_busy then
+        if state.uart_session == "poweroff" then
             local got, val = sys.waitUntil(SYS_EVT.IPCPOWEROFF_ACK, timeoutMs)
             return got == true and powerOffAckOk(val)
         end
         if cfg.enabled == false or not uart_bridge.sendString then
             return false
         end
-        state.ipc_poweroff_busy = true
+        if not enterSession("poweroff") then
+            return false -- 另一破坏性会话（格式化/恢复）进行中
+        end
         local success = false
         local ok = pcall(function()
             if not uartAcquire(math.min(timeoutMs, TIMEOUT.acquireCapMs)) then
@@ -152,7 +154,7 @@ function bind(C, H)
             success = runPowerOffAt(buildPowerOffAt(playSound), timeoutMs)
         end)
         uartRelease()
-        state.ipc_poweroff_busy = false
+        leaveSession("poweroff")
         if success then
             applyPowerOffSuccess()
         end

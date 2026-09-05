@@ -2,6 +2,7 @@
 
 > **唯一入口**：[doc/README.md](../README.md)；本页为 power 二级索引（2026-09-04 分层）。
 > **徽标**：📌 建议先读 · 🟢 现行 · 🗒 记录 / 历史
+> **工作流位置**：[TECH_WORKFLOWS W7](../overview/TECH_WORKFLOWS.md#w7-电源--电池--usb--低功耗--关机cat1-自身状态机)（电源状态机）· W3-10（T31x 断电）· W2（rest 中 1002/1003）
 
 ## 低功耗 / 电源 / USB（先读 📌）
 

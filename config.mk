@@ -1,11 +1,11 @@
-# 780EHM_PJ 功能宏（运行时请在 user/config.lua 同步修改）
+# 780EHM_PJ 功能宏（运行时请在 user/features.lua 顶部 local *_ENABLE 同步修改；config.lua 仅编排 require）
 #
 # ========== RNDIS USB 网卡 ==========
 # 1 = 开启：PC 经 USB 共享模组蜂窝上网（调试）
 # 0 = 关闭：不启动 usb_rndis，可正常进低功耗 rest
 RNDIS_ENABLE ?= 1
 #
-# config.lua 对应：
+# features.lua 对应：
 #   local RNDIS_ENABLE = 1
 #   FEATURE_CFG.rndis = (RNDIS_ENABLE == 1)
 #
@@ -22,12 +22,12 @@ FOTA_CUSTOM_VERSION ?=
 # 0 = 4G 回 +USBRESET:DISABLED
 USB_REENUM_ENABLE ?= 1
 #
-# config.lua 对应：
+# features.lua 对应：
 #   local USB_REENUM_ENABLE = 1
 #   FEATURE_CFG.usb_reenum = (USB_REENUM_ENABLE == 1)
 #   HOST_USB_CFG.allow_t31x_usb_reset = ...
 #
-# ========== 以下宏仅在 user/config.lua 维护（config.mk 无对应项）==========
+# ========== 以下宏仅在 user/features.lua 维护（config.mk 无对应项）==========
 # LOW_POWER_ENABLE = 1   → FEATURE_CFG.low_power → MODULE_FLAGS.low_power
 # HOST_EVT_ENABLE  = 1   → FEATURE_CFG.host_evt  → PIRSTAT.has_work 休眠查询
-# LOW_POWER_WAKEUP_CFG.mode = "mqtt" | "tcp"  （见 doc/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md）
+# LOW_POWER_WAKEUP_CFG.mode = "mqtt" | "tcp"  （见 doc/power/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md）

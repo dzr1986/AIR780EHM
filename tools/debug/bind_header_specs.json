@@ -1,10 +1,11 @@
 {
-  "_comment": "host_uart cmd/ipc 子模块 bind 头真源；生成器对照/emit 用。延迟挂载字段用 wrapper，勿 local 快照。",
+  "_comment": "host_uart cmd/ipc 子模块 bind 头规格。P7 起 c/h 列表由 `python tools/debug/_gen_bind_header.py --sync-specs` 按各模块头部直读快照生成，勿手改；wrappers/inject/delayed_c_wrappers 仍手维护。--check-all 另做 bind 时刻可用性推导：头部 `local x = C.k` 的 k 必须在该模块 bind 之前已挂到 ctx/H，否则 FAIL（延迟键只能经 wrapper）。",
   "delayed_c_wrappers": [
     "parseIpcStat",
     "parseTfCard",
     "commitIpcStat",
     "patchCloud",
+    "setRecActive",
     "hostQuery",
     "hostSet",
     "idCfg",
@@ -16,24 +17,7 @@
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": false,
-      "c": [
-        "E",
-        "rspOnly",
-        "rspBody",
-        "rspFmt",
-        "rspLine",
-        "rspLineOk",
-        "modCall",
-        "loader",
-        "uart_bridge",
-        "CRLF",
-        "hostUsbCfg",
-        "usbInserted",
-        "t31xUartOff",
-        "RSP_ERROR",
-        "LOG_TAG",
-        "pushUsbIdle"
-      ]
+      "c": ["E", "rspOnly", "rspBody", "rspFmt", "rspLine", "rspLineOk", "modCall", "loader", "uart_bridge", "CRLF", "hostUsbCfg", "usbInserted", "t31xUartOff", "RSP_ERROR", "LOG_TAG", "pushUsbIdle"]
     },
     "hif_cmd_link.lua": {
       "bind_args": "C",
@@ -50,19 +34,19 @@
     "hif_cmd_t31x.lua": {
       "bind_args": "C",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush"],
-      "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud"]
+      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "utils", "noteHostPush", "parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"],
+      "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"]
     },
     "hif_cmd_wled.lua": {
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xUartOff", "RSP_ERROR", "defineQuery", "defineSet"]
+      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xUartOff", "RSP_ERROR", "TMO_SHARED", "defineQuery", "defineSet"]
     },
     "hif_ipc_rec.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle", "pushUsbIdle"],
+      "c": ["state", "SYS_EVT", "loader", "modCall", "usbInserted", "noopIdle", "pushUsbIdle", "TMO_SHARED", "enterSession", "leaveSession"],
       "h": ["getCfg", "hostQuery"]
     },
     "hif_ipc_hostq.lua": {
@@ -75,27 +59,27 @@
     "hif_ipc_cloud.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "E", "modCall", "hostBusy", "wledGet", "normIpcCloud", "commitIpcStat"],
+      "c": ["state", "SYS_EVT", "E", "modCall", "hostBusy", "wledGet", "normIpcCloud", "commitIpcStat", "utils", "setRecActive", "TMO_SHARED"],
       "h": ["getCfg", "hostQuery", "defineQuery", "idCfgFn", "qryHostStat", "qryHostRecord"]
     },
     "hif_ipc_power.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud"],
+      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "enterSession", "leaveSession", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud", "setRecActive", "logPowerOffRx", "TMO_SHARED"],
       "h": ["getCfg", "qryHostStat"]
     },
     "hif_ipc_tffmt.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs"],
+      "c": ["state", "SYS_EVT", "waitHostIdle", "uart_bridge", "utils", "t31xUartOff", "hostNowMs", "uartAcquire", "uartRelease", "enterSession", "leaveSession", "TMO_SHARED"],
       "h": ["ensT31xHost", "hostBoot"]
     },
     "hif_ipc_encode.lua": {
       "bind_args": "C, H",
       "requires_sys": false,
       "c": ["state", "SYS_EVT", "utils"],
-      "h": ["hostQuery", "getCfg", "defineSet"]
+      "h": ["getCfg", "hostQuery", "defineSet"]
     }
   }
 }

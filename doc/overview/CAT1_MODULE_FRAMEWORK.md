@@ -76,7 +76,7 @@ loader.start(time_sync, "startSntp")
 | **`config_manager`** 禁 `require "lib/utils"` | `config_manager→utils→module_loader→config_manager` 重入环 |
 | config 域的值（默认/模板/常量）**无法与 lib 单源共享** | 只允许「config 权威 + lib 兜底/双实现」+ 互链注释同步（实例：`MIN_VALID_UNIX`、`parseBoolDef`/`bool`，见 `USER_LIB_CODE_AUDIT_20260904.md` §14） |
 
-**检查点**：新增 config 片段、或改动 config_manager / lib 顶部 require 前，跑一次 `run_all_checks.py`（module_tree 护栏会暴露依赖拓扑破坏）。
+**检查点**：上述红线自 2026-09-04（refactor_plan P1a）起由 `tools/debug/_layer_check.py`（`run_all_checks` 第 11 项）机器守护：R1 `lib/* ↛ user/` 业务模块（config 域 `config`/片段/`config_manager`/`module_loader`/`runtime_power` 豁免）、R2 config 域 ↛ `utils`/`module_loader` 加载期 require、R3 `mqtt_*`/`hif_*` 子模块 ↛ require 主文件。违规边以 `_layer_baseline.json` 为白名单、只允许收缩；依赖图/环/反向边真源 `python tools/debug/_dep_graph.py`。
 
 ---
 
@@ -314,7 +314,7 @@ local function modCall(name, fn, ...)  -- 模块或函数缺失时返回 nil
 
 **2E 文件头注释修正**：34 个文件头部 `Notes: 本地 helper 速查：无本地压缩 helper` 与事实不符（各文件均有大量 local helper，第九轮已压缩 122 个函数名），统一删除该占位行。
 
-**核实后不处理**：t31xPowerWaitMs 六处 fallback 链统一、battery_guard `cfg()`（有 guard fallback 与 config_manager 语义不同）、peripheral `shallowMerge`（嵌套子表整体替换 vs 逐 key 合并）、host_uart 3249/3552-3559 内联、cellular_bootstrap `waitSimInfo`、各文件零星 optTable——均有语义差异或收益过低，保持现状。
+**核实后不处理**：`t31x_power_wait_ms` 六处 fallback 链统一、battery_guard `cfg()`（有 guard fallback 与 config_manager 语义不同）、peripheral `shallowMerge`（嵌套子表整体替换 vs 逐 key 合并）、host_uart 3249/3552-3559 内联、cellular_bootstrap `waitSimInfo`、各文件零星 optTable——均有语义差异或收益过低，保持现状。
 
 **验证**：luatos-cli `build luac` 全量编译 user/（17 文件）+ lib/（17 文件）零错误；test_parsers.lua（44 断言）+ test_factories.lua（17 断言）经 lupa（Lua 5.5 宿主）全部通过。注：两份测试的提取锚点此前全部失效（Lua pattern `.-` 不跨行，函数均为多行定义），本轮改为"起点 marker 定界提取"后首次真正运行，并修正一处历史错误断言（mic 无收集行时 END 不发布，与 venc/audio/framerate 共用 rowsEndFlus 语义一致）。2A 的 7 处行为变化项（2001/2003/2005/2008 + HOSTIDLE + GETCFG 字段）需整机回归。
 

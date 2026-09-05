@@ -28,24 +28,25 @@ main.lua
 
 | # | 条件 | 动作 |
 |---|------|------|
-| 1 | 始终 | `setupEventHandlers()`（内含 **`pir_ctrl.start()`**） |
-| 2 | `battery_guard` | `battery_guard.start(hooks)` |
-| 3 | `watchdog` | `setupWatchdog()` |
-| 4 | `uart_bridge` | `setupUartBridge()`：`uart_bridge` + **`host_uart`** 同启 |
-| 5 | 始终 | 订阅 `HOST_UART_FIRST_AT` |
-| 6 | 始终 | **`initPowerStatus()`**（可进 rest；**早于** t31x/GPIO） |
-| 7 | 始终 | `scheduleBootUsbPolicySync()` |
-| 8 | 始终 | `t31x_ctrl.start()` |
-| 9 | `sound_prompt` | `sound_prompt.start()` + `onAppStarted()` |
-| 10 | `time_sync` | `time_sync.start()` |
-| 11 | `gpio` | `setupGpio()` → `peripheral.start()` |
-| 12 | `pmd_runtime` | `setupPmd()` |
-| 13 | flags | `startBackgroundServices()`：`vbat` / `usb_charge` / `time_sync` / `mobile_info` |
-| 14 | `rndis` | `setupRndis()` |
-| 15 | `mqtt` | `net_mqtt.bootstrapNet()`（`main.lua` 已调，幂等） |
-| 16 | 始终 | **`bootMqtt()`** → `startMqtt()` → `net.start()` |
-| 17 | `fota` | `setupFota()` |
-| 18 | 始终 | `startHeartbeat()`（10s） |
+| 0 | 始终 | `deviceId.setImei`；`hostEvt.bindMqttPending`；`lpWake.bindNetTcp`；`t31xNotify.registerProviders{pushBeforeNotify, ntfHost, wakeHost, ensPowOn}` |
+| 1 | 始终 | `setupEvents()`（订阅 `EVNT_HNDL` 表，内含 **`pirCtrl.start()`**；`HOST_UART_FIRST_AT` 亦在表内） |
+| 2 | `battery_guard` | `batteryGuard.start(hooks)` |
+| 3 | `watchdog` | `setupWdt()` |
+| 4 | `uart_bridge` | `setupUart()`：`uart_bridge` + **`host_uart`** 同启 |
+| 5 | 始终 | **`initPower()`**（可进 rest；**早于** t31x/GPIO）→ `schedBootUsb()` |
+| 6 | 有 t31x | `t31xModule.start()` |
+| 7 | `sound_prompt` | `sound_prompt.start()` + `onAppStarted()` |
+| 8 | `time_sync` | `time_sync.start()` |
+| 9 | `gpio` | `setupGpio()` → `peripheral.start()` |
+| 10 | `pmd_runtime` | `setupPmd()` |
+| 11 | flags | `startBgSvc()`：`vbat` / `usb_charge` / `mobile_info` |
+| 12 | `rndis` | `setupRndis()` |
+| 13 | `mqtt` | `netModule.bootstrapNet()`（`main.lua` 已调，幂等） |
+| 14 | 始终 | **`bootMqtt()`**（协程：等 RNDIS stable + `net_ready`）→ `startMqtt()` → `net_mqtt.start()` |
+| 15 | `fota` | `setupFota()` |
+| 16 | 始终 | `startHeartbeat()`（间隔 `APP_META.heartbeat_log_interval_ms`，默认 60000，下限 `TIMEOUT.heartbeatMin`） |
+
+> 运行时视角（每步之后设备会发生什么、在哪个门禁被拦）见 [TECH_WORKFLOWS.md](TECH_WORKFLOWS.md) W1。
 
 ### 1.2 MQTT 异步链
 
@@ -128,7 +129,7 @@ main.lua
 | uart_bridge | sys |
 | t31x_ctrl | sys, config 引脚 |
 
-**规则**：`lib/*` 不得 `require user/*`。
+**规则**：`lib/*` 不得依赖 `user/` **业务**模块（`pir_ctrl`/`host_uart`/`net_mqtt`/…）。**例外**：`config` 域——`user/config.lua` 及 10 个片段、`lib/config_manager`、`lib/module_loader`、`lib/runtime_power`——属 L0 平台配置层，lib 在加载期 `require "config"` 是允许的（实测 9 个 lib 如此）。由 `tools/debug/_layer_check.py` 守护（P1a 起），图与环/反向边真源见 `python tools/debug/_dep_graph.py`。
 
 ---
 
@@ -166,17 +167,18 @@ pir_ctrl (GPIO30 rising, cooldown)
 
 ```
 BATTERY_UPDATE (vbat)
-  → app 日志
-  → battery_guard.evaluate (未插 USB: ≤15% 停 PIR, ≤10% onEnterLowPower+1002, ≤5% 关机)
-  → 插 USB: 忽略阈值 + t31x_ctrl.wake()
+  → battery_guard.onBatUpd → evaluate → getBatteryTier
+       档位只有 NORMAL / SHUTDOWN（默认 LOW_POWER_ENTER_STRATEGY="battery"）：
+       电芯 ≤ shutdown_mv(3400, 连续 2 次) 或 ≤ shutdown_percent(5%) → enterBatRest + 排程 pm.shutdown
+       （hybrid 策略才启用 t31x_rest_percent / pir_suspend_percent 等中间档；默认不用）
+  → 插 USB: ignore_when_usb_inserted 跳过阈值评估，取消已排程关机
 
-GPIO27 USB 拔出 (usb_charge)
-  → battery_guard.onUsbRemoved()
-  → onEnterLowPower (RNDIS 开时可能跳过)
-       → t31x_ctrl.enterSleep (modemHibernate=false), pubRest(1002)
+GPIO27 USB 拔出 (usb_charge → GPIO_USB_DET_CHANGED → app.applyUsbPower)
+  → battery_guard.onUsbRemove()（策略允许时 onEnterLowPower）
+       → t31x_ctrl.enterSleep, pubRest(1002)
 
 GPIO27 USB 插入
-  → battery_guard.onUsbInserted() → onExitLowPower + wake T31x
+  → battery_guard.onUsbIns() → onExitLowPower + reqT31xWake("battery_usb", forceWake)
 ```
 
 ```
@@ -210,27 +212,28 @@ app subscribe:
 | 2001 | MQTT 探活（不上电）→ 1001 |
 | 2002 | 断 T31 enter / 上电 T31 exit |
 | 2003 | 状态/间隔 → `low_power_interval_sec` → 1003 |
-| 2004 | 电源/OTA/reboot/off → 1004 |
+| 2004 | 电源/OTA/reboot/off → 1004（`mqtt_dl_ctrl`） |
 | 2005 | SIM → 1005 |
 | 2006 | 设备标识 → 1006 |
-| 2007 | TF 卡 → 1007 |
-| 2010 | pir_ctrl 配置 |
-| 2011 | 云端停录 |
-| 2021 | `setHostVideoEncode` / `setHostAudioEncode` |
-| 2020 | `queryHostEncode` → 1021/1020 |
+| 2007 / 2009 | TF 卡查询 / 格式化 → 1007 / 1009（`mqtt_dl_tf`） |
+| 2008 | 版本 → 1008 `pubVersion` |
+| 2010 / 2011 / 2012 | pir_ctrl 配置 / 云端停录 / 云端开录 → 1012（`mqtt_dl_pir`） |
+| 2013 | 视频上传 → 1013（`mqtt_dl_upload`） |
+| 2020–2031 | 主机参数查询/设置（encode/recordTime/framerate/personDetect/mic/softPhoto）→ 1020–1031（`mqtt_hproto` → `hif_ipc_*`） |
 
-| 上行 | 函数 |
+| 上行 | 函数（`mqtt_uplink` `pub.*`） |
 |------|------|
 | 1001 | `pubWakeup` |
 | 1002 | `pubRest` |
-| 1003 | `pubStatus`（`low_power_interval_sec`，初值 30s） |
-| 1004 | `pubOtaStatus` |
+| 1003 | `pubStatus`（间隔 `getStatInterval()`，2003 可改） |
+| 1004 | `pubCtrlReply` / `pubOtaStatus` |
 | 1005 | `pubSimInfo` |
-| 1006 | `publishHostIdentity` |
-| 1007 | `pubTfCardInfo` |
-| 1010 | PIR 检测（`pir_ctrl` / host_uart） |
-| 1011 | `pubPirStop` |
-| 1021 / 1020 | `publishEncodeReply` → `encode` 主题 |
+| 1006 | `pubDeviceId` / `pubDeviceIdRef` |
+| 1007 / 1009 | `pubTfCard` / `pubTfFormat` |
+| 1008 | `pubVersion` |
+| 1010 / 1011 / 1012 | `pubPirDetect`·`pubRecActive` / `pubPirStop` / `pubPirStart`（`mqtt_ul_pir`） |
+| 1013 | `pubUploadReply` / `pubUploadDone` / `pubUploadNeed`（`mqtt_ul_upload`） |
+| 1020–1031 | `mqtt_hproto` `pubReply` |
 
 主题与 JSON 字段 → **[MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md)**。
 

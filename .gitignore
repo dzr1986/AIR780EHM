@@ -14,8 +14,9 @@ luac.out
 *.swp
 *~
 
-# 审计/报告临时目录
-doc/_audit/
+# 审计/报告：doc/_audit/ 自 2026-09 主题归档起为「历史留档」目录（doc/README.md 登记，
+# 20+ 主题文档互链其中），必须入库；仅忽略其内工具产生的 json 快照
+doc/_audit/*.json
 
 # 本地工具缓存
 .qoder/
@@ -31,8 +32,8 @@ ota_server/.specstory/
 # AI 会话记忆（本地，勿入 git）
 .ai-memory/
 
-# 发布包（体积大，需要时单独归档）
-release/
+# 发布包（体积大，需要时单独归档）；根锚定，勿误吞 doc/release/ 文档目录
+/release/
 firmware/*.soc
 firmware/*.bin
 *_量产/

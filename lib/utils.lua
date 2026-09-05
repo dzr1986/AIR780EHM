@@ -4,7 +4,6 @@
 -- Arch     : 见 doc/overview/LUA_MODULES.md
 -- ================================================================
 
-local loader = require "module_loader"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -103,12 +102,6 @@ function decodeHex(hex)
     return table.concat(parts)
 end
 
-function t31xOn(tag, extra, defaultExtra)
-    local t31x = loader.load("t31x_ctrl")
-    if not t31x then return false end
-    return t31x.ensPowOn(tag, extra or defaultExtra)
-end
-
 function waitT31xAck(eventName, timeoutMs, ackOk)
     local deadline = nowMs() + timeoutMs
     while true do
@@ -187,14 +180,6 @@ function waitLocalIp(timeoutMs)
         ip = localIp()
     end
     return ip
-end
-
-function hostUart()
-    return loader.load("host_uart")
-end
-
-function uartBridge()
-    return loader.load("uart_bridge")
 end
 
 return _M

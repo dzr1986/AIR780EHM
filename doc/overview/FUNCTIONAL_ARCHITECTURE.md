@@ -4,9 +4,9 @@
 > - 既有文档回答"**代码按什么层放**"（基础设施 vs 业务）。
 > - 本文档回答"**功能按什么域组织**"，并给出**拆分/合并清单**与**架构选型建议**（用户当前诉求）。
 >
-> **基线（2026-09-04 实测真源）**：`lib/` 15 + `user/` 58 = **73 个 `.lua` 模块**（另有 2 个 json），16 112 行。
+> **基线（2026-09-04 实测真源）**：`lib/` 15 + `user/` 59 = **74 个 `.lua` 模块**（P1b +`svc`）（另有 2 个 json），16 112 行。
 > 入口 `main.lua` → `config`→`module_loader` → `app.start(peripheral, net_mqtt, t31x_ctrl)` → `sys.run()` 事件主循环。
-> 版本 `001.000.151`。本图以下覆盖 73 模块的**功能分层**（与 [LUA_MODULES.md](LUA_MODULES.md) 模块树、[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 系统视图互补）。
+> 版本 `001.000.160`。本图以下覆盖 74 模块的**功能分层**（与 [LUA_MODULES.md](LUA_MODULES.md) 模块树、[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 系统视图互补）。
 
 ---
 

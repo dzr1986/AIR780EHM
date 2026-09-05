@@ -43,9 +43,20 @@ local CRLF = "\r\n"
 local RSP_ERROR = CRLF .. "ERROR" .. CRLF
 local HOST_PUSH_QUIET_MS = 300
 
+-- host_uart 族共享超时（refactor_plan P2a）：同一语义只在此定义一次，子模块经 ctx.TMO_SHARED 读取。
+-- 各子模块本地 TIMEOUT/TMO 只保留模块特有值（如 tffmt.formatMs / hostq.recOff）。
+-- 已知同义不同值（本阶段不改数值，登记待定）：quiet 静默期 hif_ipc.TMO.quiet=1500 vs
+-- hif_ipc_power.hostIdleCapMs=2000 / hif_ipc_tffmt.hostIdleMs=2000，见 HOST_UART_AT_DISPATCH.md「超时常量真源」。
+local TMO_SHARED = {
+    acquireCapMs = 8000,      -- 拿串口事务锁最多等待（power / tffmt）
+    statusQueryMs = 2000,     -- AT+IPCSTATUS? 单次超时（rec / power）
+    cloudStatQueryMs = 2500,  -- AT+IPCSTAT? 单次超时（cloud / 首条 AT 后刷新）
+    qryDefaultMs = 3000,      -- 通用 AT 查询默认超时（hif_ipc.hostQuery / cmd_wled AT+WLED?）
+    t31xWaitMs = 800,         -- ensT31xHost 上电后等待默认值（配置 t31x_power_wait_ms 缺省时）
+}
+
 local TIMEOUT = {
     firstAtCloudWait = 300,
-    firstAtCloudQuery = 2500,
     txnWaitSlice = 80,
     txnWaitMin = 20,
     hostIdleSliceMin = 20,
@@ -115,16 +126,14 @@ local state = {
     host_ipc_cloud_stat = nil,
     ipc_status_query_busy = false,
     ipc_cloud_stat_query_busy = false,
-    ipc_poweroff_busy = false,
     encode_venc_rows = nil,
     encode_audio_rows = nil,
     encode_query_busy = false,
     encode_set_busy = false,
     t31x_rec_active = 0,
     t31x_last_reason = "idle",
-    tfcard_format_busy = false,
     ipc_uart_miss_streak = 0,
-    uart_recovery_busy = false,
+    uart_session = nil,        -- 破坏性串口会话：nil | "tfformat" | "poweroff" | "usb_recovery"（P3）
     uart_recovery_attempts = 0,
     uart_recovery_last_sec = 0,
     host_push_quiet_until = 0,
@@ -166,6 +175,13 @@ end
 
 local function noteHostPush()
     state.host_push_quiet_until = hostNowMs() + HOST_PUSH_QUIET_MS
+end
+
+-- IPCPOWEROFF 收包日志（rx_dsl URC 路径 / ipc_power 阶段路径共用，P9 单源）
+local function logPowerOffRx(tag, line)
+    if log and log.info then
+        log.info(LOG_TAG, "ipcpoweroff_rx", tag, line or "error")
+    end
 end
 
 local function hostBusy()
@@ -227,6 +243,45 @@ local function uartAcquire(timeoutMs)
     uartTxnOwner = me
     uartTxnDepth = 1
     return true
+end
+
+-- stop 时（及冷启动首次 start）复位事务锁：持有者协程若在 stop 期间被丢弃，锁会永久 busy，
+-- 之后所有 hostQuery/hostSet 只能等超时走 fallback；复位后原持有者的 uartRelease 变 no-op。
+-- 运行中重入 start 不复位——否则会把仍在等 ACK 的持有者手里的锁放给第二个协程
+local function resetUartTxn()
+    uartTxnOwner = nil
+    uartTxnDepth = 0
+    state.uart_txn_busy = false
+    state.uart_session = nil
+    uartSessionOwner = nil
+end
+
+----------------------------------------------------------------
+-- 破坏性串口会话（refactor_plan P3）：格式化 / 断电 / USB 恢复期间，
+-- 除会话持有协程外，所有 hostQuery 走 fallback、hostSet 回 busy、1003 刷新走缓存。
+-- 与事务锁的分工：锁 = 「同时只有一个请求在飞」；会话 = 「T31x 处于不可打扰状态」。
+----------------------------------------------------------------
+local uartSessionOwner = nil
+
+local function enterSession(name)
+    if state.uart_session then
+        return false
+    end
+    state.uart_session = name
+    uartSessionOwner = coroutine.running()
+    return true
+end
+
+local function leaveSession(name)
+    if state.uart_session == name then
+        state.uart_session = nil
+        uartSessionOwner = nil
+    end
+end
+
+-- 当前协程是否被会话拦截（会话持有者自己可继续发查询）
+local function sessionBlocks()
+    return state.uart_session ~= nil and uartSessionOwner ~= coroutine.running()
 end
 
 local function uartRelease()
@@ -415,6 +470,7 @@ local ctx = {
     state = state,
     hooks = hooks,
     SYS_EVT = SYS_EVT,
+    TMO_SHARED = TMO_SHARED,
     E = E,
     LOG_TAG = LOG_TAG,
     hostNowMs = hostNowMs,
@@ -447,7 +503,11 @@ local ctx = {
     waitHostIdle = waitHostIdle,
     uartAcquire = uartAcquire,
     uartRelease = uartRelease,
+    enterSession = enterSession,
+    leaveSession = leaveSession,
+    sessionBlocks = sessionBlocks,
     hostBusy = hostBusy,
+    logPowerOffRx = logPowerOffRx,
     noteHostPush = noteHostPush,
     parseSvcArgs = parseSvcArgs,
     pushUsbIdle = pushUsbIdle,
@@ -503,6 +563,9 @@ local RX_LINE_TRY_HANDLERS = rx.tryHandlers
 local ipc = require("hif_ipc").bind(ctx)
 -- 装配 hif_ipc 对外 API → _M（唯一装配点）
 for k, fn in pairs(ipc) do _M[k] = fn end
+-- 外部模块（ipc_supv）经 host_uart._M 使用的本文件 local / rx 能力：显式导出，否则为 nil 调用（P9 成员校验）
+_M.hostBusy = hostBusy
+_M.patchCloud = rx.patchCloud -- 仅限非 recordingt31x 的云状态补丁（recordingt31x 走 setRecActive，护栏守护）
 
 ----------------------------------------------------------------
 -- RX 行处理
@@ -526,7 +589,7 @@ local function onFirstHostAt(atLine)
         if not ctx.M.canQueryT31() then
             return
         end
-        ctx.M.qryIpcCloudStat(TIMEOUT.firstAtCloudQuery)
+        ctx.M.qryIpcCloudStat(TMO_SHARED.cloudStatQueryMs)
         ctx.M.mergeTfCloud()
     end)
     sys.publish(E.HOST_UART_FIRST_AT, atLine or "")
@@ -635,6 +698,7 @@ function start(opts)
     t31xFallback = t31xModule
     state.host_at_ready = false
     state.first_host_at = nil
+    if not started then resetUartTxn() end
     bindStartHooks(opts)
     uart_bridge.setOnLine(onUartLine)
     started = true
@@ -643,6 +707,7 @@ end
 
 function stop()
     uart_bridge.setOnLine(nil)
+    resetUartTxn()
     started = false
     return true
 end

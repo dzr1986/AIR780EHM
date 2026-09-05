@@ -1,5 +1,5 @@
 -- ================================================================
--- Filename : config/battery.lua
+-- Filename : battery.lua（config 片段，user/ 顶层；由 config.lua 编排 require）
 -- Module   : 电量 ADC/滤波/guard 三档保护 + t31x 唤醒门禁 + 低功耗进入策略
 -- Arch     : 拆分自 config.lua。依赖 config.features 的 LOW_POWER_CFG。
 -- ================================================================

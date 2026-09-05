@@ -1,0 +1,50 @@
+---
+description: 重构硬约束（改 user/lib 代码时的提交门槛：接口变更同步文档、不引入依赖、编译+护栏通过、无循环依赖、保留风格）
+globs: user/**/*.lua,lib/**/*.lua,luatos.json,config.mk
+alwaysApply: false
+---
+
+# 重构硬约束
+
+## 1. 对外接口变更必须在同一 commit 更新文档
+
+本仓库的「对外接口」= 模块导出函数签名（`function name(...)` / `_M.x`）、`bind(ctx)` 注入键、`_G.X_CFG` 表及字段、MQTT `dataType`/JSON 字段、`AT+` 命令与应答格式。改动任一项，同一 commit 内同步：
+
+| 变更 | 必改文档 / 规格 |
+|------|----------------|
+| 导出函数改名/改参 | `doc/overview/CAT1_API_NAMING.md`；跑 `python tools/sync_doc_naming.py --dry-run` 核对 |
+| 新增/删除模块 | `doc/overview/LUA_MODULES.md` + `main.lua __LUATOOLS_SCAN_ANCHOR__` 挂名 |
+| `bind(ctx)` 键增删 | `tools/debug/bind_header_specs.json`（`_gen_bind_header.py --check-all`） |
+| `_G.X_CFG` 键/字段 | 对应 `doc/overview/CONFIG.md` 段落 + `python tools/debug/_config_key_check.py --write-doc` |
+| 20xx/10xx / AT 协议 | `doc/mqtt/MQTT_DOWNLINK.md` / `doc/mqtt/UART_AT_COMMANDS.md` |
+
+## 2. 不引入新运行时依赖，不动编译链与目标平台
+
+- 只用 LuatOS 内核已带库（`sys`/`log`/`json`/`mqtt`/`gpio`/`uart`/`adc`/`pm`/`mobile`…）；不新增 `require` 外部 Lua 库，不 vendoring 第三方代码进 `lib/`。
+- 不改 `luatos.json` 的 `core` / `.soc` 目标、不改 `config.mk` 宏语义、不改 `pack_mass_prod.py` 产物结构。需要时先在 doc 立提案，不随重构夹带。
+
+## 3. 每个重构批次 = 代码 + 文档 + 编译/护栏通过，缺一不提交
+
+```bash
+for f in user/*.lua lib/*.lua; do luac5.3 -p "$f"; done   # 语法（Lua 5.3）
+python tools/debug/run_all_checks.py                       # 9 项静态护栏全 PASS
+```
+
+- 有行为改动升 `user/main.lua` `VERSION`（`_doc_version_check` 会联动校验 10 处文档口径）。
+- 模块行数变化后 `python tools/debug/_module_tree.py --save-baseline` 一并入库。
+- 「文档稍后补」不成立：护栏红一项即不提交。
+
+## 4. 初始化/销毁顺序不得引入循环依赖
+
+- `require` 环红线（`doc/overview/CAT1_MODULE_FRAMEWORK.md §2.4`）：config 片段与 `config_manager` **禁 require** `utils` 系 lib；`lib/*` 不得 `require user/*`；`net_mqtt`/`host_uart` 子模块禁 `require` 主文件，只经 `bind(ctx)` 注入。
+- `app.start` 顺序（`doc/overview/CALL_GRAPH.md §1.1`）与 bind 链顺序（cmd → rx → ipc；uplink → downlink → dispatch）由 `_protocol_regression_check` 守护，新模块只能追加在依赖项之后。
+- 跨模块需要对方对象时用 `module_loader.load` 懒加载或 provider 注入（`t31x_notify.registerProviders`），不要在模块顶层互相 `require`。
+- `start()`/`stop()` 必须幂等且成对：`stop` 清掉 `start` 建的定时器、订阅、句柄、锁。
+
+## 5. 保留原有代码风格与命名
+
+- 模块头 `local _modname = ... / module(_modname, package.seeall) / _G[_modname] = _M`；缩进与所在文件一致（不要整文件重排缩进制造噪音 diff）。
+- API 名 camelCase（`pubStatus`/`ensPowOn`），配置键 snake_case（`t31x_power_wait_ms`），事件常量全大写；`t31x` 前缀小写规范见 `doc/overview/T31X_NAMING.md`。**API 名与配置键是两套命名空间，不要互相「收敛」。**
+- 只在非显而易见处写注释（意图、约束、撤销条件），不写「做了什么」的叙述性注释。
+- 平台 API（`mobile`/`socket`/`pm`/`json`/`adc`）保留 `pcall`；`0` 是真值，`v ~= nil and v or d` 只对 nil/false 兜底。
+- 返回约定：查询 `value | nil`，命令 `ok, reason[, detail]`；业务失败码走返回值并登记 `doc/mqtt/MQTT_REPLY_MESSAGES.md`，**不用 `error("<业务码>")`**（`error` 只留给运行时异常，pcall 兜住后映射 `internal_error`）。

@@ -35,7 +35,7 @@ function bind(C)
     local uploadUl = require("mqtt_ul_upload").bind(C)
 
     local TIMEOUT = {
-        ipcRefreshMs = 2500,
+        ipcRefreshMs = C.TMO_SHARED.ipcStatRefreshMs,
     }
 
     ----------------------------------------------------------------

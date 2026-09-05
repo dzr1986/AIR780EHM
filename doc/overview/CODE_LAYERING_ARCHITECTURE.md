@@ -23,7 +23,10 @@
 │ L1  lib · 硬件驱动     gpio_util uart_bridge watchdog          │
 │                                usb_rndis usb_charge usb_vuart  │
 │                                led_ctrl(已下沉)                 │
-│ L0  vendor/framework  sys.lua（LuatOS 协程核心 fork，不改动）  │
+│ L0  平台配置/框架    sys.lua（LuatOS fork，不改动）            │
+│                      config + 10 片段(user/) · config_manager  │
+│                      module_loader · runtime_power              │
+│                      ── lib 可在加载期依赖本层；本层禁 require utils 系（§2.4 require 环）│
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,7 +97,7 @@
 结论：**三者已是干净驱动，不抽取**（§6.3）。
 
 ### 3.5 重复与缺陷（已修复 / 标注）
-1. **gpio_util 键名不一致（已修复）**：`setupInput` 原只读 camelCase `triggerMode`/`debounce`，而 `usb_charge`/`peripheral` 传 snake_case `trigger_mode`/`debounce_ms` → both 触发与防抖**静默失效**。现兼容两种命名（§5.P4-1）。
+1. **gpio_util 键名不一致（已修复，09-01 曾回归，09-04 二次修复 + 护栏）**：`setupInput` 原只读 camelCase `triggerMode`/`debounce`，而 `usb_charge`/`peripheral`/`pir_ctrl` 传 snake_case `trigger_mode`/`debounce_ms` → both 触发与防抖**静默失效**（PWR/BOOT 长按永不触发）。P4-1 修过一次，9bcfc78 重命名时兼容读被删、无人察觉三天；155 起兼容两种命名并由 `tools/debug/_gpio_opts_check.py`（run_all_checks 第 8 项）守护，见 [USER_LIB_CODE_AUDIT §18 R1](USER_LIB_CODE_AUDIT_20260904.md)。
 2. **双看门狗（仅标注，不改动）**：`sys.lua` 末尾 `rtos.openSoftDog` + `watchdog.lua` 硬件 WDT 重叠。二者独立（软狗捕 Lua 挂死、硬狗捕芯片挂死），`sys.lua` 为 vendor 文件（既有规则"不改动"），故**保留现状并在此处标注**，如需二选一由团队决策。
 3. **行缓冲拆分重复（已修复）**：`usb_vuart.onRx` 原自实现 `\r\n` 拆分，现抽 `utils.lineSplit` 复用（§5.P4-3）。`uart_bridge` 协议更复杂，未强改，可后续采纳。
 4. **config_manager docstring 误导（已修复）**：注释删除"JSON 持久化读写、热更新"谎述（代码无此实现）；`merge` 仅浅合并，新增非破坏性 `deepMerge` 供嵌套配置（§5.P4-2）。

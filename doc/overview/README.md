@@ -8,19 +8,20 @@
 
 | 文档 | 说明 |
 |------|------|
-| [CAT1_API_NAMING.md](CAT1_API_NAMING.md) 🟢 | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…，版本 001.000.151） |
+| [CAT1_API_NAMING.md](CAT1_API_NAMING.md) 🟢 | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…，对齐代码 001.000.160，151 批 rename 后无 API 变更） |
 | [T31X_NAMING.md](T31X_NAMING.md) 🟢 | 协处理器写法规范（`t31x` 代码 / `T31x` 行文 / `T31X` 常量·文件名） |
-| [LUA_MODULES.md](LUA_MODULES.md) 🟢 | **模块树真源**（user 58 + lib 15 = 73，config 片段族、设计原则） |
+| [LUA_MODULES.md](LUA_MODULES.md) 🟢 | **模块树真源**（user 59 + lib 15 = 74，config 片段族、设计原则） |
 
 ## 架构与现状（入口先读 📌）
 
 | 文档 | 说明 |
 |------|------|
 | [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 📌 | **系统级总览**：子系统 / 核心模块 / 数据流（建议先读） |
+| [TECH_WORKFLOWS.md](TECH_WORKFLOWS.md) 📌 | **技术工作流总图**：按设备生命周期 W0–W10 串起模块/协议/门禁/观测点/真源（运行时视角，排障入口） |
 | [CODE_LAYERING_ARCHITECTURE.md](CODE_LAYERING_ARCHITECTURE.md) 🟢 | **分层架构真源**：`lib/`（L0–L2）与 `user/`（L3–L4）切割 |
 | [CONFIG.md](CONFIG.md) 🟢 | **配置索引**：`GPIO_IN`/`GPIO_OUT`、Air780 GPIO 编号、`config.mk` 宏对照 |
 | [CAT1_MODULE_FRAMEWORK.md](CAT1_MODULE_FRAMEWORK.md) | 模块框架：`module_loader`/`config_manager`、生命周期/日志/事件约定 |
-| [CALL_GRAPH.md](CALL_GRAPH.md) | 启动顺序、require、事件流 |
+| [CALL_GRAPH.md](CALL_GRAPH.md) | 启动顺序、require、事件流（`app.start` 真序、dataType↔函数表，2026-09-04 对齐 155） |
 | [PROJECT_DOC.md](PROJECT_DOC.md) | 模块职责、业务流程、调试 |
 | [CODE_ANALYSIS.md](CODE_ANALYSIS.md) | 架构与风险分析 |
 | [FUNCTIONAL_ARCHITECTURE.md](FUNCTIONAL_ARCHITECTURE.md) | 功能架构：特性域 → 层 → 模块 |

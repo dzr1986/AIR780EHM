@@ -6,7 +6,7 @@
 
 PROJECT = "PANSHI_CAT1"
 -- ===== 第 1 段：VERSION 格式校验 & 全局 OTA 版本函数 =====
-VERSION = "001.000.154"
+VERSION = "001.000.160"
 PRODUCT_KEY = "ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x"
 local SCRIPT_VERSION_PATTERN = "^%d+%.%d+%.%d+$"
 local function validateBuildVersion(ver)
@@ -112,6 +112,7 @@ if _G.__LUATOOLS_SCAN_ANCHOR__ then
     require "net_tcp"
     require "runtime_power"
     require "sound_prompt"
+    require "svc"
     require "t31x_notify"
     require "t31x_policy"
     require "time_sync"

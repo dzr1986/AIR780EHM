@@ -2,7 +2,7 @@
 
 技术文档：**[`doc/README.md`](doc/README.md)** · 模块树：**[`doc/overview/LUA_MODULES.md`](doc/overview/LUA_MODULES.md)** · 命名约定：**[`doc/overview/T31X_NAMING.md`](doc/overview/T31X_NAMING.md)** · API 真源：**[`doc/overview/CAT1_API_NAMING.md`](doc/overview/CAT1_API_NAMING.md)**
 
-Air780EHM + T31x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`，真源共 **58 + 15 = 73** 个模块，2026-09-03 实测）。
+Air780EHM + T31x 摄像头 · LuatOS **方案1**（扁平 `user/` + 精简 `lib/`，真源共 **59 + 15 = 74** 个模块，2026-09-04 实测）。
 
 ## 架构一览
 
@@ -34,12 +34,12 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 
 | 路径 | 说明 |
 |------|------|
-| `user/` | 入口 / 编排 / config 片段 / MQTT 族 / T31x `hif_*` 族 / PIR / 外设 / FOTA / 授时（58 文件） |
+| `user/` | 入口 / 编排 / config 片段 / MQTT 族 / T31x `hif_*` 族 / PIR / 外设 / FOTA / 授时 / `svc` 服务定位器（59 文件） |
 | `lib/` | 驱动与公共库：串口 / GPIO / USB / 蜂窝引导 / 唤醒策略 / 加载器 / 系统（15 文件） |
 | `doc/` | 文档库（按主题分目录：`overview/` `hardware/` `power/` `pir/` `mqtt/` `t31x/` `release/` `modules/`，`_audit/` 历史留档、`archive/` 迁移 stub；索引见 [doc/README.md](doc/README.md)） |
 | `archive/` | 历史归档（已删模块留档、旧文档迁移表） |
-| `firmware/` `量产/` | 发布固件产物（`.soc` / `.binpkg`） |
-| `ota_server/` `http_server/` `video_upload_server/` `patch_server/` | 服务端（Java / Python，独立文档） |
+| `firmware/` `量产/` | 发布固件产物（`.soc` / `.binpkg`）；**大部分被 `.gitignore` 忽略**，克隆后为空属正常，从量产包/发布流程获取 |
+| `ota_server/` `http_server/` `video_upload_server/` `patch_server/` | 云侧服务端（Java / Python），**各自独立工程、独立部署**，与固件仅协议耦合；入口见各目录 `README` |
 | `tools/` | 调试脚本（`tools/debug/` 静态护栏）、打包脚本 |
 
 ## lib/ 主路径（15）
@@ -58,7 +58,7 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 | `device_id.lua` | 设备标识（IMEI 等） |
 | `utils.lua` / `sys.lua` / `watchdog.lua` / `libfota2.lua` | 工具 / 平台封装 / 模组 WDT / OTA 引擎 |
 
-## user/ 主路径（58）
+## user/ 主路径（59）
 
 | 文件 | 职责 |
 |------|------|
@@ -95,8 +95,14 @@ main.lua  ← VERSION / PRODUCT_KEY / 引导编排（18 步见 doc/overview/CODE
 
 ## 打包
 
-`package_project.bat` / `pack.ps1` → `780EHM_PJ_YYYYMMDD.zip`（含 `user/`、`lib/`、`doc/`、`README.md`、`luatos.json`）。
+| 用途 | 命令 | 说明 |
+|------|------|------|
+| **量产交付（真源）** | `python tools/pack_mass_prod.py <脚本版本>` | 生成 `{日期}_量产/`（固件 + 烧录工具），见 [doc/release/CAT1_FLASH_FLOW.md](doc/release/CAT1_FLASH_FLOW.md) |
+| **单台烧录** | `python tools/gui/flash/cat1_flash.py flash-script` | 只刷脚本区、免 BOOT；不要用 Luatools debug99 |
+| 工程源码包（归档/交付源码） | `package_project.bat` / `pack.ps1` → `780EHM_PJ_YYYYMMDD.zip` | 含 `user/`、`lib/`、`doc/`、`README.md`、`luatos.json`；**不是**烧录产物 |
+
+> `luatos.json` 的 `core`（V2034）仅供 Luatools 打开工程调试；量产内核以 [doc/release/RELEASE_v1.2.md](doc/release/RELEASE_v1.2.md) 登记的内核号为准。
 
 ---
 
-**工程包** v1.2 · **固件 VERSION** `001.000.151`（`user/main.lua`）· **更新** 2026-09-04（架构/配置口径对齐 73 模块真源；模块名与引导链以 `user/`、`lib/` 实测为准）
+**工程包** v1.2 · **固件 VERSION** `001.000.160`（`user/main.lua`）· **更新** 2026-09-04（架构/配置口径对齐 74 模块真源；152–160 为审计/重构行为修复；模块名与引导链以 `user/`、`lib/` 实测为准）

@@ -5,13 +5,15 @@
 
 ## 建议阅读路径
 
-1. [overview/SYSTEM_ARCHITECTURE.md](overview/SYSTEM_ARCHITECTURE.md) — 系统级总览（新读者）
-2. [overview/CODE_LAYERING_ARCHITECTURE.md](overview/CODE_LAYERING_ARCHITECTURE.md) — 分层真源
-3. [overview/CONFIG.md](overview/CONFIG.md) — 配置索引
-4. [mqtt/MQTT_PROTOCOL.md](mqtt/MQTT_PROTOCOL.md) — 协议总纲
-5. [t31x/T31X_4G_FRAMEWORK.md](t31x/T31X_4G_FRAMEWORK.md) — T31x 协作
+三种视角进入同一套真源，按你手头的问题选：
 
-**维护者速查**：改码/排障请直接进 **[开发系统手册 manual/](manual/README.md)**（7 卷按开发任务重组，见下表）。
+| 视角 | 入口 | 适合 |
+|------|------|------|
+| **架构**（系统长什么样） | 1. [overview/SYSTEM_ARCHITECTURE.md](overview/SYSTEM_ARCHITECTURE.md) → 2. [overview/CODE_LAYERING_ARCHITECTURE.md](overview/CODE_LAYERING_ARCHITECTURE.md) → 3. [overview/CONFIG.md](overview/CONFIG.md) → 4. [mqtt/MQTT_PROTOCOL.md](mqtt/MQTT_PROTOCOL.md) → 5. [t31x/T31X_4G_FRAMEWORK.md](t31x/T31X_4G_FRAMEWORK.md) | 新读者、评审 |
+| **技术工作流**（设备运行时先后发生什么） | **[overview/TECH_WORKFLOWS.md](overview/TECH_WORKFLOWS.md)**：W1 上电 → W2 入网/MQTT → W3 T31x 供电/串口 → W4 下行闭环 → W5 PIR/录像 → W6 上传 → W7 电源/低功耗/关机 → W8 OTA → W9 授时/提示音 → W10 监督排障 → W0 工程流；每步给 `模块.函数` / 协议 / 门禁 / 观测点 / 真源 | 排障、联调、理清「为什么这一步没发生」 |
+| **开发任务**（我要改什么） | **[开发系统手册 manual/](manual/README.md)**（7 卷按任务重组，内嵌速查表） | 改 `user/`/`lib/`、加协议、烧录发版 |
+
+> 三层都不是真源：数值/字段/行为冲突一律以代码 > 主题真源为准。
 
 ## 开发系统手册（manual/，面向维护者）
 
@@ -32,9 +34,9 @@
 
 | 文档 | 说明 |
 |------|------|
-| [overview/CAT1_API_NAMING.md](overview/CAT1_API_NAMING.md) | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…；版本 001.000.151） |
+| [overview/CAT1_API_NAMING.md](overview/CAT1_API_NAMING.md) | **Lua API 命名真源**（前缀 `pub*`/`dl*`/`snap*`/…；对齐代码 001.000.160，151 批 rename 后无 API 变更） |
 | [overview/T31X_NAMING.md](overview/T31X_NAMING.md) | 协处理器系列写法（`t31x` / `T31x` / `T31X`） |
-| [overview/LUA_MODULES.md](overview/LUA_MODULES.md) | **模块树真源**（user 58 + lib 15 = 73） |
+| [overview/LUA_MODULES.md](overview/LUA_MODULES.md) | **模块树真源**（user 59 + lib 15 = 74） |
 
 **同步脚本**：`python tools/sync_doc_naming.py`（批量刷新 `doc/` 内 API 引用）。
 
@@ -59,6 +61,8 @@
 
 ## 硬件 / GPIO / 指示灯
 
+> 工作流位置：引脚在 W1（`gpio_util` 装配）、W5（PIR）、W7（USB/按键/烧录）中被消费，见 [TECH_WORKFLOWS](overview/TECH_WORKFLOWS.md)。
+
 | 文档 | 说明 |
 |------|------|
 | [hardware/T31X_CAT1_GPIO.md](hardware/T31X_CAT1_GPIO.md) | 原理图级引脚；**§1.1 固件 GPIO 全表** |
@@ -68,6 +72,8 @@
 | [hardware/PIR_HARDWARE.md](hardware/PIR_HARDWARE.md) | PIR 硬件与流程 |
 
 ## PIR / 录像 / 提示音
+
+> 工作流位置：[TECH_WORKFLOWS W5](overview/TECH_WORKFLOWS.md#w5-pir-触发--录像拍照--上行)（GPIO30 → 冷却 → 唤醒 T31x → AT+RECORD → 1010/1011/1012）· W9（提示音）。
 
 | 文档 | 说明 |
 |------|------|

@@ -24,18 +24,20 @@ function bind(C)
     local state = C.state
     local uartAcquire = C.uartAcquire
     local uartRelease = C.uartRelease
+    local sessionBlocks = C.sessionBlocks
     local waitHostIdle = C.waitHostIdle
     local uart_bridge = C.uart_bridge
     local modCall = C.modCall
     local getCfg = cfgm.get
+    local TMO_SHARED = C.TMO_SHARED
 
     local TMO = {
         retryWait = 200,
         retryCap = 4000,
         postQry = 300,
         quiet = 1500,
-        qry = 3000,
-        t31xWait = 800,
+        qry = TMO_SHARED.qryDefaultMs,
+        t31xWait = TMO_SHARED.t31xWaitMs,
         bootWait = 1500,
     }
 
@@ -131,7 +133,8 @@ function bind(C)
 
     local function hostQuery(waitMs, opts)
         opts.timeoutMs = waitMs
-        if not coroutine.running() or state[opts.busyKey] then
+        -- 破坏性会话（格式化/断电/恢复）期间非持有协程一律走缓存，不再抢锁发 AT（P3）
+        if not coroutine.running() or state[opts.busyKey] or sessionBlocks() then
             return queryFallback(opts)
         end
         local cfg = opts.cfg or idCfg()
@@ -175,7 +178,7 @@ function bind(C)
     local function hostSet(spec)
         spec = spec or {}
         local busy = spec.busyKey
-        if busy and state[busy] then
+        if (busy and state[busy]) or sessionBlocks() then
             return false, "busy", nil
         end
         if busy then
@@ -272,6 +275,10 @@ function bind(C)
                 defaultTimeout = d.tmo,
                 atCmd = type(d.at) == "function" and d.at(opts or {}) or d.at,
                 ackEvent = d.ev,
+                -- 与 defineSet 对齐：spec 的 skipQuiet/waitBoot 须透传，否则 hif_cmd_wled
+                -- QRY_WLED_D.skipQuiet=true 为死字段，查询仍多等一段 quiet
+                skipQuiet = d.skipQuiet,
+                waitBoot = d.waitBoot,
                 whenDisabled = d.dis,
                 beforeSend = d.pre,
                 onResponse = d.rsp,
@@ -316,18 +323,16 @@ function bind(C)
     }
 
     ----------------------------------------------------------------
-    -- 录制态单一写入点：同步 state.t31x_rec_active 与 cloud.recordingt31x
-    --   commitIpcStat 以 cloud.recordingt31x 回填 t31x_rec_active，故以
-    --   cloud 为准；统一此处避免散写导致快照与影子态不一致。
-    --   不触发额外 publish（patchCloud 路径自带 commitIpcStat 发布）
+    -- 录制态**唯一业务写入点**（refactor_plan P6b）：所有「我知道 T31x 在/不在录」的业务判断
+    -- 一律调 setRecActive；它经 patchCloud → commitIpcStat 落到 cloud.recordingt31x 并回填
+    -- state.t31x_rec_active（commitIpcStat 是唯一 raw 写点，cloud 为准），同时刷新 ipc_cloud_stat_ts。
+    -- 不触发 IPCSTAT_ACK（局部补丁 notify=nil），避免抢答 qryIpcCloudStat。
+    -- 禁止在其它文件直写 state.t31x_rec_active 或 patchCloud({recordingt31x=…})——
+    -- _protocol_regression_check 单一写入点断言守护。
     ----------------------------------------------------------------
     local function setRecActive(flag)
         flag = (tonumber(flag) == 1) and 1 or 0
-        state.t31x_rec_active = flag
-        local cloud = state.host_ipc_cloud_stat
-        if type(cloud) == "table" then
-            cloud.recordingt31x = flag
-        end
+        C.patchCloud({ recordingt31x = flag })
     end
     C.setRecActive = setRecActive
 
@@ -364,6 +369,7 @@ function bind(C)
     local api = {
         resetHostLink = recovery.resetHostLink,
         qryHostStat = recovery.qryHostStat,
+        setRecActive = setRecActive, -- 供 mqtt_dl_pir 等外部模块（host_uart._M）
     }
     local function hang(...)
         for i = 1, select("#", ...) do

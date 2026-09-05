@@ -1,7 +1,7 @@
 # V3 · MQTT 云协议速查
 
 > **读者**：平台对接、联调、上下行排障、加协议字段的维护者。
-> **真源（最终权威）**：[MQTT_PROTOCOL](../mqtt/MQTT_PROTOCOL.md)（协议总纲，下行/上行逐命令明细）· [MQTT_DOWNLINK](../mqtt/MQTT_DOWNLINK.md)（下行字段全集）· [PIR_PROTOCOL](../pir/PIR_PROTOCOL.md)
+> **真源（最终权威）**：[MQTT_PROTOCOL](../mqtt/MQTT_PROTOCOL.md)（协议总纲，下行/上行逐命令明细）· [MQTT_DOWNLINK](../mqtt/MQTT_DOWNLINK.md)（下行字段全集）· [MQTT_REPLY_MESSAGES](../mqtt/MQTT_REPLY_MESSAGES.md)（应答 `ret`/`message` 失败码词表）· [PIR_PROTOCOL](../pir/PIR_PROTOCOL.md)
 > **代码真源**：`user/net_mqtt.lua` + `mqtt_*` 族（子模块见 [MANUAL_V2 §5.3](MANUAL_V2_LUA_API.md)）。本卷速查表已与真源对齐；**若冲突以 MQTT_PROTOCOL 为准**。
 > **手册链路**：← [总纲 README](README.md)（§2 任务矩阵）· 相关卷：[V2_LUA_API](MANUAL_V2_LUA_API.md)（模块）· [V4_T31X](MANUAL_V4_T31X.md)（需 T31x 的命令）· [V5_POWER](MANUAL_V5_POWER.md)（rest 功耗态）· [V6_PIR](MANUAL_V6_PIR.md)（PIR 会话）
 

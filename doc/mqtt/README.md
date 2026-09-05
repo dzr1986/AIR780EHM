@@ -3,6 +3,7 @@
 > **唯一入口**：[doc/README.md](../README.md)；本页为 mqtt 二级索引（2026-09-04 分层）。
 > **代码**：`user/net_mqtt.lua` 及 `mqtt_*`/`mqtt_dl_*`/`mqtt_ul_*` 子模块（树见 [LUA_MODULES.md](../overview/LUA_MODULES.md)）。
 > **模块专题**（下载分发/上行职责）：[modules/README.md](../modules/README.md)「net_mqtt 子模块索引」。
+> **工作流位置**：[TECH_WORKFLOWS](../overview/TECH_WORKFLOWS.md) W2（上线/1003）· W4（下行闭环）· W6（2013/1013 上传）· W8（2004 OTA）；串口 AT 在 W3。
 
 ## 协议与规范（真源，先读 📌）
 
@@ -10,6 +11,7 @@
 |------|------|
 | [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md) 📌 | **MQTT 协议总纲**：200x↔100x 对照、上下行明细、Topic（57KB，含 2013） |
 | [MQTT_DOWNLINK.md](MQTT_DOWNLINK.md) | **下行命令手册**（平台 → 设备字段全集；GUI 自动测试载入） |
+| [MQTT_REPLY_MESSAGES.md](MQTT_REPLY_MESSAGES.md) | **应答 `ret`/`message` 词表**（1004/1009/1013/1020–1031 失败码含义与处置；固件返回约定 `ok, reason`） |
 | [MQTT_862323084068314.md](MQTT_862323084068314.md) | 协议手册 — 设备 `…8314`（连接/主题/全命令；两机主题勿混） |
 | [UART_AT_COMMANDS.md](UART_AT_COMMANDS.md) | T31x ↔ Cat.1 串口 AT 一览 |
 | [UART_PROTOCOL.md](UART_PROTOCOL.md) | 串口 AT / STR / HEX 基础 |

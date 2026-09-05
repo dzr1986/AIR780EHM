@@ -117,10 +117,15 @@ function bind(C, shared)
     -- ota
     ----------------------------------------------------------------
 
+    -- 2004 OTA 取包地址：显式 url > channel=iot（不填 url，走 libfota2 合宙默认，MQTT_DOWNLINK §6.3）
+    -- > FOTA_CFG.server_mode=self/custom 自动填自建地址（§6.6）
     local function otaUrl(data)
         local url = data.url or data.otaUrl or data.firmwareUrl
         if url and url ~= "" then
             return url
+        end
+        if string.lower(tostring(data.channel or "")) == "iot" then
+            return nil
         end
         local mode = string.lower(tostring(utils.optTable(_G.FOTA_CFG).server_mode or "self"))
         if mode == "self" or mode == "custom" then

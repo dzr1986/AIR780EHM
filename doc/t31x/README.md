@@ -2,6 +2,7 @@
 
 > **唯一入口**：[doc/README.md](../README.md)；本页为 t31x 二级索引（2026-09-04 分层）。
 > **读者**：固件 / 联调 / 平台。写法规范见 [T31X_NAMING.md](../overview/T31X_NAMING.md)。
+> **工作流位置**：[TECH_WORKFLOWS W3](../overview/TECH_WORKFLOWS.md#w3-t31x-供电串口握手与云状态同步)（供电门禁 → 首条 AT → IPCSTAT → HOSTIDLE/HOSTEVT）· W10（IPC 告警对账）。
 
 ## 协作框架与 AT（先读 📌）
 

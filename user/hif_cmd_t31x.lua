@@ -14,6 +14,7 @@ function bind(C)
     local rspBody, rspFmt, rspLineOk = C.rspBody, C.rspFmt, C.rspLineOk
     local modCall = C.modCall
     local RSP_ERROR = C.RSP_ERROR
+    local utils = C.utils
     local function parseIpcStat(...)
         return C.parseIpcStat(...)
     end
@@ -25,6 +26,9 @@ function bind(C)
     end
     local function patchCloud(...)
         return C.patchCloud(...)
+    end
+    local function setRecActive(...)
+        return C.setRecActive(...)
     end
     local noteHostPush = C.noteHostPush
 
@@ -63,7 +67,7 @@ function bind(C)
         if arg == "1" or arg:match("^1,") then
             local reason = arg:match("reason=([^,]+)") or "active"
             state.t31x_last_reason = reason
-            patchCloud({ recordingt31x = 1 })
+            setRecActive(1)
             if reason ~= "allday_person" then
                 sys.publish(E.T31X_RECORD_ACTIVE)
             end
@@ -76,7 +80,7 @@ function bind(C)
             return rspFmt("RECORD", "0,reason=%s,ignored=1", reason)
         end
         state.t31x_last_reason = reason
-        patchCloud({ recordingt31x = 0 })
+        setRecActive(0)
         local uploadMode, quality = modCall("pir_ctrl", "syncStopT31x", reason)
         sys.publish(E.T31X_RECORD_STOP, reason, uploadMode, quality)
         return rspFmt("RECORD", "0,reason=%s", reason)
@@ -171,7 +175,7 @@ function bind(C)
         if not snap then
             return RSP_ERROR
         end
-        commitIpcStat(snap)
+        commitIpcStat(snap, true) -- 完整快照，允许唤醒等待中的 AT+IPCSTAT? 查询
         return rspLineOk("IPCSTAT")
     end
 
@@ -185,7 +189,7 @@ function bind(C)
             return RSP_ERROR
         end
         state.host_tf_card = snap
-        patchCloud({ tfPresent = (tonumber(snap.present) or 0) == 1 and 1 or 0 })
+        patchCloud({ tfPresent = utils.to01(snap.present) })
         sys.publish(SYS_EVT.TFCARD_ACK, snap)
         return rspLineOk("TFCARD")
     end

@@ -16,10 +16,11 @@ function bind(C)
     local modCall, utils = C.modCall, C.utils
     local hostNowMs, t31xUartOff = C.hostNowMs, C.t31xUartOff
     local RSP_ERROR = C.RSP_ERROR
+    local TMO_SHARED = C.TMO_SHARED
 
     local TIMEOUT = {
-        ackMs = 3000,
-        t31xPowerWaitMs = 800,
+        ackMs = TMO_SHARED.qryDefaultMs,
+        t31xPowerWaitMs = TMO_SHARED.t31xWaitMs,
     }
 
     local wledRt = { on = 0, lastForwardMs = 0 }

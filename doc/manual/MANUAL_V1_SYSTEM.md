@@ -43,7 +43,7 @@ T31x 侧详细协作见 [MANUAL_V4_T31X.md](MANUAL_V4_T31X.md)；云端协议见
 | 层 | 目录 | 角色 | 代表 |
 |----|------|------|------|
 | L0–L2 常驻底层 | `lib/`（15） | 策略/底层/常驻库，模块化可裁 | `sys` `utils` `module_loader` `config_manager` `runtime_power` `libfota2` `cell_boot` `usb_charge` `usb_rndis` `usb_vuart` `uart_bridge` `gpio_util` `device_id` `watchdog` `led_ctrl` |
-| L3 业务模块 | `user/`（58） | 四大族：config 11 / host_uart 18 / net_mqtt 13 / 其它业务 16 | 见下表 |
+| L3 业务模块 | `user/`（59） | 四大族：config 11 / host_uart 18 / net_mqtt 13 / 其它业务 17（含 `svc` 服务定位器） | 见下表 |
 | 入口 | `user/main.lua` | 固件入口（`VERSION`/`PRODUCT_KEY`/`BUILD_TAG`），167 行 | — |
 
 **user/ 四大族**（语义分组，详见 [modules/README](../modules/README.md) 各子模块索引表）：
@@ -65,7 +65,7 @@ main.lua ─► module_loader 装载 config 族（先配置后业务）
         ─► 事件总线 APP_EVENTS 驱动运行期协作（低功耗/USB/PIR/IPC 桥）
 ```
 
-- **模块加载**：`config.lua` 26 行负责把 config 片段与业务模块装好；运行期跨模块访问走**懒加载 API**（`utils.getHostUart()`/`getUartBridge()` 等），禁止业务侧持 `_G` 别名（见 [LUA_MODULES §4](../overview/LUA_MODULES.md)）。
+- **模块加载**：`config.lua` 26 行负责把 config 片段与业务模块装好；运行期跨模块访问走**懒加载 API**（`svc.hostUart()`/`uartBridge()` 等），禁止业务侧持 `_G` 别名（见 [LUA_MODULES §4](../overview/LUA_MODULES.md)）。
 - **事件总线**：`APP_EVENTS` 常量定义在 config 片段 `events.lua`，用 `sys.publish/subscribe`（合宙）承载；见 [MANUAL_V2 §4](MANUAL_V2_LUA_API.md)。
 - **连接启动**：`lib/cell_boot.lua` 完成 SIM/APN 与入网，就绪后 `net_mqtt.bootstrapNet()`；详见 [modules/CELLULAR_BOOTSTRAP](../modules/CELLULAR_BOOTSTRAP.md)。
 
@@ -86,7 +86,7 @@ main.lua ─► module_loader 装载 config 族（先配置后业务）
 
 | 项 | 值/来源 | 说明 |
 |----|---------|------|
-| 脚本 `VERSION` | `user/main.lua`（文档侧当前同步版本 **001.000.151**，见 [CAT1_API_NAMING](../overview/CAT1_API_NAMING.md) 头） | 出现在 1008.`scriptVersion` |
+| 脚本 `VERSION` | `user/main.lua`（文档侧当前同步版本 **001.000.160**，见 [CAT1_API_NAMING](../overview/CAT1_API_NAMING.md) 头） | 出现在 1008.`scriptVersion` |
 | OTA `version`（合宙 IoT） | `内核号.001.xxx`，如 `2044.001.004` | `firmwareVersion` 口径 = `rtos.version` 内核号 + 脚本版本首段.末段；**不是** `main.lua` 的 `VERSION` |
 | `project` / `buildTag` | 如 `PANSHI_CAT1` / `v20260730` | 1008/BASEINFO 字段 |
 | 量产包 | `量产/` 目录（bin/soc/binpkg 三件套），~342KB | 打包见 [MANUAL_V7_TOOLCHAIN.md](MANUAL_V7_TOOLCHAIN.md) |
@@ -96,7 +96,7 @@ main.lua ─► module_loader 装载 config 族（先配置后业务）
 
 | 目录 | 内容 |
 |------|------|
-| `user/` `lib/` | **固件 Lua 真源**（73 模块），改代码只动这里 |
+| `user/` `lib/` | **固件 Lua 真源**（74 模块），改代码只动这里 |
 | `doc/` | 项目文档（主题真源 + 本手册 + `_audit/` 留档） |
 | `tools/` | 工具链（烧录/监控/协议测试/护栏脚本，见 [MANUAL_V7](MANUAL_V7_TOOLCHAIN.md)） |
 | `release/` `量产/` `firmware/` `*.zip` | 产物/发布（注：`量产`、`firmware` 为仓库根；`doc/release/` 是发布流程文档） |

@@ -1,5 +1,5 @@
 -- ================================================================
--- Filename : config/cellular.lua
+-- Filename : cellular.lua（config 片段，user/ 顶层；由 config.lua 编排 require）
 -- Module   : 蜂窝网络 APN 自动/显式 + 搜网/复位策略
 -- Arch     : 拆分自 config.lua。依赖 _G.FEATURE_CFG（由 config.features 先加载）。
 -- ================================================================

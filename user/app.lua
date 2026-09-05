@@ -111,20 +111,15 @@ end
 -- 低功耗
 ----------------------------------------------------------------
 
+-- 副作用执行器（P6a）：状态裁决与写入在 runtime_power PSM，这里只做进入 rest 后的动作
 local function enterLowPower(reason)
     reason = reason or "unknown"
-    local userCut = (reason == "mqtt_2002" or reason == "at")
-    if userCut then
-        rntmPwr.setWorkMode("pir_watch")
-    end
-    local modeChanged = rntmPwr.setLowPowerMode(true)
-    if not userCut and not modeChanged then
+    local ok, modeChanged = rntmPwr.requestRest(reason)
+    if not ok then
         return
     end
+    local userCut = rntmPwr.isUserCut(reason)
     appInfo("enter_low_power", reason)
-    rntmPwr.setLastRestReason(reason)
-    -- 低功耗已进入的扩展点（当前无订阅者，保留供调试/后续模块挂钩）
-    sys.publish(E.POWER_ENTERED_REST)
     local function cutT31x()
         if not t31xModule then
             return
@@ -151,15 +146,13 @@ local function notifyUsbIdle(inserted)
     host_uart.pushUsbIdle(inserted == true or inserted == 1)
 end
 
--- 低功耗进/出：setLowPowerMode → t31x_ctrl.enterSleep → MQTT 1002
+-- 低功耗进/出：runtime_power.requestRest/requestNormal（PSM 唯一写点）→ t31x_ctrl.enterSleep → MQTT 1002
 local function onEnterLowPower(reason)
     reason = reason or "unknown"
-    if not isLowPowerEnabled() then
-        return
-    end
-    -- 平台 2002 / AT 明确要进 PIR 值守：不断因 USB 拒绝（USB 仍拦 2004 关机）。
-    if reason ~= "mqtt_2002" and reason ~= "at"
-        and usbCharge and usbCharge.blocks4gRest() then
+    -- 门禁在 PSM（低功耗开关 / USB 只拦策略触发 / 烧录态）；先预判再播音，避免响了却没进
+    local can, why = rntmPwr.canRest(reason)
+    if not can then
+        appInfo("enter_low_power_skip", reason, tostring(why))
         return
     end
     if sound_prompt and sound_prompt.shouldPlay("shutdown_low_power") then
@@ -174,11 +167,9 @@ end
 
 local function onExitLowPower(reason)
     reason = reason or "unknown"
-    rntmPwr.setWorkMode("person_detect")
     -- 即使已是非 rest，2002exit 也必须给 T31 正常上电（清 BOOT/OTA，防误进烧录）
-    local changed = rntmPwr.setLowPowerMode(false)
+    local _, changed = rntmPwr.requestNormal(reason)
     appInfo("exit_low_power", reason, changed and "mode_changed" or "already_awake")
-    rntmPwr.setLastRestReason(nil)
     if changed then
         if state.mqtt_started and netModule then
             if reason == "usb_insert" then
@@ -196,8 +187,6 @@ local function onExitLowPower(reason)
                 netModule.pubRest({ lowPowerMode = "exit", reason = reason })
             end
         end
-        -- 低功耗已退出的扩展点（当前无订阅者，与 POWER_ENTERED_REST 对称）
-        sys.publish(E.POWER_EXITED_REST)
         lpWake.onExitRest()
         if sound_prompt then
             sound_prompt.onWakeFromLowPower()
@@ -354,7 +343,8 @@ local function onPmdMsg(msg)
 end
 
 local function setupPmd()
-    if rtos and rtos.MSG_PMD then
+    -- pmd 仅部分内核带；MSG_PMD 存在但 pmd 库缺失时不能裸调 pmd.init
+    if rtos and rtos.MSG_PMD and pmd then
         rtos.on(rtos.MSG_PMD, onPmdMsg)
         pmd.init({})
     end
@@ -893,6 +883,13 @@ function start(gpio, net, t31x_ctrl)
         return netModule and netModule.hasHostQueue() == true
     end)
     lpWake.bindNetTcp(net_tcp)
+    -- PSM 门禁注入（P6a）：低功耗总开关 + USB 只拦策略触发（2002/AT 用户要求不拦）；烧录态不在此拦（与 155 前行为一致）
+    rntmPwr.bindPowerGates({
+        enabled = isLowPowerEnabled,
+        usbBlocks = function()
+            return usbCharge ~= nil and usbCharge.blocks4gRest() == true
+        end,
+    })
     t31xNotify.registerProviders({
         pushBeforeNotify = function(sid, evt)
             if time_sync then

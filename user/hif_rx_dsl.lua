@@ -186,7 +186,10 @@ function bind(C)
         return snap
     end
 
-    local function commitIpcStat(snap)
+    -- notify=true 仅用于 T31x 完整快照（+IPCSTAT: 应答 / AT+IPCSTAT= 主动上报）；
+    -- patchCloud 局部补丁（WLED/RECORD/TFCARD/IPCSTATUS/poweroff…）不得发 IPCSTAT_ACK，
+    -- 否则会抢答正在 waitUntil(IPCSTAT_ACK) 的 qryIpcCloudStat，使 AT+IPCSTAT? 误判成功早退
+    local function commitIpcStat(snap, notify)
         if type(snap) ~= "table" or next(snap) == nil then
             return nil
         end
@@ -199,7 +202,9 @@ function bind(C)
         if snap.ipcReady == 1 and not state.host_ipc_status then
             state.host_ipc_status = "ready"
         end
-        sys.publish(SYS_EVT.IPCSTAT_ACK, snap)
+        if notify == true then
+            sys.publish(SYS_EVT.IPCSTAT_ACK, snap)
+        end
         return snap
     end
 
@@ -356,6 +361,8 @@ function bind(C)
         if not line then
             return snap
         end
+        -- 与 parseTfCard 同口径：去首尾空白并剥掉粘连的行尾 OK，避免 `\r`/`OK` 让两种格式都不中
+        line = normLine(line):gsub("%s*OK%s*$", "")
         local r, a, c, rs = line:match("^%+RECORD:running=(%d),active=(%d),ch=(%-?%d+),reason=(.+)$")
         if r then
             snap.running = asNum(r)
@@ -373,7 +380,9 @@ function bind(C)
             snap.active = asNum(active)
             return snap
         end
-        return snap
+        -- 两种已知格式都不匹配（畸形/空字段/未知变体）：返回 nil，由调用方忽略。
+        -- 若此处回落默认 running=0/active=0，会把「解析失败」当成「已停录」清掉 t31x_rec_active
+        return nil
     end
 
     local function applyRecordState(snap)
@@ -432,11 +441,22 @@ function bind(C)
         return true
     end
 
+    local recordParseWarned = false
     local function tryRecord(line)
         if not line or not line:match("^%+RECORD:") then
             return false
         end
         local snap = parseRecordLine(line)
+        if not snap then
+            -- 已确认是 +RECORD: 行但格式未知：不改录像态；发 false 作 nack，让 AT+RECORD? 的
+            -- 等待方立刻走缓存（saveSnap 对非 table 返回 nil → defaultResult），而不是烧满 TMO.rec 并持锁
+            if not recordParseWarned then
+                recordParseWarned = true
+                log.warn("host_uart", "record_line_unparsed", line:sub(1, 64))
+            end
+            sys.publish(SYS_EVT.RECORD_ACK, false)
+            return true
+        end
         state.host_record = snap
         applyRecordState(snap)
         sys.publish(SYS_EVT.RECORD_ACK, snap)
@@ -452,7 +472,7 @@ function bind(C)
         if not snap then
             return false
         end
-        commitIpcStat(snap)
+        commitIpcStat(snap, true)
         return true
     end
 
@@ -471,12 +491,6 @@ function bind(C)
         return true
     end
 
-    local function logPowerOffRx(line)
-        if log and log.info then
-            log.info("host_uart", "ipcpoweroff_rx", "ERR", line)
-        end
-    end
-
     local function tryIpcPowerOff(line)
         if not line then
             return false
@@ -490,7 +504,7 @@ function bind(C)
         end
         if line:match("^%+IPCPOWEROFF:BUSY") or line:match("^%+IPCPOWEROFF:ERROR")
             or line:match("^%+IPCPOWEROFF:NOT_SUPPORTED") then
-            logPowerOffRx(line)
+            C.logPowerOffRx("ERR", line)
             return publishAck(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, error = true, line = line })
         end
         return false

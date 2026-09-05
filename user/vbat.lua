@@ -153,7 +153,7 @@ local function applyAdc(ad)
     if range ~= nil then ad.setRange(range) end
 end
 
-local function readPin(ad, channel)
+local function readPinRaw(ad, channel)
     if ad.read then
         local _, mv = ad.read(channel)
         if mv ~= nil and mv >= 0 then return mv end
@@ -162,6 +162,18 @@ local function readPin(ad, channel)
         local mv = ad.get(channel)
         if mv ~= nil and mv >= 0 then return mv end
     end
+end
+
+-- 平台 ADC 调用一律 pcall：单次读失败只丢本样本，不能让 batteryTask 协程整体退出；告警只报一次防刷屏
+local adcReadErrLogged = false
+local function readPin(ad, channel)
+    local ok, mv = pcall(readPinRaw, ad, channel)
+    if ok then return mv end
+    if not adcReadErrLogged then
+        adcReadErrLogged = true
+        if log and log.warn then log.warn("vbat", "adc_read_err", tostring(mv)) end
+    end
+    return nil
 end
 
 local function readPinMv(ad, channel)
@@ -180,8 +192,12 @@ end
 local function batteryTask()
     local channel = adcCfg().channel or 1
     local scale = mvScale()
-    applyAdc(adc)
-    adc.open(channel)
+    -- adc 库本身可能缺失：索引放进闭包内，让 pcall 真正兜住
+    pcall(applyAdc, adc)
+    local okOpen, errOpen = pcall(function() adc.open(channel) end)
+    if not okOpen and log and log.warn then
+        log.warn("vbat", "adc_open_err", tostring(channel), tostring(errOpen))
+    end
     while running do
         local pinMv = readPinMv(adc, channel)
         if pinMv then
@@ -196,13 +212,14 @@ local function batteryTask()
         end
         sys.wait(sampleIvMs())
     end
-    if adc.close then adc.close(channel) end
+    pcall(function() if adc and adc.close then adc.close(channel) end end)
 end
 
 function start()
     if taskStarted then return true end
     taskStarted = true
     running = true
+    adcReadErrLogged = false -- 每次启动允许再告警一次（间歇性 ADC 错误不刷屏）
     sys.taskInit(batteryTask)
     return true
 end

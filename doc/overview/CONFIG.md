@@ -7,6 +7,57 @@
 > **T31x 协处理器**：[`../user/t31x_ctrl.lua`](../../user/t31x_ctrl.lua)  
 > **加载**：`main.lua` → `config`（编排 → 各片段）
 
+## 配置键总索引（键 → 注册片段 → 消费模块）
+
+> 回答「这个 `X_CFG` 在哪定义、谁在读」。表由护栏脚本从代码生成并校验漂移（`run_all_checks` 第 7 项），
+> 改配置片段后运行 `python tools/debug/_config_key_check.py --write-doc` 刷新。
+
+<!-- CFG_KEY_INDEX:BEGIN -->
+| 配置键 | 注册片段 | 消费模块（注册文件以外） |
+|--------|----------|--------------------------|
+| `APP_META` | `user/features.lua` | `user/app.lua`、`user/hif_cmd.lua`、`user/host_uart.lua`、`user/net_mqtt.lua` |
+| `APP_RUNTIME_DEFAULTS` | `user/features.lua` | `lib/runtime_power.lua` |
+| `APP_STACK` | `user/features.lua` | `user/app.lua` |
+| `FEATURE_CFG` | `user/features.lua` | `user/battery_guard.lua`、`user/flags.lua`、`user/hif_cmd.lua`、`user/host_event.lua`、`user/main.lua` |
+| `HOST_EVT_CFG` | `user/features.lua` | `user/hif_cmd.lua`、`user/host_event.lua` |
+| `HOST_USB_CFG` | `user/features.lua` | `user/app.lua`、`user/host_uart.lua`、`user/t31x_ctrl.lua`、`lib/usb_charge.lua`、`lib/usb_rndis.lua` |
+| `LOW_POWER_CFG` | `user/features.lua` | `user/battery.lua`、`user/hif_cmd.lua`、`user/host.lua`、`user/mqtt_uplink.lua` |
+| `LOW_POWER_WAKEUP_CFG` | `user/features.lua` | `user/lp_wakeup.lua` |
+| `RNDIS_CFG` | `user/features.lua` | `lib/usb_rndis.lua` |
+| `CELLULAR_CFG` | `user/cellular.lua` | `lib/cell_boot.lua` |
+| `t31x_BURN_CFG` | `user/t31x_burn.lua` | `user/app.lua` |
+| `GPIO_IN` | `user/gpio_cfg.lua` | `user/app.lua`、`user/led_pir.lua`、`lib/usb_charge.lua` |
+| `GPIO_OUT` | `user/gpio_cfg.lua` | `user/app.lua`、`user/t31x_ctrl.lua`、`lib/led_ctrl.lua` |
+| `KEY_CONFIG` | `user/gpio_cfg.lua` | `user/peripheral.lua` |
+| `APP_PERSIST_CFG` | `user/led_pir.lua` | `user/mqtt_uplink.lua`、`user/pir_ctrl.lua` |
+| `LED_CFG` | `user/led_pir.lua` | `user/host_uart.lua`、`lib/led_ctrl.lua` |
+| `PIR_CFG` | `user/led_pir.lua` | `user/app.lua`、`user/pir_ctrl.lua` |
+| `PIR_COOLDOWN_MS` | `user/led_pir.lua` | （片内引用） |
+| `PIR_RECORD_CFG` | `user/led_pir.lua` | `user/app.lua` |
+| `WLED_CFG` | `user/led_pir.lua` | `user/hif_cmd_wled.lua` |
+| `BATTERY_CFG` | `user/battery.lua` | `user/mqtt_uplink.lua`、`user/net_mqtt.lua`、`user/t31x_policy.lua`、`user/vbat.lua`、`lib/led_ctrl.lua` |
+| `BATTERY_GUARD_CFG` | `user/battery.lua` | `user/battery_guard.lua` |
+| `LOW_POWER_ENTER_STRATEGY` | `user/battery.lua` | `user/battery_guard.lua` |
+| `t31x_POLICY_CFG` | `user/battery.lua` | `user/t31x_policy.lua` |
+| `HOST_ENCODE_CFG` | `user/host.lua` | `user/hif_ipc.lua`、`user/hif_ipc_encode.lua`、`user/mqtt_hproto.lua` |
+| `HOST_IDENTITY_CFG` | `user/host.lua` | `user/hif_cmd_link.lua`、`user/hif_ipc.lua`、`user/mqtt_dl_dev.lua` |
+| `HOST_IPC_CFG` | `user/host.lua` | `user/hif_ipc_cloud.lua`、`user/hif_ipc_power.lua`、`user/hif_ipc_rec.lua`、`user/sound_prompt.lua`、`user/t31x_ctrl.lua` |
+| `HOST_RECORD_CFG` | `user/host.lua` | `user/hif_ipc_hostq.lua`、`user/mqtt_dl_pir.lua` |
+| `HOST_TFCARD_CFG` | `user/host.lua` | `user/hif_ipc.lua`、`user/mqtt_dl_tf.lua` |
+| `HOST_TFCARD_FORMAT_CFG` | `user/host.lua` | `user/hif_ipc_tffmt.lua`、`user/mqtt_dl_pir.lua`、`user/mqtt_dl_tf.lua` |
+| `HOST_WAKE_CFG` | `user/host.lua` | `user/app.lua`、`user/host_uart.lua`、`user/mqtt_downlink.lua`、`user/t31x_ctrl.lua`、`user/t31x_notify.lua`、`user/t31x_policy.lua` |
+| `SOUND_CFG` | `user/host.lua` | `user/sound_prompt.lua`、`user/t31x_ctrl.lua` |
+| `TIME_SYNC_CFG` | `user/host.lua` | `user/app.lua`、`user/hif_cmd.lua`、`user/hif_ipc.lua`、`user/t31x_ctrl.lua`、`user/time_sync.lua` |
+| `FOTA_CFG` | `user/net.lua` | `user/fota_svc.lua`、`user/mqtt_dl_ctrl.lua` |
+| `MQTT_CFG` | `user/net.lua` | `user/mqtt_conn.lua` |
+| `UART_CFG` | `user/net.lua` | `lib/uart_bridge.lua` |
+| `WDT_CFG` | `user/net.lua` | `user/app.lua`、`lib/watchdog.lua` |
+| `MODULE_FLAGS` | `user/flags.lua` | `user/hif_cmd.lua`、`user/host_event.lua`、`user/t31x_notify.lua`、`lib/module_loader.lua` |
+| `APP_EVENTS` | `user/events.lua` | `user/app.lua`、`user/fota_svc.lua`、`user/host_uart.lua`、`user/mqtt_dispatch.lua`、`user/mqtt_dl_ctrl.lua`、`user/mqtt_dl_dev.lua`、`user/mqtt_uplink.lua`、`user/net_mqtt.lua`、`user/peripheral.lua`、`user/pir_ctrl.lua`、`user/time_sync.lua`、`user/vbat.lua`、`lib/led_ctrl.lua`、`lib/runtime_power.lua`、`lib/usb_charge.lua` |
+
+> 共 39 键 / 10 片段；由 `python tools/debug/_config_key_check.py --write-doc` 生成，手改会被护栏判漂移。消费形态含 `cfgm.get("KEY")` / `_G.KEY` / 裸 `KEY`。
+<!-- CFG_KEY_INDEX:END -->
+
 ## 命名约定
 
 | 类别 | 规则 | 示例 |
@@ -18,7 +69,7 @@
 
 ---
 
-## Air780 GPIO 编号对照（`config.lua`）
+## Air780 GPIO 编号对照（`user/gpio_cfg.lua`）
 
 > **`pin` 列 = 4G GPIO 号**（非模组物理 Pin）。完整表见 [T31X_CAT1_GPIO.md §1.1](../hardware/T31X_CAT1_GPIO.md#11-780ehm_pj-固件-gpio-对照configlua-真源)。  
 > **易混**：4G **GPIO26** = 模组 **Pin25** `CAN_TXD`（`T31x_BOOT`）；模组 **Pin26** = `PWM4`。
@@ -45,7 +96,7 @@
 
 ## GPIO_IN（输入）
 
-每个信号一项，**按注释分组**写在 `config.lua` 中。
+每个信号一项，**按注释分组**写在 `user/gpio_cfg.lua` 中。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -97,7 +148,7 @@
 ## PIR / 电池 / 连接
 
 - `PIR_CFG`：由 `GPIO_IN.pir_det` 自动带出中断参数 + `PIR_COOLDOWN_MS.frequent`
-- `BATTERY_CFG`：ADC 采样、模组灯、电量保护（真源 [`config.lua`](../../user/config.lua)）；行为见 [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md)
+- `BATTERY_CFG`：ADC 采样、模组灯、电量保护（真源 [`user/battery.lua`](../../user/battery.lua)）；行为见 [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md)
 - `t31x_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
 - `MODULE_FLAGS.battery_guard`：[`flags.lua`](../../user/flags.lua)，`false` 可关闭电量保护
 
@@ -152,7 +203,7 @@ flowchart LR
 
 插 **USB_DET（GPIO27）** 后：`battery_guard` 跳过阈值；在 rest 时 `onExitLowPower` 唤醒 T31（冷启动由 `bootPowerOn` 单独上电）。
 
-### `SOUND_CFG` 提示音（`config.lua`）
+### `SOUND_CFG` 提示音（`user/host.lua`）
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -164,13 +215,13 @@ flowchart LR
 | `shutdown_on_battery_off` | false | 5% 自动关机不播 |
 | `boot_wait_host_ms` | 120000 | 等 T31x 首条 AT 超时（毫秒）；超时跳过开机音，**不会无限等待** |
 | `play_timeout_ms` | 2500 | 等 `+SOUNDACK` 超时 |
-| `t31xPowerWaitMs` | 800 | 发 PLAYSOUND 前若 T31x 未上电则 `powerOn` 后等待 |
+| `t31x_power_wait_ms` | 800 | 发 PLAYSOUND 前若 T31x 未上电则 `powerOn` 后等待 |
 
 冷启动开机音流程（首条 AT、超时、防重复）见 [BOOT_SHUTDOWN_SOUND.md](../pir/BOOT_SHUTDOWN_SOUND.md) §7.3。
 
 实现：`user/sound_prompt.lua`（4G）、`t3x_linux/audio_prompt.c`（T31x 桩）。见 [BOOT_SHUTDOWN_SOUND.md](../pir/BOOT_SHUTDOWN_SOUND.md)。
 
-### `TIME_SYNC_CFG` 时间同步（`config.lua`）
+### `TIME_SYNC_CFG` 时间同步（`user/host.lua`）
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -182,7 +233,7 @@ flowchart LR
 
 见 [TIME_SYNC.md](TIME_SYNC.md)。
 
-### `HOST_IDENTITY_CFG` 设备标识（`config.lua`）
+### `HOST_IDENTITY_CFG` 设备标识（`user/host.lua`）
 
 Cat.1 IMEI + T31x GB28181 ID；MQTT **2006**→**1006**。见 [MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md) §4.6。
 
@@ -193,23 +244,23 @@ Cat.1 IMEI + T31x GB28181 ID；MQTT **2006**→**1006**。见 [MQTT_PROTOCOL.md]
 | `auto_publish_delay_ms` | 500 | 自动上报前额外等待 |
 | `query_timeout_ms` | 3000 | `AT+GB28181?` 等待超时 |
 | `host_boot_wait_ms` | 1500 | T31x 上电后等 UART 就绪 |
-| `t31xPowerWaitMs` | 800 | 查询前 `powerOn` 后等待 |
+| `t31x_power_wait_ms` | 800 | 查询前 `powerOn` 后等待 |
 | `publish_on_ipcinfo_query` | false | T31x 发 `AT+IPCINFO?` 后是否额外 MQTT 1006 |
 
 T31x 侧在 `client.ini` 配置 `gb28181_id=`。
 
-### `HOST_TFCARD_CFG` TF/SD 卡（`config.lua`）
+### `HOST_TFCARD_CFG` TF/SD 卡（`user/host.lua`）
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `enabled` | true | 总开关 |
 | `query_timeout_ms` | 3000 | `AT+TFCARD?` 等待超时 |
 | `host_boot_wait_ms` | 1500 | T31x 上电后等 UART 就绪 |
-| `t31xPowerWaitMs` | 800 | 查询前 `powerOn` 后等待 |
+| `t31x_power_wait_ms` | 800 | 查询前 `powerOn` 后等待 |
 
 T31x 挂载点：`client.ini` → `tf_mount_path`（默认 `/mnt/sd`）。见 [MQTT_PROTOCOL.md](../mqtt/MQTT_PROTOCOL.md) §4.7。
 
-### `HOST_USB_CFG` USB 与低功耗互斥（`config.lua`）
+### `HOST_USB_CFG` USB 与低功耗互斥（`user/features.lua`）
 
 USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE=1` / `AT+LOWPOWER=ENTER`，并串口通知 T31x 勿发休眠 AT。拔出后通知 T31x 可恢复 `HOSTIDLE` 轮询。见 [T31X_USB_HOSTIDLE.md](../power/T31X_USB_HOSTIDLE.md)。
 
@@ -223,7 +274,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 
 实现：`user/app.lua`（`applyUsbPower` / `notifyUsbIdle`）、`user/host_uart.lua`（`pushUsbIdle` / `uart_hostidle` / `uart_lowpower`）、`user/net_mqtt.lua`（2002 拦截）。
 
-### `HOST_IPC_CFG` T31x 电源（`config.lua`）
+### `HOST_IPC_CFG` T31x 电源（`user/host.lua`）
 
 实现：`t31x_ctrl.lua`、`user/host_uart.lua`（`queryHostIpcStatus` / `hostIpcPowerOff` / `waitHostIpcReady`）。见 [UART_AT_COMMANDS.md](../mqtt/UART_AT_COMMANDS.md) §3.4。
 
@@ -235,7 +286,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 | `poweroff_timeout_ms` | 30000 | 等待 `+IPCPOWEROFF:OK`（封盘可 >15s） |
 | `status_query_timeout_ms` | 2000 | 单次 `AT+IPCSTATUS?` 超时（无应答视为 idle） |
 | `ready_wait_timeout_ms` | 120000 | 上电后轮询 ready 总超时 |
-| `ready_pollMs` | 1000 | ready 轮询间隔 |
+| `ready_poll_ms` | 1000 | ready 轮询间隔 |
 | `boot_sound_wait_ready` | true | 冷启动开机音等 `+IPCSTATUS:ready` |
 | `uart_recovery.*` | 见下 | **USB 已插**且连续 `ipc_status_no_response` 时 powerOff→powerOn→脉冲 |
 
@@ -252,9 +303,9 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 
 日志：`uart_recovery_sched` → `uart_recovery_cycle`；耗尽 `uart_recovery_exhausted`。
 
-### `t31x_POLICY_CFG` T31x 门禁（`config.lua`，v1.2）
+### `t31x_POLICY_CFG` T31x 门禁（`user/battery.lua`，v1.2）
 
-实现：`lib/t31x_policy.lua`。见 [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md) §5。
+实现：`user/t31x_policy.lua`。见 [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md) §5。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -265,7 +316,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 
 `force_wake`（退出低功耗、USB 恢复等）可绕过 rest/低电限制；**插 USB、烧录** 始终允许。
 
-### `LED_CFG` 指示灯（`config.lua`，GPIO21 单蓝灯）
+### `LED_CFG` 指示灯（`user/led_pir.lua`，GPIO21 单蓝灯）
 
 见 [LED_INDICATORS.md](../hardware/LED_INDICATORS.md) 用户识别卡。
 
@@ -288,18 +339,18 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 | `line_protocol` | `true` | 按 `\r\n` 拆行 |
 | `rx_line_max` | `4096` | 行缓冲上限 |
 
-- `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG`：见 `config.lua` 文末  
+- `MQTT_CFG` / `WDT_CFG` / `FOTA_CFG` / `UART_CFG`：见 `user/net.lua`  
   - **`MQTT_CFG.debug_uplink`**：`false` 量产（默认）；`true` 联调时打印 `mqtt_dl` / `mqtt_ul` 上下行明细，见 [MQTT_862323084068314.md](../mqtt/MQTT_862323084068314.md) §1.1、§6.2  
   - **合宙 IoT OTA `product_key`**：真源 [`main.lua`](../../user/main.lua) 的 `PRODUCT_KEY`（当前 `ThOoUoR77b9EOwNp25mUj6VS2Lce0d5x`）；`user/fota_svc.lua` 读 `_G.PRODUCT_KEY`；MQTT 2004 可省略该字段  
-  - **自建 OTA 拉包 URL**：只在 `config.lua` 的 `FOTA_URL_*` / `FOTA_CFG.servers` 维护；用 `FOTA_CFG.server`（`panshi`/`legacy`）切换；其它 lua 经 `resolveFotaSelfUrl()` 读取，见 [modules/FOTA_SVC_FLOW.md](../modules/FOTA_SVC_FLOW.md) §3  
+  - **自建 OTA 拉包 URL**：只在 `user/net.lua` 的 `FOTA_URL_*` / `FOTA_CFG.servers` 维护；用 `FOTA_CFG.server`（`panshi`/`legacy`）切换；其它 lua 经 `resolveFotaSelfUrl()` 读取，见 [modules/FOTA_SVC_FLOW.md](../modules/FOTA_SVC_FLOW.md) §3  
   - **自建 OTA 服务器**：MQTT 2004 可带 `url` 覆盖；不带且 `server_mode=self` 时设备自动填入当前解析地址（见 [OTA_SERVER.md](../../ota_server/docs/OTA_SERVER.md)、[MQTT_DOWNLINK.md](../mqtt/MQTT_DOWNLINK.md) §6.6）；服务端见 [`ota_server/README.md`](../../ota_server/README.md)
-- **`config.mk` 与 `config.lua` 宏对照**（`config.mk` 仅覆盖部分；其余仅在 `config.lua` 顶部 `local *_ENABLE`）：
+- **`config.mk` 与 `user/features.lua` 宏对照**（`config.mk` 仅覆盖部分；其余仅在 `features.lua` 顶部 `local *_ENABLE`）：
 
-| 宏 | `config.mk` | `config.lua` | 说明 |
+| 宏 | `config.mk` | `features.lua` / `net.lua` | 说明 |
 |----|-------------|--------------|------|
 | `RNDIS_ENABLE` | `?= 1` | `local RNDIS_ENABLE = 1` | → `FEATURE_CFG.rndis`；关 RNDIS 可移 `usb_rndis.lua` 至 `archive/slim/lib/` |
 | `USB_REENUM_ENABLE` | `?= 1` | `local USB_REENUM_ENABLE = 1` | → `FEATURE_CFG.usb_reenum` |
-| `FOTA_SERVER` | `iot` / `custom` | `FOTA_CFG.server_mode` | `self` 用 `FOTA_CFG.server` 选端点；合宙 IoT 需 `main.lua` `PRODUCT_KEY`；2004 也可带 `url` |
+| `FOTA_SERVER` | `iot` / `custom` | `FOTA_CFG.server_mode` | `self` 用 `FOTA_CFG.server` 选端点；合宙 IoT 需 `main.lua` `PRODUCT_KEY`；2004 也可带 `url`。**注意默认不一致**：`config.mk` 默认 `iot`，`user/net.lua` 默认 `server_mode = "self"`，且 `config.mk` 宏不会自动写入 lua——以 `net.lua` 为运行真源 |
 | `LOW_POWER_ENABLE` | — | `local LOW_POWER_ENABLE = 1` | → `FEATURE_CFG.low_power` → `MODULE_FLAGS.low_power` |
 | `HOST_EVT_ENABLE` | — | `local HOST_EVT_ENABLE = 1` | → `FEATURE_CFG.host_evt` → PIRSTAT.has_work |
 | `LOW_POWER_WAKEUP_MODE` | — | `LOW_POWER_WAKEUP_CFG.mode` | `"mqtt"` / `"tcp"`，见 [CAT1_LOWPWR_MQTT_TCP_STRATEGY.md](../power/CAT1_LOWPWR_MQTT_TCP_STRATEGY.md) |

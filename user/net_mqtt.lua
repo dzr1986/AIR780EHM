@@ -7,6 +7,7 @@
 require "sys"
 require "config"
 local utils = require "utils"
+local svc = require "svc"
 local loader = require "module_loader"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
@@ -135,6 +136,12 @@ local POWEROFF_MSG = {
     low_power = "low_power_shutdown",
 }
 
+-- net_mqtt 族共享超时（refactor_plan P2b）：同一语义只在此定义一次，子模块经 ctx.TMO_SHARED 读取。
+-- 注：与 host_uart.TMO_SHARED.cloudStatQueryMs 同值同义（IPCSTAT 刷新），跨族单源待 P7 ctx.const 统一。
+local TMO_SHARED = {
+    ipcStatRefreshMs = 2500,  -- 1003 前 / PIR 云状态刷新 refCloudStat 超时（uplink / dl_pir）
+}
+
 local TIMEOUT = {
     adapterWaitSlice = 5000,
     adapterWaitMax = 60,
@@ -236,7 +243,7 @@ local function pubUplink(opts)
 end
 
 local function getWledState()
-    local hif = utils.hostUart()
+    local hif = svc.hostUart()
     if hif then
         return hif.wledState() == 1 and 1 or 0
     end
@@ -245,7 +252,8 @@ end
 
 local ctx = {
     DT = DT,
-    hostUart = utils.hostUart,
+    TMO_SHARED = TMO_SHARED,
+    hostUart = svc.hostUart,
     pubUplink = pubUplink,
     pubAppEvent = pubAppEvent,
     escJson = escJson,
@@ -333,13 +341,19 @@ local function createMqttClient(mcfg, cellAdp, clientId, autoMs)
     return client
 end
 
-local function bindIpHandlers(client, cellAdp, settleMs, autoMs, loseCoolSec, tryMqttConn)
+local function unbindIpHandlers()
     if state.ip_ready_hdl then
         sys.unsubscribe("IP_READY", state.ip_ready_hdl)
+        state.ip_ready_hdl = nil
     end
     if state.ip_lose_hdl then
         sys.unsubscribe("IP_LOSE", state.ip_lose_hdl)
+        state.ip_lose_hdl = nil
     end
+end
+
+local function bindIpHandlers(client, cellAdp, settleMs, autoMs, loseCoolSec, tryMqttConn)
+    unbindIpHandlers()
     state.ip_ready_hdl = function(ipAdapter)
         if cellAdp ~= nil and ipAdapter ~= nil and ipAdapter ~= cellAdp then
 		return
@@ -618,6 +632,9 @@ function stop()
             sys.wait(TIMEOUT.stopRestWait)
         end
 	end
+    -- 先摘订阅再拆连接：IP handler 闭包持有 client，若留到 close 之后，
+    -- stopCloseWait 期间的 IP_READY/IP_LOSE 仍会对正在关闭的 client 调 autoreconn/tryMqttConn
+    unbindIpHandlers()
 	if mqttClient then
 		pcall(function()
 			mqttClient:autoreconn(false)
