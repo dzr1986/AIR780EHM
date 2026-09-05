@@ -1,0 +1,48 @@
+---
+description: 架构分层规则（HAL驱动层 → 平台抽象层 → 业务逻辑层 → 应用层；只许上层调下层；层间只走导出接口；业务层不碰硬件；公共工具只在 utils）
+globs: user/**/*.lua,lib/**/*.lua,main.lua
+alwaysApply: true
+---
+
+# 架构分层规则
+
+## 1. 四层与本仓库的对应
+
+| 层 | 本仓库落点 | 说明 |
+|---|---|---|
+| **L0 HAL 驱动层** | LuatOS 内核库（`uart`/`gpio`/`adc`/`pm`/`pmd`/`wdt`/`mcu`）+ `lib/` 驱动封装：`uart_bridge`、`gpio_util`、`led_ctrl`、`usb_charge`、`usb_rndis`、`usb_vuart`、`watchdog`、`cell_boot` | 全仓库**唯一**允许出现 `uart.setup`/`gpio.setup`/`wdt.*`/`adc.*` 等寄存器级调用的地方 |
+| **L1 平台抽象层** | `lib/` 常驻库：`utils`、`runtime_power`（`APP_RUNTIME` 唯一入口）、`config_manager`、`module_loader`、`device_id`；config 域：`user/config.lua` + 10 片段（`features/cellular/t31x_burn/gpio_cfg/led_pir/battery/host/net/flags/events`）；vendor：`sys.lua`、`libfota2.lua`（勿动，R5 sha256 锁） | 与业务无关、与硬件无关的平台能力 |
+| **L2 业务逻辑层** | `user/` 除 app/svc/config 域外的全部：AT 协议族 `host_uart` + `hif_*`、MQTT 族 `net_mqtt` + `mqtt_*`、`pir_ctrl`、`battery_guard`、`t31x_ctrl`/`t31x_policy`/`t31x_notify`、`lp_wakeup`、`host_event`、`time_sync`、`sound_prompt`、`fota_svc`、`ipc_supv`、`vbat`、`peripheral`、`net_tcp` | 协议、状态机、策略 |
+| **L3 应用层** | `main.lua`、`user/app.lua`（编排/事件桥/provider 注入）、`user/svc.lua`（跨域服务定位） | 只做装配与事件桥接，不放业务算法 |
+
+## 2. 只允许上层调用下层，禁止反向依赖与跨层内部调用
+
+- 依赖方向：L3 → L2 → L1 → L0。`lib/`（L0/L1）**禁止** `require`/`loader.load`/`modCall` 任何 `user/` 业务模块（config 域例外，属 L1）。
+- L2 内部再分子层：**AT 协议族（`host_uart`/`hif_*`）不得调用业务模块**（`pir_ctrl`/`net_mqtt`/`battery_guard`/`t31x_policy`/`lp_wakeup`/`host_event`/`time_sync`/`sound_prompt`）；需要业务数据/动作时，由 `app.buildBizProviders` 经 `host_uart.start{ biz }` 注入，AT 层只用 `ctx.bizCall(key, …)`。`t31x_ctrl`/`runtime_power`/`device_id` 视为基础设施，可被 AT 层调用。
+- 业务联动一律走 `sys.publish(APP_EVENTS.X)` 由 `app` 桥接，或走 ctx/provider 注入；不得为"省一次事件"而反向 require。
+- 机器护栏：`python3 tools/debug/_layer_check.py`（R1 lib↛user、R2 config 域↛utils 系、R3 子模块↛主文件、R4 AT 层↛业务层、R5 vendor 锁），基线 **0 条**，新增违规边即 FAIL；`_dep_graph.py --scc` 硬环必须为 0。
+
+## 3. 层间只通过导出接口通信，禁止直接包含另一层的内部实现
+
+- Lua 没有头文件，对应物是：模块 `function xxx()` 导出（`module(..., package.seeall)` 风格）、`_M.xxx` 显式导出、以及 `host_uart`/`net_mqtt` 的 **`ctx`**。子模块 `hif_*`/`mqtt_*` 的"头文件"就是各自 `bind(C)` 头部的 `local x = C.x` 声明块，由 `tools/debug/bind_header_specs.json` 登记、`_gen_bind_header.py --check-all` 守护（bind 时刻不可用的键必 FAIL）。
+- **禁止** `require "hif_xxx"` / `require "mqtt_xxx"` 子模块、禁止 `hif_*` `require "host_uart"`、`mqtt_*` `require "net_mqtt"`（R3）；只能经 `bind(ctx)`。
+- **禁止**读写另一模块的内部 `state`/局部表：`host_uart.state` 的语义键只能经 `setHostIpcStatus`/`setHostAtReady`/`setHostTfCard`/`setHostCloudStat`/`setRecActive`（`SINGLE_WRITERS` 护栏）；`APP_RUNTIME` 只经 `runtime_power` 访问器；低功耗态只经 `runtime_power.requestRest/requestNormal`。
+- 跨模块调用的函数名必须真实存在：`_ref_name_check.py`（modCall 签名、host_uart 成员、bizCall provider 键）。
+
+## 4. 业务逻辑层不得包含硬件寄存器操作
+
+- `user/` 中 L2 模块**禁止**直接调用 `uart.*`、`gpio.setup/debounce`、`wdt.*`、`adc.*`、`pm.*`、`pmd.*`、`i2c/spi/pwm.*`；硬件动作必须经 L0 驱动封装（`uart_bridge.write`、`gpio_util.setupInput/setupInputEntry/setupOutput`、`led_ctrl`、`usb_charge`、`watchdog.feed`、`runtime_power`）。唯一 `uart.setup` 在 `lib/uart_bridge.lua`，`gpio.setup` 只在 `lib/gpio_util.lua`/`lib/led_ctrl.lua`/`lib/usb_charge.lua`。
+- 允许的平台原语（不算寄存器操作）：`mcu.ticks()` 时基、`sys.*` 调度、`log.*`、`json.*`。
+- **已登记的基线例外**（只许收缩，新增即违规）：`app.lua` `pm.shutdown/pm.reboot/pmd.init/gpio.get`、`battery_guard.lua` `pm.shutdown`、`t31x_ctrl.lua` `pm.hibernate`、`main.lua` `pm.power`、`peripheral.lua` `gpio.get`、`vbat.lua` `adc.open/close`。收敛方向：`pm.*` 归 `runtime_power`/新 `lib/power_hal`，`adc.*` 归 `lib/`。
+- 巡检命令：`rg -n "\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\(" user/*.lua`，输出只能是上面的例外清单。
+
+## 5. 公共工具函数只放 utils 层，禁止各模块重复实现
+
+- 字符串/表/JSON/时间/十六进制/K=V 解析等通用 helper 只能放 `lib/utils.lua`（通用名，**不带业务语义**——如 `waitEventUntil` 而非 `waitT31xAck`）；跨域桥接（需要 `require` user 模块的）放 `user/svc.lua`，`utils` 本身禁止依赖 `user/`。
+- 新写 helper 前先查 `lib/utils.lua`（`escKv`、`to01`、`parseBool`、`decodeHex`、`nowMs`、`waitEventUntil`、`inSysTask` …）；同族共享的协议常量放族主文件 `TMO_SHARED`，跨族常量放 config 片段（`host.lua` `HOST_PROTO_TMO`）。
+- 发现两处以上相同实现（`_bloat_audit.py` / `_ref_name_check` 会提示重复导出）必须收敛到 `utils` 并删掉副本，不得再加第三份。
+- config 域片段 **禁止** `require` `utils`/`module_loader`（R2，会 require 环栈溢出）。
+
+## 6. 提交门槛
+
+改动 `user/`/`lib/` 后必须 `python3 tools/debug/run_all_checks.py` 13 项 ALL PASS（含 `_layer_check`、`_gen_bind_header --check-all`、`_ref_name_check`、`_protocol_regression_check`、`_undef_global_check`）；新增层间依赖、新增例外、改动 vendor 文件都必须在本文件对应小节登记后才能 `--save-baseline`。
