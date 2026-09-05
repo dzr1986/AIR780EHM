@@ -91,7 +91,7 @@ local function getBurnBatteryPercent()
     return nil
 end
 
-local function checkBurnAttempt(attemptIndex, attemptTotal)
+local function checkBurnAttempt()
     local cfg = burnCfg()
     local minPct = tonumber(cfg.min_battery_percent) or 20
     local allowRepeat = cfg.allow_repeat_enter_boot ~= false
@@ -127,7 +127,7 @@ local function checkBurnAllowed()
     local lastFailRsn = nil
     local lastPassPct
     for attempt = 1, maxAttempts do
-        local ok, detail = checkBurnAttempt(attempt, maxAttempts)
+        local ok, detail = checkBurnAttempt()
         if ok then
             lastPassPct = detail
             return true, lastPassPct
