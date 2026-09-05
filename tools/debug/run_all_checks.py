@@ -15,6 +15,7 @@
     8. _gpio_opts_check.py          gpio_util.setupInput 调用方 opts 键 ⊆ 实现读取键（防 camel/snake 静默失效回归）
     9. _doc_version_check.py        文档「当前版本」锚点 ↔ user/main.lua VERSION 一致
    10. tests/test_guards.py         护栏自身回归（_luatok 词法单测 + 注入样本必 FAIL + 干净仓库基线 PASS）
+   11. _layer_check.py             分层依赖护栏（lib↛user 业务 / config 域↛utils 系 / 子模块↛主文件；基线只许收缩）
 
 全部 PASS 时退出码 0，任一失败退出码 1。
 """
@@ -38,6 +39,7 @@ CHECKS = (
     ("_gpio_opts_check.py", (), "gpio_util.setupInput opts 键护栏（调用方字面键须被实现读取，防 camel/snake 回归）"),
     ("_doc_version_check.py", (), "文档现状版本锚点 ↔ main.lua VERSION 一致（README/manual/overview 10 处）"),
     ("tests/test_guards.py", (), "护栏自身回归（_luatok 词法 + 注入样本必 FAIL + 基线 PASS；unittest，无新依赖）"),
+    ("_layer_check.py", (), "分层依赖护栏（R1 lib↛user 业务 / R2 config 域↛utils 系 / R3 子模块↛主文件；基线 _layer_baseline.json 只许收缩）"),
 )
 
 

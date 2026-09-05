@@ -76,7 +76,7 @@ loader.start(time_sync, "startSntp")
 | **`config_manager`** 禁 `require "lib/utils"` | `config_manager→utils→module_loader→config_manager` 重入环 |
 | config 域的值（默认/模板/常量）**无法与 lib 单源共享** | 只允许「config 权威 + lib 兜底/双实现」+ 互链注释同步（实例：`MIN_VALID_UNIX`、`parseBoolDef`/`bool`，见 `USER_LIB_CODE_AUDIT_20260904.md` §14） |
 
-**检查点**：新增 config 片段、或改动 config_manager / lib 顶部 require 前，跑一次 `run_all_checks.py`（module_tree 护栏会暴露依赖拓扑破坏）。
+**检查点**：上述红线自 2026-09-04（refactor_plan P1a）起由 `tools/debug/_layer_check.py`（`run_all_checks` 第 11 项）机器守护：R1 `lib/* ↛ user/` 业务模块（config 域 `config`/片段/`config_manager`/`module_loader`/`runtime_power` 豁免）、R2 config 域 ↛ `utils`/`module_loader` 加载期 require、R3 `mqtt_*`/`hif_*` 子模块 ↛ require 主文件。违规边以 `_layer_baseline.json` 为白名单、只允许收缩；依赖图/环/反向边真源 `python tools/debug/_dep_graph.py`。
 
 ---
 
