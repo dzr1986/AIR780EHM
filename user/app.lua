@@ -111,14 +111,8 @@ end
 -- 低功耗
 ----------------------------------------------------------------
 
--- 副作用执行器（P6a）：状态裁决与写入在 runtime_power PSM，这里只做进入 rest 后的动作
-local function enterLowPower(reason)
-    reason = reason or "unknown"
-    local ok, modeChanged = rntmPwr.requestRest(reason)
-    if not ok then
-        return
-    end
-    local userCut = rntmPwr.isUserCut(reason)
+-- PSM 副作用表（P6a/E 条）：状态裁决与写入在 runtime_power PSM；requestRest 放行后回调这里，app 只做副作用
+local function onRestEntered(reason, modeChanged, userCut)
     appInfo("enter_low_power", reason)
     local function cutT31x()
         if not t31xModule then
@@ -140,6 +134,10 @@ local function enterLowPower(reason)
         netModule.pubRest({ reason = reason, source = "enter" })
     end
     lpWake.onEnterRest()
+end
+
+local function enterLowPower(reason)
+    rntmPwr.requestRest(reason or "unknown")
 end
 
 local function notifyUsbIdle(inserted)
@@ -165,10 +163,8 @@ local function onEnterLowPower(reason)
     enterLowPower(reason)
 end
 
-local function onExitLowPower(reason)
-    reason = reason or "unknown"
-    -- 即使已是非 rest，2002exit 也必须给 T31 正常上电（清 BOOT/OTA，防误进烧录）
-    local _, changed = rntmPwr.requestNormal(reason)
+-- PSM 副作用表（E 条）：由 runtime_power.requestNormal 每次回调；changed=false 时仍需给 T31 正常上电（清 BOOT/OTA，防误进烧录）
+local function onRestExited(reason, changed)
     appInfo("exit_low_power", reason, changed and "mode_changed" or "already_awake")
     if changed then
         if state.mqtt_started and netModule then
@@ -209,6 +205,10 @@ local function onExitLowPower(reason)
         t31x.ensNormalPwrOn("exit_low_power:" .. tostring(reason))
         t31x.pulseMcuInt()
     end)
+end
+
+local function onExitLowPower(reason)
+    rntmPwr.requestNormal(reason or "unknown")
 end
 
 local function onReboot()
@@ -938,6 +938,11 @@ function start(gpio, net, t31x_ctrl)
         usbBlocks = function()
             return usbCharge ~= nil and usbCharge.blocks4gRest() == true
         end,
+    })
+    -- PSM 副作用表（E 条）：进/出 rest 的 T31 断电/上电、MQTT 1002、lp_wakeup、提示音全部挂在 PSM 内触发
+    rntmPwr.bindPowerHooks({
+        onEnterRest = onRestEntered,
+        onExitRest = onRestExited,
     })
     t31xNotify.registerProviders({
         pushBeforeNotify = function(sid, evt)

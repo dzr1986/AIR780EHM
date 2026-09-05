@@ -83,9 +83,25 @@ end
 ----------------------------------------------------------------
 local USER_CUT = { mqtt_2002 = true, at = true }
 local gates = {}
+-- PSM 副作用表（架构 E 条）：rest 位翻转后的副作用（T31 断电/上电、MQTT 1002、lp_wakeup、提示音）由 app 注入，
+-- PSM 在 requestRest/requestNormal 内统一触发；app 不再在 PSM 外自己编排"先改态再副作用"。
+--   onEnterRest(reason, changed, userCut)  仅在 requestRest 放行后调用
+--   onExitRest(reason, changed)            requestNormal 每次都调用（changed=false 时 app 仍需给 T31 正常上电）
+local powerHooks = {}
 
 function bindPowerGates(g)
     gates = type(g) == "table" and g or {}
+end
+
+function bindPowerHooks(h)
+    powerHooks = type(h) == "table" and h or {}
+end
+
+local function fireHook(name, ...)
+    local fn = powerHooks[name]
+    if type(fn) == "function" then
+        fn(...)
+    end
 end
 
 local function gate(name)
@@ -120,6 +136,7 @@ function requestRest(reason)
     if sys and sys.publish and _G.APP_EVENTS and _G.APP_EVENTS.POWER_ENTERED_REST then
         sys.publish(_G.APP_EVENTS.POWER_ENTERED_REST, reason)
     end
+    fireHook("onEnterRest", reason, changed, userCut)
     return true, changed
 end
 
@@ -132,6 +149,7 @@ function requestNormal(reason)
     if changed and sys and sys.publish and _G.APP_EVENTS and _G.APP_EVENTS.POWER_EXITED_REST then
         sys.publish(_G.APP_EVENTS.POWER_EXITED_REST, reason)
     end
+    fireHook("onExitRest", reason, changed)
     return true, changed
 end
 

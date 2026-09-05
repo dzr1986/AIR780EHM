@@ -151,3 +151,15 @@ _G.LOW_POWER_WAKEUP_CFG = { mode = LOW_POWER_WAKEUP_MODE }
 | `host_uart.lua` | TCP 通道门禁、`GETCFG` 扩展字段 |
 | `net_mqtt.lua` | mqtt 模式 rest 保持连接 |
 | `net_tcp.lua` | tcp 模式长连接（待实现） |
+
+## 附：PSM 副作用表（架构 E 条，2026-09-05）
+
+P6a 把 rest 位写入收进 `runtime_power`（`requestRest`/`requestNormal` 单写点），但副作用编排仍在 `app.lua` 里"先调 PSM 再看返回值做动作"。E 条把最后一步也收进 PSM：
+
+- `runtime_power.bindPowerHooks{ onEnterRest(reason, changed, userCut), onExitRest(reason, changed) }`，app.start 注入；
+- `requestRest` 放行后（写 rest 位、发 `POWER_ENTERED_REST` 之后）触发 `onEnterRest`；`requestNormal` **每次**触发 `onExitRest`（`changed=false` 时 app 仍要给 T31 正常上电，清 BOOT/OTA 防误进烧录）；
+- `app.onRestEntered`：T31 `enterSleep`（用户 2002/AT 的 `skipPendingWorkCheck`）→ `pubStatus`；`changed` 时 `pubRest{enter}`；`lpWake.onEnterRest`；
+- `app.onRestExited`：`changed` 时 `pubRest{exit}`（usb_insert 延时 + RNDIS 刷新检查）、`lpWake.onExitRest`、`sound_prompt.onWakeFromLowPower`；然后无论 changed 与否 T31 `ensNormalPwrOn` + `pulseMcuInt`；
+- `app.enterLowPower/onExitLowPower` 退化为一行 `requestRest/requestNormal`；`onEnterLowPower` 仍保留门禁预判 + 关机提示音（响了必进）。
+
+USB 联动（`applyUsbPower → onUsbRemovedEnterRest/onUsbInsertedExitRest`）入口不变，最终都落到同一条 PSM 路径；今后任何直接调用 `requestRest/requestNormal` 的模块（如 battery_guard）都会自动得到同一份副作用，不再出现"改了态没断 T31"的分叉。零行为改动，VERSION 维持 161。
