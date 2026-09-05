@@ -18,15 +18,12 @@ function bind(C, shared)
     local escJson = C.escJson
     local pirCtrl = C.pirCtrl
     local msgIdJson = C.msgIdJson
+    local optTable = C.utils.optTable -- 单源 lib/utils（P9）
     local pirDetectExtra = shared.pirDetectExtra
 
     ----------------------------------------------------------------
     -- JSON 字段 helper
     ----------------------------------------------------------------
-
-    local function optTable(v)
-        return type(v) == "table" and v or {}
-    end
 
     local function asBool01(v)
         return (v == 1 or v == true) and 1 or 0

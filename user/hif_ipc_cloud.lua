@@ -25,6 +25,7 @@ function bind(C, H)
     local qryHostStat, qryHostRecord = H.qryHostStat, H.qryHostRecord
     local utils = C.utils
     local setRecActive = C.setRecActive
+    local ipcReadyFrom = C.ipcReadyFrom -- hif_cmd.bind 已挂，单源 IPC 就绪判定
 
     local TMO_SHARED = C.TMO_SHARED
     local TIMEOUT = {
@@ -127,7 +128,7 @@ function bind(C, H)
 
     local function defaultCloudSkeleton()
         local life = state.host_ipc_status or "idle"
-        local ipcReady = (life == "ready") and 1 or 0
+        local ipcReady = ipcReadyFrom(life)
         local cat1Link = (ipcReady == 1 or state.host_at_ready) and 1 or 0
         local sk = {}
         for i = 1, #CLOUD_STAT_KEYS do
@@ -291,6 +292,8 @@ function bind(C, H)
 
     return {
         qryGb28181 = qryGb28181,
+        -- mqtt_dl_dev 查询超时后的缓存回退（P9 前该成员不存在 → nil 调用）
+        getCachedHostGb28181Id = function() return state.host_gb28181_id end,
         isIpcCloudStatStale = isIpcCloudStatStale,
         getCloudStat = getCloudStat,
         canQueryT31 = canQueryT31,

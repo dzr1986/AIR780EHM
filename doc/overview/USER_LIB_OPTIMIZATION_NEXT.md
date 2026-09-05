@@ -2,7 +2,7 @@
 
 > **真源**：仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`。  
 > **基线版本**：`001.000.068`（2026-08-30）  
-> **当前版本**：`001.000.158`（152–158 = 审计/重构行为修复，见 §8 末尾）  
+> **当前版本**：`001.000.159`（152–159 = 审计/重构行为修复，见 §8 末尾）  
 > **拆分后治理计划**（文件树 / P0–P4 / 回归）：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)  
 > **API 命名真源**：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) · **历史缩写对照**：[FUNCTION_NAME_MAP.md](../_audit/FUNCTION_NAME_MAP.md)（134 前实验，只读）
 
@@ -203,6 +203,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-05 | **P3 破坏性串口会话 `uart_session`（VERSION 156，refactor_plan P3）**：`tfcard_format_busy`/`ipc_poweroff_busy`/`uart_recovery_busy` 三键并为 `state.uart_session` + `enterSession/leaveSession/sessionBlocks`（host_uart）；`hostQuery` 非持有协程走缓存、`hostSet` 回 busy、`isCloudBusy` 统一看会话；`ipcQueryBusy` 排除自身 poweroff 会话；负向断言防旧键回潮。前置 P0–P2b（护栏 token 化 / 分层护栏 / svc 迁出 / 超时单源）均零行为。详见 [HOST_UART_AT_DISPATCH §9](../modules/HOST_UART_AT_DISPATCH.md) |
 | 2026-09-05 | **P6a PSM 低功耗态单写点（VERSION 157，refactor_plan P6a）**：`runtime_power` 新增 `requestRest/requestNormal/canRest/isUserCut/bindPowerGates`，`setLowPowerMode` 改为内部 `writeLowPowerMode` 不再导出；app `enterLowPower/onEnterLowPower/onExitLowPower` 退化为副作用执行器，门禁（低功耗开关 / USB 只拦策略触发）搬进转移表并逐条等价；`POWER_ENTERED/EXITED_REST` 由 PSM 发布并带 reason；`_protocol_regression_check` 新增单一写入点断言。P5 错误返回约定 + `MQTT_REPLY_MESSAGES.md` 词表零行为。详见 [LOW_POWER_WAKEUP §2b](../modules/LOW_POWER_WAKEUP.md) |
 | 2026-09-05 | **P6b 录像态单入口（VERSION 158，refactor_plan P6b）**：`hif_ipc.setRecActive` 改经 `patchCloud`（建表/归一/刷 ts）并导出到 `host_uart._M`；`hif_cmd_t31x`/`hif_ipc_power`/`mqtt_dl_pir` 三处 `patchCloud({recordingt31x})` 直写改 `setRecActive`；raw 写点仅 `commitIpcStat`。**顺带修 P0**：`mqtt_dl_pir.stopHostRecord` 调 `hif.patchCloud` 而 `host_uart._M` 未导出该函数 → 2011 成功停录必崩、1011 force 不发（离线加载 host_uart 实证 `patchCloud=nil`）。`_protocol_regression_check` +2 条单一写入点断言。详见 [PIR_CTRL_FLOW §10](../modules/PIR_CTRL_FLOW.md) |
+| 2026-09-05 | **P9 modCall 签名校验 + host_uart 成员校验 + 重复实现收敛（VERSION 159）**：`_ref_name_check` 规则 D/E 落地即抓出 4 处 nil 成员调用（`ipc_supv.hostBusy/patchCloud`、`mqtt_dl_tf.getCachedHostTfCard`、`mqtt_dl_dev.getCachedHostGb28181Id`）→ host_uart 显式导出 / hostq、cloud 补导出；零行为收敛：`logPowerOffRx` 单源 ctx、`mqtt_ul_pir.optTable`→`utils.optTable`、`hif_cmd_t31x` tfPresent→`utils.to01`、`hif_ipc_cloud.defaultCloudSkeleton`→`ipcReadyFrom`；P7/P8 以护栏形态落地（bind 时刻可用性 + spec 生成；上行字段文档⊆代码）。详见 [audit §18.4](USER_LIB_CODE_AUDIT_20260904.md) |
 
 ---
 
@@ -228,6 +229,7 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 - [ ] 2002 进/出 rest、USB 插拔 1003
 - [ ] 蜂窝 SIM/APN 1005
 - [ ] 烧录确认 `scriptVersion`
+- [ ] **159 新增（P9 成员导出）**：IPC 告警（`AT+IPCALERT=tf_mount_fail`）后 1003 `tfPresent=0` 生效；电量 1003 发布后云状态防抖刷新任务不再报 nil；2007/2006 查询超时时 1007/1006 回缓存值而非崩
 - [ ] **158 新增（P6b 录像态单入口）**：2011 云停成功 → 1011 `force=true` 确实发出（157 前 `hif.patchCloud` nil 崩，不发）；T31x `AT+RECORD=1/0`、2002 断电、`+RECORD:` 应答、reconcile 四条路径后 1003 `recordingt31x` 与 `AT+PIRSTAT?` 一致；四条停录路径 1011 各一次不重复
 - [ ] **157 新增（P6a PSM）**：USB 拔插 10 次 1002/1001 序列一一对应无震荡；2002 enter 在 USB 在位时仍进 rest（USER_CUT 不拦）、`usb_remove` 在 USB 在位时不进；`MODULE_FLAGS.low_power=false` 时四入口均 `enter_low_power_skip low_power_disabled`；已在 rest 时 2002 enter 仍重放断 T31x + 1002，`battery` 触发不重放；关机音只在 `canRest` 通过时播放
 - [ ] **156 新增（P3 uart_session）**：2009 格式化期间下发 2007 → 1007 回缓存、串口无 `AT+TFCARD?`；2002 断电期间 2005 wled 查询回缓存/`busy`；USB 恢复任务期间 `AT+IPCSTAT?` 不发出；两条破坏性操作重叠时后到者回 `busy`/false 而非并发

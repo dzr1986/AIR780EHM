@@ -14,6 +14,7 @@ function bind(C)
     local rspBody, rspFmt, rspLineOk = C.rspBody, C.rspFmt, C.rspLineOk
     local modCall = C.modCall
     local RSP_ERROR = C.RSP_ERROR
+    local utils = C.utils
     local function parseIpcStat(...)
         return C.parseIpcStat(...)
     end
@@ -188,7 +189,7 @@ function bind(C)
             return RSP_ERROR
         end
         state.host_tf_card = snap
-        patchCloud({ tfPresent = (tonumber(snap.present) or 0) == 1 and 1 or 0 })
+        patchCloud({ tfPresent = utils.to01(snap.present) })
         sys.publish(SYS_EVT.TFCARD_ACK, snap)
         return rspLineOk("TFCARD")
     end

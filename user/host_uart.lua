@@ -177,6 +177,13 @@ local function noteHostPush()
     state.host_push_quiet_until = hostNowMs() + HOST_PUSH_QUIET_MS
 end
 
+-- IPCPOWEROFF 收包日志（rx_dsl URC 路径 / ipc_power 阶段路径共用，P9 单源）
+local function logPowerOffRx(tag, line)
+    if log and log.info then
+        log.info(LOG_TAG, "ipcpoweroff_rx", tag, line or "error")
+    end
+end
+
 local function hostBusy()
     local untilMs = tonumber(state.host_push_quiet_until) or 0
     return untilMs > 0 and hostNowMs() < untilMs
@@ -500,6 +507,7 @@ local ctx = {
     leaveSession = leaveSession,
     sessionBlocks = sessionBlocks,
     hostBusy = hostBusy,
+    logPowerOffRx = logPowerOffRx,
     noteHostPush = noteHostPush,
     parseSvcArgs = parseSvcArgs,
     pushUsbIdle = pushUsbIdle,
@@ -555,6 +563,9 @@ local RX_LINE_TRY_HANDLERS = rx.tryHandlers
 local ipc = require("hif_ipc").bind(ctx)
 -- 装配 hif_ipc 对外 API → _M（唯一装配点）
 for k, fn in pairs(ipc) do _M[k] = fn end
+-- 外部模块（ipc_supv）经 host_uart._M 使用的本文件 local / rx 能力：显式导出，否则为 nil 调用（P9 成员校验）
+_M.hostBusy = hostBusy
+_M.patchCloud = rx.patchCloud -- 仅限非 recordingt31x 的云状态补丁（recordingt31x 走 setRecActive，护栏守护）
 
 ----------------------------------------------------------------
 -- RX 行处理

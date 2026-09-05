@@ -491,12 +491,6 @@ function bind(C)
         return true
     end
 
-    local function logPowerOffRx(line)
-        if log and log.info then
-            log.info("host_uart", "ipcpoweroff_rx", "ERR", line)
-        end
-    end
-
     local function tryIpcPowerOff(line)
         if not line then
             return false
@@ -510,7 +504,7 @@ function bind(C)
         end
         if line:match("^%+IPCPOWEROFF:BUSY") or line:match("^%+IPCPOWEROFF:ERROR")
             or line:match("^%+IPCPOWEROFF:NOT_SUPPORTED") then
-            logPowerOffRx(line)
+            C.logPowerOffRx("ERR", line)
             return publishAck(SYS_EVT.IPCPOWEROFF_ACK, { ok = false, error = true, line = line })
         end
         return false

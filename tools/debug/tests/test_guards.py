@@ -130,6 +130,13 @@ class GuardSandbox(unittest.TestCase):
         rc, out = _run(self.tmp, "_ref_name_check.py")
         self.assertEqual(rc, 0, out)
 
+    def test_ref_name_flags_missing_host_uart_member_and_modcall_arity(self):
+        self.inject("ref_name_member_bad.lua", "zz_ref_member.lua")
+        rc, out = _run(self.tmp, "_ref_name_check.py")
+        self.assertEqual(rc, 1)
+        self.assertIn("noSuchFnZZ", out)
+        self.assertIn("传 3 个实参", out)
+
     def test_ref_name_flags_live_bad_require(self):
         self.inject("ref_name_live_bad.lua", "zz_ref_bad.lua")
         rc, out = _run(self.tmp, "_ref_name_check.py")

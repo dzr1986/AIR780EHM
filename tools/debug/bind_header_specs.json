@@ -34,7 +34,7 @@
     "hif_cmd_t31x.lua": {
       "bind_args": "C",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "noteHostPush", "parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"],
+      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "utils", "noteHostPush", "parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"],
       "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"]
     },
     "hif_cmd_wled.lua": {
@@ -65,7 +65,7 @@
     "hif_ipc_power.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "enterSession", "leaveSession", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud", "setRecActive", "TMO_SHARED"],
+      "c": ["state", "SYS_EVT", "uartAcquire", "uartRelease", "enterSession", "leaveSession", "waitHostIdle", "uart_bridge", "hostNowMs", "patchCloud", "setRecActive", "logPowerOffRx", "TMO_SHARED"],
       "h": ["getCfg", "qryHostStat"]
     },
     "hif_ipc_tffmt.lua": {

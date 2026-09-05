@@ -18,6 +18,7 @@ function bind(C, H)
     local hostNowMs = C.hostNowMs
     local patchCloud = C.patchCloud
     local setRecActive = C.setRecActive
+    local logPowerOffRx = C.logPowerOffRx
     local getCfg = H.getCfg
     local qryHostStat = H.qryHostStat
 
@@ -76,12 +77,6 @@ function bind(C, H)
         local untilMs = hostNowMs() + deadlineMs
         while hostNowMs() < untilMs and ipcQueryBusy() do
             sys.wait(TIMEOUT.pollSliceMs)
-        end
-    end
-
-    local function logPowerOffRx(tag, line)
-        if log and log.info then
-            log.info("host_uart", "ipcpoweroff_rx", tag, line or "error")
         end
     end
 

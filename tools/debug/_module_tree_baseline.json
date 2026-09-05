@@ -15,22 +15,22 @@
     "hif_cmd.lua": 384,
     "hif_cmd_link.lua": 230,
     "hif_cmd_pir.lua": 131,
-    "hif_cmd_t31x.lua": 220,
+    "hif_cmd_t31x.lua": 221,
     "hif_cmd_usb.lua": 258,
     "hif_cmd_wled.lua": 182,
     "hif_ipc.lua": 385,
-    "hif_ipc_cloud.lua": 310,
+    "hif_ipc_cloud.lua": 313,
     "hif_ipc_encode.lua": 203,
-    "hif_ipc_hostq.lua": 344,
-    "hif_ipc_power.lua": 210,
+    "hif_ipc_hostq.lua": 346,
+    "hif_ipc_power.lua": 205,
     "hif_ipc_rec.lua": 188,
     "hif_ipc_tffmt.lua": 164,
     "hif_rx.lua": 69,
-    "hif_rx_dsl.lua": 550,
+    "hif_rx_dsl.lua": 544,
     "hif_rx_media.lua": 275,
     "host.lua": 110,
     "host_event.lua": 158,
-    "host_uart.lua": 742,
+    "host_uart.lua": 753,
     "ipc_supv.lua": 188,
     "led_pir.lua": 68,
     "lp_wakeup.lua": 116,
@@ -44,7 +44,7 @@
     "mqtt_dl_upload.lua": 156,
     "mqtt_downlink.lua": 191,
     "mqtt_hproto.lua": 473,
-    "mqtt_ul_pir.lua": 194,
+    "mqtt_ul_pir.lua": 191,
     "mqtt_ul_upload.lua": 147,
     "mqtt_uplink.lua": 537,
     "net.lua": 82,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13773
+      "lines": 13776
     },
     "lib": {
       "files": 15,
       "lines": 2613
     },
-    "all": 16386
+    "all": 16389
   }
 }
