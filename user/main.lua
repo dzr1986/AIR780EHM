@@ -128,12 +128,11 @@ local app = require "app"
 local peripheral = require "peripheral"
 local net = require "net_mqtt"
 local t31xCtrl = require "t31x_ctrl"
+local powerHal = require "power_hal"
 if not isEntry then
     return app
 end
-if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
-    pm.power(pm.PWK_MODE, true)
-end
+powerHal.initPwkMode()
 do
     local usb_vuart = loader.load("usb_vuart")
     if usb_vuart then

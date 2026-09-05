@@ -17,6 +17,8 @@ local hostEvt = require "host_event"
 local t31xNotify = require "t31x_notify"
 local deviceId = require "device_id"
 local uart_bridge = require "uart_bridge"
+local powerHal = require "power_hal"
+local gpio_util = require "gpio_util"
 local pirCtrl = require "pir_ctrl"
 local batteryGuard = require "battery_guard"
 local host_uart = require "host_uart"
@@ -76,7 +78,7 @@ end
 local function isUsbInserted(opts)
     opts = opts or {}
     if opts.bootGpio and not loader.enabled("charge") then
-        return gpio and gpio.VBUS and gpio.get(gpio.VBUS) == 1
+        return gpio and gpio.VBUS and gpio_util.getLevel(gpio.VBUS) == 1
     end
     return rntmPwr.isUsbInserted()
 end
@@ -214,9 +216,7 @@ end
 local function onReboot()
     appWarn("device_reboot_request")
     stopWatchdogBeforePowerOff()
-    sys.timerStart(function()
-        if pm and pm.reboot then pm.reboot() end
-    end, TIMEOUT.rebootDelay)
+    powerHal.reboot(TIMEOUT.rebootDelay)
 end
 
 local function onPowerOff(reason)
@@ -226,7 +226,7 @@ local function onPowerOff(reason)
             return
         end
         stopWatchdogBeforePowerOff()
-        pm.shutdown()
+        powerHal.shutdown()
     end
 
     local function runShutdown()
@@ -393,10 +393,7 @@ end
 
 local function setupPmd()
     -- pmd 仅部分内核带；MSG_PMD 存在但 pmd 库缺失时不能裸调 pmd.init
-    if rtos and rtos.MSG_PMD and pmd then
-        rtos.on(rtos.MSG_PMD, onPmdMsg)
-        pmd.init({})
-    end
+    powerHal.initPmd(onPmdMsg)
 end
 
 local function setupWdt()

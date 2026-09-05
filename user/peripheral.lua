@@ -46,7 +46,7 @@ end
 local function setupLong(cfg, state)
     if not cfg or cfg.pin == nil then return end
     local pressLevel = cfg.pressLevel or 0
-    if cfg.requireReleaseFirst and gpio and gpio.get and gpio.get(cfg.pin) == pressLevel then
+    if cfg.requireReleaseFirst and gpio_util.getLevel(cfg.pin) == pressLevel then
         state.await_release = true
     end
     gpio_util.setupInput(cfg.pin, function(level)

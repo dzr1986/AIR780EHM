@@ -127,24 +127,26 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 
 > `t31x_policy` / `t31x_notify` / `host_event` / `lp_wakeup` 位于 **user/**（文档早期曾归 lib/，已修正）。
 
-### lib/ 模块（15 文件，策略/底层/常驻库）
+### lib/ 模块（17 文件，策略/底层/常驻库）
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `sys.lua` | 394 | LuatOS 协程调度核心（wait/run/publish/subscribe/定时器） |
+| `sys.lua` | 394 | LuatOS 协程调度核心（**vendor**，R5 sha256 锁） |
 | `cell_boot.lua` | 373 | 蜂窝引导：SIM/APN、`IP_READY`、运营商映射 |
 | `usb_rndis.lua` | 311 | USB 网卡 tethering、IP_READY 刷新 |
 | `led_ctrl.lua` | 225 | 蓝/红 LED 模式状态机 |
 | `utils.lua` | 185 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
 | `runtime_power.lua` | 193 | 工作模式 + USB/充电/电量/在线访问器（`APP_RUNTIME` 唯一入口） |
-| `libfota2.lua` | 180 | FOTA 下载引擎（差分协议/断点续传） |
+| `libfota2.lua` | 180 | FOTA 下载引擎（**vendor**，R5 sha256 锁） |
 | `usb_charge.lua` | 131 | GPIO27/CHG_STATE 中断 → `GPIO_USB_DET_CHANGED` |
 | `uart_bridge.lua` | 109 | 唯一 `uart.setup`；行/原始 RX 回调 |
 | `usb_vuart.lua` | 103 | USB 虚拟串口、VCOM、透传 |
 | `watchdog.lua` | 94 | 硬件 WDT 初始化与喂狗 |
+| `power_hal.lua` | 52 | **L0 HAL** — 全仓库唯一 `pm.*/pmd.*` 封装（shutdown/reboot/hibernate/initPwkMode/initPmd） |
 | `module_loader.lua` | 59 | 懒加载/裁剪/stopAll（`MODULE_FLAGS` 驱动） |
 | `config_manager.lua` | 69 | 配置访问（默认值合并、热更新、持久化） |
-| `gpio_util.lua` | 59 | `GPIO_IN/OUT` → `gpio.setup` |
+| `adc_hal.lua` | 72 | **L0 HAL** — 全仓库唯一 `adc.*` 封装（vbat 采样） |
+| `gpio_util.lua` | 68 | `GPIO_IN/OUT` → `gpio.setup`；`getLevel` 读电平 |
 | `device_id.lua` | 37 | IMEI / deviceNo |
 
 > 旧名对照：`cellular_bootstrap`→`cell_boot`；`low_power_wakeup`→`user/lp_wakeup`；`usb_policy`/`usb_host_evt` 等已并入 `usb_charge`/config 片段。

@@ -31,10 +31,10 @@ alwaysApply: true
 
 ## 4. 业务逻辑层不得包含硬件寄存器操作
 
-- `user/` 中 L2 模块**禁止**直接调用 `uart.*`、`gpio.setup/debounce`、`wdt.*`、`adc.*`、`pm.*`、`pmd.*`、`i2c/spi/pwm.*`；硬件动作必须经 L0 驱动封装（`uart_bridge.write`、`gpio_util.setupInput/setupInputEntry/setupOutput`、`led_ctrl`、`usb_charge`、`watchdog.feed`、`runtime_power`）。唯一 `uart.setup` 在 `lib/uart_bridge.lua`，`gpio.setup` 只在 `lib/gpio_util.lua`/`lib/led_ctrl.lua`/`lib/usb_charge.lua`。
+- `user/` 中 L2 模块**禁止**直接调用 `uart.*`、`gpio.setup/debounce/get`、`wdt.*`、`adc.*`、`pm.*`、`pmd.*`、`i2c/spi/pwm.*`；硬件动作必须经 L0 驱动封装（`power_hal`、`adc_hal`、`uart_bridge.write`、`gpio_util.setupInput/getLevel`、`led_ctrl`、`usb_charge`、`watchdog.feed`）。唯一 `uart.setup` 在 `lib/uart_bridge.lua`，`gpio.setup` 只在 `lib/gpio_util.lua`/`lib/led_ctrl.lua`/`lib/usb_charge.lua`。
 - 允许的平台原语（不算寄存器操作）：`mcu.ticks()` 时基、`sys.*` 调度、`log.*`、`json.*`。
-- **已登记的基线例外**（只许收缩，新增即违规）：`app.lua` `pm.shutdown/pm.reboot/pmd.init/gpio.get`、`battery_guard.lua` `pm.shutdown`、`t31x_ctrl.lua` `pm.hibernate`、`main.lua` `pm.power`、`peripheral.lua` `gpio.get`、`vbat.lua` `adc.open/close`。收敛方向：`pm.*` 归 `runtime_power`/新 `lib/power_hal`，`adc.*` 归 `lib/`。
-- 巡检命令：`rg -n "\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\(" user/*.lua`，输出只能是上面的例外清单。
+- **L0 已收敛（2026-09-05）**：`user/` 零 HAL 直调；`_hal_layer_check.py`（run_all_checks #14）机器守护。`main.lua` 冷启动经 `power_hal.initPwkMode()`。
+- 巡检命令：`rg -n "\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\(" user/*.lua`（应无输出）。
 
 ## 5. 公共工具函数只放 utils 层，禁止各模块重复实现
 
@@ -45,4 +45,4 @@ alwaysApply: true
 
 ## 6. 提交门槛
 
-改动 `user/`/`lib/` 后必须 `python3 tools/debug/run_all_checks.py` 13 项 ALL PASS（含 `_layer_check`、`_gen_bind_header --check-all`、`_ref_name_check`、`_protocol_regression_check`、`_undef_global_check`）；新增层间依赖、新增例外、改动 vendor 文件都必须在本文件对应小节登记后才能 `--save-baseline`。
+改动 `user/`/`lib/` 后必须 `python3 tools/debug/run_all_checks.py` 14 项 ALL PASS（含 `_layer_check`、`_hal_layer_check`、`_gen_bind_header --check-all`、`_ref_name_check`、`_protocol_regression_check`、`_undef_global_check`）；新增层间依赖、改动 vendor 文件都必须在本文件对应小节登记后才能 `--save-baseline`。

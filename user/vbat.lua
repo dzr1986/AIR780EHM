@@ -8,6 +8,7 @@ require "sys"
 require "config"
 local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
+local adcHal = require "adc_hal"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
@@ -146,43 +147,30 @@ local function updateConsume(currentPercent)
     return rate
 end
 
-local function applyAdc(ad)
-    if not ad or not ad.setRange then return end
-    local range = adcCfg().range
-    if range == nil then range = ad.ADC_RANGE_MIN end
-    if range ~= nil then ad.setRange(range) end
+local function applyAdcRange()
+    adcHal.configure({ range = adcCfg().range })
 end
 
-local function readPinRaw(ad, channel)
-    if ad.read then
-        local _, mv = ad.read(channel)
-        if mv ~= nil and mv >= 0 then return mv end
-    end
-    if ad.get then
-        local mv = ad.get(channel)
-        if mv ~= nil and mv >= 0 then return mv end
-    end
-end
-
--- 平台 ADC 调用一律 pcall：单次读失败只丢本样本，不能让 batteryTask 协程整体退出；告警只报一次防刷屏
 local adcReadErrLogged = false
-local function readPin(ad, channel)
-    local ok, mv = pcall(readPinRaw, ad, channel)
-    if ok then return mv end
+local function readPin(channel)
+    local mv = adcHal.readMv(channel)
+    if mv ~= nil then
+        return mv
+    end
     if not adcReadErrLogged then
         adcReadErrLogged = true
-        if log and log.warn then log.warn("vbat", "adc_read_err", tostring(mv)) end
+        if log and log.warn then log.warn("vbat", "adc_read_err", tostring(channel)) end
     end
     return nil
 end
 
-local function readPinMv(ad, channel)
+local function readPinMv(channel)
     local fc = filterCfg()
     local count = tonumber(fc.sample_count) or 11
     local spacing = tonumber(fc.sample_spacing_ms) or 20
     local samples = {}
     for i = 1, count do
-        local mv = readPin(ad, channel)
+        local mv = readPin(channel)
         if mv ~= nil then samples[#samples + 1] = mv end
         if i < count and spacing > 0 then sys.wait(spacing) end
     end
@@ -192,14 +180,13 @@ end
 local function batteryTask()
     local channel = adcCfg().channel or 1
     local scale = mvScale()
-    -- adc 库本身可能缺失：索引放进闭包内，让 pcall 真正兜住
-    pcall(applyAdc, adc)
-    local okOpen, errOpen = pcall(function() adc.open(channel) end)
+    applyAdcRange()
+    local okOpen, errOpen = adcHal.open(channel)
     if not okOpen and log and log.warn then
         log.warn("vbat", "adc_open_err", tostring(channel), tostring(errOpen))
     end
     while running do
-        local pinMv = readPinMv(adc, channel)
+        local pinMv = readPinMv(channel)
         if pinMv then
             local cellMv = smoothCell(math.floor(pinMv * scale + 0.5))
             local vmax = tonumber(cellCfg().v_max_mv) or 4200
@@ -212,7 +199,7 @@ local function batteryTask()
         end
         sys.wait(sampleIvMs())
     end
-    pcall(function() if adc and adc.close then adc.close(channel) end end)
+    adcHal.close(channel)
 end
 
 function start()
