@@ -243,6 +243,54 @@ local function onPowerOff(reason)
     runShutdown()
 end
 
+-- AT 协议层业务 provider（host_uart.start{ biz }；键名即 bizCall("<键>") 的唯一真源，_ref_name_check 规则 F 校验）。
+-- 模块被裁剪/未加载时该键为 nil，bizCall 返回 nil，与旧 modCall 语义一致。
+local function bizProvider(mod, fn)
+    if mod and type(mod[fn]) == "function" then
+        return function(...) return mod[fn](...) end
+    end
+    return nil
+end
+
+local function buildBizProviders()
+    local function viaNet(fn)
+        return function(...)
+            if netModule and netModule[fn] then return netModule[fn](...) end
+        end
+    end
+    return {
+        -- battery_guard
+        shouldHostSleep = bizProvider(batteryGuard, "shouldHostSleep"),
+        canHostSleep = bizProvider(batteryGuard, "canHostSleep"),
+        markT31xWoken = bizProvider(batteryGuard, "markT31xWoken"),
+        -- t31x_policy
+        mayPowerT31x = bizProvider(t31xPolicy, "mayPowerT31x"),
+        -- lp_wakeup
+        lpAppCfgFields = bizProvider(lpWake, "appCfgFields"),
+        allowTcpChannel = bizProvider(lpWake, "allowTcpChannel"),
+        closeTcpChannel = bizProvider(lpWake, "closeTcpChannel"),
+        -- host_event
+        hostEvtEnabled = bizProvider(hostEvt, "isEnabled"),
+        hostEvtSummarize = bizProvider(hostEvt, "summarize"),
+        -- pir_ctrl
+        pirIsRecording = bizProvider(pirCtrl, "isRecording"),
+        pirSyncStopT31x = bizProvider(pirCtrl, "syncStopT31x"),
+        pirApplyEffMedia = bizProvider(pirCtrl, "applyEffMedia"),
+        pirStatBody = bizProvider(pirCtrl, "buildStatBody"),
+        pirClearMarkers = bizProvider(pirCtrl, "clearConsumableMarkers"),
+        pirResetCounters = bizProvider(pirCtrl, "resetCounters"),
+        -- time_sync / sound_prompt（可选模块）
+        onTimesetAck = bizProvider(time_sync, "onTimesetAck"),
+        onSoundAck = bizProvider(sound_prompt, "onSoundAck"),
+        -- net_mqtt（注入对象，start 时才有）
+        pubUploadDone = viaNet("pubUploadDone"),
+        pubUploadNeed = viaNet("pubUploadNeed"),
+        setStatInterval = viaNet("setStatInterval"),
+        pubRaw = viaNet("pubRaw"),
+        pubDeviceIdRef = viaNet("pubDeviceIdRef"),
+    }
+end
+
 local function setupUart()
     if _G.APP_STACK and _G.APP_STACK.uart ~= "uart_bridge" then
         return false
@@ -258,6 +306,7 @@ local function setupUart()
         if loader.enabled("t31x_app") then
             host_uart.start({
                 t31x = t31xModule,
+                biz = buildBizProviders(),
                 onEnterLowPower = function() onEnterLowPower("at") end,
                 onExitLowPower = function() onExitLowPower("at") end,
                 onReboot = onReboot,

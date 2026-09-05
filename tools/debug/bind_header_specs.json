@@ -23,18 +23,18 @@
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["state", "hooks", "E", "rspBody", "rspFmt", "rspLine", "okTail", "modCall", "utils", "RSP_ERROR", "parseSvcArgs"],
+      "c": ["state", "hooks", "E", "bizCall", "rspBody", "rspFmt", "rspLine", "okTail", "modCall", "utils", "RSP_ERROR", "parseSvcArgs"],
       "wrappers": [["qryGb28181", "C.M.qryGb28181"]]
     },
     "hif_cmd_pir.lua": {
       "bind_args": "C",
       "requires_sys": false,
-      "c": ["state", "rspBody", "rspLineOk", "modCall", "getHostEvtPending"]
+      "c": ["state", "rspBody", "rspLineOk", "modCall", "bizCall", "getHostEvtPending"]
     },
     "hif_cmd_t31x.lua": {
       "bind_args": "C",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "RSP_ERROR", "utils", "noteHostPush", "parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"],
+      "c": ["state", "SYS_EVT", "E", "rspBody", "rspFmt", "rspLineOk", "modCall", "bizCall", "RSP_ERROR", "utils", "noteHostPush", "parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"],
       "wrappers": ["parseIpcStat", "parseTfCard", "commitIpcStat", "patchCloud", "setRecActive"]
     },
     "hif_cmd_wled.lua": {
@@ -59,7 +59,7 @@
     "hif_ipc_cloud.lua": {
       "bind_args": "C, H",
       "requires_sys": true,
-      "c": ["state", "SYS_EVT", "E", "modCall", "hostBusy", "wledGet", "normIpcCloud", "commitIpcStat", "utils", "setRecActive", "TMO_SHARED"],
+      "c": ["state", "SYS_EVT", "E", "modCall", "bizCall", "hostBusy", "wledGet", "normIpcCloud", "commitIpcStat", "utils", "setRecActive", "TMO_SHARED"],
       "h": ["getCfg", "hostQuery", "defineQuery", "idCfgFn", "qryHostStat", "qryHostRecord"]
     },
     "hif_ipc_power.lua": {

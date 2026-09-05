@@ -12,6 +12,7 @@ _G[_modname] = _M
 function bind(C)
     local state, SYS_EVT = C.state, C.SYS_EVT
     local modCall = C.modCall
+    local bizCall = C.bizCall
     local utils = C.utils
 
     local function noteLinkOk()
@@ -246,7 +247,7 @@ function bind(C)
         if not name then
             return false
         end
-        modCall("sound_prompt", "onSoundAck", name)
+        bizCall("onSoundAck", name)
         return true
     end
 
@@ -254,7 +255,7 @@ function bind(C)
         if not line or not line:match("^%+TIMESET:OK$") then
             return false
         end
-        modCall("time_sync", "onTimesetAck")
+        bizCall("onTimesetAck")
         return true
     end
 

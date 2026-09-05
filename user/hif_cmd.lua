@@ -29,6 +29,7 @@ function bind(C)
     local rspLine = C.rspLine
     local okTail = C.okTail
     local modCall = C.modCall
+    local bizCall = C.bizCall
     local utils = C.utils
     local usbInserted = C.usbInserted
     local usbBlockHost = C.usbBlockHost
@@ -75,7 +76,7 @@ function bind(C)
     end
 
     local function hostIdleAllowed()
-        return not usbBlockHost() and modCall("battery_guard", "shouldHostSleep") == true
+        return not usbBlockHost() and bizCall("shouldHostSleep") == true
     end
 
     local function checkHostIdleGate()
@@ -149,8 +150,8 @@ function bind(C)
         if cmd == HOST_IDLE.exit then
             return hostIdleOk()
         end
-        if modCall("battery_guard", "shouldHostSleep") == false
-            or modCall("battery_guard", "canHostSleep") == false then
+        if bizCall("shouldHostSleep") == false
+            or bizCall("canHostSleep") == false then
             return rspOnly("HOSTIDLE", "BUSY")
         end
         local lp = cfgm.get("LOW_POWER_CFG")
@@ -165,7 +166,7 @@ function bind(C)
     end
 
     local function atRecordQry(_cmd)
-        local rec = modCall("pir_ctrl", "isRecording") and 1 or 0
+        local rec = bizCall("pirIsRecording") and 1 or 0
         return rspFmt("RECORD", "%d,reason=%s,active=%d",
             rec, state.t31x_last_reason or "idle", state.t31x_rec_active or 0)
     end
@@ -257,7 +258,7 @@ function bind(C)
             return rspLine("SETCFG", false)
         end
         if key == "interval" and tonumber(val) then
-            local ok = modCall("net_mqtt", "setStatInterval", tonumber(val), true)
+            local ok = bizCall("setStatInterval", tonumber(val), true)
             if ok == nil then
                 modCall("runtime_power", "setLowPowerInterval", tonumber(val))
                 sys.publish(E.MQTT_STATUS_INTERVAL_CHANGED)

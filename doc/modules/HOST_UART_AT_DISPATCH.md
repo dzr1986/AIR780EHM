@@ -304,3 +304,11 @@ P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery`
 | **spec 由生成**（`--sync-specs`） | `bind_header_specs.json` 各模块 `c`/`h` 列表按头部同名直读快照 + wrapper + body 运行期用到的延迟键重写；改名快照（`local identityCfg = H.idCfgFn`）由 `inject` 表达。新增子模块 = 写头部 → `--sync-specs` → `--check-all`，不再手抄 JSON |
 
 `ctx` 三命名空间拆分登记为可选后续（无事故驱动不做）。
+
+## 11. AT 层不再反向调用业务层：`bizCall` provider 注入（架构 A 条，2026-09-05）
+
+AT 协议层（`host_uart` + 18 个 `hif_*`）此前经 `modCall("pir_ctrl"/"net_mqtt"/"battery_guard"/"t31x_policy"/"lp_wakeup"/"host_event"/"time_sync"/"sound_prompt", …)` 反向驱动业务层（25 处），是运行期 22 模块软环的主因，也让依赖方向从静态图上消失。现改为：
+
+- `app.buildBizProviders()`（`user/app.lua`）是**唯一真源**：26 个显式函数键（`shouldHostSleep`/`canHostSleep`/`markT31xWoken`/`mayPowerT31x`/`lpAppCfgFields`/`allowTcpChannel`/`closeTcpChannel`/`hostEvtEnabled`/`hostEvtSummarize`/`pirIsRecording`/`pirSyncStopT31x`/`pirApplyEffMedia`/`pirStatBody`/`pirClearMarkers`/`pirResetCounters`/`onTimesetAck`/`onSoundAck`/`pubUploadDone`/`pubUploadNeed`/`setStatInterval`/`pubRaw`/`pubDeviceIdRef`），经 `host_uart.start{ biz = … }` 注入到 `hooks.biz`。
+- AT 层统一经 `ctx.bizCall(key, …)` 调用；provider 缺失（模块被 `MODULE_FLAGS` 裁剪）时返回 nil，与旧 `modCall` 对未加载模块的语义一致。**差异**：旧 `modCall` 用 `loader.load` 会把被裁剪模块强行加载再调用，新实现对被裁剪模块直接 no-op（更符合裁剪意图）。
+- 护栏：`_layer_check` R4（AT 层 ↛ 业务层）基线 15 → **0**；`_ref_name_check` 规则 F 校验 `bizCall("x")` 的 x ∈ provider 表键。软环 22 → 16 模块，`modCall` 46 → 17 处（余下均指向 `t31x_ctrl`/`runtime_power`/`device_id` 等基础设施）。

@@ -13,6 +13,7 @@ AT+MQTTPUB / DeviceId 上报等路径静默失效。本脚本把此类错误纳�
   词法：源码先经 tools/debug/_luatok.strip_comments 去注释（P0 护栏 token 化），注释中的历史名不计。
   D. （P9）modCall("m", "fn", args…) 的 fn 须为 m 的导出函数（顶层 function fn / function _M.fn / _M.fn =），
      且实参数 ≤ 形参数（形参含 ... 时不限）。
+  F. （A 条）bizCall("<key>") 的 key 须 ∈ user/app.lua buildBizProviders 返回表的键（AT 层业务 provider 唯一真源）。
   E. （P9）host_uart 成员校验：user/ 中 `hif.X(` / `hostUart.X(` / `hu.X(` / modCall("host_uart","X") 的 X 须 ∈
      host_uart 导出集 = 顶层 function / _M.X = / hif_ipc `local api = {…}` / hif_cmd `local pub = {…}`（经 cmd.api 合并）字面表 / hif_ipc_{hostq,cloud,power,tffmt,encode} 的 return {…} 键。
      背景：158 前 mqtt_dl_pir.hif.patchCloud、ipc_supv.hostUart.hostBusy、mqtt_dl_tf.getCachedHostTfCard、
@@ -190,6 +191,24 @@ def check_host_uart_members(files: dict) -> tuple[list, int]:
     return fails, n
 
 
+_BIZ_CALL = re.compile(r'\bbizCall\(\s*"([A-Za-z_]\w*)"')
+
+
+def check_biz_calls(files: dict) -> tuple[list, int]:
+    app = files.get("user/app.lua", "")
+    m = re.search(r"local function buildBizProviders\(\).*?\n    return \{(.*?)\n    \}", app, re.S)
+    keys = set(_RET_TABLE_KEY.findall(m.group(1))) if m else set()
+    fails: list = []
+    n = 0
+    for path, text in files.items():
+        for mm in _BIZ_CALL.finditer(text):
+            n += 1
+            if mm.group(1) not in keys:
+                line = text.count("\n", 0, mm.start()) + 1
+                fails.append(f"{path}:{line} bizCall(\"{mm.group(1)}\") 不在 app.buildBizProviders 键集内（provider 未注入 → 恒 nil）")
+    return fails, n
+
+
 def main() -> int:
     files = {}
     for d in SCAN_DIRS:
@@ -228,7 +247,8 @@ def main() -> int:
 
     sig_fails, sig_n = check_modcall_signatures(files, local)
     mem_fails, mem_n = check_host_uart_members(files)
-    fails += sig_fails + mem_fails
+    biz_fails, biz_n = check_biz_calls(files)
+    fails += sig_fails + mem_fails + biz_fails
     for n in sorted(set(notes)):
         print("  NOTE " + n)
     total = len(seen)
@@ -238,7 +258,7 @@ def main() -> int:
         print(f"\n合计: {total} 项, 失败 {len(fails)}")
         return 1
     print(f"  PASS 引用名护栏：{total} 处引用全部可解析（自研模块 {len(local)} + 外部 {len(KNOWN_EXTERNAL - local)}）；"
-          f"modCall 签名 {sig_n} 处、host_uart 成员 {mem_n} 处均存在")
+          f"modCall 签名 {sig_n} 处、host_uart 成员 {mem_n} 处、bizCall provider {biz_n} 处均存在")
     return 0
 
 

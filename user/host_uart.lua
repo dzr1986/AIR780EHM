@@ -165,6 +165,18 @@ local function rp(fn)
     return modCall("runtime_power", fn)
 end
 
+-- 业务 provider（refactor A 条 / _layer_check R4）：AT 协议层不再 modCall 业务模块（pir_ctrl / net_mqtt /
+-- battery_guard / t31x_policy / lp_wakeup / host_event / time_sync / sound_prompt），改由 app.start 经
+-- host_uart.start{ biz = {...} } 注入显式函数表；未注入（模块被裁剪）时返回 nil，与 modCall 对未加载模块的语义一致。
+-- 键名清单真源：user/app.lua buildBizProviders；_ref_name_check 规则 F 校验 bizCall("x") 的 x ∈ 该表。
+local function bizCall(name, ...)
+    local biz = hooks.biz
+    local f = biz and biz[name]
+    if f then
+        return f(...)
+    end
+end
+
 local function noopIdle()
     return "idle"
 end
@@ -369,7 +381,7 @@ local function configSnap()
         devicemodel = meta.device_model or "",
         wled = rp("getWledOn") or 0,
         workmode = rp("getWorkMode") or "person_detect",
-        tcp_extra = modCall("lp_wakeup", "appCfgFields") or "",
+        tcp_extra = bizCall("lpAppCfgFields") or "",
     }
 end
 
@@ -487,6 +499,7 @@ local ctx = {
 
     -- 模块工具
     modCall = modCall,
+    bizCall = bizCall,
     loader = loader,
     utils = utils,
     uart_bridge = uart_bridge,
@@ -671,7 +684,7 @@ end
 local START_HOOK_KEYS = {
     "onServCreate", "onServClose", "onMqttCfg", "onAtExt",
     "onEnterLowPower", "onExitLowPower", "onReboot", "onPowerOff",
-    "onOta", "onPlainLine",
+    "onOta", "onPlainLine", "biz",
 }
 
 local function bindStartHooks(opts)
@@ -717,7 +730,7 @@ function ntfHost(sid, evt)
     local cfg = cfgm.get("HOST_WAKE_CFG")
     sid = sid or cfg.default_sid or 1
     evt = evt or _M.EVT.SERVER_DATA
-    if modCall("t31x_policy", "mayPowerT31x", "ntfHost") == false then
+    if bizCall("mayPowerT31x", "ntfHost") == false then
         return false
     end
     setPendingWake(sid, evt)
@@ -731,7 +744,7 @@ function ntfHost(sid, evt)
     if t31xSt and (not t31xSt.powered_on or t31xSt.in_boot_mode) then
         t31xModule.ensNormalPwrOn("ntfHost")
     end
-    modCall("battery_guard", "markT31xWoken")
+    bizCall("markT31xWoken")
     return t31xModule.pulseMcuInt()
 end
 
