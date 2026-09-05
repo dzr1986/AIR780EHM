@@ -19,7 +19,6 @@ local deviceId = require "device_id"
 local uart_bridge = require "uart_bridge"
 local pirCtrl = require "pir_ctrl"
 local pirAppBridge = require "pir_app_bridge"
-local usbPowerPolicy = require "usb_power_policy"
 local batteryGuard = require "battery_guard"
 local host_uart = require "host_uart"
 local ipcSupv = require "ipc_supv"
@@ -62,7 +61,7 @@ local TIMEOUT = {
 }
 
 ----------------------------------------------------------------
--- 低功耗 / USB（USB 边沿策略见 usb_power_policy）
+-- 低功耗 / USB（USB 边沿策略见 battery_guard.applyUsbPower）
 ----------------------------------------------------------------
 
 local function isLowPowerEnabled()
@@ -312,7 +311,7 @@ end
 
 local function setupPmd()
     -- pmd 仅部分内核带；MSG_PMD 存在但 pmd 库缺失时不能裸调 pmd.init
-    rntmPwr.initPmd(usbPowerPolicy.onPmdMessage)
+    rntmPwr.initPmd(batteryGuard.onPmdMessage)
 end
 
 local function setupWdt()
@@ -444,7 +443,7 @@ local function onPwrOffMqtt()
 end
 
 local function onPwrKeyLong()
-    if usbPowerPolicy.shouldBlockPwrKeyLong() then
+    if batteryGuard.shouldBlockPwrKeyLong() then
         return
     end
     onPowerOff("user")
@@ -459,7 +458,7 @@ local function onCoprocReady()
 end
 
 local function onUsbDet(inserted)
-    usbPowerPolicy.onGpioDetChanged(inserted)
+    batteryGuard.onGpioUsbDetChanged(inserted)
     if inserted == 1 and state.mqtt_started then
         schedDelayedStat(TIMEOUT.delayedStat)
     end
@@ -480,7 +479,7 @@ local function onBatUpd(pct, mv)
 end
 
 local function onHostFirstAt()
-    usbPowerPolicy.onHostFirstAt()
+    batteryGuard.onHostFirstAtSyncUsb()
 end
 
 ----------------------------------------------------------------
@@ -539,7 +538,7 @@ local function startBgSvc()
     if loader.enabled("charge") then
         loader.start(usbCharge, "start")
         if usbCharge then
-            usbCharge.onUsbInsert(usbPowerPolicy.cancelPwrKeyLongPress)
+            usbCharge.onUsbInsert(batteryGuard.cancelPwrKeyLongPress)
         end
     end
     if loader.enabled("sntp") then
@@ -557,7 +556,7 @@ local function startHeartbeat()
             return
         end
         state.heartbeat_count = state.heartbeat_count + 1
-        local usbInserted = usbPowerPolicy.isInserted() and 1 or 0
+        local usbInserted = batteryGuard.probeUsbInserted() and 1 or 0
         local mqttCnnc = rntmPwr.isOnline() and 1 or 0
         if netModule then
             local ns = netModule.getState()
@@ -594,12 +593,19 @@ function start(gpio, net, t31x_ctrl)
         getT31x = function() return t31xModule end,
         wakeT31x = wakeT31xFor,
     })
-    usbPowerPolicy.bind({
+    batteryGuard.start({
+        onEnterLowPower = onEnterLowPower,
+        onExitLowPower = onExitLowPower,
+        onPowerOff = function()
+            onPowerOff("battery")
+        end,
+        wakeT31x = function()
+            reqT31xWake("battery_usb", nil, nil, { forceWake = true })
+        end,
+        isBurnActive = t31xBurnCtrl.isActive,
         getGpio = function() return gpioModule end,
         getUsbRndis = function() return usbRndis end,
         isLowPowerEnabled = isLowPowerEnabled,
-        onEnterLowPower = onEnterLowPower,
-        onExitLowPower = onExitLowPower,
     })
     deviceId.setImei(deviceId.getDisplayId())
     hostEvt.bindMqttPending(function()
@@ -637,24 +643,10 @@ function start(gpio, net, t31x_ctrl)
         end,
     })
     setupEvents()
-    if loader.enabled("battery_guard") then
-        batteryGuard.start({
-            onEnterLowPower = onEnterLowPower,
-            onExitLowPower = onExitLowPower,
-            onPowerOff = function()
-                onPowerOff("battery")
-            end,
-            wakeT31x = function()
-                reqT31xWake("battery_usb", nil, nil, { forceWake = true })
-            end,
-            isUsbInserted = usbPowerPolicy.isInserted,
-            isBurnActive = t31xBurnCtrl.isActive,
-        })
-    end
     if loader.enabled("watchdog") then setupWdt() end
     if loader.enabled("uart_bridge") then setupUart() end
-    usbPowerPolicy.initBootPower()
-    usbPowerPolicy.schedBootNotify()
+    batteryGuard.initBootPower()
+    batteryGuard.schedBootUsbNotify()
     if t31xModule then t31xModule.start() end
     if sound_prompt then
         sound_prompt.start({ t31x = t31xModule })
@@ -683,7 +675,7 @@ end
 function getState()
     return {
         started = started,
-        flag_usb = usbPowerPolicy.isInserted(),
+        flag_usb = batteryGuard.probeUsbInserted(),
         mqtt_started = state.mqtt_started,
         low_power_mode = rntmPwr.isLowPowerMode() and 1 or 0,
         last_wake_event = state.last_wake_event,

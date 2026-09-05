@@ -31,7 +31,7 @@
 | `GPIO_PWRKEY_LONG` | `peripheral` | 关机（USB 插入宽限期内忽略） |
 | `GPIO_BOOTKEY_LONG` | `peripheral` | `tryEnterT31xBurnMode` |
 | `GPIO_COPROC_READY` | `peripheral` | 退出烧录、恢复 PIR/MQTT |
-| `GPIO_USB_DET_CHANGED` | `usb_charge` | `usb_power_policy.onGpioDetChanged`（app 桥）+ 延迟 1003 |
+| `GPIO_USB_DET_CHANGED` | `usb_charge` | `battery_guard.onGpioUsbDetChanged`（app 桥）+ 延迟 1003 |
 | `GPIO_CHG_STATE_CHANGED` | `usb_charge` | 充电状态变化 → `pubStatus` |
 | `GPIO_VBUS_CHANGED` | PMD、`initPowerStatus` | 电源状态同步 |
 | `BATTERY_UPDATE` | `vbat` | `battery_guard.onBatteryUpdate` |
@@ -89,7 +89,7 @@ flowchart TD
 3. `requestT31xWake`（**不再**重复 `time_sync.onT31xWake`）  
 4. `lp_wakeup.onExitRest`
 
-### 5.3 USB 插入（`usb_power_policy.applyPower`）
+### 5.3 USB 插入（`battery_guard.applyUsbPower`）
 
 - 更新 `APP_RUNTIME.power_status`  
 - `battery_guard.onUsbInserted` / 取消关机定时器  
