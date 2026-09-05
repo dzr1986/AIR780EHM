@@ -2,6 +2,7 @@
 
 > **代码真源**：[`user/t31x_ctrl.lua`](../../user/t31x_ctrl.lua) · [`user/t31x_policy.lua`](../../user/t31x_policy.lua) · [`user/app.lua`](../../user/app.lua)  
 > **策略详述**：[T31X_POLICY_GATE.md](T31X_POLICY_GATE.md) · **待处理业务**：[HOST_EVENT_PENDING.md](HOST_EVENT_PENDING.md)  
+> **两条路径**：[T31X_ONOFF_TWO_PATHS.md](../power/T31X_ONOFF_TWO_PATHS.md)（后台 2002 / PIR 忙完再关）  
 > **关联**：[T31X_HOSTEVT_SLEEP.md](../t31x/T31X_HOSTEVT_SLEEP.md) · [BOOT_SHUTDOWN_SOUND.md](../pir/BOOT_SHUTDOWN_SOUND.md)
 
 ---
@@ -60,20 +61,21 @@ mayPowerT31x 通过
 
 | 阶段 | 行为 |
 |------|------|
-| 门禁 | `shouldBlockSleep`（host_event pending） |
-| 标记 | `power_state=sleeping` · `sleep_in_progress=true` |
-| 关机 | `gracefulPowerOff` → `AT+IPCPOWEROFF` 或直断 GPIO22 |
-| 结束 | `sleep_in_progress=false` |
+| 门禁 | `shouldBlockSleep`（host_event pending）；2002/AT 可 `skipPendingWorkCheck` |
+| 标记 | `power_state=sleeping` · `sleep_in_progress=true` · `sleepEpoch++` |
+| 关机 | `gracePowOff` → `AT+IPCPOWEROFF`；仍要值守才 GPIO22=0 |
+| 作废 | 上电 / 2002 exit 再抬 `sleepEpoch`；过期协程不切电 |
+| 结束 | 本轮 `sleepOwnerEpoch` 仍持有时清 `sleep_in_progress` |
 
-唤醒前：`powerOn` / `wake` / `ensurePowered` 调用 `waitSleepIdle(20s)`，避免与 graceful 关机竞态。
+唤醒前：`ensNormalPwrOn` 先抬 epoch 再 `waitSleepIdle(20s)`，避免与 graceful 关机竞态。
 
 ### 4.1 休眠来源
 
 | reason | 调用方 |
 |--------|--------|
-| `host_idle` | `host_uart.uart_hostidle`（5~20% 电量档） |
-| battery rest | `app.onEnterLowPower` → `enterSleep` |
-| AT | `AT+LOWPOWER=ENTER` |
+| `mqtt_2002` / `at` | 路径 A：后台或 `AT+LOWPOWER=ENTER` |
+| `pir_watch_idle` | 路径 B：PIR 录完后再睡（不播关机音） |
+| `host_idle` | 路径 B：T31 `HOSTIDLE=1`（仅 `pir_watch`） |
 
 ---
 

@@ -33,18 +33,25 @@ function bind(C)
 
     local function dispatchDl(topic, payload)
         if not isDownTopic(topic) then
+            logWarn("mqtt_recv_skip", topic, payload)
             return
         end
         local ok, data = pcall(json.decode, payload)
         if not ok then
-            logError("json_decode_error", data)
+            logError("json_decode_error", data, payload)
             return
         end
         local dataType
         if type(data) == "table" and data.dataType ~= nil then
             dataType = tostring(data.dataType)
         end
-        logInfo("downlink", dataType or "nil", topic)
+        local act = ""
+        local mid = ""
+        if type(data) == "table" then
+            act = tostring(data.action or data.lowPowerMode or "")
+            mid = tostring(data.messageId or data.msgId or "")
+        end
+        logInfo("mqtt_recv_cmd", dataType or "nil", act, mid, topic, payload)
         if not dataType then
             logWarn("downlink_missing_datatype")
         else

@@ -125,6 +125,20 @@ function _M.cancelLongPress(name)
     return true
 end
 
+function _M.ignoreUntilRelease(name)
+    local state = pressStates[name]
+    if not state then return false end
+    resetPress(state)
+    local section = name == "boot" and "bootkey" or (name == "pwr" and "pwrkey" or name)
+    local cfg = keySection(section)
+    local pin = cfg and cfg.pin
+    local pressLevel = (cfg and cfg.pressLevel) or 0
+    if pin ~= nil and gpio_util.getLevel(cfg.pin) == pressLevel then
+        state.await_release = true
+    end
+    return true
+end
+
 function _M.start(cfg)
     if keyStarted then return true end
     local sub = normStartCfg(cfg)

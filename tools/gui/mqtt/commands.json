@@ -36,7 +36,7 @@
   "danger": [
     {"id": "2012", "name": "平台开录", "expect": "1004", "payload": {"dataType": "2012"}, "note": "即时 1004 pir_start；1012 为后续事件"},
     {"id": "2011", "name": "平台停录", "expect": "1004", "timeout_sec": 25, "payload": {"dataType": "2011"}, "note": "即时 1004 pir_stop；全天写盘 message=t31x_stop，随后 1011；未在录 ret=-1 not_recording"},
-    {"id": "2002enter", "name": "断T31（进入低功耗）", "expect": "1004", "timeout_sec": 100, "payload": {"dataType": "2002", "lowPowerMode": "enter"}, "skip_auto": true, "destructive": true, "note": "先 AT+IPCPOWEROFF 分级停 IPC 再断 T31。即时 1004 rest_enter。不要用 2001。"},
+    {"id": "2002enter", "name": "断T31（进入低功耗）", "expect": "1004", "timeout_sec": 15, "payload": {"dataType": "2002", "lowPowerMode": "enter"}, "skip_auto": true, "destructive": true, "note": "即时 1004 rest_enter（等 15s 即可）。IPC 封盘/断电看随后 1002/1003，不要用 2001。"},
     {"id": "2004off", "name": "关机", "expect": "1004", "allow_nonzero_ret": true, "payload": {"dataType": "2004", "action": "off"}, "skip_auto": true, "destructive": true, "note": "USB 插入时 1004 usb_block 不关机"},
     {"id": "2009fmt", "name": "TF 格式化 reboot=0", "expect": "1009", "timeout_sec": 45, "payload": {"dataType": "2009", "action": "format", "reboot": 0}, "need_t31x": true, "skip_auto": true, "tf_format": true, "allow_nonzero_ret": true, "note": "单独勾选「含 TF 格式化」才会跑。T31x 未就绪/无卡时 1009 ret=-1，不再吞应答"},
     {"id": "2004reboot", "name": "重启模组", "expect": "1004", "timeout_sec": 15, "payload": {"dataType": "2004", "action": "reboot"}, "skip_auto": true, "destructive": true, "note": "先 1004 reboot，约 0.8s 后复位；放最后测"},

@@ -469,6 +469,7 @@ local function mqttTask()
             onMqttConack()
             conn.subDown(client)
 		elseif event == "recv" then
+            mqttInfo("mqtt_recv", tostring(data or ""), payload)
             dispatch.onServerMsg(data, payload)
 		elseif event == "disconnect" then
             onMqttDisconnect()

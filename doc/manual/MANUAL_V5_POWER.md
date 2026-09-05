@@ -55,7 +55,7 @@
 
 机制细节：[T31X_POWER_WAKEUP](../modules/T31X_POWER_WAKEUP.md)（GPIO 供电/休眠、`sleep_in_progress`）· [T31X_POLICY_GATE](../modules/T31X_POLICY_GATE.md) · [HOST_EVENT_PENDING](../modules/HOST_EVENT_PENDING.md)（HOSTEVT 待处理汇总、休眠门禁）。
 
-> 2002 断 T31 进低功耗的**完整 UART 顺序**（先逐级停 IPC 再断供电）：[MQTT_2002_IPCPOWEROFF_T31_FLOW](../mqtt/MQTT_2002_IPCPOWEROFF_T31_FLOW.md)。
+> **两条路径**（后台 2002 / PIR 忙完再关）+[①–⑪ STAGE](../power/T31X_ONOFF_TWO_PATHS.md)。2002 UART 细表：[MQTT_2002_IPCPOWEROFF_T31_FLOW](../mqtt/MQTT_2002_IPCPOWEROFF_T31_FLOW.md)。
 
 ## 5. USB / 充电（🟢 自包含骨架）
 

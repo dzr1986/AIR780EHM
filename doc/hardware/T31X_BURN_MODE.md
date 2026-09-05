@@ -20,6 +20,7 @@
 | **允许重复进入 BOOT** | `allow_repeat_enter_boot = true` | 已为 BOOT 时仍可再次 `enterBootMode`（默认开） |
 | **条件轮询** | `burn_check_retry_count = 2` | 首次不满足时再判断 **2** 次，共最多 **3** 次；间隔 `burn_check_retry_interval_ms` |
 | **按键** | GPIO28 长按 | 短按仅打日志，不进入烧录 |
+| **上电宽限** | `poweron_bootkey_grace_ms=3000` | T31x GPIO22 上电后 3s 内忽略 BOOT 长按；同时 `requireReleaseFirst` + 清长按定时器。2002 exit 上电不得进烧录 |
 
 不满足时：**红灯闪 3 次**，日志 `T31x 烧录条件不满足`。
 

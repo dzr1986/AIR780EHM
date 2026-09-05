@@ -51,6 +51,7 @@ _G.KEY_CONFIG = {
     bootkey = {
         pin = GPIO_IN.boot_key.pin,   -- 28
         longPressMs = 2000,
+        requireReleaseFirst = true,
         events = { short = "GPIO_BOOTKEY_SHORT", long = "GPIO_BOOTKEY_LONG" },
         -- triggerMode / pull / debounce 同 pwrkey 可配
     },

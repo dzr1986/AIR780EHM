@@ -220,7 +220,7 @@ QPushButton#dangerBtn {{
     border: 1px solid {err};
     font-weight: bold;
 }}
-QLineEdit, QComboBox, QSpinBox {{
+QLineEdit, QComboBox, QSpinBox, QDateTimeEdit {{
     background: {panel};
     color: {text};
     font-family: '{ui_font}';

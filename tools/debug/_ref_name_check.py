@@ -66,7 +66,7 @@ def scan_dir(dirname: str) -> dict:
             p = os.path.join(base, fn)
             with open(p, "r", encoding="utf-8", errors="replace") as f:
                 # 注释里的旧模块名（如「原 ipc_supervision.lua」）不算引用；字符串必须保留（模块名即字符串）
-                out[os.path.join(dirname, fn)] = strip_comments(f.read())
+                out[dirname + "/" + fn] = strip_comments(f.read())
     return out
 
 

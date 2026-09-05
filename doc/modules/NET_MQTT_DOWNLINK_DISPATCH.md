@@ -47,7 +47,8 @@ MQTT subscribe /panshi/device/{imei}/
   → pubAppEvent("MQTT_SERVER_DATA", ...)
 ```
 
-未知 `dataType` 打 `unknown_data_type` 日志，不崩溃。
+未知 `dataType` 打 `unknown_data_type` 日志，不崩溃。  
+网络 `recv` 立刻打 `mqtt_recv <topic> <payload>`；解码后再打 `mqtt_recv_cmd <dataType> <action> <messageId> <topic> <payload>`。主题不匹配打 `mqtt_recv_skip`。用于对照平台 TIMEOUT 未回 1004 时设备是否真收到下行。
 
 ---
 

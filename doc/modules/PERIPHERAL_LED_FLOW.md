@@ -36,7 +36,7 @@ flowchart TD
 | PWR | 3000ms | `GPIO_PWRKEY_SHORT` / `GPIO_PWRKEY_LONG` | 长按关机（USB 宽限期内忽略） |
 | BOOT | 2000ms | `GPIO_BOOTKEY_SHORT` / `GPIO_BOOTKEY_LONG` | 长按进入 T31x 烧录模式 |
 
-**防误触**：PWR 默认 `requireReleaseFirst=true`，上电若仍按住则先等释放再计时长按。
+**防误触**：PWR / BOOT 默认 `requireReleaseFirst=true`，上电若仍按住则先等释放再计时长按。T31x 上电后 `peripheral.ignoreUntilRelease("boot")`，并在 `t31x_BURN_CFG.poweron_bootkey_grace_ms`（默认 3s）内忽略 `GPIO_BOOTKEY_LONG`（2002 上电曾误进烧录）。
 
 **取消长按**：`peripheral.cancelLongPress("pwr")` — USB 插入后 app 可取消进行中的 PWR 长按定时器。
 

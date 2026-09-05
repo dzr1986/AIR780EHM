@@ -660,6 +660,9 @@ local function processLine(line)
     if not line or line == "" then
         return nil
     end
+    if log and log.info then
+        log.info(LOG_TAG, "uart_rx", line)
+    end
     for i = 1, #RX_LINE_TRY_HANDLERS do
         if RX_LINE_TRY_HANDLERS[i](line) then
             return nil

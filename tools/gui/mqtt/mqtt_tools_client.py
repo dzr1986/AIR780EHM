@@ -204,6 +204,15 @@ class ToolsClient:
             print(f"  OK {item['id']} → {got.get('dataType')}{extra} messageId={got.get('messageId', sent.get('messageId'))}")
             return True
         print(f"  TIMEOUT {item['id']} 未收到 {item.get('expect')}（T31x 未就绪时属预期）")
+        with self._lock:
+            newer = list(self._inbox[n:])
+        if not newer:
+            print("  等待期间未收到任何上行（设备未连上、未订阅或未回包）")
+        else:
+            print(f"  等待期间收到 {len(newer)} 条网络 MQTT 上行（均非期望 {item.get('expect')}）：")
+            for topic, data in newer:
+                raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+                print(f"    << {data.get('dataType', '?')}  {topic}\n       {raw}")
         return False
 
     def _saw_boot_since(self, after_n: int) -> bool:

@@ -2,7 +2,7 @@
 
 > **真源**：仓库根 `user/`、`lib/`。不要改 `LuaTools/userprojs/AIR780EHM/`。  
 > **基线版本**：`001.000.068`（2026-08-30）  
-> **当前版本**：`001.000.161`（152–161 = 审计/重构行为修复，见 §8 末尾）  
+> **当前版本**：`001.000.166`（152–166 = 审计/重构行为修复，见 §8 末尾）  
 > **拆分后治理计划**（文件树 / P0–P4 / 回归）：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)  
 > **API 命名真源**：[CAT1_API_NAMING.md](CAT1_API_NAMING.md) · **历史缩写对照**：[FUNCTION_NAME_MAP.md](../_audit/FUNCTION_NAME_MAP.md)（134 前实验，只读）
 
@@ -222,6 +222,11 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 | 2026-09-05 | **L3 续（零行为）**：USB 边沿策略并入 `battery_guard.lua`（原 `usb_power_policy` 删除）；`applyUsbPower`/PMD/notify/PWRKEY 宽限与电量分档同模块。详见 [USB_CHARGE_POLICY §4](../modules/USB_CHARGE_POLICY.md) |
 | 2026-09-05 | **lib simplify（零行为）**：`usb_rndis` 原 `pmUsbApply`/`softReenum` 内 `pm.*` 收进 `power_hal`（`prepareUsbRndis`/`cycleUsbPower`）；`_hal_layer_check` 白名单移除 `usb_rndis.lua` |
 | 2026-09-05 | **新增 `AGENTS.md`（仓库根）**：固化四层架构 ADR、冻结项 F-01–F-06、单写点/ provider / 暂缓项 D-01–D-05、提交门槛、子代理索引；Agent 决策真源，流水仍写本节 |
+| 2026-09-05 | **166 UART 收发入日志**：`host_uart` 每条 T31→4G 打 `uart_rx <行>`；`uart_bridge.sendString` 打 `uart_tx`（空行冲刷不打）。便于对照 HOSTIDLE / IPCPOWEROFF STAGE |
+| 2026-09-05 | **165 2002 enter 中 HOSTIDLE 不再短循环上电**：关机进行中第二次 `enterSleep` 直接 `sleep_already`（不抬 epoch）；`sleep_aborted_cycle` 仅在值守已退出时。HOSTIDLE 遇 `uart_session=poweroff` 不再开第二路。详见 [T31X_ONOFF_TWO_PATHS](../power/T31X_ONOFF_TWO_PATHS.md) |
+| 2026-09-05 | **164 两条路径关 T31 对不齐**：`enterSleep` 用 `sleepEpoch` 作废过期协程（2002 exit 后不得再 GPIO 拉低）；`ensNormalPwrOn` 先抬 epoch；`app` 修正 `modemHibernate` 键名；收到 `+IPCPOWEROFF:BUSY` 改为接着等 OK。T31：关机重入不回 BUSY、已完成可再走一轮、未录像跳过 12s。详见 [T31X_ONOFF_TWO_PATHS](../power/T31X_ONOFF_TWO_PATHS.md) |
+| 2026-09-05 | **163 防 2002 上电误进烧录**：T31x GPIO22 上电后清 BOOT 长按并 `poweron_bootkey_grace_ms=3000` 忽略 `GPIO_BOOTKEY_LONG`；BOOT 键补 `requireReleaseFirst`。详见 [T31X_BURN_MODE](../hardware/T31X_BURN_MODE.md) |
+| 2026-09-05 | **162 MQTT 下行原文入日志**：`mqtt_dispatch` 收到网络下行后打 `downlink <dataType> <topic> <payload>`；上位机 TIMEOUT 未收到 1004 时同时列出等待期间实际收到的上行。详见 [NET_MQTT_DOWNLINK_DISPATCH](../modules/NET_MQTT_DOWNLINK_DISPATCH.md) |
 | 2026-09-05 | **arch-guard-reviewer 首次试跑修复**：`host_uart.resetUartTxn` 里 `uartSessionOwner = nil` 早于 `local` 声明 → 写成全局（P3 引入，效果上无害但属隐式全局）；`local` 上移。`_undef_global_check` 新增规则 2「顶层 local 先用后声明」（fixture + 单测，15 tests OK）。同批修正文档：provider 键数 26→22、`pirStatBody`→`pirStatSnapshot`、`setLowPowerMode` 链路→`requestRest/requestNormal`、`buildStatBodyy` 残留 6 处、hard-constraints 9→13 项、`arch-layering` 把 `svc` 归 L2 基础设施 |
 
 ---
@@ -248,6 +253,10 @@ leftover 扫描 → 无低风险项，opt-slim 已停
 - [ ] 2002 进/出 rest、USB 插拔 1003
 - [ ] 蜂窝 SIM/APN 1005
 - [ ] 烧录确认 `scriptVersion`
+- [ ] **165 新增（enter 中不再闪断）**：2002 enter 后等分级停（十余秒）期间 T31 若发 HOSTIDLE → 日志 `sleep_already` 或 HOSTIDLE 直接 OK，**不得**再出现 `sleep_aborted_cycle` / `power off` 后又 `power on`；完成后只一次 `power off`，心跳 `lowpwr=1` `pir_watch`
+- [ ] **164 新增（2002/PIR 关 T31）**：2002 enter 后立刻 2002 exit → 日志 `sleep_aborted`/`sleep_skip_gpio`，心跳 `lowpwr=0` 且 T31 保持有电（或短循环后服务起来）；PIR 值守录完再关，空闲 `AT+IPCPOWEROFF=0` 且未录像时 T31 很快回 OK；旧 T31 回 BUSY 时 Cat.1 日志 `join_busy` 后仍等到 OK 或 90s 超时
+- [ ] **163 新增（上电不进烧录）**：2002 exit / T31x 上电后 3s 内不得出现 `t31x_burn_prepare`；真按 GPIO28≥2s 仍进烧录；日志可有 `bootkey_long_ignored t31x_poweron_grace`
+- [ ] **162 新增（下行原文）**：平台下发 200x 后 Cat.1 USB 日志出现 `net_mqtt downlink <dataType> <topic> <json>`；上位机 TIMEOUT 未收到 1004 时回复区列出等待期间实际上行（或明确写「未收到任何上行」）
 - [ ] **161 新增（会话仲裁 + keepTs）**：2009 格式化进行中 USB 拔出 → 日志 `sleep_blocked_uart_session tfformat`、T31x 不断电，格式化结束后由 HOSTIDLE/下一策略触发再休眠；格式化进行中 2002 enter → `ipcpoweroff_rx wait_session` 等待 ≤30s 后优雅 `AT+IPCPOWEROFF`（格式化 >30s 才硬切）；T31x `AT+RECORD=1/0` 后下一次 1003 仍发 `AT+IPCSTAT?`（`ipc_cloud_stat_ts` 未被刷新）
 - [ ] **160 新增（P10 1013 stage）**：2013 受理 1013 含 `stage=queued`（拒绝 `fail`）、完成含 `stage=uploaded|fail`、人形 need=1 含 `stage=queued`；后台解析不受额外键影响
 - [ ] **159 新增（P9 成员导出）**：IPC 告警（`AT+IPCALERT=tf_mount_fail`）后 1003 `tfPresent=0` 生效；电量 1003 发布后云状态防抖刷新任务不再报 nil；2007/2006 查询超时时 1007/1006 回缓存值而非崩

@@ -38,7 +38,13 @@ def parse_dt(text: str) -> datetime:
         if n > 10**12:
             n //= 1000
         return datetime.fromtimestamp(n)
-    for fmt in (FMT, "%Y-%m-%dT%H:%M:%S", "%Y%m%d%H%M%S"):
+    for fmt in (
+        FMT,
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y%m%d%H%M%S",
+        "%y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+    ):
         try:
             return datetime.strptime(s[:19] if "T" in s or " " in s else s, fmt)
         except ValueError:

@@ -123,6 +123,7 @@ do
             pull = "pullup",
             debounce = 100,
             longPressMs = 2000,
+            requireReleaseFirst = true,
             events = { short = "GPIO_BOOTKEY_SHORT", long = "GPIO_BOOTKEY_LONG" },
         },
         ready = {

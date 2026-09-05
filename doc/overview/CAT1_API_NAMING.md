@@ -1,4 +1,4 @@
-# Cat.1 Lua API 命名真源（对齐代码 001.000.161）
+# Cat.1 Lua API 命名真源（对齐代码 001.000.166）
 
 > **代码真源**：仓库根 `user/`、`lib/` · **版本**：`user/main.lua` → `VERSION`  
 > **协处理器系列写法**：[T31X_NAMING.md](T31X_NAMING.md)（`t31x` / `T31x` / `T31X`，与本文 API 驼峰无关）  
@@ -145,7 +145,7 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 |------|---------|
 | `ensPowOn` | `t31xPowerWaitMs`、`powerWaitMs` |
 | `enterSleep` | `skipPendingWorkCheck`、`ipcPoweroffSound`、`ipcPoweroffTimeoutMs`、`ipcStatusTimeoutMs`、`modemHibernate`、`reason` |
-| `gracePowOff` | `playSound`、`poweroffTimeoutMs`、`settleMs` |
+| `gracePowOff` | `playSound`、`poweroffTimeoutMs`、`settleMs`、`epoch`（与 `enterSleep` 同轮才允许切 GPIO） |
 | `pwrOnReady` | `statusTimeoutMs`、`readyTimeoutMs`、`pollMs` |
 | `pulseUsbDebugEn` | `highMs` |
 
@@ -195,4 +195,4 @@ t31x_policy.reqT31xWake(reason, sid, evt)
 - 运行后检查点：`git diff -- doc/` 只应出现"旧名 → 新名"的收敛差异；`FUNCTION_NAME_MAP.md` 为只读历史表，
   在 `SKIP_FILES` 内不受影响。
 
-**版本**：2026-09-04 · 对齐代码 `001.000.161` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–161 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12/§18），无 API 增删改名
+**版本**：2026-09-05 · 对齐代码 `001.000.166` · 151 批 30 组 rename 已完成（代码 + 文档 + 护栏三处同步）；152–166 仅行为修复（[USER_LIB_CODE_AUDIT_20260904](USER_LIB_CODE_AUDIT_20260904.md) §9/§10/§12/§18），无 API 增删改名

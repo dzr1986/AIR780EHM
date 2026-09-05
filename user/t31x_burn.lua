@@ -8,6 +8,7 @@
 _G.t31x_BURN_CFG = {
     min_battery_percent = 5,
     require_battery_valid = true,
+    poweron_bootkey_grace_ms = 3000, -- T31x 上电后忽略 BOOT 长按，防 GPIO28 上电误进烧录
     allow_repeat_enter_boot = true,
     burn_check_retry_count = 2,
     burn_check_retry_interval_ms = 800,

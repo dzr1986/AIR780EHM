@@ -12,6 +12,7 @@
 | [LOW_BATTERY_AND_LOW_POWER.md](LOW_BATTERY_AND_LOW_POWER.md) 📌 | 低电量 / USB / rest / T31x（场景流程图 + 附录） |
 | [LOW_POWER_ENTER_STRATEGY.md](LOW_POWER_ENTER_STRATEGY.md) | 电量 rest vs HOSTIDLE 30s 轮询：是否矛盾、策略切换 |
 | [WORK_MODE_PERSON_DETECT_PIR.md](WORK_MODE_PERSON_DETECT_PIR.md) 🟢 | 现行两种模式：开机人形常电 / 仅 2002 断 T31 用 PIR |
+| [T31X_ONOFF_TWO_PATHS.md](T31X_ONOFF_TWO_PATHS.md) 🟢 | 关 T31 两条路径：后台 2002 / PIR 忙完再关；分级停与对不齐日志 |
 | [T31X_LOW_POWER.md](T31X_LOW_POWER.md) | 低功耗可配置：rest 主流程、conack 与 1001/1002/1003 |
 | [T31X_USB_HOSTIDLE.md](T31X_USB_HOSTIDLE.md) | USB 插入 ↔ T31x/4G 低功耗互斥 |
 | [POWER_USB_BATTERY_T31X_LOGIC.md](POWER_USB_BATTERY_T31X_LOGIC.md) | 决策图、模块职责、已修复对照 |

@@ -20,6 +20,7 @@
 |------|------|
 | [T31X_HOSTEVT_PROTOCOL.md](T31X_HOSTEVT_PROTOCOL.md) | GPIO29 低脉冲与 HOSTEVT |
 | [T31X_HOSTEVT_SLEEP.md](T31X_HOSTEVT_SLEEP.md) | HOSTEVT 四条 AT 汇总 |
+| [../power/T31X_ONOFF_TWO_PATHS.md](../power/T31X_ONOFF_TWO_PATHS.md) | 2002 / PIR 两条上断电与 `IPCPOWEROFF` 分级停 |
 
 ## IPC 异常监督 / alertCode
 

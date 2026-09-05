@@ -154,6 +154,9 @@ function bind(C)
             or bizCall("canHostSleep") == false then
             return rspOnly("HOSTIDLE", "BUSY")
         end
+        if state.uart_session == "poweroff" then
+            return hostIdleOk()
+        end
         local lp = cfgm.get("LOW_POWER_CFG")
         sys.taskInit(function()
             modCall("t31x_ctrl", "enterSleep", {

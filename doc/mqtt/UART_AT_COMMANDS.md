@@ -268,13 +268,11 @@ Host AT 由 T31x 实现（产品：`gb28181_dev_exit()`、`sync()` 等；桩：`
 **关机（T31x 在线）**：
 
 ```text
-Cat.1 → T31x: AT+IPCSTATUS?
-T31x → Cat.1: \r\n+IPCSTATUS:ready\r\nOK\r\n
-Cat.1 → T31x: AT+IPCPOWEROFF=1
-T31x → Cat.1: +IPCPOWEROFF:STAGE,record / persondet / gb28181 / net / vbus / sync
+Cat.1 → T31x: AT+IPCPOWEROFF=1   （=0 不播关机音；不再以 IPCSTATUS?==ready 为门槛）
+T31x → Cat.1: +IPCPOWEROFF:STAGE,record / clip / alarm / persondet / p2p / gb28181 / net / umount / vbus / sync
 T31x → Cat.1: \r\n+IPCPOWEROFF:OK\r\n
-Cat.1 等 OK 后再 GPIO22 断电
-（时序详见 [MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md)）
+Cat.1 等 OK（或 90s 超时）后再 GPIO22 断电
+（两条路径 + ①–⑪ 对照：[T31X_ONOFF_TWO_PATHS.md](../power/T31X_ONOFF_TWO_PATHS.md) · [MQTT_2002_IPCPOWEROFF_T31_FLOW.md](MQTT_2002_IPCPOWEROFF_T31_FLOW.md)）
 Cat.1: GPIO22 断 T31x 电
 ```
 

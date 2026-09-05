@@ -43,6 +43,9 @@ end
 
 function sendString(text, with_crlf)
     if text == nil then return false end
+    if text ~= "" and log and log.info then
+        log.info(_modname, "uart_tx", text)
+    end
     if with_crlf ~= false then text = text .. CRLF end
     return write(text)
 end

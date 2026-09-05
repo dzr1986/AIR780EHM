@@ -114,7 +114,7 @@ host_uart.lua（解析 AT、拼应答、锁）
 |----|--------|------|
 | T31x 烧录模式 | GPIO28 长按进入（电量/关停条件） | [T31X_BURN_MODE](../hardware/T31X_BURN_MODE.md) |
 | USB 恢复 / eth0 慢 IP | RNDIS DHCP 30s 重试 | [T31X_ETH0_DHCP_SLOW_BOOT](../mqtt/T31X_ETH0_DHCP_SLOW_BOOT.md) |
-| 2002 断 T31 进低功耗 | 先 UART 逐级停 IPC，再断供电 | [MQTT_2002_IPCPOWEROFF_T31_FLOW](../mqtt/MQTT_2002_IPCPOWEROFF_T31_FLOW.md) |
+| 2002 / PIR 关 T31 | 先 UART ①–⑪ 分级停再断电 | [T31X_ONOFF_TWO_PATHS](../power/T31X_ONOFF_TWO_PATHS.md) · [MQTT_2002](../mqtt/MQTT_2002_IPCPOWEROFF_T31_FLOW.md) |
 | 软光敏/IRCUT 顺序 | ISP night→排空→开 IR 等 | [T31X_SOFTPHOTO_REPEAT_SWITCH](../mqtt/T31X_SOFTPHOTO_REPEAT_SWITCH.md) |
 | 网络共享 | USB RNDIS tethering | [USB_RNDIS_FLOW](../modules/USB_RNDIS_FLOW.md) |
 

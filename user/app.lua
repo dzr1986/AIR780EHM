@@ -95,7 +95,7 @@ local function onRestEntered(reason, modeChanged, userCut)
         end
         -- 用户 2002/AT 必须断 T31：全天写盘不得否决。4G 保持 MQTT。
         t31xModule.enterSleep({
-            mdmHbrn = lpWake.getModemHibernate() == true,
+            modemHibernate = lpWake.getModemHibernate() == true,
             skipPendingWorkCheck = userCut,
             reason = reason,
         })
@@ -450,6 +450,10 @@ local function onPwrKeyLong()
 end
 
 local function onBootKeyLong()
+    if t31xBurnCtrl.shouldBlockBootKeyLong() then
+        appInfo("bootkey_long_ignored", "t31x_poweron_grace")
+        return
+    end
     sys.taskInit(t31xBurnCtrl.tryEnter)
 end
 

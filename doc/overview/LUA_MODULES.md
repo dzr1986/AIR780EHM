@@ -97,7 +97,7 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 │   ├── mqtt_dl_pir.lua      2010/2011/2012 PIR
 │   ├── mqtt_dl_tf.lua       TF 卡查询与格式化
 │   └── mqtt_dl_upload.lua   2013 上传视频下行
-├── mqtt_dispatch.lua (110)  下行 JSON 分发 + HOSTEVT/USB 钩子
+├── mqtt_dispatch.lua (117)  下行 JSON 分发 + HOSTEVT/USB 钩子
 └── mqtt_hproto.lua (473)    2020–2031 host query/set（经 t31x UART）
 ```
 
@@ -282,13 +282,13 @@ applyUsbPower(inserted, source)
 | **输出** | `BATTERY_UPDATE` 事件 + `APP_RUNTIME.battery_percent/mv` |
 | **消费者** | `battery_guard`, `led_ctrl`, MQTT 1003 |
 
-### 3.7 `t31x_ctrl.lua` — 协处理器电源（373 行）
+### 3.7 `t31x_ctrl.lua` — 协处理器电源（441 行）
 
 | 项 | 说明 |
 |----|------|
 | **职责** | GPIO22 上/断电、GPIO29 唤醒脉冲、BOOT/OTA 引脚、优雅 IPC 关机 |
-| **休眠** | `enterSleep` → `gracefulPowerOff`（`AT+IPCPOWEROFF`）或 `powerOff`；`sleep_in_progress` 互斥 |
-| **唤醒** | `powerOn`/`wake`/`ensurePowered` 前 `waitSleepIdle`，避免与关机竞态 |
+| **休眠** | `enterSleep` → `gracePowOff`（`AT+IPCPOWEROFF`）或 `powerOff`；`sleepEpoch` 作废过期协程 |
+| **唤醒** | `ensNormalPwrOn`/`wake` 先抬 epoch 再 `waitSleepIdle`，避免与关机竞态 |
 | **策略** | `bootPowerOn` 经 `t31x_policy.mayPowerT31x("boot")` |
 
 ### 3.8 `host_uart` 族 — T31x AT（主文件 692 行 + 17 子模块）

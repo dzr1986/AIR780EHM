@@ -36,6 +36,8 @@ local t31xOtaPin = nil
 local lastAction = nil
 local BOOT_DELAY_MS = 500
 local sleepInProgress = false
+local sleepEpoch = 0
+local sleepOwnerEpoch = 0
 
 local state = {
     power_state = "off",
@@ -86,11 +88,23 @@ local function ensRunPins()
     isInBootMode = false
 end
 
+local function bumpSleepEpoch()
+    sleepEpoch = sleepEpoch + 1
+    return sleepEpoch
+end
+
+local function sleepStillWanted()
+    return rntmPwr.isPirWatch() == true or rntmPwr.isLowPowerMode() == true
+end
+
 local function applyPwrLvl(on)
     local entry_pwr = ensPins()
     if not t31xPowerPin then
         t31xError("power_pin_missing")
         return false
+    end
+    if on then
+        bumpSleepEpoch()
     end
     local level = on and levelOf(entry_pwr, "on_level", 1) or levelOf(entry_pwr, "init_level", 0)
     if on and isPoweredOn and currentPowerLevel == level then return true end
@@ -103,6 +117,10 @@ local function applyPwrLvl(on)
     if on then
         local bg = loader.load("battery_guard")
         if bg then bg.markT31xWoken() end
+        local burn = loader.load("t31x_burn_ctrl")
+        if burn and burn.markPowerOn then
+            burn.markPowerOn()
+        end
     end
     return true
 end
@@ -131,6 +149,7 @@ end
 
 function ensNormalPwrOn(tag)
     local function doIt()
+        bumpSleepEpoch()
         waitSleepIdle(20000)
         local _, _, entry_boot, entry_ota = gpioEntries()
         local wasBurn = isInBootMode
@@ -256,19 +275,36 @@ local function blockSleep(opts)
     return hostEvt.shouldBlockT31xSleep(hif.bldHostEvtBody()) == true
 end
 
-local function shutdownT31x(opts)
+local function idleSleepReason(reason)
+    return reason == "pir_watch_idle" or reason == "host_idle"
+end
+
+local function shutdownT31x(opts, epoch)
+    if epoch ~= sleepEpoch then
+        t31xInfo("sleep_aborted", "stale")
+        return
+    end
+    if not sleepStillWanted() then
+        t31xInfo("sleep_aborted", "not_watch")
+        return
+    end
     if not isPoweredOn then return end
     local ipc = cfgm.get("HOST_IPC_CFG")
     if ipc.graceful_poweroff == false then
-        powerOff()
+        if epoch == sleepEpoch and sleepStillWanted() then
+            powerOff()
+        end
         return
     end
     local playSound = opts.ipcPoweroffSound
-    if playSound == nil then playSound = ipc.poweroff_play_sound end
+    if playSound == nil then
+        playSound = (not idleSleepReason(opts.reason)) and ipc.poweroff_play_sound
+    end
     gracePowOff({
         playSound = playSound,
         poweroffTimeoutMs = opts.ipcPoweroffTimeoutMs,
         statusTimeoutMs = opts.ipcStatusTimeoutMs,
+        epoch = epoch,
     })
 end
 
@@ -278,23 +314,32 @@ function enterSleep(opts)
         t31xInfo("sleep_already")
         return
     end
+    -- 关机 AT 已在飞：HOSTIDLE/PIR 再调一次不得抬 epoch，否则第一路 OK 后会误判 rest_exit 短循环上电
+    if sleepInProgress then
+        t31xInfo("sleep_already", tostring(opts.reason or "in_progress"))
+        return
+    end
     if blockSleep(opts) then
         t31xWarn("sleep_blocked_pending_work")
         return false
     end
-    t31xInfo("enter_sleep", opts.modemHibernate == true and "hibernate" or "normal")
+    t31xInfo("enter_sleep", opts.modemHibernate == true and "hibernate" or "normal", tostring(opts.reason or ""))
     state.power_state = "sleeping"
     state.rest_enter_time = os.time()
     if opts.modemHibernate == true then
         rntmPwr.requestModemHibernate()
         return
     end
+    local epoch = bumpSleepEpoch()
+    sleepOwnerEpoch = epoch
     sleepInProgress = true
     sys.taskInit(function()
-        local ok, err = pcall(shutdownT31x, opts)
-        sleepInProgress = false
+        local ok, err = pcall(shutdownT31x, opts, epoch)
         if not ok then
             t31xError("enter_sleep_fail", tostring(err or ""))
+        end
+        if sleepOwnerEpoch == epoch then
+            sleepInProgress = false
         end
     end)
 end
@@ -349,12 +394,34 @@ function gracePowOff(opts)
     local ipc = cfgm.get("HOST_IPC_CFG")
     local playSound = opts.playSound
     if playSound == nil then playSound = ipc.poweroff_play_sound ~= false end
+    local epoch = opts.epoch
+    if epoch and (epoch ~= sleepEpoch or not sleepStillWanted()) then
+        t31xInfo("sleep_aborted", "before_at")
+        return false
+    end
+    local ack = false
     if ipc.enabled ~= false and hif then
         t31xInfo("ipc_poweroff_begin")
-        local ack = hif.hostIpcPowerOff(playSound, opts.poweroffTimeoutMs)
+        ack = hif.hostIpcPowerOff(playSound, opts.poweroffTimeoutMs)
         t31xInfo("ipc_poweroff_done", ack and "ack" or "timeout")
         local settle = tonumber(opts.settleMs) or tonumber(ipc.poweroff_settle_ms) or 500
         if settle > 0 then sys.wait(settle) end
+    end
+    -- 只有值守/rest 已退出才短循环上电。仅 epoch 被第二次 enterSleep 抬高时不得上电，否则 2002 enter 会被冲掉。
+    if epoch and not sleepStillWanted() then
+        t31xWarn("sleep_skip_gpio", "rest_exit")
+        if ack then
+            applyPwrLvl(false)
+            sys.wait(BOOT_DELAY_MS)
+            applyPwrLvl(true)
+            ensRunPins()
+            t31xInfo("sleep_aborted_cycle")
+        end
+        return false
+    end
+    if epoch and epoch ~= sleepEpoch then
+        t31xInfo("sleep_aborted", "stale_after_at")
+        return false
     end
     powerOff()
     if hif then hif.resetHostLink() end -- 旧名 resetHostLinkState 无定义，真身见 hif_ipc_rec

@@ -6,7 +6,7 @@
 >
 > **基线（2026-09-05 实测真源）**：`user/` 61 + `lib/` 17 = **78 个 `.lua` 模块**，共 16 971 行。
 > 入口 `main.lua` → `config`→`module_loader` → `app.start(peripheral, net_mqtt, t31x_ctrl)` → `sys.run()` 事件主循环。
-> 版本 `001.000.161`。本图以下覆盖 78 模块的**功能分层**（与 [LUA_MODULES.md](LUA_MODULES.md) 模块树、[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 系统视图互补）。
+> 版本 `001.000.166`。本图以下覆盖 78 模块的**功能分层**（与 [LUA_MODULES.md](LUA_MODULES.md) 模块树、[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 系统视图互补）。
 
 ---
 

@@ -19,13 +19,14 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDateTimeEdit,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -104,6 +105,8 @@ ROLE_ID = Qt.ItemDataRole.UserRole
 DEFAULT_OTA_URL = "http://112.86.146.219:18080/api/site/firmware_upgrade?"
 DEFAULT_OTA_TIMEOUT_MS = 300000
 PLAYBACK_DIR = ROOT / "tools" / "_logs" / "playback"
+AUTO_RX_DIR = ROOT / "tools" / "_logs" / "mqtt_autotest"
+AUTO_RX_FILE = AUTO_RX_DIR / "auto_rx_latest.txt"
 
 _JSON_RE = re.compile(r"\{.*\}", re.S)
 _LOG_HDR_RE = re.compile(r"^\d{2}:\d{2}:\d{2}\.\d{3}\s+")
@@ -196,8 +199,114 @@ _SPIN_RANGE = {
 }
 
 
+_IMEI15_RE = re.compile(r"\b(\d{15})\b")
+
+
 def _now() -> str:
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+
+def _read_text_file(path: Path) -> str:
+    raw = Path(path).read_bytes()
+    for enc in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def _parse_imei_file(text: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for token in _IMEI15_RE.findall(text or ""):
+        if token not in seen:
+            seen.add(token)
+            out.append(token)
+    return out
+
+
+def _align_item_left(item: QTreeWidgetItem, cols: int | None = None) -> None:
+    n = item.columnCount() if cols is None else cols
+    for i in range(n):
+        item.setTextAlignment(i, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+
+def _enable_col_drag(tree: QTreeWidget, widths: list[int] | None = None, stretch_last: bool = False) -> None:
+    hdr = tree.header()
+    hdr.setMinimumSectionSize(56)
+    hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    hdr.setStretchLastSection(stretch_last)
+    hdr.setSectionsMovable(False)
+    tree.setIndentation(0)
+    n = tree.columnCount()
+    for i in range(n):
+        last = stretch_last and i == n - 1
+        hdr.setSectionResizeMode(
+            i,
+            QHeaderView.ResizeMode.Stretch if last else QHeaderView.ResizeMode.Interactive,
+        )
+        if widths and i < len(widths) and not last:
+            tree.setColumnWidth(i, widths[i])
+
+
+def _fit_tree_cols(tree: QTreeWidget, mins: list[int] | None = None) -> None:
+    for i in range(tree.columnCount()):
+        tree.resizeColumnToContents(i)
+        need = mins[i] if mins and i < len(mins) else 56
+        if tree.columnWidth(i) < need:
+            tree.setColumnWidth(i, need)
+
+
+_DT_FIELD_KEYS = {"beginTime", "endTime", "alarmTime", "time", "startTime", "stopTime"}
+
+
+def _py_to_qdt(dt: datetime) -> QDateTime:
+    return QDateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+
+
+def _qdt_to_py(qdt: QDateTime) -> datetime:
+    d, t = qdt.date(), qdt.time()
+    return datetime(d.year(), d.month(), d.day(), t.hour(), t.minute(), t.second())
+
+
+def _looks_like_dt(val) -> bool:
+    s = str(val or "").strip()
+    if len(s) < 15:
+        return False
+    return ("-" in s or "/" in s) and (":" in s)
+
+
+def _make_dt_edit(dt: datetime | None = None) -> QDateTimeEdit:
+    w = QDateTimeEdit()
+    w.setCalendarPopup(True)
+    w.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+    w.setTimeSpec(Qt.TimeSpec.LocalTime)
+    w.setDateTime(_py_to_qdt(dt or datetime.now()))
+    w.setMinimumWidth(168)
+    return w
+
+
+def _set_dt_edit(w: QDateTimeEdit, val) -> None:
+    if isinstance(val, datetime):
+        w.setDateTime(_py_to_qdt(val))
+        return
+    try:
+        w.setDateTime(_py_to_qdt(parse_dt(str(val))))
+    except (ValueError, TypeError):
+        pass
+
+
+class _ImeiCombo(QComboBox):
+    """下拉不走系统列表，改弹带「全选 / 右侧勾选」的面板。"""
+
+    def __init__(self, on_popup, parent=None):
+        super().__init__(parent)
+        self._on_popup = on_popup
+
+    def showPopup(self):
+        if self._on_popup:
+            self._on_popup()
 
 
 def _payload_preview(data: dict) -> str:
@@ -382,6 +491,10 @@ def _ask_yes(parent, title: str, text: str) -> bool:
 
 def _info(parent, title: str, text: str) -> None:
     QMessageBox.information(parent, title, text)
+
+
+def _error(parent, title: str, text: str) -> None:
+    QMessageBox.warning(parent, title, text)
 
 
 def _mqtt_rc_text(rc: int) -> str:
@@ -652,6 +765,12 @@ class MqttGui(QMainWindow):
         self._subs: list[str] = []
         self._auto_stop = threading.Event()
         self._auto_thread = None
+        self._auto_rx_capturing = False
+        self._auto_rx_path: Path | None = None
+        self._imei_list: list[str] = []
+        self._imei_list_path: Path | None = None
+        self._imei_checked: set[str] = set()
+        self._imei_pick_filling = False
         self._ota_stop = threading.Event()
         self._ota_thread = None
         self._msg_store: dict[str, tuple[str, dict, dict]] = {}
@@ -667,6 +786,7 @@ class MqttGui(QMainWindow):
         self._build()
         self._load_ui_prefs()
         self._apply_profile(self.active_name)
+        self._autoload_imei_list()
         self.load_protocol(str(find_protocol_md()))
         if self._start_tab:
             self._select_tab(self._start_tab)
@@ -714,14 +834,435 @@ class MqttGui(QMainWindow):
         cfg = next((p for p in self.profiles if p.get("name") == name), None)
         if not cfg:
             return
-        self.imei_edit.setText(str(cfg.get("device_imei") or ""))
-        self._sync_topics()
+        imei = str(cfg.get("device_imei") or "").strip()
+        if imei:
+            self._apply_imei(imei, persist=False, log_change=False)
+        elif hasattr(self, "imei_combo"):
+            self.imei_combo.blockSignals(True)
+            self.imei_combo.setEditText("")
+            self.imei_combo.blockSignals(False)
+            self._sync_topics()
         self.status_lbl.setText(f"{cfg.get('broker')}:{cfg.get('port')}  未连接")
 
+    def _current_imei(self) -> str:
+        if hasattr(self, "imei_combo"):
+            return self.imei_combo.currentText().strip()
+        return ""
+
     def _sync_topics(self):
-        imei = self.imei_edit.text().strip() or "{IMEI}"
-        self.pub_topic.setText(f"/panshi/device/{imei}/")
-        self.sub_topic.setText(f"/panshi/app/{imei}/#")
+        imei = self._current_imei() or "{IMEI}"
+        if hasattr(self, "pub_topic"):
+            self.pub_topic.setText(f"/panshi/device/{imei}/")
+        if hasattr(self, "sub_topic"):
+            self.sub_topic.setText(f"/panshi/app/{imei}/#")
+
+    def _reset_signal_chips(self) -> None:
+        for key in ("csq", "rsrp", "rssi", "rsrq", "snr", "bat", "mode"):
+            w = self._chips.get(key)
+            if w:
+                w.setText("--")
+
+    def _select_imei_combo(self, imei: str) -> None:
+        if not hasattr(self, "imei_combo"):
+            return
+        self.imei_combo.blockSignals(True)
+        idx = self.imei_combo.findText(imei)
+        if idx >= 0:
+            self.imei_combo.setCurrentIndex(idx)
+        else:
+            self.imei_combo.setEditText(imei)
+        self.imei_combo.blockSignals(False)
+
+    def _fill_imei_combo(self, select: str | None = None) -> None:
+        if not hasattr(self, "imei_combo"):
+            return
+        want = (select or self._current_imei() or "").strip()
+        self.imei_combo.blockSignals(True)
+        self.imei_combo.clear()
+        self.imei_combo.addItems(self._imei_list)
+        self.imei_combo.blockSignals(False)
+        if want:
+            self._select_imei_combo(want)
+        elif self._imei_list:
+            self._select_imei_combo(self._imei_list[0])
+        keep = {x for x in self._imei_checked if x in self._imei_list}
+        if not keep:
+            pick = want or (self._imei_list[0] if self._imei_list else "")
+            if pick:
+                keep.add(pick)
+        self._imei_checked = keep
+        self._refresh_imei_pick()
+        self._update_imei_check_lbl()
+
+    def _imei_file_start_dir(self) -> str:
+        if self._imei_list_path and self._imei_list_path.is_file():
+            return str(self._imei_list_path.parent)
+        for cand in (
+            app_dir(),
+            repo_root() / "量产" / "SOC量产及远程升级文件" / "Air780EHM",
+            repo_root(),
+        ):
+            if Path(cand).is_dir():
+                return str(cand)
+        return str(app_dir())
+
+    def _pick_imei_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "打开 IMEI 列表（如 0015X0055347.txt）",
+            self._imei_file_start_dir(),
+            "文本 (*.txt);;全部 (*.*)",
+        )
+        if path:
+            self._load_imei_file(Path(path), apply_first=not bool(self._current_imei()))
+
+    def _discover_imei_list_file(self) -> Path | None:
+        if self._imei_list_path and Path(self._imei_list_path).is_file():
+            return Path(self._imei_list_path)
+        dirs = [
+            app_dir(),
+            Path.cwd(),
+            repo_root(),
+            repo_root() / "量产" / "SOC量产及远程升级文件" / "Air780EHM",
+        ]
+        for d in dirs:
+            p = Path(d) / "0015X0055347.txt"
+            if p.is_file():
+                return p
+        for d in dirs:
+            folder = Path(d)
+            if not folder.is_dir():
+                continue
+            hits = sorted(folder.glob("0015X*.txt"))
+            if hits:
+                return hits[0]
+        return None
+
+    def _autoload_imei_list(self) -> None:
+        path = self._discover_imei_list_file()
+        if not path:
+            if self._current_imei():
+                self._select_imei_combo(self._current_imei())
+            return
+        cur = self._current_imei()
+        self._load_imei_file(path, apply_first=not bool(cur))
+        if cur:
+            self._select_imei_combo(cur)
+            if cur not in self._imei_list and self._imei_list:
+                self.log(f"当前 IMEI {cur} 不在 {path.name}，可从列表另选", "info")
+
+    def _load_imei_file(self, path: Path, apply_first: bool = False) -> bool:
+        try:
+            text = _read_text_file(path)
+        except OSError as exc:
+            _error(self, "IMEI 列表", f"读文件失败：{exc}")
+            return False
+        items = _parse_imei_file(text)
+        if not items:
+            _error(self, "IMEI 列表", f"{path.name} 里没有 15 位 IMEI")
+            return False
+        self._imei_list = items
+        self._imei_list_path = path
+        self._fill_imei_combo()
+        self._save_ui_prefs()
+        self.log(f"已加载 IMEI 列表 {path.name}：{len(items)} 台", "info")
+        cur = self._current_imei()
+        if apply_first and not cur:
+            self._apply_imei(items[0])
+        elif cur and cur not in items:
+            self.log(f"当前 IMEI {cur} 不在列表中，请在下拉框选择", "info")
+        return True
+
+    def _on_imei_picked(self, *_args) -> None:
+        text = self.imei_combo.currentText().strip()
+        if text:
+            self._apply_imei(text)
+
+    def _build_imei_popup(self) -> None:
+        pop = QFrame(self, Qt.WindowType.Popup)
+        pop.setObjectName("imeiPopup")
+        lay = QVBoxLayout(pop)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(4)
+        hint = QLabel("点左边 IMEI 切换当前台；右边勾选用于并发下发")
+        hint.setObjectName("mutedLabel")
+        hint.setWordWrap(True)
+        lay.addWidget(hint)
+        tree = QTreeWidget()
+        tree.setHeaderLabels(["IMEI", "选"])
+        tree.setRootIsDecorated(False)
+        tree.setUniformRowHeights(True)
+        tree.setAlternatingRowColors(True)
+        tree.setMinimumWidth(280)
+        tree.setMinimumHeight(220)
+        _enable_col_drag(tree, [210, 44])
+        tree.itemClicked.connect(self._on_imei_pick_click)
+        tree.itemChanged.connect(self._on_imei_pick_changed)
+        lay.addWidget(tree, 1)
+        self._imei_pop = pop
+        self.imei_pick = tree
+
+    def _show_imei_popup(self) -> None:
+        self._refresh_imei_pick()
+        pop = self._imei_pop
+        combo = self.imei_combo
+        n = max(1, len(self._imei_list) + 1)
+        pop.resize(max(300, combo.width() + 72), min(420, 36 + n * 26))
+        pop.move(combo.mapToGlobal(combo.rect().bottomLeft()))
+        pop.show()
+        pop.raise_()
+
+    def _refresh_imei_pick(self) -> None:
+        if not hasattr(self, "imei_pick"):
+            return
+        self._imei_pick_filling = True
+        tree = self.imei_pick
+        tree.clear()
+        all_it = QTreeWidgetItem(["全选", ""])
+        all_it.setCheckState(1, Qt.CheckState.Unchecked)
+        tree.addTopLevelItem(all_it)
+        items = list(self._imei_list)
+        cur = self._current_imei()
+        if cur and cur not in items:
+            items = [cur] + items
+        for imei in items:
+            it = QTreeWidgetItem([imei, ""])
+            checked = imei in self._imei_checked
+            it.setCheckState(1, Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+            if imei == cur:
+                it.setForeground(0, QColor(self.pal.get("accent") or "#3b82f6"))
+            tree.addTopLevelItem(it)
+        self._sync_all_check_state()
+        self._imei_pick_filling = False
+
+    def _on_imei_pick_click(self, item: QTreeWidgetItem, col: int) -> None:
+        if not item:
+            return
+        text = (item.text(0) or "").strip()
+        if text == "全选":
+            if col == 0:
+                on = item.checkState(1) != Qt.CheckState.Checked
+                self._set_all_imei_checked(on)
+            return
+        if col == 0 and text:
+            self._apply_imei(text)
+            self._refresh_imei_pick()
+
+    def _on_imei_pick_changed(self, item: QTreeWidgetItem, col: int) -> None:
+        if self._imei_pick_filling or col != 1 or not item:
+            return
+        text = (item.text(0) or "").strip()
+        on = item.checkState(1) == Qt.CheckState.Checked
+        if text == "全选":
+            self._set_all_imei_checked(on)
+            return
+        if on:
+            self._imei_checked.add(text)
+        else:
+            self._imei_checked.discard(text)
+        self._sync_all_check_state()
+        self._update_imei_check_lbl()
+
+    def _set_all_imei_checked(self, on: bool) -> None:
+        pool = list(self._imei_list)
+        cur = self._current_imei()
+        if cur and cur not in pool:
+            pool.append(cur)
+        self._imei_checked = set(pool) if on else set()
+        if not on and cur:
+            self._imei_checked.add(cur)
+        self._refresh_imei_pick()
+        self._update_imei_check_lbl()
+
+    def _on_imei_all_toggled(self, on: bool) -> None:
+        if self._imei_pick_filling:
+            return
+        self._set_all_imei_checked(bool(on))
+
+    def _sync_all_check_state(self) -> None:
+        pool = list(self._imei_list)
+        n = len(pool)
+        all_on = n > 0 and all(x in self._imei_checked for x in pool)
+        if hasattr(self, "imei_all_chk"):
+            self.imei_all_chk.blockSignals(True)
+            self.imei_all_chk.setChecked(all_on)
+            self.imei_all_chk.blockSignals(False)
+        if hasattr(self, "imei_pick") and self.imei_pick.topLevelItemCount():
+            head = self.imei_pick.topLevelItem(0)
+            if head and head.text(0) == "全选":
+                self._imei_pick_filling = True
+                head.setCheckState(1, Qt.CheckState.Checked if all_on else Qt.CheckState.Unchecked)
+                self._imei_pick_filling = False
+
+    def _update_imei_check_lbl(self) -> None:
+        n = len(self._imei_list)
+        name = self._imei_list_path.name if self._imei_list_path else ""
+        sel = len(self._checked_imeis())
+        bits = []
+        if n:
+            bits.append(f"{n} 台")
+        if name:
+            bits.append(name)
+        bits.append(f"已选 {sel}")
+        if hasattr(self, "imei_list_lbl"):
+            self.imei_list_lbl.setText(" · ".join(bits) if bits else "未加载列表")
+
+    def _checked_imeis(self) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for imei in self._imei_list:
+            if imei in self._imei_checked and imei not in seen:
+                seen.add(imei)
+                out.append(imei)
+        cur = self._current_imei()
+        if cur in self._imei_checked and cur not in seen:
+            out.append(cur)
+        return out
+
+    def _fanout_targets(self) -> list[str]:
+        targets = self._checked_imeis()
+        if targets:
+            return targets
+        cur = self._current_imei()
+        return [cur] if cur else []
+
+    def _fanout_payload(self) -> dict | None:
+        for edit in (getattr(self, "man_txt", None), getattr(self, "pub_txt", None)):
+            if not edit:
+                continue
+            try:
+                data = json.loads(edit.toPlainText() or "")
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict) and data.get("dataType"):
+                return dict(data)
+        return {"dataType": "2003"}
+
+    def _on_fanout(self) -> None:
+        payload = self._fanout_payload()
+        if not payload:
+            _error(self, "并发下发", "没有可发的命令（先在手动测试或发布页填 JSON）")
+            return
+        targets = self._fanout_targets()
+        if not targets:
+            _error(self, "并发下发", "请先勾选 IMEI，或下拉列表右边打勾")
+            return
+        dt = str(payload.get("dataType") or "")
+        if len(targets) > 1:
+            msg = f"将并发下发 {dt} 到 {len(targets)} 台。\n确认？"
+            if _cmd_is_danger(None, payload):
+                msg = f"危险命令 {dt} 将同时发到 {len(targets)} 台，可能重启/关机。\n确认？"
+            if not _ask_yes(self, "并发下发", msg):
+                return
+        if not self._ensure_connected("并发下发"):
+            return
+        if hasattr(self, "man_status"):
+            self._set_manual_reply(f"并发下发 {dt} → {len(targets)} 台…", None, pending=True)
+        threading.Thread(target=self._fanout_work, args=(payload, targets), daemon=True).start()
+
+    def _ensure_sub_imei(self, imei: str) -> None:
+        topic = f"/panshi/app/{imei}/#"
+        if not self.client or not self.connected or not imei:
+            return
+        if topic in self._subs:
+            return
+        qos = 1
+        if hasattr(self, "sub_qos"):
+            qos = int(self.sub_qos.checkedId())
+            if qos < 0:
+                qos = 1
+        self.client.subscribe(topic, qos)
+        self._subs.append(topic)
+        if hasattr(self, "sub_list"):
+            self.sub_list.addItem(f"{topic}  qos={qos}")
+        self.log(f"订阅 {topic} qos={qos}")
+
+    def _publish_fanout(self, payload: dict, targets: list[str]) -> list[tuple[str, dict]]:
+        sent: list[tuple[str, dict]] = []
+        for imei in targets:
+            self._ensure_sub_imei(imei)
+            body = dict(payload)
+            body.pop("messageId", None)
+            sent.append((imei, self._publish_now(body, imei=imei)))
+        return sent
+
+    def _fanout_work(self, payload: dict, targets: list[str]) -> None:
+        try:
+            sent = self._publish_fanout(payload, targets)
+        except Exception as exc:
+            self.ui(_error, self, "并发下发", str(exc))
+            return
+        expect = None
+        item = self._selected_command() if hasattr(self, "man_tree") else None
+        if item:
+            expect = item.get("expect")
+        timeout = float(self.current_cfg().get("reply_timeout_sec") or 12)
+        if item and item.get("timeout_sec"):
+            timeout = max(timeout, float(item.get("timeout_sec")))
+        lines = [f"并发下发 {payload.get('dataType')}  {len(sent)} 台"]
+        ok_n = 0
+        with self._lock:
+            after = len(self._inbox)
+        for imei, body in sent:
+            got = self._wait_reply(expect, after, timeout, body.get("messageId")) if expect else None
+            if not expect:
+                lines.append(f"  {imei}  已发送  mid={body.get('messageId')}")
+                ok_n += 1
+            elif got:
+                lines.append(f"  {imei}  OK  {got.get('dataType')}  mid={got.get('messageId')}")
+                ok_n += 1
+            else:
+                lines.append(f"  {imei}  超时  期望 {expect}")
+        summary = f"完成 {ok_n}/{len(sent)}"
+        text = "\n".join(lines)
+
+        def done():
+            self.log(text, "info")
+            if hasattr(self, "man_status"):
+                self._set_manual_reply(summary, None, ok=ok_n == len(sent))
+                self.man_reply.setPlainText(text)
+
+        self.ui(done)
+
+    def _apply_imei(self, imei: str, *, persist: bool = True, log_change: bool = True) -> None:
+        imei = (imei or "").strip()
+        if not imei or imei == "{IMEI}":
+            return
+        old = self._current_imei()
+        old_subs = list(self._subs)
+        self._select_imei_combo(imei)
+        if persist and hasattr(self, "profile_combo"):
+            name = self.profile_combo.currentText()
+            for p in self.profiles:
+                if p.get("name") == name:
+                    p["device_imei"] = imei
+                    break
+            self._save_profiles()
+        self._sync_topics()
+        if self.client and self.connected and old and old != imei:
+            self._retarget_mqtt_topics(old, old_subs)
+            self._reset_signal_chips()
+        if getattr(self, "proto_tree", None) and self.proto_tree.selectedItems():
+            self._on_proto_select()
+        if log_change and old != imei:
+            self.log(f"IMEI {old or '-'} → {imei}", "info")
+
+    def _retarget_mqtt_topics(self, old_imei: str, old_subs: list[str]) -> None:
+        if not self.client:
+            return
+        for topic in old_subs:
+            if old_imei and old_imei in topic:
+                try:
+                    self.client.unsubscribe(topic)
+                except Exception:
+                    pass
+                if topic in self._subs:
+                    self._subs.remove(topic)
+        if hasattr(self, "sub_list"):
+            self.sub_list.clear()
+            for topic in self._subs:
+                self.sub_list.addItem(topic)
+        self.subscribe_current()
 
     def _build(self):
         central = QWidget()
@@ -733,11 +1274,11 @@ class MqttGui(QMainWindow):
         self.nb = QTabWidget()
         self.nb.setDocumentMode(True)
         lay.addWidget(self.nb, 1)
-        self._build_manual()
-        self._build_auto()
+        self._build_protocol()
         self._build_subscribe()
         self._build_publish()
-        self._build_protocol()
+        self._build_manual()
+        self._build_auto()
         self._build_ota()
         self._build_playback()
         self._build_log()
@@ -821,17 +1362,44 @@ class MqttGui(QMainWindow):
         device = QHBoxLayout()
         device.setSpacing(8)
         device.addWidget(QLabel("IMEI"))
-        self.imei_edit = QLineEdit()
-        self.imei_edit.setFixedWidth(148)
-        self.imei_edit.setPlaceholderText("15 位设备号")
-        device.addWidget(self.imei_edit)
+        self.imei_combo = _ImeiCombo(self._show_imei_popup)
+        self.imei_combo.setEditable(True)
+        self.imei_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.imei_combo.setMinimumWidth(200)
+        self.imei_combo.setMinimumContentsLength(15)
+        self.imei_combo.setToolTip("点下拉：最上全选，右边勾选要并发的设备；点 IMEI 文字切换当前台")
+        self.imei_combo.activated.connect(self._on_imei_picked)
+        le = self.imei_combo.lineEdit()
+        if le:
+            le.setPlaceholderText("15 位设备号")
+            le.editingFinished.connect(
+                lambda: self._apply_imei(self._current_imei()) if self._current_imei() else None
+            )
+        device.addWidget(self.imei_combo)
+        self._build_imei_popup()
+        open_list = QPushButton("打开列表…")
+        open_list.setToolTip("打开 0015X0055347.txt 这类 IMEI 清单")
+        open_list.clicked.connect(self._pick_imei_file)
+        device.addWidget(open_list)
+        self.imei_all_chk = QCheckBox("全选")
+        self.imei_all_chk.setToolTip("勾选列表里全部 IMEI，用于并发下发")
+        self.imei_all_chk.toggled.connect(self._on_imei_all_toggled)
+        device.addWidget(self.imei_all_chk)
+        self.imei_list_lbl = QLabel("未加载列表")
+        self.imei_list_lbl.setObjectName("mutedLabel")
+        device.addWidget(self.imei_list_lbl)
         apply_btn = QPushButton("套用 Topic")
         apply_btn.setToolTip("按当前 IMEI 刷新订阅/发布主题")
-        apply_btn.clicked.connect(self._sync_topics)
+        apply_btn.clicked.connect(lambda: self._apply_imei(self._current_imei()))
         device.addWidget(apply_btn)
         q2003 = QPushButton("查状态 2003")
         q2003.clicked.connect(self._quick_2003)
         device.addWidget(q2003)
+        fanout = QPushButton("并发下发")
+        fanout.setObjectName("primary")
+        fanout.setToolTip("把当前命令同时发到所有勾选的 IMEI")
+        fanout.clicked.connect(self._on_fanout)
+        device.addWidget(fanout)
         device.addStretch(1)
         outer.addLayout(device)
 
@@ -860,9 +1428,18 @@ class MqttGui(QMainWindow):
         self.theme_combo.setCurrentText(palette(name)["name"])
         self.theme_combo.blockSignals(False)
         self.apply_theme(name, save=False)
+        saved = str(data.get("imei_list_path") or "").strip()
+        if saved:
+            self._imei_list_path = Path(saved)
 
     def _save_ui_prefs(self):
-        _dump_json(ui_path(), {"theme": self.theme_id})
+        _dump_json(
+            ui_path(),
+            {
+                "theme": self.theme_id,
+                "imei_list_path": str(self._imei_list_path) if self._imei_list_path else "",
+            },
+        )
 
     def _on_theme_chosen(self, label: str):
         self.apply_theme(id_from_label(label))
@@ -895,30 +1472,31 @@ class MqttGui(QMainWindow):
 
     def _build_subscribe(self):
         page, v = self._tab_page()
-        top = QHBoxLayout()
-        top.addWidget(QLabel("Topic"))
-        self.sub_topic = QLineEdit()
-        top.addWidget(self.sub_topic, 1)
-        sub_btn = QPushButton("订阅")
-        sub_btn.clicked.connect(self.subscribe_current)
-        top.addWidget(sub_btn)
-        un_btn = QPushButton("取消订阅")
-        un_btn.clicked.connect(self.unsubscribe_current)
-        top.addWidget(un_btn)
-        self.sub_qos, qos_w = _qos_group(page, 1)
-        top.addWidget(qos_w)
-        self.autoscroll = QCheckBox("自动滚动")
-        self.autoscroll.setChecked(True)
-        top.addWidget(self.autoscroll)
-        v.addLayout(top)
-
         split = QSplitter(Qt.Orientation.Horizontal)
         left = QWidget()
         ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.setSpacing(6)
+        ll.addWidget(QLabel("订阅控制"))
+        self.sub_topic = QLineEdit()
+        ll.addWidget(self.sub_topic)
+        row = QHBoxLayout()
+        sub_btn = QPushButton("订阅")
+        sub_btn.clicked.connect(self.subscribe_current)
+        row.addWidget(sub_btn)
+        un_btn = QPushButton("取消订阅")
+        un_btn.clicked.connect(self.unsubscribe_current)
+        row.addWidget(un_btn)
+        ll.addLayout(row)
+        self.sub_qos, qos_w = _qos_group(left, 1)
+        ll.addWidget(qos_w)
+        self.autoscroll = QCheckBox("自动滚动")
+        self.autoscroll.setChecked(True)
+        ll.addWidget(self.autoscroll)
         ll.addWidget(QLabel("已订阅"))
         self.sub_list = QListWidget()
         self.sub_list.setFont(_mono())
-        ll.addWidget(self.sub_list)
+        ll.addWidget(self.sub_list, 1)
         split.addWidget(left)
 
         right = QSplitter(Qt.Orientation.Vertical)
@@ -929,47 +1507,91 @@ class MqttGui(QMainWindow):
         self.msg_tree.itemSelectionChanged.connect(self._on_msg_select)
         self.msg_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.msg_tree.customContextMenuRequested.connect(self._msg_menu)
-        hdr = self.msg_tree.header()
-        hdr.setStretchLastSection(True)
+        _enable_col_drag(self.msg_tree, [88, 72, 140, 220, 260])
         right.addWidget(self.msg_tree)
-        detail = QWidget()
-        dl = QVBoxLayout(detail)
-        self.ident_lbl = QLabel("选择一条上行消息后，按协议文档自动识别")
-        self.ident_lbl.setObjectName("accentLabel")
-        self.ident_lbl.setWordWrap(True)
-        dl.addWidget(self.ident_lbl)
+        detail = QSplitter(Qt.Orientation.Horizontal)
+        ident_box = QWidget()
+        il = QVBoxLayout(ident_box)
+        il.setContentsMargins(0, 0, 0, 0)
+        il.setSpacing(4)
+        ident_head = QLabel("协议识别")
+        ident_head.setObjectName("accentLabel")
+        il.addWidget(ident_head)
+        self.ident_lbl = QPlainTextEdit()
+        self.ident_lbl.setReadOnly(True)
+        self.ident_lbl.setFont(_mono())
+        self.ident_lbl.setPlaceholderText("选择一条上行消息后，按协议文档自动识别")
+        il.addWidget(self.ident_lbl, 1)
+        detail.addWidget(ident_box)
+        payload_box = QWidget()
+        pl = QVBoxLayout(payload_box)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(4)
+        payload_head = QLabel("协议内容")
+        payload_head.setObjectName("accentLabel")
+        pl.addWidget(payload_head)
         self.payload_txt = QPlainTextEdit()
         self.payload_txt.setReadOnly(True)
         self.payload_txt.setFont(_mono())
-        dl.addWidget(self.payload_txt)
+        pl.addWidget(self.payload_txt, 1)
+        detail.addWidget(payload_box)
+        detail.setStretchFactor(0, 1)
+        detail.setStretchFactor(1, 2)
+        detail.setSizes([380, 620])
         right.addWidget(detail)
+        right.setStretchFactor(0, 3)
+        right.setStretchFactor(1, 2)
         split.addWidget(right)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 4)
-        split.setSizes([200, 900])
+        split.setSizes([280, 860])
         v.addWidget(split, 1)
         self.nb.addTab(page, "订阅")
 
     def _build_publish(self):
         page, v = self._tab_page()
-        top = QHBoxLayout()
-        top.addWidget(QLabel("Topic"))
+        split = QSplitter(Qt.Orientation.Horizontal)
+        left = QWidget()
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.setSpacing(8)
+        ll.addWidget(QLabel("Topic"))
         self.pub_topic = QLineEdit()
-        top.addWidget(self.pub_topic, 1)
-        self.pub_qos, qos_w = _qos_group(page, 1)
-        top.addWidget(qos_w)
+        ll.addWidget(self.pub_topic)
+        self.pub_qos, qos_w = _qos_group(left, 1)
+        ll.addWidget(qos_w)
         pub = QPushButton("发布")
+        pub.setObjectName("primary")
         pub.clicked.connect(self.publish_editor)
-        top.addWidget(pub)
-        v.addLayout(top)
+        ll.addWidget(pub)
+        hint = QLabel("左边改主题和 QoS，右边是协议 JSON。可拖中间分隔条。")
+        hint.setObjectName("mutedLabel")
+        hint.setWordWrap(True)
+        ll.addWidget(hint)
+        ll.addStretch(1)
+        split.addWidget(left)
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(QLabel("协议内容"))
         self.pub_txt = QPlainTextEdit()
         self.pub_txt.setFont(_mono())
         self.pub_txt.setPlainText('{\n  "dataType": "2008",\n  "messageId": "ver-001"\n}\n')
-        v.addWidget(self.pub_txt, 1)
+        rl.addWidget(self.pub_txt, 1)
+        split.addWidget(right)
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 3)
+        split.setSizes([300, 860])
+        v.addWidget(split, 1)
         self.nb.addTab(page, "发布")
 
     def _build_protocol(self):
         page, v = self._tab_page()
+        split = QSplitter(Qt.Orientation.Horizontal)
+        left = QWidget()
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.setSpacing(6)
         top = QHBoxLayout()
         top.addWidget(QLabel("Markdown"))
         self.md_edit = QLineEdit()
@@ -980,27 +1602,39 @@ class MqttGui(QMainWindow):
         reload_btn = QPushButton("重新解析")
         reload_btn.clicked.connect(lambda: self.load_protocol(self.md_edit.text()))
         top.addWidget(reload_btn)
+        ll.addLayout(top)
         self.proto_info = QLabel("")
         self.proto_info.setObjectName("mutedLabel")
-        top.addWidget(self.proto_info)
-        v.addLayout(top)
+        self.proto_info.setWordWrap(True)
+        ll.addWidget(self.proto_info)
         hint = QLabel(
             "2001=MQTT探活（不上电）。2002 enter=断T31；2002 exit=T31上电。主题 wakeup 只是历史后缀。"
         )
         hint.setObjectName("hintLabel")
         hint.setWordWrap(True)
-        v.addWidget(hint)
-        split = QSplitter(Qt.Orientation.Horizontal)
+        ll.addWidget(hint)
         self.proto_tree = QTreeWidget()
-        self.proto_tree.setHeaderLabels(["dataType / 名称", "对应", "主题后缀"])
+        self.proto_tree.setHeaderLabels(["dataType", "名称", "对应", "主题后缀"])
+        self.proto_tree.setRootIsDecorated(True)
+        self.proto_tree.setAlternatingRowColors(True)
         self.proto_tree.itemSelectionChanged.connect(self._on_proto_select)
-        split.addWidget(self.proto_tree)
+        _enable_col_drag(self.proto_tree, [88, 280, 72, 140], stretch_last=True)
+        ll.addWidget(self.proto_tree, 1)
+        split.addWidget(left)
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(QLabel("协议内容"))
         self.proto_detail = QPlainTextEdit()
         self.proto_detail.setReadOnly(True)
         self.proto_detail.setFont(_mono())
-        split.addWidget(self.proto_detail)
-        split.setStretchFactor(0, 1)
-        split.setStretchFactor(1, 1)
+        rl.addWidget(self.proto_detail, 1)
+        split.addWidget(right)
+        left.setMinimumWidth(420)
+        right.setMinimumWidth(280)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
+        split.setSizes([640, 500])
         v.addWidget(split, 1)
         self.nb.addTab(page, "协议文档")
 
@@ -1058,12 +1692,7 @@ class MqttGui(QMainWindow):
         self.man_tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self.man_tree.itemSelectionChanged.connect(self._manual_fill)
         self.man_tree.itemActivated.connect(self._on_man_activated)
-        hdr = self.man_tree.header()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        _enable_col_drag(self.man_tree, [88, 220, 88, 72, 200], stretch_last=True)
         split.addWidget(self.man_tree)
         right = QSplitter(Qt.Orientation.Vertical)
         sendf = QWidget()
@@ -1082,12 +1711,13 @@ class MqttGui(QMainWindow):
         fl.addWidget(QLabel("命令选项（改这里会同步到 JSON）"))
         form_host = QWidget()
         self.man_form = QFormLayout(form_host)
-        self.man_form.setContentsMargins(4, 4, 4, 4)
-        self.man_form.setHorizontalSpacing(8)
-        self.man_form.setVerticalSpacing(6)
-        self.man_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.man_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.man_form.setContentsMargins(8, 8, 8, 8)
+        self.man_form.setHorizontalSpacing(16)
+        self.man_form.setVerticalSpacing(8)
+        self.man_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.man_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.man_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self.man_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
         form_scroll = QScrollArea()
         form_scroll.setWidgetResizable(True)
         form_scroll.setWidget(form_host)
@@ -1125,9 +1755,10 @@ class MqttGui(QMainWindow):
         right.setStretchFactor(0, 3)
         right.setStretchFactor(1, 2)
         split.addWidget(right)
+        self.man_tree.setMinimumWidth(400)
         split.setStretchFactor(0, 3)
-        split.setStretchFactor(1, 4)
-        split.setSizes([560, 720])
+        split.setStretchFactor(1, 2)
+        split.setSizes([620, 580])
         v.addWidget(split, 1)
         self.nb.addTab(page, "手动测试")
 
@@ -1148,6 +1779,15 @@ class MqttGui(QMainWindow):
             "自动测试": "自动测试",
             "manual": "手动测试",
             "手动测试": "手动测试",
+            "proto": "协议文档",
+            "protocol": "协议文档",
+            "协议文档": "协议文档",
+            "sub": "订阅",
+            "subscribe": "订阅",
+            "订阅": "订阅",
+            "pub": "发布",
+            "publish": "发布",
+            "发布": "发布",
         }
         want = aliases.get(key, key)
         for i in range(self.nb.count()):
@@ -1220,7 +1860,8 @@ class MqttGui(QMainWindow):
         page, v = self._tab_page()
         now = datetime.now()
         hint = QLabel(
-            "用户时间任意填。匹配规则：录像段开始 < 用户结束 且 录像段结束 > 用户开始，"
+            "开始/结束可点日历选日期，再选时分秒。"
+            "匹配规则：录像段开始 < 用户结束 且 录像段结束 > 用户开始，"
             "即与 5/10 分钟 TS 求交，不必文件名等于所选时间。再按单段最长 600 秒拆成多条 MQTT 2013。"
             "设备 clip_extract_window 按同一时间窗扫 TF。IPC 因 USB/无 eth0 传不上去时，1013 仍算信令成功，标 NETWORK。"
         )
@@ -1229,10 +1870,10 @@ class MqttGui(QMainWindow):
         v.addWidget(hint)
         bar = QHBoxLayout()
         bar.addWidget(QLabel("开始"))
-        self.play_begin = QLineEdit(fmt_dt(now - timedelta(minutes=5)))
+        self.play_begin = _make_dt_edit(now - timedelta(minutes=5))
         bar.addWidget(self.play_begin)
         bar.addWidget(QLabel("结束"))
-        self.play_end = QLineEdit(fmt_dt(now))
+        self.play_end = _make_dt_edit(now)
         bar.addWidget(self.play_end)
         last5 = QPushButton("最近5分钟")
         last5.clicked.connect(self._play_last5)
@@ -1285,6 +1926,7 @@ class MqttGui(QMainWindow):
         )
         self.play_tree.setRootIsDecorated(False)
         self.play_tree.itemSelectionChanged.connect(self._on_play_select)
+        _enable_col_drag(self.play_tree, [72, 140, 140, 140, 140, 120, 72, 200])
         split.addWidget(self.play_tree)
         plan_box = QWidget()
         pl = QVBoxLayout(plan_box)
@@ -1328,11 +1970,38 @@ class MqttGui(QMainWindow):
         self.auto_sum.setObjectName("accentLabel")
         top.addWidget(self.auto_sum, 1)
         v.addLayout(top)
+        split = QSplitter(Qt.Orientation.Horizontal)
         self.auto_tree = QTreeWidget()
         self.auto_tree.setHeaderLabels(["ID", "名称", "期望", "实际", "结果", "耗时ms", "说明"])
         self.auto_tree.setRootIsDecorated(False)
-        self.auto_tree.header().setStretchLastSection(True)
-        v.addWidget(self.auto_tree, 1)
+        self.auto_tree.setAlternatingRowColors(True)
+        _enable_col_drag(self.auto_tree, [88, 220, 72, 72, 64, 72, 200], stretch_last=True)
+        split.addWidget(self.auto_tree)
+
+        rx = QWidget()
+        rl = QVBoxLayout(rx)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(6)
+        rx_head = QLabel("MQTT 上行（本轮）")
+        rx_head.setObjectName("accentLabel")
+        rl.addWidget(rx_head)
+        self.auto_rx_path_lbl = QLabel("点「开始」后写入 tools/_logs/mqtt_autotest/auto_rx_latest.txt")
+        self.auto_rx_path_lbl.setObjectName("mutedLabel")
+        self.auto_rx_path_lbl.setWordWrap(True)
+        rl.addWidget(self.auto_rx_path_lbl)
+        self.auto_rx_txt = QTextEdit()
+        self.auto_rx_txt.setObjectName("logPane")
+        self.auto_rx_txt.setReadOnly(True)
+        self.auto_rx_txt.setFont(_mono())
+        self.auto_rx_txt.setPlaceholderText("设备回包会显示在这里，并自动落盘。每次重新开始自动测试会清零。")
+        rl.addWidget(self.auto_rx_txt, 1)
+        split.addWidget(rx)
+        self.auto_tree.setMinimumWidth(420)
+        rx.setMinimumWidth(300)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
+        split.setSizes([700, 420])
+        v.addWidget(split, 1)
         self.nb.addTab(page, "自动测试")
 
     def _build_log(self):
@@ -1490,9 +2159,8 @@ class MqttGui(QMainWindow):
         n_down = len(self.catalog.downlink())
         n_up = len(self.catalog.uplink())
         extra = ""
-        if self.catalog.imei and not self.imei_edit.text().strip():
-            self.imei_edit.setText(self.catalog.imei)
-            self._sync_topics()
+        if self.catalog.imei and not self._current_imei():
+            self._apply_imei(self.catalog.imei, persist=True, log_change=False)
             extra = f"  文档 IMEI={self.catalog.imei}"
         self.proto_info.setText(f"{self.catalog.title}  下行{n_down} 上行{n_up}{extra}")
         self._fill_proto_tree()
@@ -1508,22 +2176,32 @@ class MqttGui(QMainWindow):
 
     def _fill_proto_tree(self):
         self.proto_tree.clear()
-        down = QTreeWidgetItem(["下行 200x（平台 → 设备）", "", ""])
-        up = QTreeWidgetItem(["上行 100x（设备 → 平台）", "", ""])
-        down.setExpanded(True)
-        up.setExpanded(True)
+        down = QTreeWidgetItem(["下行 200x（平台 → 设备）", "", "", ""])
+        up = QTreeWidgetItem(["上行 100x（设备 → 平台）", "", "", ""])
+        down.setFirstColumnSpanned(True)
+        up.setFirstColumnSpanned(True)
+        _align_item_left(down)
+        _align_item_left(up)
         self.proto_tree.addTopLevelItem(down)
         self.proto_tree.addTopLevelItem(up)
         for e in self.catalog.downlink():
             flag = "  T31x" if e.need_t31x else ""
             flag += "  危险" if e.danger else ""
-            it = QTreeWidgetItem([f"{e.data_type}  {e.name}{flag}", e.peer, e.topic_suffix])
+            it = QTreeWidgetItem([e.data_type, f"{e.name}{flag}", e.peer, e.topic_suffix])
             it.setData(0, ROLE_ID, f"d-{e.data_type}")
+            _align_item_left(it)
             down.addChild(it)
         for e in self.catalog.uplink():
-            it = QTreeWidgetItem([f"{e.data_type}  {e.name}", e.peer, e.topic_suffix])
+            it = QTreeWidgetItem([e.data_type, e.name, e.peer, e.topic_suffix])
             it.setData(0, ROLE_ID, f"u-{e.data_type}")
+            _align_item_left(it)
             up.addChild(it)
+        down.setExpanded(True)
+        up.setExpanded(True)
+        self.proto_tree.expandAll()
+        _fit_tree_cols(self.proto_tree, [80, 220, 64, 100])
+        if down.childCount():
+            self.proto_tree.setCurrentItem(down.child(0))
 
     def _on_proto_select(self):
         items = self.proto_tree.selectedItems()
@@ -1536,7 +2214,7 @@ class MqttGui(QMainWindow):
         e = self.catalog.get(dt)
         if not e:
             return
-        imei = self.imei_edit.text().strip() or self.catalog.imei or "{IMEI}"
+        imei = self._current_imei() or self.catalog.imei or "{IMEI}"
         lines = [
             f"dataType : {e.data_type}",
             f"名称     : {e.name}",
@@ -1584,6 +2262,7 @@ class MqttGui(QMainWindow):
                 continue
             parent = QTreeWidgetItem([title, "", "", "", ""])
             parent.setFirstColumnSpanned(True)
+            _align_item_left(parent)
             font = parent.font(0)
             font.setBold(True)
             parent.setFont(0, font)
@@ -1612,6 +2291,7 @@ class MqttGui(QMainWindow):
                     short,
                 ])
                 it.setData(0, ROLE_ID, item["id"])
+                _align_item_left(it)
                 it.setToolTip(4, note)
                 it.setToolTip(1, note or (item.get("name") or ""))
                 if _cmd_is_danger(item):
@@ -1632,6 +2312,7 @@ class MqttGui(QMainWindow):
         total = len(self.commands)
         if hasattr(self, "man_count"):
             self.man_count.setText(f"显示 {shown} / {total}")
+        _fit_tree_cols(self.man_tree, [80, 200, 80, 64, 160])
         if restore:
             self.man_tree.setCurrentItem(restore)
         elif shown and not self.man_tree.currentItem():
@@ -1783,8 +2464,9 @@ class MqttGui(QMainWindow):
 
     def _add_man_form_item(self, dt, key, val):
         lab = QLabel(_FIELD_CN.get(key, key))
-        lab.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        lab.setMinimumWidth(96)
+        lab.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lab.setMinimumWidth(88)
+        lab.setMaximumWidth(120)
         w = self._make_man_field(dt, key, val)
         self.man_form.addRow(lab, w)
         self._man_fields[key] = w
@@ -1816,6 +2498,15 @@ class MqttGui(QMainWindow):
             sp.setProperty("man_kind", "int")
             sp.valueChanged.connect(self._on_man_field_changed)
             return sp
+        if key in _DT_FIELD_KEYS or _looks_like_dt(val):
+            try:
+                dt_val = parse_dt(str(val))
+            except (ValueError, TypeError):
+                dt_val = datetime.now()
+            wdt = _make_dt_edit(dt_val)
+            wdt.setProperty("man_kind", "dt")
+            wdt.dateTimeChanged.connect(self._on_man_field_changed)
+            return wdt
         ed = QLineEdit("" if val is None else str(val))
         ed.setProperty("man_kind", "str")
         if key == "dataType":
@@ -1839,6 +2530,8 @@ class MqttGui(QMainWindow):
                         idx = w.findData(int(val)) if str(val).lstrip("-").isdigit() else -1
                     if idx >= 0:
                         w.setCurrentIndex(idx)
+                elif kind == "dt":
+                    _set_dt_edit(w, val)
                 else:
                     w.setText("" if val is None else str(val))
             except Exception:
@@ -1853,6 +2546,8 @@ class MqttGui(QMainWindow):
                 out[key] = int(w.value())
             elif kind == "choice":
                 out[key] = w.currentData()
+            elif kind == "dt":
+                out[key] = fmt_dt(_qdt_to_py(w.dateTime()))
             else:
                 text = w.text()
                 if key not in ("messageId", "url", "version", "beginTime", "endTime", "recordPath") and (
@@ -1911,7 +2606,7 @@ class MqttGui(QMainWindow):
         if self.connected or self._connecting:
             return
         cfg = self.current_cfg()
-        cfg["device_imei"] = self.imei_edit.text().strip() or cfg.get("device_imei") or ""
+        cfg["device_imei"] = self._current_imei() or cfg.get("device_imei") or ""
         if not cfg["device_imei"]:
             _error(self, "连接", "请填写设备 IMEI")
             return
@@ -2112,6 +2807,7 @@ class MqttGui(QMainWindow):
             str(ident["dataType"]), str(ident["name"]), topic, preview,
         ])
         it.setData(0, ROLE_ID, iid)
+        _align_item_left(it)
         self.msg_tree.addTopLevelItem(it)
         self._msg_store[iid] = (topic, data, ident)
         while self.msg_tree.topLevelItemCount() > MAX_MSG:
@@ -2141,6 +2837,7 @@ class MqttGui(QMainWindow):
                 f"{data.get('fileName') or data.get('message') or ''} "
                 f"{data.get('alarmTime') or ''} {data.get('beginTime') or ''}~{data.get('endTime') or ''}"
             )
+        self._auto_rx_append(topic, data, ts, ident)
 
     def _on_msg_select(self):
         items = self.msg_tree.selectedItems()
@@ -2163,7 +2860,7 @@ class MqttGui(QMainWindow):
             bits.append("本包多出：" + ", ".join(ident["extra"]))
         if str(data.get("dataType")) in {"1003", "1005"}:
             bits.append(_payload_preview(data))
-        self.ident_lbl.setText("  |  ".join(bits))
+        self.ident_lbl.setPlainText("\n".join(bits))
         self.payload_txt.setPlainText(f"{topic}\n\n{_pretty(data)}\n")
 
     def publish_editor(self):
@@ -2174,18 +2871,25 @@ class MqttGui(QMainWindow):
             return
         self._send_payload(payload)
 
-    def _publish_now(self, payload: dict) -> dict:
+    def _publish_now(self, payload: dict, imei: str | None = None) -> dict:
         if not self.client or not self.connected:
             raise RuntimeError("未连接 Broker")
+        dest = (imei or self._current_imei() or "").strip()
+        if not dest or dest == "{IMEI}":
+            raise RuntimeError("未选择 IMEI")
         body = dict(payload)
         if "messageId" not in body:
-            body["messageId"] = f"g-{int(time.time())}-{uuid.uuid4().hex[:6]}"
-        topic = self.pub_topic.text().strip()
+            body["messageId"] = f"g-{dest[-4:]}-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+        topic = f"/panshi/device/{dest}/"
+        if hasattr(self, "pub_topic") and not imei:
+            self.pub_topic.setText(topic)
         line = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         ident = self.catalog.identify(topic, body)
-        qos = int(self.pub_qos.checkedId())
-        if qos < 0:
-            qos = 1
+        qos = 1
+        if hasattr(self, "pub_qos"):
+            qos = int(self.pub_qos.checkedId())
+            if qos < 0:
+                qos = 1
         self.client.publish(topic, line, qos=qos)
         self.ui(
             self.log,
@@ -2198,6 +2902,14 @@ class MqttGui(QMainWindow):
         if not self._ensure_connected("发布"):
             return None
             return None
+        targets = self._checked_imeis()
+        if len(targets) > 1:
+            if hasattr(self, "man_status"):
+                self._set_manual_reply(
+                    f"并发下发 {payload.get('dataType')} → {len(targets)} 台…", None, pending=True,
+                )
+            threading.Thread(target=self._fanout_work, args=(payload, targets), daemon=True).start()
+            return dict(payload)
         try:
             body = self._publish_now(payload)
         except RuntimeError as exc:
@@ -2219,6 +2931,7 @@ class MqttGui(QMainWindow):
             n = len(self._inbox)
         got = self._wait_reply(expect, n, timeout)
         mid = sent.get("messageId")
+        recents = self._inbox_after(n)
 
         def done():
             if got:
@@ -2234,12 +2947,29 @@ class MqttGui(QMainWindow):
                 )
                 self._set_manual_reply(summary, got, ok=True)
             else:
-                self._set_manual_reply(
-                    f"TIMEOUT  未收到 {expect}（T31x 未就绪时属预期）  messageId={mid}",
-                    None, ok=False,
+                summary = (
+                    f"TIMEOUT  未收到 {expect}（T31x 未就绪时属预期）  messageId={mid}"
                 )
+                dump = self._format_recv_dump(recents, expect)
+                self._set_manual_reply(summary, None, ok=False)
+                self.man_reply.setPlainText(f"{summary}\n\n{dump}")
+                self.log(f"{summary}\n{dump}\n", "err")
 
         self.ui(done)
+
+    def _inbox_after(self, after_n: int):
+        with self._lock:
+            return list(self._inbox[after_n:])
+
+    def _format_recv_dump(self, rows, expect=None) -> str:
+        want = _expect_text(expect)
+        if not rows:
+            return "等待期间未收到任何上行（设备未连上、未订阅或未回包）"
+        lines = [f"等待期间收到 {len(rows)} 条网络 MQTT 上行（均非期望 {want}）："]
+        for topic, data, *_rest in rows:
+            lines.append(f"<< {data.get('dataType', '?')}  {topic}")
+            lines.append(_pretty_log_payload(data))
+        return "\n".join(lines)
 
     def _set_manual_reply(self, summary: str, payload: dict | None, ok: bool | None = None, pending: bool = False):
         name = "statusPlain"
@@ -2321,7 +3051,7 @@ class MqttGui(QMainWindow):
             timeout_ms = int(float(self.ota_timeout.text() or DEFAULT_OTA_TIMEOUT_MS))
         except ValueError:
             timeout_ms = DEFAULT_OTA_TIMEOUT_MS
-        imei = self.imei_edit.text().strip()
+        imei = self._current_imei()
         if not imei or imei == "{IMEI}" or not imei.isdigit() or len(imei) != 15:
             _info(self, "OTA", "请填写 15 位 IMEI，并点「套用 Topic」")
             return None
@@ -2381,7 +3111,7 @@ class MqttGui(QMainWindow):
         target = payload["version"]
         if not _ask_yes(
             self, "OTA闭环",
-            f"将向 IMEI {self.imei_edit.text().strip()} 下发升级。\n"
+            f"将向 IMEI {self._current_imei()} 下发升级。\n"
             f"目标 firmwareVersion = {target}\nURL = {payload['url']}\n\n"
             "流程：2008 查当前版 → 2004 ota → 等 1004 accepted/stage → 重启后再查 1008。\n确认开始？",
         ):
@@ -2561,6 +3291,8 @@ class MqttGui(QMainWindow):
             _info(self, "自动测试", "没有可跑的命令，请勾选分组")
             return
         self.auto_tree.clear()
+        _fit_tree_cols(self.auto_tree, [80, 200, 68, 68, 56, 68, 160])
+        self._auto_rx_reset()
         self._auto_stop.clear()
         self.auto_sum.setText(f"将跑 {len(items)} 条…")
         try:
@@ -2647,6 +3379,7 @@ class MqttGui(QMainWindow):
     def _auto_insert(self, iid: str, row: list):
         it = QTreeWidgetItem([str(x) for x in row])
         it.setData(0, ROLE_ID, iid)
+        _align_item_left(it)
         self.auto_tree.addTopLevelItem(it)
 
     def _auto_update(self, iid, got, result, ms, note, tag):
@@ -2663,6 +3396,53 @@ class MqttGui(QMainWindow):
 
     def stop_auto(self):
         self._auto_stop.set()
+
+    def _auto_rx_reset(self) -> None:
+        """每次点开始：清空右侧回显，并截断本轮落盘文件。"""
+        if getattr(self, "auto_rx_txt", None) is not None:
+            self.auto_rx_txt.clear()
+        AUTO_RX_DIR.mkdir(parents=True, exist_ok=True)
+        path = AUTO_RX_FILE
+        self._auto_rx_path = path
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        imei = self._current_imei() or str(self.current_cfg().get("device_imei") or "").strip()
+        header = (
+            f"# MQTT 自动测试上行  {stamp}\n"
+            f"# IMEI={imei or '-'}\n"
+            f"# {path}\n\n"
+        )
+        try:
+            path.write_text(header, encoding="utf-8")
+        except OSError as exc:
+            self.log(f"自动测试回包文件写失败：{exc}", "err")
+        if getattr(self, "auto_rx_path_lbl", None) is not None:
+            self.auto_rx_path_lbl.setText(f"已清零 · 写入 {path}")
+        self._auto_rx_capturing = True
+
+    def _auto_rx_append(self, topic: str, data: dict, ts: float, ident: dict | None = None) -> None:
+        if not self._auto_rx_capturing or getattr(self, "auto_rx_txt", None) is None:
+            return
+        if ident is None:
+            ident = self.catalog.identify(topic, data)
+        stamp = datetime.fromtimestamp(ts).strftime("%H:%M:%S.%f")[:-3]
+        block = (
+            f"{stamp}  << {ident.get('dataType')} {ident.get('name')}  {topic}\n"
+            f"{_pretty(data)}\n\n"
+        )
+        _append_color(self.auto_rx_txt, block, self.pal.get("log_in", self.pal.get("text", "#9cdcfe")))
+        if self.auto_rx_txt.document().blockCount() > MAX_LOG:
+            cur = self.auto_rx_txt.textCursor()
+            cur.movePosition(QTextCursor.MoveOperation.Start)
+            cur.movePosition(QTextCursor.MoveOperation.Down, QTextCursor.MoveMode.KeepAnchor, 200)
+            cur.removeSelectedText()
+        path = self._auto_rx_path
+        if not path:
+            return
+        try:
+            with path.open("a", encoding="utf-8") as fp:
+                fp.write(block)
+        except OSError:
+            pass
 
     def _play_set_progress(self, pct, stage: str, extra: str = ""):
         try:
@@ -2730,21 +3510,21 @@ class MqttGui(QMainWindow):
         self.play_lbl.setText(msg)
 
     def _play_window(self) -> tuple[datetime, datetime]:
-        begin = parse_dt(self.play_begin.text())
-        end = parse_dt(self.play_end.text())
+        begin = _qdt_to_py(self.play_begin.dateTime())
+        end = _qdt_to_py(self.play_end.dateTime())
         if end <= begin:
             raise ValueError("结束时间必须晚于开始时间")
         return begin, end
 
     def _play_last5(self):
         now = datetime.now()
-        self.play_begin.setText(fmt_dt(now - timedelta(minutes=5)))
-        self.play_end.setText(fmt_dt(now))
+        self.play_begin.setDateTime(_py_to_qdt(now - timedelta(minutes=5)))
+        self.play_end.setDateTime(_py_to_qdt(now))
 
     def _fill_play_tree(self, items: list[dict], hint: str):
         self.play_tree.clear()
         for it in items:
-            self.play_tree.addTopLevelItem(QTreeWidgetItem([
+            row = QTreeWidgetItem([
                 str(it.get("src") or ""),
                 str(it.get("begin") or ""),
                 str(it.get("end") or ""),
@@ -2753,7 +3533,9 @@ class MqttGui(QMainWindow):
                 str(it.get("name") or ""),
                 str(it.get("size") or ""),
                 str(it.get("path") or ""),
-            ]))
+            ])
+            _align_item_left(row)
+            self.play_tree.addTopLevelItem(row)
         self.play_lbl.setText(hint)
 
     def _on_play_select(self):
@@ -2770,8 +3552,8 @@ class MqttGui(QMainWindow):
             parse_dt(end_s)
         except ValueError:
             return
-        self.play_begin.setText(begin_s)
-        self.play_end.setText(end_s)
+        _set_dt_edit(self.play_begin, begin_s)
+        _set_dt_edit(self.play_end, end_s)
         self.play_lbl.setText(f"已填入 {begin_s} ~ {end_s}  {it.text(5)}")
 
     def _play_paste_gb(self):

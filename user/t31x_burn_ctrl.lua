@@ -22,6 +22,7 @@ local burnWarn = logFuncs.warn
 local burnError = logFuncs.error
 
 local deps = {}
+local powerOnTick = 0
 
 local TIMEOUT = {
     burnPrepWait = 300,
@@ -173,7 +174,33 @@ local function shutdownForBurn(cfg)
     return true
 end
 
+function markPowerOn()
+    powerOnTick = utils.nowMs()
+    local gpioModule = getGpio()
+    if gpioModule and gpioModule.ignoreUntilRelease then
+        gpioModule.ignoreUntilRelease("boot")
+    end
+end
+
+function shouldBlockBootKeyLong()
+    if powerOnTick <= 0 then
+        return false
+    end
+    local grace = tonumber(burnCfg().poweron_bootkey_grace_ms)
+    if grace == nil then
+        grace = 3000
+    end
+    if grace <= 0 then
+        return false
+    end
+    return (utils.nowMs() - powerOnTick) < grace
+end
+
 function tryEnter()
+    if shouldBlockBootKeyLong() then
+        burnWarn("t31x_burn_denied", "poweron_grace")
+        return false
+    end
     local cfg = burnCfg()
     local ok, detail = checkBurnAllowed()
     if not ok then

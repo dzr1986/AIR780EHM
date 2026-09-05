@@ -60,8 +60,8 @@ class LuatokTests(unittest.TestCase):
 
 def _run(tmp: Path, script: str, *args: str) -> tuple[int, str]:
     p = subprocess.run([sys.executable, str(tmp / "tools" / "debug" / script), *args],
-                       capture_output=True, text=True, cwd=tmp)
-    return p.returncode, p.stdout + p.stderr
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=tmp)
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
 class GuardSandbox(unittest.TestCase):

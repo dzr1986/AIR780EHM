@@ -79,6 +79,7 @@ def protocol_candidates() -> list[Path]:
         app_dir() / "MQTT_PROTOCOL.md",
         bundle_dir() / "doc" / "MQTT_PROTOCOL.md",
         bundle_dir() / "MQTT_PROTOCOL.md",
+        repo_root() / "doc" / "mqtt" / "MQTT_PROTOCOL.md",
         repo_root() / "doc" / "MQTT_PROTOCOL.md",
     ]
 
@@ -87,7 +88,7 @@ def find_protocol_md() -> Path:
     for path in protocol_candidates():
         if path.is_file():
             return path
-    return repo_root() / "doc" / "MQTT_PROTOCOL.md"
+    return repo_root() / "doc" / "mqtt" / "MQTT_PROTOCOL.md"
 
 
 def doc_dir() -> Path:

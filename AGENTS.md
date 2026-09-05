@@ -15,7 +15,7 @@
 | 硬件 | Air780EHM Cat.1 + T31x 协处理器（UART AT） |
 | 运行时 | LuatOS **Lua 5.3** |
 | 真源目录 | 仓库根 `user/`、`lib/`、`main.lua`（**不要**改 `LuaTools/userprojs/AIR780EHM/` 旧副本） |
-| 当前版本 | `user/main.lua` `VERSION`（2026-09-05：**001.000.161**） |
+| 当前版本 | `user/main.lua` `VERSION`（2026-09-05：**001.000.166**） |
 | 模块风格 | `module(..., package.seeall)` — **禁止**改成 `local M = {}` |
 | 文件名 | Luatools 限制 **≤ 24 字节**（`hif_*` / `mqtt_*` 家族名已是最优，勿重命名） |
 

@@ -3,17 +3,22 @@ from pathlib import Path
 
 spec_dir = Path(SPECPATH)
 client = spec_dir
-root = spec_dir
-for p in spec_dir.parents:
-    if (p / "doc" / "MQTT_PROTOCOL.md").is_file():
-        root = p
-        break
+
+
+def _find_md(name: str) -> Path:
+    for p in (spec_dir, *spec_dir.parents):
+        for rel in (Path("doc") / name, Path("doc") / "mqtt" / name):
+            cand = p / rel
+            if cand.is_file():
+                return cand
+    raise FileNotFoundError(name)
+
 
 datas = [
     (str(client / "config.json"), "."),
     (str(client / "commands.json"), "."),
-    (str(root / "doc" / "MQTT_PROTOCOL.md"), "doc"),
-    (str(root / "doc" / "MQTT_DOWNLINK.md"), "doc"),
+    (str(_find_md("MQTT_PROTOCOL.md")), "doc"),
+    (str(_find_md("MQTT_DOWNLINK.md")), "doc"),
 ]
 
 a = Analysis(

@@ -151,6 +151,7 @@
 - `PIR_CFG`：由 `GPIO_IN.pir_det` 自动带出中断参数 + `PIR_COOLDOWN_MS.frequent`
 - `BATTERY_CFG`：ADC 采样、模组灯、电量保护（真源 [`user/battery.lua`](../../user/battery.lua)）；行为见 [LOW_BATTERY_AND_LOW_POWER.md](../power/LOW_BATTERY_AND_LOW_POWER.md)
 - `t31x_BURN_CFG.min_battery_percent`：烧录前最低电量（默认 20%，与 `guard` 无关）
+- `t31x_BURN_CFG.poweron_bootkey_grace_ms`：T31x 上电后忽略 GPIO28 BOOT 长按的窗口（默认 3000ms），防 2002/上电误进烧录
 - `MODULE_FLAGS.battery_guard`：[`flags.lua`](../../user/flags.lua)，`false` 可关闭电量保护
 
 ### `BATTERY_CFG` 字段一览
@@ -284,7 +285,7 @@ USB 插入（GPIO27 / VBUS）时：4G **不进 rest**、拒绝 T31x `AT+HOSTIDLE
 | `enabled` | true | 总开关；false 时回退首条 AT / 直接 GPIO 断电 |
 | `graceful_poweroff` | true | `t31x_ctrl.enterSleep` 前先 `AT+IPCPOWEROFF` |
 | `poweroff_play_sound` | true | true→`=1` 播音，false→`=0` |
-| `poweroff_timeout_ms` | 30000 | 等待 `+IPCPOWEROFF:OK`（封盘可 >15s） |
+| `poweroff_timeout_ms` | 90000 | 等待 `+IPCPOWEROFF:OK`（分级停可 >15s） |
 | `status_query_timeout_ms` | 2000 | 单次 `AT+IPCSTATUS?` 超时（无应答视为 idle） |
 | `ready_wait_timeout_ms` | 120000 | 上电后轮询 ready 总超时 |
 | `ready_poll_ms` | 1000 | ready 轮询间隔 |
