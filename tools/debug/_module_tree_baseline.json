@@ -1,9 +1,9 @@
 {
   "date": "2026-09-05",
   "user": {
-    "app.lua": 1023,
+    "app.lua": 685,
     "battery.lua": 106,
-    "battery_guard.lua": 391,
+    "battery_guard.lua": 532,
     "cellular.lua": 25,
     "config.lua": 30,
     "events.lua": 49,
@@ -26,15 +26,15 @@
     "hif_ipc_rec.lua": 189,
     "hif_ipc_tffmt.lua": 164,
     "hif_rx.lua": 69,
-    "hif_rx_dsl.lua": 547,
+    "hif_rx_dsl.lua": 548,
     "hif_rx_media.lua": 275,
-    "host.lua": 117,
+    "host.lua": 120,
     "host_event.lua": 158,
     "host_uart.lua": 803,
     "ipc_supv.lua": 188,
     "led_pir.lua": 68,
     "lp_wakeup.lua": 116,
-    "main.lua": 172,
+    "main.lua": 171,
     "mqtt_conn.lua": 347,
     "mqtt_dispatch.lua": 110,
     "mqtt_dl_ctrl.lua": 216,
@@ -47,46 +47,50 @@
     "mqtt_ul_pir.lua": 191,
     "mqtt_ul_upload.lua": 151,
     "mqtt_uplink.lua": 537,
-    "net.lua": 83,
+    "net.lua": 84,
     "net_mqtt.lua": 677,
     "net_tcp.lua": 35,
     "peripheral.lua": 178,
+    "pir_app_bridge.lua": 169,
     "pir_ctrl.lua": 725,
     "sound_prompt.lua": 132,
     "svc.lua": 31,
     "t31x_burn.lua": 19,
-    "t31x_ctrl.lua": 383,
+    "t31x_burn_ctrl.lua": 212,
+    "t31x_ctrl.lua": 384,
     "t31x_notify.lua": 87,
     "t31x_policy.lua": 129,
     "time_sync.lua": 219,
-    "vbat.lua": 250
+    "vbat.lua": 237
   },
   "lib": {
-    "cell_boot.lua": 373,
+    "adc_hal.lua": 80,
+    "cell_boot.lua": 362,
     "config_manager.lua": 83,
     "device_id.lua": 39,
-    "gpio_util.lua": 63,
-    "led_ctrl.lua": 225,
+    "gpio_util.lua": 71,
+    "led_ctrl.lua": 226,
     "libfota2.lua": 180,
     "module_loader.lua": 59,
-    "runtime_power.lua": 276,
+    "power_hal.lua": 87,
+    "runtime_power.lua": 315,
     "sys.lua": 394,
     "uart_bridge.lua": 109,
-    "usb_charge.lua": 131,
-    "usb_rndis.lua": 311,
+    "usb_charge.lua": 144,
+    "usb_rndis.lua": 295,
     "usb_vuart.lua": 103,
     "utils.lua": 186,
     "watchdog.lua": 100
   },
   "totals": {
     "user": {
-      "files": 59,
-      "lines": 13962
+      "files": 61,
+      "lines": 14138
     },
     "lib": {
-      "files": 15,
-      "lines": 2632
+      "files": 17,
+      "lines": 2833
     },
-    "all": 16594
+    "all": 16971
   }
 }

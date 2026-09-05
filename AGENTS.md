@@ -1,9 +1,10 @@
 # AGENTS.md — 架构决策与 Agent 工作指南
 
 > 本文件供 **Cursor Agent / Cloud Agent / 子代理** 在改 `user/`、`lib/`、`tools/debug/` 前快速对齐架构口径。  
-> **规则真源**（机器强制）：`.cursor/rules/*.mdc` + `python3 tools/debug/run_all_checks.py`（13 项）。  
+> **规则真源**（机器强制）：`.cursor/rules/*.mdc` + `python3 tools/debug/run_all_checks.py`（14 项）。  
 > **决策流水**（按日）：`doc/overview/USER_LIB_OPTIMIZATION_NEXT.md` §8。  
-> **体检与优先级**：`docs/architecture_audit.md`、`docs/refactor_plan.md`。
+> **体检与优先级**：`docs/architecture_audit.md`、`docs/refactor_plan.md`。  
+> **逐层重构**：`docs/layer_refactor_plan.md`（L0 完成 → L1 进行中）。
 
 ---
 
@@ -26,7 +27,7 @@
 
 | 层 | 落点 | 职责 |
 |---|---|---|
-| **L0 HAL 驱动** | LuatOS 内核库 + `lib/uart_bridge`、`gpio_util`、`led_ctrl`、`usb_*`、`watchdog`、`cell_boot` | **全仓库唯一**允许 `uart.setup` / `gpio.setup` / `wdt.*` / `adc.*` 等寄存器级调用 |
+| **L0 硬件访问** | **HAL**：`power_hal`、`adc_hal`、`gpio_util`、`watchdog`；**Driver**：`uart_bridge`、`usb_charge`、`usb_vuart`；硬件相关服务：`led_ctrl`、`cell_boot`、`usb_rndis` | `lib/` 是**全仓库唯一**允许 `pm.*/pmd.*/adc.*`/`uart.setup`/`gpio.setup` 等直接硬件调用的边界；并非所有硬件相关模块都是 HAL，`user/` 零直调（`_hal_layer_check` #14） |
 | **L1 平台抽象** | `lib/utils`、`runtime_power`、`config_manager`、`module_loader`、`device_id`；config 域（`user/config.lua` + 10 片段）；vendor：`sys.lua`、`libfota2.lua` | 与业务无关的平台能力；`APP_RUNTIME` **只**经 `runtime_power` 读写 |
 | **L2 业务逻辑** | `user/` 除 app/config 外全部（含基础设施 `svc`、`t31x_ctrl`、`host_uart`+`hif_*`、`net_mqtt`+`mqtt_*`、`pir_ctrl` …） | 协议、状态机、策略 |
 | **L3 应用** | `main.lua`、`user/app.lua` | 装配、事件桥接、**provider 注入**；不放业务算法 |
@@ -94,7 +95,7 @@
 | 范围 | 真源 | 示例 |
 |---|---|---|
 | 同族 | 主文件 `TMO_SHARED` → `ctx.TMO_SHARED` | `acquireCapMs`、`cloudStatQueryMs` |
-| 跨族 | config 片段 `user/host.lua` → `_G.HOST_PROTO_TMO`（F 条） | `ipcstat_query_ms=2500`、`record_stop_ms=22000` |
+| 跨族 | config 片段 `user/host.lua` → `_G.HOST_PROTO_TMO`（F/L2 条） | 六键：`ipcstat_query_ms`(2500)、`record_stop_ms`(22000)、`qry_default_ms`(3000)、`record_query_ms`(3500)、`t31x_power_wait_ms`(800) |
 | 配置 | `_G.*_CFG` + `cfgm.get("KEY")` | `_config_key_check.py` + `CONFIG.md` 索引 |
 
 ### 4.5 业务层不拼 AT 文本（H 条）
@@ -121,22 +122,34 @@
 
 ---
 
-## 6. 业务层硬件调用基线例外（只许收缩）
+## 6. 业务层硬件调用（L0 已收敛，2026-09-05）
 
-`user/` 禁止直接 `uart.*` / `gpio.setup` / `adc.*` / `pm.*` / `pmd.*` 等；以下 **10 处**为已登记例外（2026-09-05），新增即违规：
+**决策 ADR-L0-01**：`user/` **零** HAL 直调；全部经 L0 封装：
 
-```
-user/t31x_ctrl.lua       pm.hibernate
-user/battery_guard.lua   pm.shutdown
-user/app.lua             pm.shutdown / pm.reboot / pmd.init / gpio.get
-user/main.lua            pm.power
-user/peripheral.lua      gpio.get
-user/vbat.lua            adc.open / adc.close
-```
+| HAL 模块 | API |
+|---|---|
+| `lib/power_hal.lua` | `shutdown` / `reboot` / `hibernate` / `initPwkMode` / `initPmd` / `prepareUsbRndis` / `cycleUsbPower` |
+| `lib/adc_hal.lua` | `configure` / `open` / `close` / `readMv` |
+| `lib/gpio_util.lua` | `getLevel`（+ `setupInput` / `setupOutput`） |
 
-巡检：`rg -n "\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\(" user/*.lua`
+**机器护栏**：`tools/debug/_hal_layer_check.py`（`run_all_checks` #14）— user/ 零容忍；lib/ 仅白名单 12 文件。
 
-收敛方向：`pm.*` → `runtime_power` 或新 `lib/power_hal`；`adc.*` → `lib/` 封装。
+> 命名准则：仅“某类 LuatOS API 的薄封装”使用 `*_hal`；含引脚/中断或端口协议的模块使用领域名（Driver），含网络、事件或状态机编排的模块使用领域服务名。稳定模块名同时是 Luatools 打包、`require`/`loader` 和文档引用的契约，禁止仅为统一后缀重命名。
+
+**巡检**（应无输出）：`rg -n "\b(uart|gpio|adc|wdt|pm|pmd|i2c|spi|pwm)\.[a-zA-Z_]+\s*\(" user/*.lua`
+
+逐层计划 → [`docs/layer_refactor_plan.md`](docs/layer_refactor_plan.md)（**L0+L1 完成**；L2 下一步：`patchCloud(keepTs)` / 跨族常量 / `vbat→adc_hal` 收口）。
+
+### L1 设备 power 单入口（ADR-L1-01，2026-09-05）
+
+| API | 用途 |
+|---|---|
+| `requestDeviceShutdown()` | 4G 关机（`pm.shutdown`） |
+| `requestDeviceReboot(delayMs)` | 4G 重启 |
+| `requestModemHibernate()` | _modem_ hibernate 路径（T31x sleep 时 `opts.modemHibernate`） |
+| `initPwkMode()` / `initPmd(onMsg)` | 冷启动 / 充电消息 |
+
+`user/` 禁止 `require "power_hal"`（`_hal_layer_check`）；与 PSM `requestRest/requestNormal` 正交。
 
 ---
 
@@ -146,7 +159,7 @@ user/vbat.lua            adc.open / adc.close
 # 1. 语法
 for f in user/*.lua lib/*.lua; do luac5.3 -p "$f" || exit 1; done
 
-# 2. 13 项静态护栏（必须 ALL PASS）
+# 2. 14 项静态护栏（必须 ALL PASS）
 python3 tools/debug/run_all_checks.py
 
 # 3. 分层与环
@@ -204,6 +217,7 @@ python3 tools/debug/_dep_graph.py --scc    # 硬环必须 0
 | MQTT 协议 | `doc/mqtt/MQTT_DOWNLINK.md`、`MQTT_PROTOCOL.md` |
 | 配置键索引 | `doc/overview/CONFIG.md`（`_config_key_check.py --write-doc` 生成） |
 | 重构计划 | `docs/refactor_plan.md` |
+| 逐层重构 | `docs/layer_refactor_plan.md`（L0→L3） |
 | 架构体检 | `docs/architecture_audit.md`（含附二 A–I 处置表） |
 | 工具链 | `doc/manual/MANUAL_V7_TOOLCHAIN.md` |
 | Cursor 规则 | `.cursor/rules/arch-layering.mdc`、`air780ehm-source.mdc`、`refactor-hard-constraints.mdc` |

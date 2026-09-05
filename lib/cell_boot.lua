@@ -17,7 +17,6 @@ _G[_modname] = _M
 local started = false
 local apnApplied = false
 local cellInfoRefreshActive = false
-local servingCache = { op = nil, name = nil }
 
 local CELL_INFO_REQ_SEC = 15
 local CELL_INFO_REFRESH_MS = 60000
@@ -27,8 +26,6 @@ local lastState = {
     operator_name = "未知",
     apn = "",
     sim_present = nil,
-    ip = nil,
-    ip_ready = false,
 }
 
 local OPERATOR_NAMES = {
@@ -176,12 +173,7 @@ local function refServing()
     if not mobile or not mobile.getCellInfo then return nil, nil end
     local ok, cells = pcall(mobile.getCellInfo)
     if not ok then return nil, nil end
-    local op, name = parseServing(cells)
-    if op then
-        servingCache.op = op
-        servingCache.name = name
-    end
-    return op, name
+    return parseServing(cells)
 end
 
 local function reqCellInfo(timeoutSec)
@@ -324,8 +316,6 @@ function waitForNetwork()
     for attempt = 1, maxAttempts do
         local ip = utils.waitLocalIp(timeoutMs)
         if ip then
-            lastState.ip = ip
-            lastState.ip_ready = true
             lastState.apn = readApn()
             syncRt()
             return true, ip
@@ -344,7 +334,6 @@ function waitForNetwork()
             applyApnForSim()
         end
     end
-    lastState.ip_ready = false
     syncRt()
     return false, nil
 end

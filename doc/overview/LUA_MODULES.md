@@ -1,7 +1,7 @@
 # Lua 模块逻辑分析
 
-> **代码真源**：`user/*.lua`（**58**）+ `lib/*.lua`（**15**）= **73** 个模块（2026-09-03 实测）
-> **总行数**：`user/` 13 579 + `lib/` 2 533 = 16 112
+> **代码真源**：`user/*.lua`（**61**）+ `lib/*.lua`（**17**）= **78** 个模块（2026-09-05 实测）
+> **总行数**：`user/` 14 138 + `lib/` 2 833 = 16 971
 > **拆分后治理**：[USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md](USER_LIB_FRAMEWORK_OPTIMIZATION_PLAN.md)
 > **配置真源**：[`user/config.lua`](../../user/config.lua)（+ 10 个 config 片段，见 §1.1）
 > **启动顺序**：[`CODE_DOC_AUDIT.md`](CODE_DOC_AUDIT.md) §3 · 调用图 [`CALL_GRAPH.md`](CALL_GRAPH.md)
@@ -35,7 +35,7 @@ main.lua
 
 ---
 
-## 1.1 模块树（2026-09-04 实测真源，user 59 + lib 15 = 74）
+## 1.1 模块树（2026-09-05 实测真源，user 61 + lib 17 = 78）
 
 > 行数可用 `python tools/debug/_module_tree.py` 刷新。协议 handler **禁止**子模块 `require "host_uart"` / `require "net_mqtt"`。
 > 文件都在 `user/` / `lib/` 顶层；文件名即模块名，**无子目录**（旧头注释中的 `config/xxx` 仅表示片段归属）。
@@ -127,27 +127,40 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 
 > `t31x_policy` / `t31x_notify` / `host_event` / `lp_wakeup` 位于 **user/**（文档早期曾归 lib/，已修正）。
 
-### lib/ 模块（15 文件，策略/底层/常驻库）
+### lib/ 模块（17 文件，策略/底层/常驻库）
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `sys.lua` | 394 | LuatOS 协程调度核心（wait/run/publish/subscribe/定时器） |
-| `cell_boot.lua` | 373 | 蜂窝引导：SIM/APN、`IP_READY`、运营商映射 |
-| `usb_rndis.lua` | 311 | USB 网卡 tethering、IP_READY 刷新 |
-| `led_ctrl.lua` | 225 | 蓝/红 LED 模式状态机 |
-| `utils.lua` | 185 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
-| `runtime_power.lua` | 193 | 工作模式 + USB/充电/电量/在线访问器（`APP_RUNTIME` 唯一入口） |
-| `libfota2.lua` | 180 | FOTA 下载引擎（差分协议/断点续传） |
-| `usb_charge.lua` | 131 | GPIO27/CHG_STATE 中断 → `GPIO_USB_DET_CHANGED` |
+| `sys.lua` | 394 | LuatOS 协程调度核心（**vendor**，R5 sha256 锁） |
+| `cell_boot.lua` | 362 | 蜂窝引导：SIM/APN、`IP_READY`、运营商映射 |
+| `runtime_power.lua` | 315 | `APP_RUNTIME` 唯一入口 + PSM（`requestRest/Normal`）+ **L1 设备 power**（`requestDeviceShutdown/Reboot/ModemHibernate/initPwkMode/initPmd`→`power_hal`） |
+| `usb_rndis.lua` | 295 | USB 网卡 tethering、IP_READY 刷新（pm 经 `power_hal.prepareUsbRndis`/`cycleUsbPower`） |
+| `led_ctrl.lua` | 226 | 蓝/红 LED 模式状态机 |
+| `utils.lua` | 186 | JSON/表/字符串通用 helper（P1b 起不再含跨域懒加载桥） |
+| `libfota2.lua` | 180 | FOTA 下载引擎（**vendor**，R5 sha256 锁） |
+| `usb_charge.lua` | 144 | GPIO27/CHG_STATE 中断 → `GPIO_USB_DET_CHANGED` |
 | `uart_bridge.lua` | 109 | 唯一 `uart.setup`；行/原始 RX 回调 |
 | `usb_vuart.lua` | 103 | USB 虚拟串口、VCOM、透传 |
-| `watchdog.lua` | 94 | 硬件 WDT 初始化与喂狗 |
+| `watchdog.lua` | 100 | 硬件 WDT 初始化与喂狗 |
+| `power_hal.lua` | 87 | **L0 HAL** — 全仓库唯一 `pm.*/pmd.*` 封装（shutdown/reboot/hibernate/initPwkMode/initPmd/prepareUsbRndis/cycleUsbPower） |
 | `module_loader.lua` | 59 | 懒加载/裁剪/stopAll（`MODULE_FLAGS` 驱动） |
 | `config_manager.lua` | 69 | 配置访问（默认值合并、热更新、持久化） |
-| `gpio_util.lua` | 59 | `GPIO_IN/OUT` → `gpio.setup` |
+| `adc_hal.lua` | 80 | **L0 HAL** — 全仓库唯一 `adc.*` 封装（vbat 采样） |
+| `gpio_util.lua` | 68 | `GPIO_IN/OUT` → `gpio.setup`；`getLevel` 读电平 |
 | `device_id.lua` | 37 | IMEI / deviceNo |
 
 > 旧名对照：`cellular_bootstrap`→`cell_boot`；`low_power_wakeup`→`user/lp_wakeup`；`usb_policy`/`usb_host_evt` 等已并入 `usb_charge`/config 片段。
+
+#### 硬件相关 lib 命名
+
+| 分类 | 模块 | 命名原则 |
+|------|------|------|
+| HAL | `power_hal`、`adc_hal`、`gpio_util`、`watchdog` | 直封装一种 LuatOS 硬件 API；`gpio_util`/`watchdog` 因稳定调用契约保留历史文件名 |
+| Driver | `uart_bridge`、`usb_charge`、`usb_vuart` | 管理端口、引脚或中断等设备资源；不强制使用 `*_hal` |
+| 硬件相关 Service | `led_ctrl`、`cell_boot`、`usb_rndis` | 含事件、网络、状态机或产品策略，不是薄硬件抽象 |
+| Vendor | `sys`、`libfota2` | 原厂锁定文件，文件名与内容均不可改 |
+
+文件名同时被 `require`、`loader`、Luatools 静态扫描和文档引用使用；不为统一后缀而改名。主机 UART 由 `uart_bridge` 管理，`usb_vuart` 只管理独立 VUART 口。
 
 ---
 
@@ -388,7 +401,7 @@ bootPowerOn → t31x_ctrl.powerOn（经 mayPowerT31x("boot")）
 | 模块 | 职责 |
 |------|------|
 | `usb_charge` | GPIO27/CHG_STATE 中断；发布 `GPIO_USB_DET_CHANGED` |
-| `usb_rndis` | USB 网卡 tethering、IP_READY 刷新（见 [USB_RNDIS_FLOW.md](../modules/USB_RNDIS_FLOW.md)） |
+| `usb_rndis` | USB 网卡 tethering、IP_READY 刷新；`pm.*` 经 `power_hal`（见 [USB_RNDIS_FLOW.md](../modules/USB_RNDIS_FLOW.md)） |
 | `usb_vuart` | USB 虚拟串口、VCOM、透传（见 [USB_RNDIS_FLOW.md](../modules/USB_RNDIS_FLOW.md)） |
 
 > `usb_policy` 旧文件已并入 `usb_charge` 与 config 片段，无独立模块。
@@ -425,7 +438,7 @@ SIM/APN 探测、`IP_READY` 等待、运营商映射。`main` 与 `net_mqtt` 共
 | 模块 | 行数 | 职责 |
 |------|------|------|
 | `sys` | 394 | LuatOS 调度核心（**vendor**，勿动；R5 sha256 锁） |
-| `runtime_power` | 193 | `APP_RUNTIME` 嵌套表**唯一读写入口**（访问器收口） |
+| `runtime_power` | 210 | `APP_RUNTIME` 嵌套表**唯一读写入口** + PSM + L1 设备 power（见 LOW_POWER_WAKEUP §PSM） |
 | `config_manager` | 69 | `cfgm.get/merge/set` 配置访问 |
 | `module_loader` | 59 | `load/opt/start/stopAll/enabled`（`MODULE_FLAGS` 裁剪） |
 | `libfota2` | 180 | 差分 OTA 下载引擎（**vendor**，勿动；R5 sha256 锁） |

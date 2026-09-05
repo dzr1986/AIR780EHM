@@ -60,7 +60,7 @@ end
 
 local function ensT31xPower(extra)
     return svc.t31xOn("sound_prompt", extra, {
-        t31xPowerWaitMs = tonumber(soundCfg().t31x_power_wait_ms) or 800,
+        t31xPowerWaitMs = tonumber(soundCfg().t31x_power_wait_ms) or _G.HOST_PROTO_TMO.t31x_power_wait_ms,
     })
 end
 

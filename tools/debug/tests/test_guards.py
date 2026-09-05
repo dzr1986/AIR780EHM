@@ -156,6 +156,18 @@ class GuardSandbox(unittest.TestCase):
         self.assertIn("zzLateOwner", out)
         self.assertIn("先用后声明", out)
 
+    def test_hal_layer_flags_user_pm_call(self):
+        self.inject("hal_bad.lua", "zz_hal_bad.lua")
+        rc, out = _run(self.tmp, "_hal_layer_check.py")
+        self.assertEqual(rc, 1)
+        self.assertIn("pm.shutdown", out)
+
+    def test_hal_layer_flags_user_require_power_hal(self):
+        self.inject("hal_require_power_bad.lua", "zz_hal_req.lua")
+        rc, out = _run(self.tmp, "_hal_layer_check.py")
+        self.assertEqual(rc, 1)
+        self.assertIn("require power_hal", out)
+
     def test_ref_name_flags_live_bad_require(self):
         self.inject("ref_name_live_bad.lua", "zz_ref_bad.lua")
         rc, out = _run(self.tmp, "_ref_name_check.py")

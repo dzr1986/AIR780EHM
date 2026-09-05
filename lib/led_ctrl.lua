@@ -69,12 +69,13 @@ local function blinkBlue(light, dark)
 end
 
 local function runtimeSnapshot()
+    local usbSt = rntmPwr.getUsbChargeState()
     return {
         battery_percent = rntmPwr.getBatteryPercent(),
         online_status = rntmPwr.isOnline() and 1 or 0,
         mqtt_enabled = loader.enabled("mqtt"),
-        usb_inserted = rntmPwr.isUsbInserted(),
-        charging = rntmPwr.isCharging(),
+        usb_inserted = usbSt.usb_inserted,
+        charging = usbSt.charging,
     }
 end
 
@@ -136,7 +137,7 @@ local function setupBlue(gout, pinNum)
         end
         return
     end
-    raw = gpio.setup(pinNum, 1)
+    raw = gpio_util.setupOutput({ pin = pinNum, init_level = 1 })
     bluePin = function(logical) raw(logical == 1 and 0 or 1) end
 end
 

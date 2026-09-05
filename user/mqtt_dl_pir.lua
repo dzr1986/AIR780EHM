@@ -29,8 +29,8 @@ function bind(C, shared)
 
     local TIMEOUT = {
         cloudRefresh = C.TMO_SHARED.ipcStatRefreshMs,
-        recordQuery = 3500,
-        recordIdleCheck = 3000,
+        recordQuery = _G.HOST_PROTO_TMO.record_query_ms,
+        recordIdleCheck = _G.HOST_PROTO_TMO.qry_default_ms,
         recordStart = 10000,
         defaultMaxSec = 90,
         stopDefault = _G.HOST_PROTO_TMO.record_stop_ms, -- 与 hif_ipc_hostq recOff 同源（F 条）

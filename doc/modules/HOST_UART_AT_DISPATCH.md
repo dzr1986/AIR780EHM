@@ -274,7 +274,7 @@ host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（�
 
 规则：**同一语义只在 `TMO_SHARED` 定义一次**；子模块本地表只留模块特有值（`tffmt.formatMs=120000`、`hostq.recOff=22000`、`power.readyDefaultMs` 等）。子模块头部写 `local TMO_SHARED = C.TMO_SHARED`，并在 `tools/debug/bind_header_specs.json` 对应 `c` 列表登记（`_gen_bind_header --check-all` 守护）。
 
-**跨族单源（架构 F 条，2026-09-05）**：config 片段 `user/host.lua` 新增 `_G.HOST_PROTO_TMO = { ipcstat_query_ms = 2500, record_stop_ms = 22000 }`。`host_uart.TMO_SHARED.cloudStatQueryMs` / `net_mqtt.TMO_SHARED.ipcStatRefreshMs` 同引 `ipcstat_query_ms`；`hif_ipc_hostq.TMO.recOff` / `mqtt_dl_pir.TIMEOUT.stopDefault` 同引 `record_stop_ms`。放在 config 域而非任一族 ctx，是因为两族互不 require（不能为一个常量引入 net_mqtt → host_uart 边）；`_config_key_check` 已把 `HOST_PROTO_TMO` 纳入 CONFIG.md 键索引（40 键）。
+**跨族单源（架构 F/L2 条，2026-09-05）**：config 片段 `user/host.lua` `_G.HOST_PROTO_TMO` 六键：`ipcstat_query_ms`(2500)、`record_stop_ms`(22000)、`qry_default_ms`(3000)、`record_query_ms`(3500)、`t31x_power_wait_ms`(800)。host_uart `TMO_SHARED`、cloud/power/hostq、mqtt_dl_pir、time_sync/sound_prompt 缺省均引用此表。
 
 **未并入（同值但语义待定）**：`hif_ipc_hostq.TMO.rec = 3000`（录像查询）与 `qryDefaultMs` 同值，是否同义待定。
 

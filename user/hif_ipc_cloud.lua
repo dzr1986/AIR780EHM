@@ -31,10 +31,10 @@ function bind(C, H)
 
     local TMO_SHARED = C.TMO_SHARED
     local TIMEOUT = {
-        gb28181Query = 3000,
+        gb28181Query = _G.HOST_PROTO_TMO.qry_default_ms,
         cloudStatQuery = TMO_SHARED.cloudStatQueryMs,
         statusRefreshCap = 1500,
-        recordReconcile = 3500,
+        recordReconcile = _G.HOST_PROTO_TMO.record_query_ms,
         cacheMaxAgeDefault = 90,
     }
 

@@ -32,6 +32,7 @@ _G.MQTT_CFG = {
     ip_lose_cooldown_sec = 5,         -- IP_LOSE 后冷却，避免刚恢复就 connect=-1
     ip_ready_settle_ms = 2000,        -- IP_READY 后再等承载稳定
     golden_tap = false,               -- true：每次 publish 后打 MQTT_GOLDEN 行供 _uplink_golden_capture 采黄金样本（调试用）
+    boot_net_wait_ms = 300000,        -- 冷启动 bootMqtt 等 RNDIS stable / net_ready 上限（app.bootMqtt）
 }
 -- FOTA 拉包地址唯一来源（其它 lua 禁止硬编码；经 resFotaUrl 读取）
 local FOTA_URL_PANSHI = "http://112.86.146.219:18080/api/site/firmware_upgrade?"

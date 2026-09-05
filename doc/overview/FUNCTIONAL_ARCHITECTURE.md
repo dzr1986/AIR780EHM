@@ -4,9 +4,39 @@
 > - 既有文档回答"**代码按什么层放**"（基础设施 vs 业务）。
 > - 本文档回答"**功能按什么域组织**"，并给出**拆分/合并清单**与**架构选型建议**（用户当前诉求）。
 >
-> **基线（2026-09-04 实测真源）**：`lib/` 15 + `user/` 59 = **74 个 `.lua` 模块**（P1b +`svc`）（另有 2 个 json），16 112 行。
+> **基线（2026-09-05 实测真源）**：`user/` 61 + `lib/` 17 = **78 个 `.lua` 模块**，共 16 971 行。
 > 入口 `main.lua` → `config`→`module_loader` → `app.start(peripheral, net_mqtt, t31x_ctrl)` → `sys.run()` 事件主循环。
-> 版本 `001.000.161`。本图以下覆盖 74 模块的**功能分层**（与 [LUA_MODULES.md](LUA_MODULES.md) 模块树、[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 系统视图互补）。
+> 版本 `001.000.161`。本图以下覆盖 78 模块的**功能分层**（与 [LUA_MODULES.md](LUA_MODULES.md) 模块树、[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) 系统视图互补）。
+
+---
+
+## 0. 当前功能架构卡片（2026-09-05）
+
+当前代码按功能可归为 12 个领域；领域之间只通过导出接口、`ctx` bind/provider 或 `APP_EVENTS` 协作，不以跨层读写局部状态耦合。
+
+| # | 功能领域 | 核心职责 | 主要模块 |
+|---|---|---|---|
+| 1 | 启动与装配 | 配置加载、可选服务启动、事件桥与依赖注入 | `main`、`app`、`config` |
+| 2 | 硬件访问与驱动 | UART、GPIO、ADC、电源、WDT、充电检测、VUART | `power_hal`、`adc_hal`、`gpio_util`、`uart_bridge`、`watchdog`、`usb_charge`、`usb_vuart` |
+| 3 | 平台运行时 | 配置、运行态、懒加载、通用工具、设备标识与调度 | `runtime_power`、`config_manager`、`module_loader`、`utils`、`device_id`、`sys` |
+| 4 | 电源与低功耗 | 电量采样、分档保护、rest/唤醒、USB/PWRKEY、关机重启 | `vbat`、`battery_guard`、`runtime_power`、`lp_wakeup` |
+| 5 | T31x 协处理器 | 上下电、唤醒、烧录态、IPC ready、通知与门禁 | `t31x_ctrl`、`t31x_policy`、`t31x_notify`、`t31x_burn_ctrl` |
+| 6 | 主机 UART / AT 协议 | 事务锁、AT 命令、URC、IPC 查询、格式化与编码控制 | `host_uart`、`hif_at`、`hif_cmd*`、`hif_rx*`、`hif_ipc*` |
+| 7 | MQTT 与云协议 | 连接、订阅、100x 上行、200x 下行、主机协议转发 | `net_mqtt`、`mqtt_conn`、`mqtt_uplink`、`mqtt_downlink`、`mqtt_dispatch`、`mqtt_hproto` |
+| 8 | 蜂窝网络 | SIM、运营商/APN、联网、IP_READY 与 RNDIS | `cell_boot`、`usb_rndis` |
+| 9 | PIR 与媒体 | PIR 触发、录像会话、停录、上传、PIR→MQTT/T31x 桥 | `pir_ctrl`、`pir_app_bridge`、`mqtt_ul_pir`、`mqtt_dl_pir` |
+| 10 | USB 功能 | 插拔、充电状态、RNDIS 网卡、VUART 维护通道 | `usb_charge`、`usb_rndis`、`usb_vuart`、`battery_guard` |
+| 11 | OTA / FOTA | 云端升级指令、进度上报、原厂下载引擎 | `fota_svc`、`libfota2` |
+| 12 | 外设与用户反馈 | LED 状态、声音提示、时间同步、TCP 唤醒通道 | `led_ctrl`、`peripheral`、`sound_prompt`、`time_sync`、`net_tcp` |
+
+```text
+L3  main / app                 启动、装配、事件桥、provider 注入
+L2  user/ 业务与协议           MQTT、AT、PIR、电池、T31x、FOTA
+L1  lib/ 平台能力              配置、运行态、加载、通用工具、身份
+L0  lib/ 硬件访问              HAL、Driver、硬件相关 Service
+```
+
+持续重点关注四个交叉领域：**电源/低功耗**、**T31x UART/IPC**、**MQTT 下行控制**、**USB/RNDIS 与电池策略**。它们横跨最多事件与状态边界，修改时必须跑全量护栏并按专题做实机回归。
 
 ---
 

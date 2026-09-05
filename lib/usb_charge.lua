@@ -18,9 +18,11 @@ local usbDetReady = false
 local lastUsb = nil
 local lastCharging = nil
 local cancelPressHook
+local cachedGpioIn = nil
+local readChargingPin
 
 local function gpioIn()
-    return cfgm.get("GPIO_IN")
+    return cachedGpioIn or cfgm.get("GPIO_IN")
 end
 
 local function activeLevel(entry, default)
@@ -32,8 +34,10 @@ end
 
 local function pinActive(entry, activeDefault)
     local pin = entry and entry.pin
-    if pin == nil or not gpio or not gpio.get then return false end
-    return gpio.get(pin) == activeLevel(entry, activeDefault)
+    if pin == nil then
+        return false
+    end
+    return gpio_util.getLevel(pin) == activeLevel(entry, activeDefault)
 end
 
 local function ensUsbDetPin()
@@ -55,8 +59,16 @@ function isUsbInserted()
     return (usbDetReady or ensUsbDetPin()) and pinActive(gpioIn().usb_det, 0)
 end
 
-local function readChargingPin()
+readChargingPin = function()
     return pinActive(gpioIn().chg_state, 1)
+end
+
+function snapshot()
+    local usb = isUsbInserted()
+    return {
+        usb_inserted = usb,
+        charging = (usb and readChargingPin()) and 1 or 0,
+    }
 end
 
 local function effectiveCharging()
@@ -68,10 +80,10 @@ local function pubUsbChange(inserted, fromIrq)
     lastUsb = inserted
     if inserted and fromIrq and cancelPressHook then cancelPressHook() end
     sys.publish(APP_EVENTS.GPIO_USB_DET_CHANGED, inserted and 1 or 0)
-    updateCharging(effectiveCharging(), fromIrq)
+    updateCharging(effectiveCharging())
 end
 
-updateCharging = function(charging, fromIrq)
+updateCharging = function(charging)
     if lastCharging == charging then return end
     lastCharging = charging
     sys.publish(APP_EVENTS.GPIO_CHG_STATE_CHANGED, charging and 1 or 0)
@@ -82,11 +94,12 @@ local function onUsbIrq(_level)
 end
 
 local function onChgIrq(_level)
-    updateCharging(effectiveCharging(), true)
+    updateCharging(effectiveCharging())
 end
 
 function start()
     if started then return true end
+    cachedGpioIn = cfgm.get("GPIO_IN")
     local gin = gpioIn()
     if (usbDetReady or ensUsbDetPin())
         and gpio_util.setupInputEntry(gin.usb_det, onUsbIrq)
@@ -104,7 +117,7 @@ function onUsbInsert(cb)
 end
 
 function isCharging()
-    return effectiveCharging() and 1 or 0
+    return snapshot().charging == 1
 end
 
 local function usbPolicyActive(cfgKey)

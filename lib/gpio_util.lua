@@ -60,4 +60,12 @@ function setupOutput(entry)
     return gpio.setup(entry.pin, lvl)
 end
 
+-- 读引脚电平（L0 HAL：user 层禁止直调 gpio.get，统一经此入口）
+function getLevel(pin)
+    if pin == nil or not gpio or not gpio.get then
+        return nil
+    end
+    return gpio.get(pin)
+end
+
 return _M

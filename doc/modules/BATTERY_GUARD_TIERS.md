@@ -1,6 +1,7 @@
 # battery_guard 电量分档策略
 
 > **代码真源**：[`user/battery_guard.lua`](../../user/battery_guard.lua) · [`user/config.lua`](../../user/config.lua)  
+> **USB 边沿**：同模块 `applyUsbPower` / `onGpioUsbDetChanged` / `onPmdMessage`（见 [USB_CHARGE_POLICY.md](USB_CHARGE_POLICY.md) §4）  
 > **关联**：[POWER_USB_BATTERY_T31X_LOGIC.md](../power/POWER_USB_BATTERY_T31X_LOGIC.md) · [LOW_POWER_ENTER_STRATEGY.md](../power/LOW_POWER_ENTER_STRATEGY.md)
 
 ---

@@ -76,7 +76,7 @@ end
 
 local function ensT31xPower(extra)
     return svc.t31xOn("time_sync", extra, {
-        t31xPowerWaitMs = tonumber(timeCfg().t31x_power_wait_ms) or 800,
+        t31xPowerWaitMs = tonumber(timeCfg().t31x_power_wait_ms) or _G.HOST_PROTO_TMO.t31x_power_wait_ms,
     })
 end
 

@@ -1,7 +1,7 @@
 -- ================================================================
 -- Filename : battery_guard.lua
--- Module   : 电量分档策略：USB 优先 / 三档电量 / PIR 挂起 / 4G rest / 关机定时器 / HOSTIDLE 门禁
--- Arch     : doc/modules/BATTERY_GUARD_TIERS.md
+-- Module   : 电量分档 + USB/电源边沿：分档策略、rest 进/出、T31x +CAT1:USB、PWRKEY 宽限
+-- Arch     : doc/modules/BATTERY_GUARD_TIERS.md · doc/modules/USB_CHARGE_POLICY.md
 -- ================================================================
 
 require "sys"
@@ -12,9 +12,13 @@ local cfgm = require "config_manager"
 local rntmPwr = require "runtime_power"
 local t31xPolicy = require "t31x_policy"
 local pir_ctrl = require "pir_ctrl"
+local gpio_util = require "gpio_util"
+local host_uart = require "host_uart"
 local _modname = ...
 module(_modname, package.seeall)
 _G[_modname] = _M
+
+local E = APP_EVENTS
 
 local logFuncs = utils.mkLogFns("battery_guard")
 local bgInfo = logFuncs.info
@@ -37,6 +41,11 @@ local guard = {
     enter_confirm_streak = 0,
     exit_confirm_streak = 0,
     host_idle_wake_ts = 0,
+    usb_insert_tick = 0,
+}
+
+local TIMEOUT = {
+    bootUsbNotifyDefault = 1500,
 }
 
 local function guardCfg()
@@ -63,12 +72,35 @@ local function enabled()
         and loader.enabled("battery_guard")
 end
 
+function probeUsbInserted(opts)
+    opts = opts or {}
+    if opts.bootGpio and not loader.enabled("charge") then
+        return gpio and gpio.VBUS and gpio_util.getLevel(gpio.VBUS) == 1
+    end
+    return rntmPwr.isUsbInserted()
+end
+
 function isUsbInserted()
     if guardCfg().ignore_when_usb_inserted == false then
         return false
     end
-    return rntmPwr.getPowerStatus() == 1
-        or (type(hooks.isUsbInserted) == "function" and hooks.isUsbInserted())
+    return rntmPwr.getPowerStatus() == 1 or probeUsbInserted()
+end
+
+local function getUsbRndis()
+    return type(hooks.getUsbRndis) == "function" and hooks.getUsbRndis() or nil
+end
+
+local function getGpio()
+    return type(hooks.getGpio) == "function" and hooks.getGpio() or nil
+end
+
+local function isLowPowerFeatureOn()
+    return type(hooks.isLowPowerEnabled) == "function" and hooks.isLowPowerEnabled() == true
+end
+
+local function notifyT31xUsbIdle(inserted)
+    host_uart.pushUsbIdle(inserted == true or inserted == 1)
 end
 
 local function shutdownMv()
@@ -213,8 +245,8 @@ local function schedShutdown()
         bgWarn("shutdown_execute")
         if type(hooks.onPowerOff) == "function" then
             hooks.onPowerOff()
-        elseif pm and pm.shutdown then
-            pm.shutdown()
+        else
+            rntmPwr.requestDeviceShutdown()
         end
     end, delay)
 end
@@ -335,6 +367,110 @@ function onUsbRemove()
     evaluate(pct, guard.last_mv)
 end
 
+local function onUsbRemovedEnterRest(source)
+    if not isLowPowerFeatureOn() then
+        return
+    end
+    local usbRndis = getUsbRndis()
+    if usbRndis and usbRndis.isEnabled() then
+        return
+    end
+    if loader.enabled("battery_guard") then
+        onUsbRemove()
+    elseif not rntmPwr.isLowPowerMode() then
+        if type(hooks.onEnterLowPower) == "function" then
+            hooks.onEnterLowPower("usb_remove")
+        end
+    end
+end
+
+local function onUsbInsertedExitRest(source)
+    if loader.enabled("battery_guard") then
+        onUsbIns({ source = source })
+    elseif type(hooks.onExitLowPower) == "function" then
+        hooks.onExitLowPower("usb_insert")
+    end
+end
+
+function cancelPwrKeyLongPress()
+    local gpioModule = getGpio()
+    if gpioModule then
+        gpioModule.cancelLongPress("pwr")
+    end
+end
+
+function applyUsbPower(inserted, source)
+    local v = rntmPwr.setPowerStatus(inserted)
+    bgInfo("usb_state", v, tostring(source or ""))
+    sys.publish(E.GPIO_VBUS_CHANGED, v)
+    if v == 0 then
+        notifyT31xUsbIdle(false)
+        onUsbRemovedEnterRest(source)
+    else
+        guard.usb_insert_tick = utils.nowMs()
+        cancelPwrKeyLongPress()
+        onUsbInsertedExitRest(source)
+        notifyT31xUsbIdle(true)
+    end
+end
+
+function onPmdMessage(msg)
+    if not msg or loader.enabled("charge") then
+        return
+    end
+    if msg.state == 0 or msg.state == 1 then
+        applyUsbPower(msg.state == 1, "PMD")
+    else
+        local v = rntmPwr.setPowerStatus(msg.charger)
+        sys.publish(E.GPIO_VBUS_CHANGED, v)
+    end
+end
+
+function initBootPower()
+    local inserted = probeUsbInserted({ bootGpio = true })
+    if not inserted and not isLowPowerFeatureOn() then
+        rntmPwr.setPowerStatus(0)
+        sys.publish(E.GPIO_VBUS_CHANGED, 0)
+        return
+    end
+    if not loader.enabled("pmd_runtime") then
+        applyUsbPower(inserted, "boot")
+    else
+        local v = rntmPwr.setPowerStatus(inserted)
+        sys.publish(E.GPIO_VBUS_CHANGED, v)
+    end
+end
+
+function schedBootUsbNotify(defaultDelayMs)
+    local usbCfg = cfgm.get("HOST_USB_CFG")
+    if usbCfg.notify_t31x_usb_state == false then
+        return
+    end
+    local delayMs = tonumber(usbCfg.boot_notify_delay_ms)
+        or tonumber(cfgm.get("TIME_SYNC_CFG").hostBootWaitMs)
+        or tonumber(defaultDelayMs)
+        or TIMEOUT.bootUsbNotifyDefault
+    sys.timerStart(function()
+        notifyT31xUsbIdle(probeUsbInserted())
+    end, delayMs)
+end
+
+function onGpioUsbDetChanged(inserted)
+    applyUsbPower(inserted == 1, "GPIO27")
+end
+
+function onHostFirstAtSyncUsb()
+    notifyT31xUsbIdle(probeUsbInserted())
+end
+
+function shouldBlockPwrKeyLong()
+    if guard.usb_insert_tick <= 0 or not probeUsbInserted() then
+        return false
+    end
+    local elapsed = utils.nowMs() - guard.usb_insert_tick
+    return elapsed < (tonumber(cfgm.get("HOST_USB_CFG").pwrkey_grace_ms) or 5000)
+end
+
 function onBatUpd(pct, mv)
     local prev = guard.last_percent
     local prevMv = guard.last_mv
@@ -345,10 +481,15 @@ function onBatUpd(pct, mv)
 end
 
 function start(opts)
-    if started then return true end
-    started = true
     hooks = utils.optTable(opts)
-    bgInfo("start", tostring(strategy()))
+    if started then
+        return true
+    end
+    started = true
+    bgInfo("start", enabled() and tostring(strategy()) or "usb_policy")
+    if not enabled() then
+        return true
+    end
     local pct = rntmPwr.getBatteryPercent()
     local mv = rntmPwr.getBatteryMv()
     if pct or mv then

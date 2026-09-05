@@ -13,6 +13,9 @@ local T31X_POWER_WAIT_MS = 800   -- T31x 上电后供电稳定等待
 _G.HOST_PROTO_TMO = {
     ipcstat_query_ms = 2500,   -- AT+IPCSTAT? 单次超时 = MQTT 侧 refCloudStat 刷新等待（1003 前 / PIR 云状态）
     record_stop_ms = 22000,    -- AT+RECORD=0 停录等待（hostq recOff = dl_pir 2011 stopDefault；T31x 收尾写盘 + 封装）
+    qry_default_ms = 3000,     -- 通用 AT 查询默认（cloud gb28181 / power busyClear / hostq rec / dl_pir recordIdleCheck；与 TMO_SHARED.qryDefaultMs 同值）
+    record_query_ms = 3500,    -- AT+RECORD? / 录像对账（cloud reconcile / dl_pir recordQuery）
+    t31x_power_wait_ms = T31X_POWER_WAIT_MS, -- ensT31xHost 上电稳定（各 *_CFG.t31x_power_wait_ms 缺省）
 }
 
 -- ===== SOUND 提示音：冷启动/关机播放、超时、等待首条 AT =====
