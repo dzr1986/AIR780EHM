@@ -14,7 +14,7 @@
     "hif_at.lua": 87,
     "hif_cmd.lua": 385,
     "hif_cmd_link.lua": 231,
-    "hif_cmd_pir.lua": 131,
+    "hif_cmd_pir.lua": 132,
     "hif_cmd_t31x.lua": 222,
     "hif_cmd_usb.lua": 258,
     "hif_cmd_wled.lua": 182,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13871
+      "lines": 13872
     },
     "lib": {
       "files": 15,
       "lines": 2613
     },
-    "all": 16484
+    "all": 16485
   }
 }

@@ -12,6 +12,7 @@ function bind(C)
     local state = C.state
     local rspBody, rspLineOk = C.rspBody, C.rspLineOk
     local modCall = C.modCall
+    local bizCall = C.bizCall
     local getHostEvtPending = C.getHostEvtPending
 
     local DEFAULTS = {
@@ -60,9 +61,9 @@ function bind(C)
     ----------------------------------------------------------------
 
     local function collectPirWakeCtx()
-        local pirBody = modCall("pir_ctrl", "buildStatBody") or ""
+        local pirBody = bizCall("pirStatBody") or ""
         local wakeValid, wakeSid, wakeEvt = getHostEvtPending()
-        local sum = modCall("host_event", "summarize", pirBody, wakeValid, wakeSid, wakeEvt)
+        local sum = bizCall("hostEvtSummarize", pirBody, wakeValid, wakeSid, wakeEvt)
         return pirBody, wakeValid, wakeSid, wakeEvt, sum
     end
 
@@ -82,7 +83,7 @@ function bind(C)
         else
             body = body .. ",pending_wake=0"
         end
-        if sum and modCall("host_event", "isEnabled") then
+        if sum and bizCall("hostEvtEnabled") then
             body = body .. string.format(",has_work=%d,work_types=%s,work_pending=%s,work_sid=%d,work_evt=%d",
                 sum.has_event, sum.types, sum.pending, sum.sid or 0, sum.evt or -1)
         else
@@ -106,7 +107,7 @@ function bind(C)
     local function uartHostEvtClr(_cmd)
         state.pending_valid = false
         state.pending_evt = -1
-        modCall("pir_ctrl", "clearConsumableMarkers")
+        bizCall("pirClearMarkers")
         return rspBody("HOSTEVTCLR", "OK")
     end
 
@@ -115,7 +116,7 @@ function bind(C)
     end
 
     local function uartPirClr(_cmd)
-        modCall("pir_ctrl", "resetCounters")
+        bizCall("pirResetCounters")
         return rspLineOk("PIRCLR")
     end
     return {
