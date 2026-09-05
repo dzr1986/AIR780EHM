@@ -12,13 +12,13 @@ alwaysApply: true
 |---|---|---|
 | **L0 HAL 驱动层** | LuatOS 内核库（`uart`/`gpio`/`adc`/`pm`/`pmd`/`wdt`/`mcu`）+ `lib/` 驱动封装：`uart_bridge`、`gpio_util`、`led_ctrl`、`usb_charge`、`usb_rndis`、`usb_vuart`、`watchdog`、`cell_boot` | 全仓库**唯一**允许出现 `uart.setup`/`gpio.setup`/`wdt.*`/`adc.*` 等寄存器级调用的地方 |
 | **L1 平台抽象层** | `lib/` 常驻库：`utils`、`runtime_power`（`APP_RUNTIME` 唯一入口）、`config_manager`、`module_loader`、`device_id`；config 域：`user/config.lua` + 10 片段（`features/cellular/t31x_burn/gpio_cfg/led_pir/battery/host/net/flags/events`）；vendor：`sys.lua`、`libfota2.lua`（勿动，R5 sha256 锁） | 与业务无关、与硬件无关的平台能力 |
-| **L2 业务逻辑层** | `user/` 除 app/svc/config 域外的全部：AT 协议族 `host_uart` + `hif_*`、MQTT 族 `net_mqtt` + `mqtt_*`、`pir_ctrl`、`battery_guard`、`t31x_ctrl`/`t31x_policy`/`t31x_notify`、`lp_wakeup`、`host_event`、`time_sync`、`sound_prompt`、`fota_svc`、`ipc_supv`、`vbat`、`peripheral`、`net_tcp` | 协议、状态机、策略 |
-| **L3 应用层** | `main.lua`、`user/app.lua`（编排/事件桥/provider 注入）、`user/svc.lua`（跨域服务定位） | 只做装配与事件桥接，不放业务算法 |
+| **L2 业务逻辑层** | `user/` 除 app/config 域外的全部（含 L2 基础设施 `svc`——跨域服务定位，业务模块可 `require "svc"`）：AT 协议族 `host_uart` + `hif_*`、MQTT 族 `net_mqtt` + `mqtt_*`、`pir_ctrl`、`battery_guard`、`t31x_ctrl`/`t31x_policy`/`t31x_notify`、`lp_wakeup`、`host_event`、`time_sync`、`sound_prompt`、`fota_svc`、`ipc_supv`、`vbat`、`peripheral`、`net_tcp` | 协议、状态机、策略 |
+| **L3 应用层** | `main.lua`、`user/app.lua`（编排/事件桥/provider 注入） | 只做装配与事件桥接，不放业务算法 |
 
 ## 2. 只允许上层调用下层，禁止反向依赖与跨层内部调用
 
 - 依赖方向：L3 → L2 → L1 → L0。`lib/`（L0/L1）**禁止** `require`/`loader.load`/`modCall` 任何 `user/` 业务模块（config 域例外，属 L1）。
-- L2 内部再分子层：**AT 协议族（`host_uart`/`hif_*`）不得调用业务模块**（`pir_ctrl`/`net_mqtt`/`battery_guard`/`t31x_policy`/`lp_wakeup`/`host_event`/`time_sync`/`sound_prompt`）；需要业务数据/动作时，由 `app.buildBizProviders` 经 `host_uart.start{ biz }` 注入，AT 层只用 `ctx.bizCall(key, …)`。`t31x_ctrl`/`runtime_power`/`device_id` 视为基础设施，可被 AT 层调用。
+- L2 内部再分子层：**AT 协议族（`host_uart`/`hif_*`）不得调用业务模块**（`pir_ctrl`/`net_mqtt`/`battery_guard`/`t31x_policy`/`lp_wakeup`/`host_event`/`time_sync`/`sound_prompt`）；需要业务数据/动作时，由 `app.buildBizProviders` 经 `host_uart.start{ biz }` 注入，AT 层只用 `ctx.bizCall(key, …)`。`t31x_ctrl`/`runtime_power`/`device_id`/`svc` 视为基础设施，可被 AT 层与其他 L2 模块调用。
 - 业务联动一律走 `sys.publish(APP_EVENTS.X)` 由 `app` 桥接，或走 ctx/provider 注入；不得为"省一次事件"而反向 require。
 - 机器护栏：`python3 tools/debug/_layer_check.py`（R1 lib↛user、R2 config 域↛utils 系、R3 子模块↛主文件、R4 AT 层↛业务层、R5 vendor 锁），基线 **0 条**，新增违规边即 FAIL；`_dep_graph.py --scc` 硬环必须为 0。
 

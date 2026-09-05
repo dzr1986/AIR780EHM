@@ -260,7 +260,7 @@ Web/API 触发 → ota_server 发布 MQTT 2004 {action:ota,url:…/firmware_upgr
 
 | 事件 | 行为 |
 |------|------|
-| 低电量 / `2002 enter` | `runtime_power.setLowPowerMode` → `t31x_ctrl.enterSleep`（T31x 断电）→ 保持 MQTT → `1002` |
+| 低电量 / `2002 enter` | `runtime_power.requestRest`（PSM 单写点）→ `bindPowerHooks.onEnterRest` → `t31x_ctrl.enterSleep`（T31x 断电）→ 保持 MQTT → `1002` |
 | `2002 exit` / PIR / USB 插入 | 唤醒 T31x、`person_detect` 模式、`1002/1003` 上报 |
 | MQTT 唤醒通道 | rest 期间 Broker 通知由 4G 模组自己收（mqtt）；可选 TCP 长连（`mode=tcp`） |
 | 烧录态 | GPIO28 长按 → `t31x_burn` 预置 → T31x 下次上电进烧录模式 |

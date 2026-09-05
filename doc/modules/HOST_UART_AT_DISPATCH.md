@@ -311,7 +311,7 @@ P3 之前②不存在，破坏性状态只是三个布尔 busy 键，`hostQuery`
 
 AT 协议层（`host_uart` + 18 个 `hif_*`）此前经 `modCall("pir_ctrl"/"net_mqtt"/"battery_guard"/"t31x_policy"/"lp_wakeup"/"host_event"/"time_sync"/"sound_prompt", …)` 反向驱动业务层（25 处），是运行期 22 模块软环的主因，也让依赖方向从静态图上消失。现改为：
 
-- `app.buildBizProviders()`（`user/app.lua`）是**唯一真源**：26 个显式函数键（`shouldHostSleep`/`canHostSleep`/`markT31xWoken`/`mayPowerT31x`/`lpAppCfgFields`/`allowTcpChannel`/`closeTcpChannel`/`hostEvtEnabled`/`hostEvtSummarize`/`pirIsRecording`/`pirSyncStopT31x`/`pirApplyEffMedia`/`pirStatBody`/`pirClearMarkers`/`pirResetCounters`/`onTimesetAck`/`onSoundAck`/`pubUploadDone`/`pubUploadNeed`/`setStatInterval`/`pubRaw`/`pubDeviceIdRef`），经 `host_uart.start{ biz = … }` 注入到 `hooks.biz`。
+- `app.buildBizProviders()`（`user/app.lua`）是**唯一真源**：22 个显式函数键（`shouldHostSleep`/`canHostSleep`/`markT31xWoken`/`mayPowerT31x`/`lpAppCfgFields`/`allowTcpChannel`/`closeTcpChannel`/`hostEvtEnabled`/`hostEvtSummarize`/`pirIsRecording`/`pirSyncStopT31x`/`pirApplyEffMedia`/`pirStatSnapshot`（H 条前为 `pirStatBody`）/`pirClearMarkers`/`pirResetCounters`/`onTimesetAck`/`onSoundAck`/`pubUploadDone`/`pubUploadNeed`/`setStatInterval`/`pubRaw`/`pubDeviceIdRef`），经 `host_uart.start{ biz = … }` 注入到 `hooks.biz`。
 - AT 层统一经 `ctx.bizCall(key, …)` 调用；provider 缺失（模块被 `MODULE_FLAGS` 裁剪）时返回 nil，与旧 `modCall` 对未加载模块的语义一致。**差异**：旧 `modCall` 用 `loader.load` 会把被裁剪模块强行加载再调用，新实现对被裁剪模块直接 no-op（更符合裁剪意图）。
 - 护栏：`_layer_check` R4（AT 层 ↛ 业务层）基线 15 → **0**；`_ref_name_check` 规则 F 校验 `bizCall("x")` 的 x ∈ provider 表键。软环 22 → 16 模块，`modCall` 46 → 17 处（余下均指向 `t31x_ctrl`/`runtime_power`/`device_id` 等基础设施）。
 

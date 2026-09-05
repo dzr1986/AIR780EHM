@@ -226,10 +226,10 @@ net_mqtt.lua (623)           ← mqttTask / pubRaw / notifyPowerOff / 连接态 
 
 ```
 onEnterLowPower(reason)
-  → setLowPowerMode(1) → t31x_ctrl.enterSleep → MQTT 1002 → lp_wakeup.onEnterRest
+  → runtime_power.requestRest → hooks.onEnterRest → t31x_ctrl.enterSleep → MQTT 1002 → lp_wakeup.onEnterRest
 
 onExitLowPower(reason)
-  → setLowPowerMode(0) → requestT31xWake(force) → lp_wakeup.onExitRest
+  → runtime_power.requestNormal → hooks.onExitRest → t31x.ensNormalPwrOn → lp_wakeup.onExitRest
   ※ requestT31xWake 已含 time_sync.pushBeforeNotify 对时，勿重复调用
 
 applyUsbPower(inserted, source)

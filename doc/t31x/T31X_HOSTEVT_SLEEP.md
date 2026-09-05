@@ -41,7 +41,7 @@
 | `max_sec` | int | 录像最长秒数 |
 | `last_stop` | string | 云端/定时停录请求（`none` / `cloud` / …） |
 
-media 字段与 `AT+PIRSTAT?` 中 `pir_ctrl.buildStatBodyy()` **同源**；T31x `media_dispatch_wake_event` **优先读 HOSTEVT**，失败回退 PIRSTAT。
+media 字段与 `AT+PIRSTAT?` 中 `pir_ctrl.getStatSnapshot()（→ hif_cmd_pir.buildPirStatBody 拼文本）` **同源**；T31x `media_dispatch_wake_event` **优先读 HOSTEVT**，失败回退 PIRSTAT。
 
 无待处理：
 
@@ -130,7 +130,7 @@ USB 策略详见 [T31X_LOW_POWER.md §2.1](../power/T31X_LOW_POWER.md)。
 
 ### 2.1 「精简」与「宽表」是什么意思？
 
-二者用**同一份底层数据**（`pir_ctrl.buildStatBodyy()` + `host_event.summarize()`），做成两种不同**宽度**的串口应答：
+二者用**同一份底层数据**（`pir_ctrl.getStatSnapshot()（→ hif_cmd_pir.buildPirStatBody 拼文本）` + `host_event.summarize()`），做成两种不同**宽度**的串口应答：
 
 | 说法 | 对应 AT | 含义 |
 |------|---------|------|
@@ -140,7 +140,7 @@ USB 策略详见 [T31X_LOW_POWER.md §2.1](../power/T31X_LOW_POWER.md)。
 因此 **`has_event`（HOSTEVT）与 `has_work`（PIRSTAT 末尾）结论一致**，不是两套状态机；宽表只是在同一份汇总结果上多贴了诊断数据。
 
 ```text
-pir_ctrl.buildStatBodyy()  +  getHostEvtPending()  +  host_event.summarize()
+pir_ctrl.getStatSnapshot()（→ hif_cmd_pir.buildPirStatBody 拼文本）  +  getHostEvtPending()  +  host_event.summarize()
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼

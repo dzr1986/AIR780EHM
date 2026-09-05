@@ -5,6 +5,9 @@
 `module(..., package.seeall)` 下任何拼错/未声明的标识符都静默变成 _G 读 nil，`luac -p` 与全部
 正则护栏均无法发现，运行期才 "attempt to index a nil value"。本检查用 `luac -l -l` 列出每个
 chunk 的 `GETTABUP _ENV "<name>"`（全局读），减去：
+（规则 2，2026-09-05）：同文件既有列 0 的 `local <name>` 声明、字节码里又出现 `_ENV "<name>"` 读/写 → 声明晚于使用，
+该处实际是全局（host_uart `resetUartTxn` 里 `uartSessionOwner = nil` 写到全局即此类；只查读的规则 1 会因 SETTABUP 把名字
+计入"已定义"而漏报）。缩进的 local（函数内遮蔽平台库名如 vbat `local adc = adcCfg()`）不算。
     * Lua 标准库 / LuatOS 平台库白名单（PLATFORM）
     * 全库任意文件的全局写：`SETTABUP _ENV "<name>"`（含 module() 风格的 function 导出）、`_G.<name> =`
     * 自研模块名（require 后同名全局）
@@ -40,6 +43,21 @@ KNOWN_OK = {"_M", "arg", "pmd"}
 RE_GET = re.compile(r'GETTABUP\s+[\d-]+\s+[\d-]+\s+[\d-]+\s*;\s*_ENV\s+"([^"]+)"')
 RE_SET = re.compile(r'SETTABUP\s+[\d-]+\s+[\d-]+\s+[\d-]+\s*;\s*_ENV\s+"([^"]+)"')
 RE_G_ASSIGN = re.compile(r"_G\.([A-Za-z_]\w*)\s*=(?!=)")
+# 顶层（列 0）local 声明：`local a, b = …` / `local function f`
+RE_TOP_LOCAL = re.compile(r"^local\s+(?:function\s+([A-Za-z_]\w*)|([A-Za-z_][\w\s,]*?)\s*(?:=|$))", re.M)
+
+
+def top_level_locals(src: str) -> set[str]:
+    out: set[str] = set()
+    for m in RE_TOP_LOCAL.finditer(src):
+        if m.group(1):
+            out.add(m.group(1))
+        elif m.group(2):
+            for n in m.group(2).split(","):
+                n = n.strip()
+                if n:
+                    out.add(n)
+    return out
 
 
 def find_luac() -> str | None:
@@ -58,16 +76,22 @@ def main() -> int:
     files = [p for d in SCAN_DIRS for p in sorted(d.glob("*.lua"))]
     reads: dict[str, set[str]] = {}
     writes: set[str] = {p.stem for p in files}
+    late_local: list[str] = []  # 规则 2：顶层 local 声明晚于使用 → 该处访问落成全局（host_uart uartSessionOwner 事故）
     for f in files:
         out = subprocess.run([luac, "-l", "-l", "-p", str(f)], capture_output=True, text=True)
         if out.returncode != 0:
             print(f"    [FAIL] {f.relative_to(ROOT).as_posix()} 语法错误：{out.stderr.strip()[:200]}")
             return 1
+        src = f.read_text(encoding="utf-8", errors="ignore")
+        tops = top_level_locals(src)
+        env_names = {m.group(1) for m in RE_GET.finditer(out.stdout)} | {m.group(1) for m in RE_SET.finditer(out.stdout)}
+        for n in sorted(env_names & tops):
+            late_local.append(f"{f.relative_to(ROOT).as_posix()}：`{n}` 有顶层 local 声明，却仍有 _ENV 全局读/写——声明位置晚于使用，把 `local {n}` 上移")
         for m in RE_GET.finditer(out.stdout):
             reads.setdefault(m.group(1), set()).add(f.name)
         for m in RE_SET.finditer(out.stdout):
             writes.add(m.group(1))
-        for m in RE_G_ASSIGN.finditer(f.read_text(encoding="utf-8", errors="ignore")):
+        for m in RE_G_ASSIGN.finditer(src):
             writes.add(m.group(1))
     known = LUA_STD | PLATFORM | writes | KNOWN_OK
     bad = {k: v for k, v in reads.items() if k not in known}
@@ -75,9 +99,12 @@ def main() -> int:
     if bad:
         for k in sorted(bad):
             print(f"    [FAIL] 未定义全局 `{k}` ← {', '.join(sorted(bad[k]))}（拼写错误或 local 漏声明？）")
-        print(f"\nFAILED: {len(bad)} 个未定义全局读")
+    for msg in late_local:
+        print(f"    [FAIL] {msg}")
+    if bad or late_local:
+        print(f"\nFAILED: {len(bad)} 个未定义全局读 / {len(late_local)} 个顶层 local 先用后声明")
         return 1
-    print("\nALL PASS — 无未定义全局读")
+    print("\nALL PASS — 无未定义全局读；无顶层 local 先用后声明")
     return 0
 
 

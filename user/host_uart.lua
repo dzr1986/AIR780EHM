@@ -287,6 +287,9 @@ local function uartAcquire(timeoutMs)
     return true
 end
 
+-- 破坏性会话持有协程（P3；声明须先于 resetUartTxn，否则那里的赋值会落成全局——2026-09-05 评审修复）
+local uartSessionOwner = nil
+
 -- stop 时（及冷启动首次 start）复位事务锁：持有者协程若在 stop 期间被丢弃，锁会永久 busy，
 -- 之后所有 hostQuery/hostSet 只能等超时走 fallback；复位后原持有者的 uartRelease 变 no-op。
 -- 运行中重入 start 不复位——否则会把仍在等 ACK 的持有者手里的锁放给第二个协程
@@ -303,7 +306,6 @@ end
 -- 除会话持有协程外，所有 hostQuery 走 fallback、hostSet 回 busy、1003 刷新走缓存。
 -- 与事务锁的分工：锁 = 「同时只有一个请求在飞」；会话 = 「T31x 处于不可打扰状态」。
 ----------------------------------------------------------------
-local uartSessionOwner = nil
 
 local function enterSession(name)
     if state.uart_session then

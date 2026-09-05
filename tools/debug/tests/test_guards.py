@@ -146,6 +146,16 @@ class GuardSandbox(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("LIMITMO_SHARED_ZZ", out)
 
+    def test_undef_global_flags_late_top_level_local(self):
+        import shutil as _sh
+        if not (_sh.which("luac5.3") or _sh.which("luac")):
+            self.skipTest("no luac")
+        self.inject("undef_global_late_local.lua", "zz_late_local.lua")
+        rc, out = _run(self.tmp, "_undef_global_check.py")
+        self.assertEqual(rc, 1)
+        self.assertIn("zzLateOwner", out)
+        self.assertIn("先用后声明", out)
+
     def test_ref_name_flags_live_bad_require(self):
         self.inject("ref_name_live_bad.lua", "zz_ref_bad.lua")
         rc, out = _run(self.tmp, "_ref_name_check.py")

@@ -279,7 +279,7 @@ sequenceDiagram
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | AT 分发 | `user/host_uart.lua` | `AT+PIRSTAT?` / `AT+PIRCLR`、HOSTEVT pending 拼入 PIRSTAT |
-| 统计 | `pir_ctrl.lua` | 计数、`buildStatBodyy()` |
+| 统计 | `pir_ctrl.lua` | 计数、`getStatSnapshot()` |
 | 硬件 | `pir_ctrl.lua` | GPIO、冷却、`cnt_hw_*` |
 | 业务 | `user/pir_ctrl.lua` | 策略、录像、`cnt_biz_*` / `cnt_stop_*` |
 | T31x API | `t3x_linux/api.c` | `client_get_pir_stat()` |

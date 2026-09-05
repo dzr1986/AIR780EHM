@@ -361,7 +361,7 @@ python3 tools/debug/run_all_checks.py     # 9 项护栏（本报告生成时 ALL
 
 | 条 | 问题 | 处置 | 护栏 |
 |---|---|---|---|
-| A | AT 层（host_uart/hif_*）经 `modCall` 反向驱动业务层 25 处，软环 22 模块 | `app.buildBizProviders`（26 键）经 `host_uart.start{biz}` 注入，AT 层统一 `ctx.bizCall`；AT→业务边 15→0，软环 22→16，`modCall` 46→19（余下均指基础设施） | `_layer_check` R4 基线 0；`_ref_name_check` 规则 F |
+| A | AT 层（host_uart/hif_*）经 `modCall` 反向驱动业务层 25 处，软环 22 模块 | `app.buildBizProviders`（22 键）经 `host_uart.start{biz}` 注入，AT 层统一 `ctx.bizCall`；AT→业务边 15→0，软环 22→16，`modCall` 46→19（余下均指基础设施） | `_layer_check` R4 基线 0；`_ref_name_check` 规则 F |
 | B | 破坏性会话 vs 断电/休眠仲裁 | `t31x_ctrl.blockSleep` 纳入 `uart_session`；`hostIpcPowerOff` 有界等待他会话（VERSION 161） | — |
 | C | `host_uart.state` 语义键多写点（16 处） | `setHostIpcStatus/setHostAtReady/setHostTfCard/setHostCloudStat` 单写点 | `SINGLE_WRITERS` +4 |
 | D | `setRecActive` 顺带刷新 `ipc_cloud_stat_ts` 导致 1003 跳查 | `commitIpcStat(keepTs)`（VERSION 161） | — |

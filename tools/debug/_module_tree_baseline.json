@@ -30,7 +30,7 @@
     "hif_rx_media.lua": 275,
     "host.lua": 117,
     "host_event.lua": 158,
-    "host_uart.lua": 801,
+    "host_uart.lua": 803,
     "ipc_supv.lua": 188,
     "led_pir.lua": 68,
     "lp_wakeup.lua": 116,
@@ -81,12 +81,12 @@
   "totals": {
     "user": {
       "files": 59,
-      "lines": 13960
+      "lines": 13962
     },
     "lib": {
       "files": 15,
       "lines": 2632
     },
-    "all": 16592
+    "all": 16594
   }
 }
