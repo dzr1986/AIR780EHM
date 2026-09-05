@@ -28,7 +28,7 @@ function bind(C, shared)
     local hostReady = shared.t31xHostReady
 
     local TIMEOUT = {
-        cloudRefresh = 2500,
+        cloudRefresh = C.TMO_SHARED.ipcStatRefreshMs,
         recordQuery = 3500,
         recordIdleCheck = 3000,
         recordStart = 10000,

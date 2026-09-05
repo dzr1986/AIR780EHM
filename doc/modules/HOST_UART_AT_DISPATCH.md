@@ -269,7 +269,11 @@ host_uart 族 7 个文件原各有一张 `TIMEOUT`/`TMO` 表，同一语义（�
 | `acquireCapMs` | 8000 | `hif_ipc_power`（IPCPOWEROFF）、`hif_ipc_tffmt`（TFFORMAT） |
 | `statusQueryMs` | 2000 | `hif_ipc_rec`（`AT+IPCSTATUS?`）、`hif_ipc_power`（恢复链复查） |
 | `cloudStatQueryMs` | 2500 | `hif_ipc_cloud`（`AT+IPCSTAT?`）、`host_uart` 首条 AT 后刷新 |
+| `qryDefaultMs` | 3000 | `hif_ipc.TMO.qry`（hostQuery 默认超时）、`hif_cmd_wled`（`AT+WLED?` ack）（P2b） |
+| `t31xWaitMs` | 800 | `hif_ipc.TMO.t31xWait`（`ensT31xHost` 默认等待）、`hif_cmd_wled`（P2b） |
 
 规则：**同一语义只在 `TMO_SHARED` 定义一次**；子模块本地表只留模块特有值（`tffmt.formatMs=120000`、`hostq.recOff=22000`、`power.readyDefaultMs` 等）。子模块头部写 `local TMO_SHARED = C.TMO_SHARED`，并在 `tools/debug/bind_header_specs.json` 对应 `c` 列表登记（`_gen_bind_header --check-all` 守护）。
+
+**未并入（同值但语义待定）**：`hif_ipc_hostq.TMO.rec = 3000`（录像查询）与 `qryDefaultMs` 同值，是否同义待定；`mqtt_dl_pir.stopDefault = 22000` 与 `hif_ipc_hostq.TMO.recOff = 22000` 跨族同值，待 P7 ctx.const 统一。
 
 **已知同义不同值（本阶段不改数值，待维护者定）**：串口静默期 quiet——`hif_ipc.TMO.quiet = 1500`（hostQuery/hostSet 走 `armHost`）vs `hif_ipc_power.hostIdleCapMs = 2000` / `hif_ipc_tffmt.hostIdleMs = 2000`（直接 `waitHostIdle`）。统一到哪一个值需实机验证后再收进 `TMO_SHARED`。

@@ -28,14 +28,15 @@ function bind(C)
     local uart_bridge = C.uart_bridge
     local modCall = C.modCall
     local getCfg = cfgm.get
+    local TMO_SHARED = C.TMO_SHARED
 
     local TMO = {
         retryWait = 200,
         retryCap = 4000,
         postQry = 300,
         quiet = 1500,
-        qry = 3000,
-        t31xWait = 800,
+        qry = TMO_SHARED.qryDefaultMs,
+        t31xWait = TMO_SHARED.t31xWaitMs,
         bootWait = 1500,
     }
 

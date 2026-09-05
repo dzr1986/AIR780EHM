@@ -57,7 +57,7 @@
       "bind_args": "C",
       "requires_sys": true,
       "requires_cfgm": true,
-      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xUartOff", "RSP_ERROR", "defineQuery", "defineSet"]
+      "c": ["SYS_EVT", "rspFmt", "modCall", "utils", "hostNowMs", "t31xUartOff", "RSP_ERROR", "defineQuery", "defineSet", "TMO_SHARED"]
     },
     "hif_ipc_rec.lua": {
       "bind_args": "C, H",
